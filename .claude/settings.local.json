@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node src/server.js)",
+      "Bash(curl -s http://localhost:3000/api/health)",
+      "Bash(curl *)",
+      "Bash(node migrations/run.js)",
+      "Bash(node migrations/seed.js)",
+      "WebFetch(domain:www.caretobeauty.com)",
+      "WebFetch(domain:pureskincare.com.gh)",
+      "WebFetch(domain:www.jumia.com.gh)",
+      "WebSearch",
+      "WebFetch(domain:www.pixelmatters.com)",
+      "WebFetch(domain:poterbytech.com)"
+    ]
+  }
+}

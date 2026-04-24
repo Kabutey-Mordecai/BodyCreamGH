@@ -1,0 +1,318 @@
+/* ================================================================
+   LUXURY DESIGN SYSTEM
+   TO CUSTOMIZE: Edit :root variables to restyle the entire site.
+   ================================================================ */
+
+:root {
+  /* ── Brand colors ──────────────────────────────────────────── */
+  /* TO CUSTOMIZE: Swap these four to rebrand the entire site */
+  --color-primary:      #1c1410;   /* Warm near-black (headings, buttons) */
+  --color-accent:       #c9a55a;   /* Rich gold — the luxury signal */
+  --color-accent-dark:  #a8863d;   /* Deeper gold for text on light bg */
+  --color-accent-light: #f0e2c4;   /* Pale gold for subtle highlights */
+
+  /* ── Backgrounds ───────────────────────────────────────────── */
+  --color-bg:      #faf7f4;   /* Warm ivory — softer than pure white */
+  --color-surface: #ffffff;
+  --color-blush:   #fdf4f0;   /* Rose-tinted section backgrounds */
+  --color-dark:    #141010;   /* Footer / dark sections */
+
+  /* ── Text ──────────────────────────────────────────────────── */
+  --color-text:    #1c1410;
+  --color-muted:   #7a6e68;   /* Warm taupe for secondary text */
+
+  /* ── Borders ───────────────────────────────────────────────── */
+  --color-border:  #ede5db;   /* Warm beige */
+
+  /* ── Feedback ──────────────────────────────────────────────── */
+  --color-error:   #c0392b;
+  --color-success: #27ae60;
+
+  /* ── Typography ────────────────────────────────────────────── */
+  /* Cormorant Garamond = headings (luxury/editorial feel)
+     Inter = body text, labels, buttons (crisp readability) */
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body:    'Inter', system-ui, -apple-system, sans-serif;
+
+  /* ── Layout ────────────────────────────────────────────────── */
+  --max-width:  1200px;
+  --nav-height: 70px;
+  --bar-height: 38px;
+  --radius:     6px;
+  --radius-lg:  12px;
+
+  /* ── Shadows ───────────────────────────────────────────────── */
+  --shadow:    0 2px 8px rgba(28, 20, 16, 0.07);
+  --shadow-md: 0 6px 24px rgba(28, 20, 16, 0.12);
+  --shadow-lg: 0 16px 48px rgba(28, 20, 16, 0.15);
+}
+
+/* ── Reset ────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* All headings use the display serif font */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+}
+
+img { max-width: 100%; display: block; }
+a   { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: inherit; }
+
+/* ── Layout helpers ─────────────────────────────── */
+.container {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  padding-top: calc(var(--nav-height) + var(--bar-height));
+}
+/* When bar is dismissed, body gets this class via JS — see App.jsx */
+body.no-bar .main-content {
+  padding-top: var(--nav-height);
+}
+
+/* ── Section headings (shared across pages) ──── */
+.section-label {
+  display: block;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-accent-dark);
+  margin-bottom: 12px;
+}
+
+.page-title {
+  font-size: clamp(1.8rem, 3vw, 2.6rem);
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.page-subtitle {
+  color: var(--color-muted);
+  margin-bottom: 36px;
+  font-size: 1rem;
+}
+
+/* ── Buttons ────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 28px;
+  border-radius: var(--radius);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: none;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+.btn:hover   { opacity: 0.9; transform: translateY(-1px); }
+.btn:active  { transform: scale(0.98) translateY(0); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+.btn-accent {
+  background: var(--color-accent);
+  color: #fff;
+}
+.btn-accent:hover {
+  background: var(--color-accent-dark);
+  opacity: 1;
+}
+.btn-outline {
+  background: transparent;
+  color: var(--color-primary);
+  border: 1.5px solid var(--color-primary);
+}
+.btn-outline:hover {
+  background: var(--color-primary);
+  color: #fff;
+  opacity: 1;
+}
+.btn-outline-gold {
+  background: transparent;
+  color: var(--color-accent-dark);
+  border: 1.5px solid var(--color-accent);
+}
+.btn-outline-gold:hover {
+  background: var(--color-accent);
+  color: #fff;
+  opacity: 1;
+}
+.btn-danger { background: var(--color-error); color: #fff; }
+.btn-full   { width: 100%; }
+
+/* ── Form elements ──────────────────────────────── */
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+
+.form-group label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+input, select, textarea {
+  padding: 12px 16px;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  font-family: var(--font-body);
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: border-color 0.15s;
+  width: 100%;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(201, 165, 90, 0.12);
+}
+
+/* ── Cards ──────────────────────────────────────── */
+.card {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* ── Alerts ─────────────────────────────────────── */
+.alert {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+  margin-bottom: 16px;
+  border-left: 3px solid;
+}
+.alert-error   {
+  background: #fdf0ef;
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+.alert-success {
+  background: #edfbf4;
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+/* ── Status badges ──────────────────────────────── */
+.badge {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 99px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.badge-pending   { background: #fef8e7; color: #92651e; }
+.badge-paid      { background: #e8faf1; color: #1a6b3c; }
+.badge-shipped   { background: #e8f0fe; color: #1a3a8f; }
+.badge-delivered { background: #e8faf1; color: #1a6b3c; }
+.badge-cancelled { background: #fdecea; color: #8b1a1a; }
+
+/* ── Loading spinner ────────────────────────────── */
+.spinner {
+  width: 36px; height: 36px;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 48px auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Product grid ───────────────────────────────── */
+.products-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 28px;
+}
+
+/* ── Page sections ──────────────────────────────── */
+.page-section { padding: 80px 0; }
+
+/* ── Gold divider line ──────────────────────────── */
+.gold-divider {
+  width: 48px;
+  height: 2px;
+  background: var(--color-accent);
+  margin: 0 auto 20px;
+}
+
+/* ── Auth form layout ───────────────────────────── */
+.auth-page {
+  min-height: 85vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  background: var(--color-blush);
+}
+.auth-card {
+  background: var(--color-surface);
+  padding: 48px 40px;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 100%;
+  max-width: 440px;
+}
+.auth-card h1 {
+  font-size: 2rem;
+  margin-bottom: 6px;
+}
+.auth-card p  {
+  color: var(--color-muted);
+  margin-bottom: 28px;
+  font-size: 0.95rem;
+}
+.auth-form    { display: flex; flex-direction: column; gap: 18px; }
+.auth-footer  {
+  text-align: center;
+  margin-top: 24px;
+  font-size: 0.88rem;
+  color: var(--color-muted);
+}
+.auth-footer a { color: var(--color-accent-dark); font-weight: 600; }
+
+/* ── Responsive ─────────────────────────────────── */
+@media (max-width: 768px) {
+  .products-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 16px;
+  }
+  .auth-card { padding: 32px 24px; }
+  .page-section { padding: 56px 0; }
+}

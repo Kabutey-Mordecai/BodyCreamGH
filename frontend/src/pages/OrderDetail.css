@@ -1,0 +1,188 @@
+/* ── Breadcrumb ──────────────────────────────── */
+.breadcrumb {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-bottom: 28px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.breadcrumb a       { color: var(--color-muted); transition: color 0.15s; }
+.breadcrumb a:hover { color: var(--color-accent-dark); }
+.breadcrumb span    { color: var(--color-border); }
+.breadcrumb > span:last-child { color: var(--color-primary); }
+
+/* ── Header ──────────────────────────────────── */
+.order-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 36px;
+}
+
+.order-detail-date {
+  color: var(--color-muted);
+  font-size: 0.95rem;
+}
+
+.order-detail-badge {
+  font-size: 0.78rem;
+  padding: 6px 16px;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+
+/* ── Two-column layout ───────────────────────── */
+.order-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  align-items: start;
+}
+
+.order-detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ── Section cards ───────────────────────────── */
+.order-section {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+}
+
+.order-section-head h2 {
+  font-family: var(--font-display);
+  font-size: 1.4rem;
+  font-weight: 500;
+  margin-bottom: 10px;
+}
+
+.order-section .gold-divider {
+  margin-left: 0 !important;
+}
+
+/* ── Items list ──────────────────────────────── */
+.order-items-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 6px;
+}
+.order-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.order-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.order-item-name {
+  font-size: 0.98rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  line-height: 1.35;
+}
+
+.order-item-qty {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.order-item-amt {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  white-space: nowrap;
+}
+
+/* ── Totals ──────────────────────────────────── */
+.order-totals {
+  display: flex;
+  flex-direction: column;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.92rem;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.summary-row:last-of-type { border-bottom: none; }
+
+.summary-total {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.3rem;
+  color: var(--color-accent-dark);
+  border-top: 2px solid var(--color-primary);
+  border-bottom: none !important;
+  margin-top: 6px;
+  padding-top: 14px;
+}
+
+/* ── Address ─────────────────────────────────── */
+.order-address {
+  font-size: 0.98rem;
+  line-height: 1.6;
+  color: var(--color-text);
+}
+.order-phone {
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  margin-top: 6px;
+}
+
+/* ── Tracking ────────────────────────────────── */
+.tracking-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.92rem;
+}
+.tracking-row:last-child { border-bottom: none; }
+
+.tracking-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.tracking-value {
+  font-family: var(--font-body);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 900px) {
+  .order-detail-grid { grid-template-columns: 1fr; }
+  .order-detail-header { flex-wrap: wrap; }
+  .order-section { padding: 22px; }
+}
