@@ -1,0 +1,24 @@
+.star-rating {
+  display: inline-flex;
+  gap: 1px;
+  line-height: 1;
+}
+
+.star {
+  color: #d4c5a0;
+  transition: color 0.1s;
+}
+.star--full  { color: #c9a55a; }
+.star--half  { color: #c9a55a; }
+
+.star-rating--sm .star { font-size: 0.82rem; }
+.star-rating--md .star { font-size: 1.1rem;  }
+.star-rating--lg .star { font-size: 1.5rem;  }
+
+.star-rating--interactive .star {
+  cursor: pointer;
+}
+.star-rating--interactive .star:hover,
+.star-rating--interactive .star:hover ~ .star {
+  color: #c9a55a;
+}

@@ -1,11 +1,10 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import { ordersAPI, paymentsAPI } from '../services/api';
 import './Checkout.css';
-
-// TO CUSTOMIZE: Set your delivery fee or make it dynamic based on location
-const DELIVERY_FEE = 15; // GHS
 
 // Ghana's 16 administrative regions — shown in a select rather than a free text input
 const GHANA_REGIONS = [
@@ -16,15 +15,22 @@ const GHANA_REGIONS = [
 ];
 
 export default function Checkout() {
-  const { cart, cartTotal, clearLocalCart } = useCart();
+  const { cart, cartTotal, clearLocalCart, isGuest } = useCart();
+  const { user } = useAuth();
+  const { delivery_fee_flat, delivery_fee_accra, free_delivery_over } = useSettings();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({
+    // Guest-only fields
+    first_name: '',
+    last_name:  '',
+    email:      '',
+    // Delivery fields — shown for everyone
     delivery_address: '',
-    city: '',
-    region: '',
-    phone: '',
-    notes: '',
+    city:             '',
+    region:           '',
+    phone:            '',
+    notes:            '',
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,38 +40,51 @@ export default function Checkout() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (cart.length === 0) {
-      return setError('Your cart is empty.');
-    }
+    if (cart.length === 0) return setError('Your cart is empty.');
 
     setError('');
     setLoading(true);
 
     try {
-      // Step 1: Create the order on the backend.
-      // The server validates stock levels and calculates the final total.
-      const { data: order } = await ordersAPI.create({
-        shipping_address: form.delivery_address,
-        shipping_city:    form.city,
-        shipping_region:  form.region,
-        // Phone is stored in notes since the orders table has no phone column
-        notes: form.phone
-          ? `Phone: ${form.phone}${form.notes ? '\n' + form.notes : ''}`
-          : form.notes,
-        delivery_fee: DELIVERY_FEE,
-      });
+      let orderId, email;
 
-      // Step 2: Initialize a Paystack payment for the order.
-      // Paystack returns an authorization_url — we redirect the user there.
-      const { data: payment } = await paymentsAPI.initialize(order.orderId);
+      if (isGuest) {
+        // Guest checkout — send items array directly
+        const { data: order } = await ordersAPI.createGuest({
+          email:            form.email,
+          first_name:       form.first_name,
+          last_name:        form.last_name,
+          phone:            form.phone,
+          shipping_address: form.delivery_address,
+          shipping_city:    form.city,
+          shipping_region:  form.region,
+          notes:            form.notes,
+          delivery_fee:     deliveryFee,
+          items: cart.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
+        });
+        orderId = order.orderId;
+        email   = order.email;
 
-      // Clear the cart locally before redirect (server clears it on payment success,
-      // but this prevents a stale cart being shown if the user navigates back)
-      clearLocalCart();
+        const { data: payment } = await paymentsAPI.initializeGuest(orderId, email);
+        clearLocalCart();
+        window.location.href = payment.authorization_url;
+      } else {
+        // Authenticated checkout — cart is on the server
+        const { data: order } = await ordersAPI.create({
+          shipping_address: form.delivery_address,
+          shipping_city:    form.city,
+          shipping_region:  form.region,
+          notes: form.phone
+            ? `Phone: ${form.phone}${form.notes ? '\n' + form.notes : ''}`
+            : form.notes,
+          delivery_fee: deliveryFee,
+        });
+        orderId = order.orderId;
 
-      // Redirect to Paystack's hosted payment page
-      window.location.href = payment.authorization_url;
-
+        const { data: payment } = await paymentsAPI.initialize(orderId);
+        clearLocalCart();
+        window.location.href = payment.authorization_url;
+      }
     } catch (err) {
       setError(err.response?.data?.error || 'Checkout failed. Please try again.');
     } finally {
@@ -73,9 +92,15 @@ export default function Checkout() {
     }
   };
 
-  const orderTotal = cartTotal + DELIVERY_FEE;
+  const isAccra   = form.region === 'Greater Accra';
+  const feeFlat   = Number(delivery_fee_flat)  || 15;
+  const feeAccra  = Number(delivery_fee_accra) || 10;
+  const freeOver  = Number(free_delivery_over) || 0;
+  const deliveryFee = (freeOver > 0 && cartTotal >= freeOver)
+    ? 0
+    : isAccra ? feeAccra : feeFlat;
+  const orderTotal = cartTotal + deliveryFee;
 
-  // If the cart is empty the checkout form is pointless — guide the user away
   if (cart.length === 0) {
     return (
       <div className="page-section">
@@ -103,9 +128,67 @@ export default function Checkout() {
           </p>
         </div>
 
+        {/* Guest prompt — offer login/register as an alternative */}
+        {isGuest && (
+          <div className="guest-notice">
+            <p>
+              <strong>Checking out as guest.</strong>{' '}
+              <Link to={`/login?next=/checkout`}>Sign in</Link> or{' '}
+              <Link to="/register">create an account</Link> to track your orders.
+            </p>
+          </div>
+        )}
+
         <div className="checkout-layout">
           {/* ── Delivery form ─────────────────────────── */}
           <form className="checkout-form" onSubmit={handleSubmit}>
+            {/* Guest-only contact section */}
+            {isGuest && (
+              <div className="checkout-section">
+                <h2>Your Details</h2>
+                <div className="gold-divider" style={{ margin: '0 0 24px' }} />
+
+                <div className="checkout-row">
+                  <div className="form-group">
+                    <label htmlFor="first_name">First name</label>
+                    <input
+                      id="first_name"
+                      name="first_name"
+                      type="text"
+                      value={form.first_name}
+                      onChange={handleChange}
+                      required
+                      placeholder="Ama"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="last_name">Last name <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+                    <input
+                      id="last_name"
+                      name="last_name"
+                      type="text"
+                      value={form.last_name}
+                      onChange={handleChange}
+                      placeholder="Mensah"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="email">Email address</label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    value={form.email}
+                    onChange={handleChange}
+                    required
+                    placeholder="ama@example.com"
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="checkout-section">
               <h2>Delivery Details</h2>
               <div className="gold-divider" style={{ margin: '0 0 24px' }} />
@@ -169,7 +252,7 @@ export default function Checkout() {
               </div>
 
               <div className="form-group">
-                <label htmlFor="notes">Order notes (optional)</label>
+                <label htmlFor="notes">Order notes <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
                 <textarea
                   id="notes"
                   name="notes"
@@ -230,7 +313,10 @@ export default function Checkout() {
               </div>
               <div className="summary-row">
                 <span>Delivery</span>
-                <span>GHS {DELIVERY_FEE.toFixed(2)}</span>
+                <span>{form.region
+                  ? (deliveryFee === 0 ? 'Free' : `GHS ${deliveryFee.toFixed(2)}`)
+                  : 'Select region'}
+                </span>
               </div>
               <div className="summary-row summary-total">
                 <span>Total</span>

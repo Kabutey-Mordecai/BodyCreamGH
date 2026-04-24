@@ -55,4 +55,38 @@ const changePassword = async (req, res) => {
   }
 };
 
-module.exports = { getProfile, updateProfile, changePassword };
+const pool = require('../config/database');
+
+const getCustomerById = async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.created_at,
+              COUNT(o.id) AS order_count,
+              COALESCE(SUM(o.total_amount) FILTER (WHERE o.payment_status = 'paid'), 0) AS total_spent
+       FROM users u
+       LEFT JOIN orders o ON o.customer_id = u.id
+       WHERE u.id = $1 AND u.role = 'customer'
+       GROUP BY u.id`,
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Customer not found' });
+    res.json(rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch customer' });
+  }
+};
+
+const getCustomerOrders = async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, order_number, total_amount, status, payment_status, created_at
+       FROM orders WHERE customer_id = $1 ORDER BY created_at DESC`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch customer orders' });
+  }
+};
+
+module.exports = { getProfile, updateProfile, changePassword, getCustomerById, getCustomerOrders };

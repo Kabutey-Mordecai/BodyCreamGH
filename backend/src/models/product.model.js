@@ -3,31 +3,49 @@ const { v4: uuid } = require('uuid');
 
 module.exports = {
   findAll: async ({ category, search, sort } = {}) => {
-    let query = 'SELECT * FROM products WHERE 1=1';
+    let query = `
+      SELECT p.*,
+             ROUND(AVG(r.rating)::numeric, 1) AS avg_rating,
+             COUNT(r.id)::int                 AS review_count
+      FROM products p
+      LEFT JOIN product_reviews r ON r.product_id = p.id
+      WHERE 1=1`;
     const params = [];
 
     if (category) {
       params.push(category);
-      query += ` AND category = $${params.length}`;
+      query += ` AND p.category = $${params.length}`;
     }
 
     if (search) {
       params.push(`%${search}%`);
-      query += ` AND (name ILIKE $${params.length} OR description ILIKE $${params.length})`;
+      query += ` AND (p.name ILIKE $${params.length} OR p.description ILIKE $${params.length})`;
     }
 
-    if (sort === 'price_low')   query += ' ORDER BY price ASC';
-    else if (sort === 'price_high')  query += ' ORDER BY price DESC';
-    else if (sort === 'name_asc')    query += ' ORDER BY name ASC';
-    else if (sort === 'name_desc')   query += ' ORDER BY name DESC';
-    else                             query += ' ORDER BY created_at DESC';
+    query += ' GROUP BY p.id';
+
+    if (sort === 'price_low')        query += ' ORDER BY p.price ASC';
+    else if (sort === 'price_high')  query += ' ORDER BY p.price DESC';
+    else if (sort === 'name_asc')    query += ' ORDER BY p.name ASC';
+    else if (sort === 'name_desc')   query += ' ORDER BY p.name DESC';
+    else if (sort === 'top_rated')   query += ' ORDER BY avg_rating DESC NULLS LAST';
+    else                             query += ' ORDER BY p.created_at DESC';
 
     const { rows } = await pool.query(query, params);
     return rows;
   },
 
   findById: async (id) => {
-    const { rows } = await pool.query('SELECT * FROM products WHERE id = $1', [id]);
+    const { rows } = await pool.query(
+      `SELECT p.*,
+              ROUND(AVG(r.rating)::numeric, 1) AS avg_rating,
+              COUNT(r.id)::int                 AS review_count
+       FROM products p
+       LEFT JOIN product_reviews r ON r.product_id = p.id
+       WHERE p.id = $1
+       GROUP BY p.id`,
+      [id]
+    );
     return rows[0] || null;
   },
 

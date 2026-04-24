@@ -2,6 +2,7 @@ const { v4: uuid } = require('uuid');
 const pool = require('../config/database');
 const OrderModel = require('../models/order.model');
 const InventoryModel = require('../models/inventory.model');
+const { logStatusChange } = require('../events/handlers/payment.handler');
 
 const createOrder = async (req, res) => {
   const client = await pool.connect();
@@ -90,7 +91,29 @@ const createOrder = async (req, res) => {
 
 const getOrders = async (req, res) => {
   try {
-    res.json(await OrderModel.findByCustomer(req.user.id));
+    const page  = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+
+    const { rows } = await pool.query(
+      `SELECT id, order_number, total_amount, status, payment_status, created_at
+         FROM orders
+        WHERE customer_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2 OFFSET $3`,
+      [req.user.id, limit, offset]
+    );
+
+    const { rows: countRows } = await pool.query(
+      'SELECT COUNT(*) FROM orders WHERE customer_id = $1',
+      [req.user.id]
+    );
+
+    const total = parseInt(countRows[0].count);
+    res.json({
+      orders:  rows,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch orders' });
   }
@@ -98,7 +121,9 @@ const getOrders = async (req, res) => {
 
 const getOrderById = async (req, res) => {
   try {
-    const order = await OrderModel.findById(req.params.orderId, req.user.id);
+    // Admins can see any order; customers only see their own
+    const customerId = req.user.role === 'admin' ? null : req.user.id;
+    const order = await OrderModel.findById(req.params.orderId, customerId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     const items = await OrderModel.getItems(req.params.orderId);
     res.json({ order, items });
@@ -117,16 +142,125 @@ const getAllOrders = async (req, res) => {
 
 const updateOrderStatus = async (req, res) => {
   try {
-    const { status } = req.body;
-    const valid = ['pending', 'paid', 'shipped', 'delivered', 'cancelled'];
+    const { status, note } = req.body;
+    const valid = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
     if (!valid.includes(status)) {
       return res.status(400).json({ error: `Status must be one of: ${valid.join(', ')}` });
     }
+    const { rows } = await pool.query('SELECT status FROM orders WHERE id=$1', [req.params.orderId]);
+    const fromStatus = rows[0]?.status;
     await OrderModel.updateStatus(req.params.orderId, status);
+    await logStatusChange(req.params.orderId, fromStatus, status, note || `Manual update by admin`);
     res.json({ message: 'Order status updated' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update order status' });
   }
 };
 
-module.exports = { createOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus };
+// Return the full status audit trail for an order
+const getOrderStatusLog = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    // Admins can see any order; customers only their own
+    if (req.user.role !== 'admin') {
+      const order = await OrderModel.findById(orderId, req.user.id);
+      if (!order) return res.status(404).json({ error: 'Order not found' });
+    }
+    const { rows } = await pool.query(
+      `SELECT from_status, to_status, note, created_at
+         FROM order_status_log
+        WHERE order_id = $1
+        ORDER BY created_at ASC`,
+      [orderId]
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch status log' });
+  }
+};
+
+// Guest checkout — no user session required
+const createGuestOrder = async (req, res) => {
+  const client = await pool.connect();
+  let transactionStarted = false;
+
+  try {
+    const {
+      email, first_name, last_name, phone,
+      shipping_address, shipping_city, shipping_region,
+      notes, items,
+    } = req.body;
+    let { delivery_fee = 0 } = req.body;
+
+    if (!email || !first_name || !phone || !shipping_address || !shipping_city || !shipping_region) {
+      return res.status(400).json({ error: 'email, first_name, phone, and full shipping address are required' });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'Cart is empty' });
+    }
+
+    delivery_fee = parseFloat(delivery_fee);
+    if (isNaN(delivery_fee) || delivery_fee < 0) delivery_fee = 0;
+
+    await client.query('BEGIN');
+    transactionStarted = true;
+
+    // Fetch and lock products
+    const productIds = items.map(i => i.product_id);
+    const { rows: products } = await client.query(
+      `SELECT id, price, stock_quantity FROM products WHERE id = ANY($1) FOR UPDATE`,
+      [productIds]
+    );
+    const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+    for (const item of items) {
+      const p = productMap[item.product_id];
+      if (!p) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: `Product not found: ${item.product_id}` });
+      }
+      if (p.stock_quantity < item.quantity) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Insufficient stock for one or more items' });
+      }
+    }
+
+    let subtotal = 0;
+    items.forEach(item => { subtotal += parseFloat(productMap[item.product_id].price) * item.quantity; });
+    const total = subtotal + delivery_fee;
+
+    const orderId = uuid();
+    const orderNumber = `ORD-${Date.now()}`;
+    const guestNotes = `Phone: ${phone}${notes ? '\n' + notes : ''}`;
+    const fullNotes = `Guest: ${first_name} ${last_name || ''} <${email}>\n${guestNotes}`;
+
+    await client.query(
+      `INSERT INTO orders
+         (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
+          shipping_region, delivery_fee, notes, status, payment_status)
+       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,'pending','unpaid')`,
+      [orderId, orderNumber, total, shipping_address, shipping_city,
+       shipping_region, delivery_fee, fullNotes]
+    );
+
+    for (const item of items) {
+      const p = productMap[item.product_id];
+      await client.query(
+        'INSERT INTO order_items (id, order_id, product_id, quantity, price_at_purchase, subtotal) VALUES ($1,$2,$3,$4,$5,$6)',
+        [uuid(), orderId, item.product_id, item.quantity, p.price, parseFloat(p.price) * item.quantity]
+      );
+      await InventoryModel.adjustStock(item.product_id, -item.quantity, 'sale', null, client);
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({ orderId, orderNumber, total, email });
+  } catch (error) {
+    if (transactionStarted) await client.query('ROLLBACK').catch(() => {});
+    console.error('Error creating guest order:', error);
+    res.status(500).json({ error: 'Failed to create order' });
+  } finally {
+    client.release();
+  }
+};
+
+module.exports = { createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus, getOrderStatusLog };

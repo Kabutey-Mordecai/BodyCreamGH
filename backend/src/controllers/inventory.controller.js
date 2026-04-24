@@ -48,4 +48,32 @@ const getLowStock = async (req, res) => {
   }
 };
 
-module.exports = { getInventory, restockProduct, getHistory, getLowStock };
+// Flexible adjustment — quantity_change can be positive (restock) or negative (correction)
+const adjustInventory = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const { quantity_change, reason, notes } = req.body;
+
+    const change = parseInt(quantity_change);
+    if (!productId || isNaN(change) || change === 0) {
+      return res.status(400).json({ error: 'productId and a non-zero quantity_change are required' });
+    }
+
+    const product = await ProductModel.findById(productId);
+    if (!product) return res.status(404).json({ error: 'Product not found' });
+
+    const newStock = product.stock_quantity + change;
+    if (newStock < 0) {
+      return res.status(400).json({ error: `Cannot reduce below zero. Current stock: ${product.stock_quantity}` });
+    }
+
+    await InventoryModel.adjustStock(productId, change, reason || (change > 0 ? 'restock' : 'adjustment'), notes || null);
+
+    res.json({ ok: true, new_stock: newStock });
+  } catch (error) {
+    console.error('Inventory adjust error:', error);
+    res.status(500).json({ error: 'Failed to adjust inventory' });
+  }
+};
+
+module.exports = { getInventory, restockProduct, getHistory, getLowStock, adjustInventory };

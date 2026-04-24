@@ -1,42 +1,97 @@
 import axios from 'axios';
 
-// VITE_ prefix is required by Vite to expose env variables to the browser bundle.
-// In development the Vite proxy in vite.config.js forwards /api to localhost:3000,
-// so VITE_API_URL is only needed when deploying to production (e.g. Netlify).
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const api = axios.create({ baseURL: API_BASE });
 
 // ── Request interceptor ───────────────────────────────────────────────────────
-// Automatically attach the JWT to every request so individual calls don't
-// have to manually set the Authorization header each time.
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// ── Response interceptor ──────────────────────────────────────────────────────
-// A 401 means the token is expired or blacklisted (user logged out elsewhere).
-// Clear local storage and redirect to login rather than showing confusing errors.
-api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Only wipe session and redirect if we're not already on an auth page.
-      // Without this guard we'd get an infinite redirect loop on /login.
-      const publicPaths = ['/login', '/register', '/forgot-password', '/reset-password'];
-      const isOnPublicPage = publicPaths.some(p => window.location.pathname.startsWith(p));
+// ── Response interceptor with automatic token refresh ────────────────────────
+// On 401: try to exchange the stored refresh_token for a new access token,
+// then transparently retry the original request. If the refresh itself fails,
+// clear the session and redirect to /login.
+// A pending-queue prevents concurrent 401s from each firing a separate refresh.
 
-      if (!isOnPublicPage) {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
-      }
+const AUTH_PATHS = ['/auth/refresh', '/auth/login', '/auth/register'];
+const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/payment/callback'];
+
+let isRefreshing = false;
+let pendingQueue = []; // [{ resolve, reject }]
+
+function drainQueue(err, token) {
+  pendingQueue.forEach(cb => err ? cb.reject(err) : cb.resolve(token));
+  pendingQueue = [];
+}
+
+function clearSession() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('refresh_token');
+  localStorage.removeItem('user');
+  const isPublic = PUBLIC_ROUTES.some(p => window.location.pathname.startsWith(p));
+  if (!isPublic) window.location.href = '/login';
+}
+
+api.interceptors.response.use(
+  res => res,
+  async (error) => {
+    const orig = error.config;
+
+    // Only act on 401s we haven't already retried
+    if (error.response?.status !== 401 || orig._retry) {
+      return Promise.reject(error);
     }
-    return Promise.reject(error);
+
+    // Don't attempt refresh when the failing request IS an auth endpoint
+    if (AUTH_PATHS.some(p => orig.url?.includes(p))) {
+      clearSession();
+      return Promise.reject(error);
+    }
+
+    // While a refresh is in-flight, queue this request instead of firing another refresh
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        pendingQueue.push({ resolve, reject });
+      }).then(token => {
+        orig.headers.Authorization = `Bearer ${token}`;
+        return api(orig);
+      });
+    }
+
+    orig._retry = true;
+    isRefreshing = true;
+
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      isRefreshing = false;
+      clearSession();
+      return Promise.reject(error);
+    }
+
+    try {
+      // Use raw axios (not `api`) to avoid triggering this interceptor again
+      const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refresh_token: refreshToken });
+
+      localStorage.setItem('token', data.token);
+      if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
+
+      api.defaults.headers.common.Authorization = `Bearer ${data.token}`;
+      orig.headers.Authorization = `Bearer ${data.token}`;
+
+      drainQueue(null, data.token);
+      isRefreshing = false;
+
+      return api(orig); // retry the original request with the new token
+    } catch (refreshErr) {
+      drainQueue(refreshErr, null);
+      isRefreshing = false;
+      clearSession();
+      return Promise.reject(refreshErr);
+    }
   }
 );
 
@@ -44,7 +99,7 @@ api.interceptors.response.use(
 export const authAPI = {
   register:         (data)    => api.post('/auth/register', data),
   login:            (data)    => api.post('/auth/login', data),
-  logout:           ()        => api.post('/auth/logout'),
+  logout:           (data={}) => api.post('/auth/logout', data),
   getMe:            ()        => api.get('/auth/me'),
   forgotPassword:   (email)   => api.post('/auth/forgot-password', { email }),
   verifyResetToken: (token)   => api.get(`/auth/verify-reset-token/${token}`),
@@ -68,17 +123,17 @@ export const cartAPI = {
 
 // ── Orders ────────────────────────────────────────────────────────────────────
 export const ordersAPI = {
-  create:  (data) => api.post('/orders', data),
-  getAll:  ()     => api.get('/orders'),
-  getById: (id)   => api.get(`/orders/${id}`),
+  create:       (data) => api.post('/orders', data),
+  createGuest:  (data) => api.post('/orders/guest', data),
+  getAll:       (params) => api.get('/orders', { params }),
+  getById:      (id)   => api.get(`/orders/${id}`),
 };
 
 // ── Payments ──────────────────────────────────────────────────────────────────
 export const paymentsAPI = {
-  // initialize returns { authorization_url, reference } — we redirect the user there
-  initialize: (orderId) => api.post('/payments/initialize', { orderId }),
-  // verify is called after Paystack redirects back with ?reference=...
-  verify:     (reference) => api.post('/payments/verify', { reference }),
+  initialize:      (orderId)          => api.post('/payments/initialize', { orderId }),
+  initializeGuest: (orderId, email)   => api.post('/payments/guest/initialize', { orderId, email }),
+  verify:          (reference)        => api.post('/payments/verify', { reference }),
 };
 
 // ── Customer profile ──────────────────────────────────────────────────────────
@@ -91,6 +146,25 @@ export const customerAPI = {
 // ── Deliveries ────────────────────────────────────────────────────────────────
 export const deliveriesAPI = {
   getByOrder: (orderId) => api.get(`/deliveries/order/${orderId}`),
+};
+
+// ── Site settings — storefront reads these on load ────────────────────────────
+export const settingsAPI = {
+  getAll: () => api.get('/settings'),
+};
+
+// ── Reviews ───────────────────────────────────────────────────────────────────
+export const reviewsAPI = {
+  getByProduct: (productId)        => api.get(`/products/${productId}/reviews`),
+  create:       (productId, data)  => api.post(`/products/${productId}/reviews`, data),
+};
+
+// ── Wishlist ──────────────────────────────────────────────────────────────────
+export const wishlistAPI = {
+  getAll:  ()          => api.get('/wishlist'),
+  getIds:  ()          => api.get('/wishlist/ids'),
+  add:     (productId) => api.post(`/wishlist/${productId}`),
+  remove:  (productId) => api.delete(`/wishlist/${productId}`),
 };
 
 export default api;

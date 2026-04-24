@@ -188,3 +188,58 @@
     );
   }
 }
+
+
+.product-card-rating {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 4px;
+}
+.product-card-rating-count {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+/* ── Wishlist heart button ───────────────────── */
+.product-card-wishlist {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s, transform 0.15s;
+  padding: 0;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.12);
+}
+.product-card:hover .product-card-wishlist,
+.product-card-wishlist--saved {
+  opacity: 1;
+}
+.product-card-wishlist:hover {
+  background: #fff;
+  transform: scale(1.1);
+}
+.product-card-wishlist svg {
+  width: 16px;
+  height: 16px;
+  stroke: var(--color-accent-dark);
+  transition: fill 0.15s;
+}
+.product-card-wishlist--saved svg {
+  fill: var(--color-accent);
+  stroke: var(--color-accent);
+}
+@media (hover: none) {
+  .product-card-wishlist { opacity: 1; }
+}

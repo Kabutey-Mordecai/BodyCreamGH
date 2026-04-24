@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { productsAPI } from '../services/api';
+import { productsAPI, reviewsAPI } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import StarRating from '../components/StarRating';
 import './ProductPage.css';
 
 // TO CUSTOMIZE: Placeholder shown when the product has no image
@@ -28,12 +29,18 @@ export default function ProductPage() {
   const { addItem }     = useCart();
   const { user }        = useAuth();
 
-  const [product, setProduct] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState('');
-  const [qty, setQty]         = useState(1);
-  const [adding, setAdding]   = useState(false);
+  const [product, setProduct]   = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+  const [qty, setQty]           = useState(1);
+  const [adding, setAdding]     = useState(false);
   const [addedMsg, setAddedMsg] = useState('');
+
+  const [reviews, setReviews]     = useState([]);
+  const [reviewStats, setStats]   = useState(null);
+  const [reviewForm, setReviewForm] = useState({ rating: 0, title: '', body: '' });
+  const [submitMsg, setSubmitMsg] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -43,11 +50,35 @@ export default function ProductPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  const loadReviews = () =>
+    reviewsAPI.getByProduct(id)
+      .then(({ data }) => { setReviews(data.reviews || []); setStats(data.stats); })
+      .catch(() => {});
+
+  useEffect(() => { loadReviews(); }, [id]);
+
+  const submitReview = async (e) => {
+    e.preventDefault();
+    if (!reviewForm.rating) return setSubmitMsg('Please select a star rating.');
+    setSubmitting(true);
+    setSubmitMsg('');
+    try {
+      await reviewsAPI.create(id, reviewForm);
+      setSubmitMsg('Review submitted — thank you!');
+      setReviewForm({ rating: 0, title: '', body: '' });
+      loadReviews();
+    } catch (err) {
+      setSubmitMsg(err.response?.data?.error || 'Failed to submit review.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleAddToCart = async () => {
     setAdding(true);
     setAddedMsg('');
     try {
-      await addItem(product.id, qty);
+      await addItem(product.id, qty, product);
       // Brief feedback message instead of a toast library to keep dependencies light
       setAddedMsg('Added to cart!');
       setTimeout(() => setAddedMsg(''), 3000);
@@ -105,6 +136,15 @@ export default function ProductPage() {
             <h1 className="product-detail-name">{product.name}</h1>
             <div className="gold-divider" style={{ margin: '0 0 18px 0' }} />
 
+            <div className="product-detail-rating">
+              <StarRating value={parseFloat(product.avg_rating || 0)} size="md" />
+              <span className="product-detail-rating-label">
+                {product.review_count > 0
+                  ? `${parseFloat(product.avg_rating).toFixed(1)} (${product.review_count} review${product.review_count !== 1 ? 's' : ''})`
+                  : 'No reviews yet'}
+              </span>
+            </div>
+
             <p className="product-detail-price">
               GHS {parseFloat(product.price).toFixed(2)}
             </p>
@@ -129,7 +169,7 @@ export default function ProductPage() {
             </ul>
 
             {/* Quantity selector — capped at available stock */}
-            {!isOutOfStock && user && (
+            {!isOutOfStock && (
               <div className="qty-selector">
                 <label htmlFor="qty">Quantity</label>
                 <div className="qty-control">
@@ -166,22 +206,13 @@ export default function ProductPage() {
               </div>
             )}
 
-            {user ? (
-              <button
-                className="btn btn-accent btn-full product-cta"
-                onClick={handleAddToCart}
-                disabled={isOutOfStock || adding}
-              >
-                {adding ? 'Adding…' : isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
-              </button>
-            ) : (
-              <Link
-                to="/login"
-                className="btn btn-primary btn-full product-cta"
-              >
-                Login to Buy
-              </Link>
-            )}
+            <button
+              className="btn btn-accent btn-full product-cta"
+              onClick={handleAddToCart}
+              disabled={isOutOfStock || adding}
+            >
+              {adding ? 'Adding…' : isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+            </button>
 
             {/* Trust row under the CTA */}
             <div className="product-trust-row">
@@ -197,6 +228,88 @@ export default function ProductPage() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ── Reviews ──────────────────────────────────────────── */}
+      <div className="container reviews-section">
+        <h2 className="reviews-heading">Customer Reviews</h2>
+        <div className="gold-divider" style={{ margin: '0 0 32px' }} />
+
+        <div className="reviews-layout">
+          {/* Summary */}
+          {reviewStats && Number(reviewStats.review_count) > 0 && (
+            <div className="reviews-summary">
+              <div className="reviews-avg">{parseFloat(reviewStats.avg_rating).toFixed(1)}</div>
+              <StarRating value={parseFloat(reviewStats.avg_rating)} size="lg" />
+              <div className="reviews-count">{reviewStats.review_count} review{reviewStats.review_count !== 1 ? 's' : ''}</div>
+            </div>
+          )}
+
+          {/* List */}
+          <div className="reviews-list">
+            {reviews.length === 0 && (
+              <p className="reviews-empty">No reviews yet. Be the first to share your experience!</p>
+            )}
+            {reviews.map(r => (
+              <div key={r.id} className="review-card">
+                <div className="review-header">
+                  <StarRating value={r.rating} size="sm" />
+                  <span className="review-author">{r.first_name} {r.last_name?.charAt(0)}.</span>
+                  <span className="review-date">{new Date(r.created_at).toLocaleDateString('en-GH', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                </div>
+                {r.title && <div className="review-title">{r.title}</div>}
+                {r.body  && <p  className="review-body">{r.body}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Submit form — only for logged-in users */}
+        {user ? (
+          <form className="review-form" onSubmit={submitReview}>
+            <h3 className="review-form-heading">Write a Review</h3>
+            <div className="field">
+              <label>Your rating</label>
+              <StarRating
+                value={reviewForm.rating}
+                interactive
+                size="lg"
+                onChange={v => setReviewForm(f => ({ ...f, rating: v }))}
+              />
+            </div>
+            <div className="field">
+              <label>Title <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+              <input
+                type="text"
+                maxLength={150}
+                placeholder="Summarise your experience"
+                value={reviewForm.title}
+                onChange={e => setReviewForm(f => ({ ...f, title: e.target.value }))}
+              />
+            </div>
+            <div className="field">
+              <label>Review <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+              <textarea
+                rows={4}
+                placeholder="What did you think of the product?"
+                value={reviewForm.body}
+                onChange={e => setReviewForm(f => ({ ...f, body: e.target.value }))}
+              />
+            </div>
+            {submitMsg && (
+              <div className={`alert ${submitMsg.startsWith('Review submitted') ? 'alert-success' : 'alert-error'}`}>
+                {submitMsg}
+              </div>
+            )}
+            <button type="submit" className="btn btn-accent" disabled={submitting}>
+              {submitting ? 'Submitting…' : 'Submit Review'}
+            </button>
+          </form>
+        ) : (
+          <div className="review-login-prompt">
+            <Link to="/login" className="btn btn-outline">Login to write a review</Link>
+          </div>
+        )}
       </div>
     </div>
   );

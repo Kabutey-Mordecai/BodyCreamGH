@@ -1,38 +1,17 @@
+import { useSettings } from '../context/SettingsContext';
 import './TrustStrip.css';
 
-// TO CUSTOMIZE: Edit badges to reflect your actual brand promises
-const BADGES = [
-  {
-    icon: '🚚',
-    heading: 'Ghana-wide Delivery',
-    sub:     'Free on orders over GHS 200',
-  },
-  {
-    icon: '🌿',
-    heading: '100% Natural',
-    sub:     'No parabens, no sulfates, no dyes',
-  },
-  {
-    icon: '⭐',
-    heading: 'Loved by Customers',
-    sub:     'Real reviews from real Ghanaians',
-  },
-  {
-    icon: '🔒',
-    heading: 'Secure Checkout',
-    sub:     'Cards, Mobile Money & Bank Transfer',
-  },
-];
-
 export default function TrustStrip() {
+  const { trust_items } = useSettings();
+
   return (
     <div className="trust-strip">
       <div className="container trust-strip-grid">
-        {BADGES.map(b => (
-          <div key={b.heading} className="trust-badge">
+        {(trust_items || []).map((b, i) => (
+          <div key={i} className="trust-badge">
             <div className="trust-badge-icon">{b.icon}</div>
             <div className="trust-badge-text">
-              <strong>{b.heading}</strong>
+              <strong>{b.label}</strong>
               <span>{b.sub}</span>
             </div>
           </div>

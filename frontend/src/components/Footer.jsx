@@ -1,8 +1,7 @@
 import { Link } from 'react-router-dom';
+import { useSettings } from '../context/SettingsContext';
 import './Footer.css';
 
-// TO CUSTOMIZE: Update the store name, tagline, and social handles
-const STORE_NAME = import.meta.env.VITE_STORE_NAME || 'BodyCream GH';
 const YEAR = new Date().getFullYear();
 
 const SHOP_LINKS = [
@@ -28,8 +27,7 @@ const INFO_LINKS = [
   { label: 'Contact Us',        to: '/' },
 ];
 
-// TO CUSTOMIZE: Replace with real social media URLs
-const SOCIALS = [
+const SOCIALS_META = [
   {
     label: 'Instagram',
     href: 'https://instagram.com',
@@ -72,10 +70,28 @@ const SOCIALS = [
 ];
 
 export default function Footer() {
+  const {
+    store_name,
+    footer_tagline,
+    footer_instagram,
+    footer_facebook,
+    footer_whatsapp,
+    footer_tiktok,
+    whatsapp_number,
+  } = useSettings();
+
+  const socials = SOCIALS_META.map(s => ({
+    ...s,
+    href: s.label === 'Instagram' ? (footer_instagram || s.href)
+        : s.label === 'Facebook'  ? (footer_facebook  || s.href)
+        : s.label === 'TikTok'    ? (footer_tiktok    || s.href)
+        : s.label === 'WhatsApp'  ? (whatsapp_number ? `https://wa.me/${whatsapp_number}` : footer_whatsapp || s.href)
+        : s.href,
+  }));
+
   const handleNewsletter = (e) => {
     e.preventDefault();
     e.target.reset();
-    // TO CUSTOMIZE: Wire this up to Mailchimp, Klaviyo, or your email service
     alert('Thank you! Check your inbox for your 10% discount code.');
   };
 
@@ -103,15 +119,14 @@ export default function Footer() {
 
           {/* Brand column */}
           <div className="footer-brand">
-            <span className="footer-logo">{STORE_NAME}</span>
+            <span className="footer-logo">{store_name}</span>
             <p className="footer-tagline">
-              Luxury body creams blended with shea butter, cocoa butter,
-              and Africa's finest botanicals — handcrafted in Ghana.
+              {footer_tagline}
             </p>
 
             {/* Social icons */}
             <div className="footer-socials">
-              {SOCIALS.map(s => (
+              {socials.map(s => (
                 <a
                   key={s.label}
                   href={s.href}
@@ -168,7 +183,7 @@ export default function Footer() {
       {/* ── Bottom bar ───────────────────────── */}
       <div className="footer-bottom">
         <div className="container footer-bottom-inner">
-          <p>© {YEAR} {STORE_NAME}. All rights reserved.</p>
+          <p>© {YEAR} {store_name}. All rights reserved.</p>
           <p className="footer-payment-note">
             <span>🔒</span> Secure payments by <strong>Paystack</strong> · Cards · Mobile Money · Bank Transfer
           </p>

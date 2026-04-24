@@ -44,6 +44,10 @@ export default function OrderDetail() {
 
   const orderNum = order.order_number || order.id.slice(0, 8).toUpperCase();
 
+  // Phone is written into notes as "Phone: 233XXXXXXXXX\n..." by the checkout form
+  const phoneMatch = order.notes?.match(/^Phone:\s*(.+?)(\n|$)/i);
+  const phone = order.customer_phone || (phoneMatch ? phoneMatch[1].trim() : null);
+
   return (
     <div className="page-section">
       <div className="container">
@@ -92,7 +96,7 @@ export default function OrderDetail() {
                     </span>
                   </div>
                   <span className="order-item-amt">
-                    GHS {(parseFloat(item.unit_price || item.price) * item.quantity).toFixed(2)}
+                    GHS {(parseFloat(item.price_at_purchase || item.price) * item.quantity).toFixed(2)}
                   </span>
                 </li>
               ))}
@@ -124,8 +128,8 @@ export default function OrderDetail() {
               </div>
               <div className="gold-divider" style={{ margin: '0 0 16px' }} />
               <p className="order-address">{order.shipping_address || '—'}{order.shipping_city ? `, ${order.shipping_city}` : ''}{order.shipping_region ? `, ${order.shipping_region}` : ''}</p>
-              {order.phone && (
-                <p className="order-phone">{order.phone}</p>
+              {phone && (
+                <p className="order-phone">{phone}</p>
               )}
             </section>
 

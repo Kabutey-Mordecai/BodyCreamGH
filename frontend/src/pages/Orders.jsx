@@ -4,16 +4,24 @@ import { ordersAPI } from '../services/api';
 import './Orders.css';
 
 export default function Orders() {
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState('');
+  const [orders, setOrders]         = useState([]);
+  const [pagination, setPagination] = useState(null);
+  const [page, setPage]             = useState(1);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState('');
 
   useEffect(() => {
-    ordersAPI.getAll()
-      .then(({ data }) => setOrders(data))
+    setLoading(true);
+    ordersAPI.getAll({ page, limit: 20 })
+      .then(({ data }) => {
+        // API returns { orders: [], pagination: {} }
+        const list = Array.isArray(data) ? data : (data.orders || []);
+        setOrders(list);
+        if (data.pagination) setPagination(data.pagination);
+      })
       .catch(() => setError('Failed to load orders.'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [page]);
 
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
 
@@ -26,7 +34,9 @@ export default function Orders() {
           <p className="page-subtitle" style={{ marginBottom: 0 }}>
             {orders.length === 0
               ? 'No orders yet — your future purchases will appear here.'
-              : `You've placed ${orders.length} order${orders.length === 1 ? '' : 's'} with us.`}
+              : pagination
+                ? `${pagination.total} order${pagination.total === 1 ? '' : 's'} total`
+                : `You've placed ${orders.length} order${orders.length === 1 ? '' : 's'} with us.`}
           </p>
         </div>
 
@@ -81,6 +91,28 @@ export default function Orders() {
                 </Link>
               );
             })}
+          </div>
+        )}
+
+        {pagination && pagination.pages > 1 && (
+          <div className="pagination" style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginTop: '32px' }}>
+            <button
+              className="btn btn-outline"
+              disabled={page <= 1}
+              onClick={() => setPage(p => p - 1)}
+            >
+              ← Previous
+            </button>
+            <span style={{ alignSelf: 'center', fontSize: '14px', color: 'var(--color-muted)' }}>
+              Page {pagination.page} of {pagination.pages}
+            </span>
+            <button
+              className="btn btn-outline"
+              disabled={page >= pagination.pages}
+              onClick={() => setPage(p => p + 1)}
+            >
+              Next →
+            </button>
           </div>
         )}
       </div>

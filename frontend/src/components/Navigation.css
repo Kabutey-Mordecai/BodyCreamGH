@@ -72,6 +72,16 @@
   transform: scaleX(1);
 }
 
+/* Wishlist heart icon */
+.nav-wishlist {
+  display: flex;
+  align-items: center;
+  padding: 0 2px;
+}
+.nav-wishlist svg { transition: stroke 0.15s, fill 0.15s; }
+.nav-wishlist:hover svg,
+.nav-wishlist.active svg { stroke: var(--color-accent); fill: var(--color-accent); }
+
 /* Cart bag icon with count badge */
 .nav-cart {
   position: relative;
@@ -109,6 +119,57 @@
   transition: color 0.15s;
 }
 .nav-logout-btn:hover { color: var(--color-error); }
+
+/* ── Search bar ─────────────────────────────────── */
+.nav-search {
+  flex: 1;
+  max-width: 380px;
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--color-bg);
+  margin: 0 28px;
+  transition: border-color 0.15s;
+}
+.nav-search:focus-within { border-color: var(--color-accent); }
+
+.nav-search-icon {
+  width: 15px; height: 15px;
+  color: var(--color-muted);
+  flex-shrink: 0;
+  margin-left: 11px;
+}
+
+.nav-search-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 8px 8px;
+  font-size: 0.88rem;
+  color: var(--color-text);
+  min-width: 0;
+}
+.nav-search-input:focus { outline: none; box-shadow: none; border-color: transparent; }
+
+.nav-search-btn {
+  background: var(--color-accent);
+  border: none;
+  padding: 9px 16px;
+  cursor: pointer;
+  color: #fff;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-family: var(--font-body);
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.nav-search-btn:hover { background: var(--color-accent-dark); }
+
+/* Hidden on desktop — only shown inside mobile dropdown */
+.nav-search-mobile-wrap { display: none; }
 
 /* "Sign Up" gets the gold pill treatment */
 .nav-cta {
@@ -171,5 +232,18 @@
     width: calc(100% - 48px);
     text-align: center;
     display: block !important;
+  }
+  /* Hide desktop search, reveal mobile search inside dropdown */
+  .nav-search:not(.nav-search--mobile) { display: none; }
+  .nav-search-mobile-wrap {
+    display: block;
+    padding: 10px 16px 6px;
+    border-bottom: 1px solid var(--color-border);
+    width: 100%;
+  }
+  .nav-search--mobile {
+    margin: 0;
+    max-width: 100%;
+    width: 100%;
   }
 }

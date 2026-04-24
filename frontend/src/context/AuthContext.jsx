@@ -32,8 +32,8 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password) => {
     const { data } = await authAPI.login({ email, password });
-    // Store both token and user object so we can restore the session on refresh
     localStorage.setItem('token', data.token);
+    if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
     localStorage.setItem('user', JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
@@ -47,13 +47,13 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     try {
-      // Call the server to blacklist the token so it can't be reused even
-      // if someone has a copy of it (e.g. from browser history or a shared computer)
-      await authAPI.logout();
+      const refresh_token = localStorage.getItem('refresh_token');
+      await authAPI.logout({ refresh_token });
     } catch {
-      // Server-side logout failing (e.g. network error) shouldn't block client-side logout
+      // Server-side logout failing shouldn't block client-side logout
     }
     localStorage.removeItem('token');
+    localStorage.removeItem('refresh_token');
     localStorage.removeItem('user');
     setUser(null);
   };

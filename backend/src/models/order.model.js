@@ -9,11 +9,20 @@ module.exports = {
     return rows;
   },
 
-  // Pass customerId to scope to the logged-in user; omit for admin access
+  // Pass customerId to scope to the logged-in user; omit (or pass null) for admin/guest access
   findById: async (id, customerId = null) => {
     const params = [id];
-    let query = `SELECT o.*, u.email as customer_email
-                 FROM orders o JOIN users u ON o.customer_id = u.id
+    // LEFT JOIN so guest orders (customer_id IS NULL) are still returned.
+    // For guest orders the email is embedded in notes as "Guest: Name <email>\n..."
+    let query = `SELECT o.*,
+                        u.first_name, u.last_name, u.phone AS customer_phone,
+                        COALESCE(
+                          u.email,
+                          NULLIF(SUBSTRING(o.notes FROM '<([^>]+)>'), ''),
+                          ''
+                        ) AS email
+                 FROM orders o
+                 LEFT JOIN users u ON o.customer_id = u.id
                  WHERE o.id = $1`;
     if (customerId) {
       params.push(customerId);
@@ -25,9 +34,16 @@ module.exports = {
 
   findAll: async () => {
     const { rows } = await pool.query(
-      `SELECT o.*, u.email, u.first_name, u.last_name
-       FROM orders o JOIN users u ON o.customer_id = u.id
-       ORDER BY o.created_at DESC`
+      `SELECT o.*,
+              COALESCE(
+                u.email,
+                NULLIF(SUBSTRING(o.notes FROM '<([^>]+)>'), ''),
+                ''
+              ) AS email,
+              u.first_name, u.last_name
+         FROM orders o
+    LEFT JOIN users u ON o.customer_id = u.id
+     ORDER BY o.created_at DESC`
     );
     return rows;
   },
@@ -46,7 +62,7 @@ module.exports = {
 
   markPaid: async (id, reference) => {
     await pool.query(
-      `UPDATE orders SET status='paid', payment_status='paid', payment_reference=$1, updated_at=NOW() WHERE id=$2`,
+      `UPDATE orders SET status='confirmed', payment_status='paid', payment_reference=$1, updated_at=NOW() WHERE id=$2`,
       [reference, id]
     );
   },

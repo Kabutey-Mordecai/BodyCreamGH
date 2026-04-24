@@ -1,7 +1,9 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useWishlist } from '../context/WishlistContext';
+import StarRating from './StarRating';
 import './ProductCard.css';
 
 const PLACEHOLDER_IMG = 'https://placehold.co/400x400?text=No+Image';
@@ -13,10 +15,21 @@ const isNewProduct = (createdAt) => {
 };
 
 export default function ProductCard({ product }) {
-  const { addItem } = useCart();
-  const { user }    = useAuth();
+  const { addItem }       = useCart();
+  const { user }          = useAuth();
+  const { savedIds, toggle } = useWishlist();
+  const navigate          = useNavigate();
   const [adding, setAdding] = useState(false);
   const [added, setAdded]   = useState(false);
+
+  const isSaved = savedIds.has(product.id);
+
+  const handleWishlist = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!user) { navigate('/login'); return; }
+    await toggle(product.id);
+  };
 
   const isOutOfStock = product.stock_quantity === 0;
   const isNew        = isNewProduct(product.created_at);
@@ -28,7 +41,7 @@ export default function ProductCard({ product }) {
 
     try {
       setAdding(true);
-      await addItem(product.id, 1);
+      await addItem(product.id, 1, product);
       setAdded(true);
       setTimeout(() => setAdded(false), 2000);
     } finally {
@@ -47,6 +60,17 @@ export default function ProductCard({ product }) {
           loading="lazy"
         />
 
+        {/* Wishlist heart — top-right corner */}
+        <button
+          className={`product-card-wishlist ${isSaved ? 'product-card-wishlist--saved' : ''}`}
+          onClick={handleWishlist}
+          aria-label={isSaved ? 'Remove from wishlist' : 'Save to wishlist'}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+          </svg>
+        </button>
+
         {/* Badges — top-left corner */}
         <div className="product-card-badges">
           {isNew         && <span className="badge-pill badge-new">New</span>}
@@ -57,7 +81,7 @@ export default function ProductCard({ product }) {
         <div className="product-card-overlay">
           {isOutOfStock ? (
             <span className="overlay-sold-out">Out of Stock</span>
-          ) : user ? (
+          ) : (
             <button
               className={`btn overlay-atc-btn ${added ? 'overlay-atc-btn--added' : ''}`}
               onClick={handleAddToCart}
@@ -65,14 +89,6 @@ export default function ProductCard({ product }) {
             >
               {adding ? 'Adding…' : added ? '✓ Added to Cart' : 'Add to Cart'}
             </button>
-          ) : (
-            <Link
-              to="/login"
-              className="btn overlay-atc-btn"
-              onClick={e => e.stopPropagation()}
-            >
-              Login to Buy
-            </Link>
           )}
           <Link
             to={`/products/${product.id}`}
@@ -90,6 +106,12 @@ export default function ProductCard({ product }) {
           <span className="product-card-category">{product.category}</span>
         )}
         <h3 className="product-card-name">{product.name}</h3>
+        {product.review_count > 0 && (
+          <div className="product-card-rating">
+            <StarRating value={parseFloat(product.avg_rating)} size="sm" />
+            <span className="product-card-rating-count">({product.review_count})</span>
+          </div>
+        )}
         <p className="product-card-price">
           GHS {parseFloat(product.price).toFixed(2)}
         </p>

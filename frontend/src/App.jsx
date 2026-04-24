@@ -16,6 +16,7 @@ import PaymentCallback from './pages/PaymentCallback';
 import Account         from './pages/Account';
 import Orders          from './pages/Orders';
 import OrderDetail     from './pages/OrderDetail';
+import Wishlist        from './pages/Wishlist';
 
 export default function App() {
   return (
@@ -37,11 +38,12 @@ export default function App() {
           <Route path="/payment/callback"    element={<PaymentCallback />} />
 
           {/* Protected routes — redirect to /login if not authenticated */}
-          <Route path="/cart"       element={<ProtectedRoute><Cart /></ProtectedRoute>} />
-          <Route path="/checkout"   element={<ProtectedRoute><Checkout /></ProtectedRoute>} />
+          <Route path="/cart"       element={<Cart />} />
+          <Route path="/checkout"   element={<Checkout />} />
           <Route path="/account"    element={<ProtectedRoute><Account /></ProtectedRoute>} />
           <Route path="/orders"     element={<ProtectedRoute><Orders /></ProtectedRoute>} />
           <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
+          <Route path="/wishlist"   element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
         </Routes>
       </main>
 

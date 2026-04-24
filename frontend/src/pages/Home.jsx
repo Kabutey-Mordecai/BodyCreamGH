@@ -1,34 +1,28 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { productsAPI } from '../services/api';
+import { useSettings } from '../context/SettingsContext';
 import ProductCard from '../components/ProductCard';
 import TrustStrip from '../components/TrustStrip';
 import './Home.css';
 
-// Real customer testimonials — TO CUSTOMIZE: replace with your actual reviews
-const TESTIMONIALS = [
-  {
-    name: 'Abena K.',
-    location: 'Accra',
-    text: 'The Shea Butter Cream completely transformed my skin. Ive tried so many brands but nothing compares to this. My skin has never felt so soft.',
-    avatar: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=80&h=80&q=80',
-  },
-  {
-    name: 'Ama S.',
-    location: 'Kumasi',
-    text: 'I love the Rose Gold Radiance Oil! The scent is divine and my skin glows all day. Worth every pesewa and Ive already ordered three more bottles.',
-    avatar: 'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=80&h=80&q=80',
-  },
-  {
-    name: 'Efua M.',
-    location: 'Takoradi',
-    text: 'Fast delivery, beautiful packaging, and the products actually work! I gifted the Vanilla Scrub to my sister and shes obsessed. 10/10.',
-    avatar: 'https://images.unsplash.com/photo-1546961342-ea5f60b194b8?auto=format&fit=crop&w=80&h=80&q=80',
-  },
-];
+// Sale resets each time the page loads — ends at 11:59 PM today
+const SALE_END_TIME = (() => {
+  const d = new Date();
+  d.setHours(23, 59, 59, 0);
+  return d.getTime();
+})();
 
-// Gallery strip images — luxury skincare lifestyle shots
-// TO CUSTOMIZE: Replace with photos of real customers or products
+function getTimeLeft(endTime) {
+  const total = Math.max(0, endTime - Date.now());
+  return {
+    total,
+    hours:   Math.floor(total / (1000 * 60 * 60)),
+    minutes: Math.floor((total % (1000 * 60 * 60)) / (1000 * 60)),
+    seconds: Math.floor((total % (1000 * 60)) / 1000),
+  };
+}
+
 const GALLERY = [
   'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=400&h=400&q=80',
   'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=400&h=400&q=80',
@@ -38,8 +32,16 @@ const GALLERY = [
 ];
 
 export default function Home() {
-  const [featured, setFeatured] = useState([]);
-  const [loading, setLoading]   = useState(true);
+  const navigate = useNavigate();
+  const {
+    hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image,
+    categories, testimonials, trust_items,
+  } = useSettings();
+  const [heroSearch, setHeroSearch] = useState('');
+  const [featured, setFeatured]   = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [saleProducts, setSaleProducts] = useState([]);
+  const [timeLeft, setTimeLeft]   = useState(() => getTimeLeft(SALE_END_TIME));
 
   useEffect(() => {
     productsAPI.getAll({ limit: 4 })
@@ -48,28 +50,61 @@ export default function Home() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Fetch 3 products for the flash sale (cheapest first so deals look good)
+  useEffect(() => {
+    productsAPI.getAll({ limit: 3, sort: 'price_low' })
+      .then(({ data }) => setSaleProducts(data.products || data))
+      .catch(() => {});
+  }, []);
+
+  const handleHeroSearch = (e) => {
+    e.preventDefault();
+    const q = heroSearch.trim();
+    if (q) navigate(`/shop?search=${encodeURIComponent(q)}`);
+    else   navigate('/shop');
+  };
+
+  // Live countdown — ticks every second
+  useEffect(() => {
+    const id = setInterval(() => setTimeLeft(getTimeLeft(SALE_END_TIME)), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   return (
     <div>
 
       {/* ══════════════════════════════════════════
           HERO — full-viewport, image background
-          TO CUSTOMIZE: Change the background-image URL in Home.css (.hero)
           ══════════════════════════════════════════ */}
-      <section className="hero">
+      <section
+        className="hero"
+        style={hero_image ? { backgroundImage: `url(${hero_image})` } : undefined}
+      >
         <div className="hero-overlay" />
         <div className="container hero-content">
-          <span className="hero-label">Handcrafted in Ghana</span>
-          <h1>
-            Reveal your<br />
-            <em>natural glow.</em>
-          </h1>
-          <p>
-            Luxury body creams blended with shea butter, cocoa butter,
-            and Africa's finest botanicals — for the woman who deserves the best.
-          </p>
+          <span className="hero-label">{hero_label}</span>
+          <h1>{hero_headline}</h1>
+          <p>{hero_subtitle}</p>
+
+          <form className="hero-search" onSubmit={handleHeroSearch}>
+            <svg className="hero-search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.6"/>
+              <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+            </svg>
+            <input
+              type="search"
+              placeholder="Search for body creams, oils, scrubs…"
+              value={heroSearch}
+              onChange={e => setHeroSearch(e.target.value)}
+              className="hero-search-input"
+              aria-label="Search products"
+            />
+            <button type="submit" className="hero-search-btn">Search</button>
+          </form>
+
           <div className="hero-actions">
-            <Link to="/shop" className="btn btn-accent hero-cta">
-              Shop the Collection
+            <Link to={hero_cta_link || '/shop'} className="btn btn-accent hero-cta">
+              {hero_cta_text}
             </Link>
             <Link to="/shop" className="btn hero-ghost">
               Explore All
@@ -82,6 +117,73 @@ export default function Home() {
           TRUST STRIP — 4 brand promises
           ══════════════════════════════════════════ */}
       <TrustStrip />
+
+      {/* ══════════════════════════════════════════
+          FLASH SALE — countdown timer + deals
+          ══════════════════════════════════════════ */}
+      {saleProducts.length > 0 && (
+        <section className="flash-sale-section">
+          <div className="container">
+            <div className="flash-sale-header">
+              <div className="flash-sale-title">
+                <span className="flash-badge">Flash Sale</span>
+                <h2>Today's Deals</h2>
+              </div>
+              <div className="flash-sale-timer">
+                <span className="timer-label">Ends in</span>
+                <div className="countdown">
+                  <div className="countdown-block">
+                    <span className="countdown-value">{String(timeLeft.hours).padStart(2, '0')}</span>
+                    <span className="countdown-label">HRS</span>
+                  </div>
+                  <span className="countdown-sep">:</span>
+                  <div className="countdown-block">
+                    <span className="countdown-value">{String(timeLeft.minutes).padStart(2, '0')}</span>
+                    <span className="countdown-label">MIN</span>
+                  </div>
+                  <span className="countdown-sep">:</span>
+                  <div className="countdown-block">
+                    <span className="countdown-value">{String(timeLeft.seconds).padStart(2, '0')}</span>
+                    <span className="countdown-label">SEC</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="products-grid">
+              {saleProducts.map(p => <ProductCard key={p.id} product={p} />)}
+            </div>
+            <div style={{ textAlign: 'center', marginTop: '32px' }}>
+              <Link to="/shop" className="btn btn-outline-gold">View All Products</Link>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ══════════════════════════════════════════
+          CATEGORIES — quick navigation grid
+          ══════════════════════════════════════════ */}
+      <section className="categories-section">
+        <div className="container">
+          <div className="section-header">
+            <span className="section-label">Browse by category</span>
+            <h2 className="page-title">Shop the range</h2>
+            <div className="gold-divider" style={{ margin: '0 0 40px' }} />
+          </div>
+          <div className="categories-grid">
+            {(categories || []).map(cat => (
+              <Link
+                key={cat.label}
+                to={`/shop?category=${encodeURIComponent(cat.label)}`}
+                className="cat-card"
+              >
+                <img src={cat.image} alt={cat.label} loading="lazy" />
+                <div className="cat-card-overlay" />
+                <span className="cat-card-label">{cat.label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ══════════════════════════════════════════
           FEATURED PRODUCTS
@@ -163,11 +265,11 @@ export default function Home() {
             <div className="gold-divider" style={{ margin: '0 0 48px' }} />
           </div>
           <div className="testimonials-grid">
-            {TESTIMONIALS.map(t => (
-              <div key={t.name} className="testimonial-card card">
+            {(testimonials || []).map((t, i) => (
+              <div key={i} className="testimonial-card card">
                 <p className="testimonial-text">"{t.text}"</p>
                 <div className="testimonial-author">
-                  <img src={t.avatar} alt={t.name} className="testimonial-avatar" />
+                  {t.avatar && <img src={t.avatar} alt={t.name} className="testimonial-avatar" />}
                   <div>
                     <strong>{t.name}</strong>
                     <span>{t.location}</span>

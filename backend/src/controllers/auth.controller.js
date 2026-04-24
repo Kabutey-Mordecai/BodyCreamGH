@@ -33,10 +33,33 @@ const register = async (req, res) => {
 
 // ─── Login ───────────────────────────────────────────────────────────────────
 
+// Helpers shared by login and refresh
+const ACCESS_EXPIRE  = process.env.JWT_EXPIRE        || '15m';
+const REFRESH_DAYS   = parseInt(process.env.REFRESH_TOKEN_DAYS || '7');
+
+async function issueTokenPair(user, req) {
+  const jti = uuid();
+  const accessToken = jwt.sign(
+    { id: user.id, email: user.email, role: user.role, jti },
+    process.env.JWT_SECRET,
+    { expiresIn: ACCESS_EXPIRE }
+  );
+
+  const refreshToken = crypto.randomBytes(40).toString('hex');
+  const expiresAt    = new Date(Date.now() + REFRESH_DAYS * 24 * 60 * 60 * 1000);
+
+  await pool.query(
+    `INSERT INTO refresh_tokens (id, user_id, token, expires_at, user_agent)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [uuid(), user.id, refreshToken, expiresAt, req.headers['user-agent'] || null]
+  );
+
+  return { accessToken, refreshToken, expiresAt };
+}
+
 const login = async (req, res) => {
   try {
     const { email, password } = req.body;
-
     if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
 
     const user = await UserModel.findByEmail(email);
@@ -45,20 +68,49 @@ const login = async (req, res) => {
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
-    // jti (JWT ID) lets us blacklist this specific token on logout
-    const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, jti: uuid() },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
-    );
+    const { accessToken, refreshToken } = await issueTokenPair(user, req);
 
     res.json({
-      token,
+      token:         accessToken,
+      refresh_token: refreshToken,
       user: { id: user.id, email: user.email, role: user.role },
     });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Login failed' });
+  }
+};
+
+// ─── Refresh access token ────────────────────────────────────────────────────
+const refresh = async (req, res) => {
+  try {
+    const { refresh_token } = req.body;
+    if (!refresh_token) return res.status(400).json({ error: 'refresh_token is required' });
+
+    const { rows } = await pool.query(
+      `SELECT rt.*, u.id AS uid, u.email, u.role
+         FROM refresh_tokens rt
+         JOIN users u ON u.id = rt.user_id
+        WHERE rt.token = $1 AND rt.revoked = false AND rt.expires_at > NOW()`,
+      [refresh_token]
+    );
+
+    if (!rows.length) {
+      return res.status(401).json({ error: 'Invalid or expired refresh token' });
+    }
+
+    const record = rows[0];
+
+    // Rotate: revoke the old token and issue a brand-new pair
+    await pool.query('UPDATE refresh_tokens SET revoked = true WHERE id = $1', [record.id]);
+
+    const user = { id: record.uid, email: record.email, role: record.role };
+    const { accessToken, refreshToken } = await issueTokenPair(user, req);
+
+    res.json({ token: accessToken, refresh_token: refreshToken });
+  } catch (error) {
+    console.error('Refresh error:', error);
+    res.status(500).json({ error: 'Failed to refresh token' });
   }
 };
 
@@ -90,9 +142,26 @@ const logout = async (req, res) => {
         );
       }
     }
+
+    // Also revoke the refresh token if provided
+    const { refresh_token } = req.body;
+    if (refresh_token) {
+      await pool.query(
+        'UPDATE refresh_tokens SET revoked = true WHERE token = $1',
+        [refresh_token]
+      );
+    }
+
+    // Revoke ALL refresh tokens for this user (full logout all devices) if requested
+    if (req.query.all === 'true') {
+      await pool.query(
+        'UPDATE refresh_tokens SET revoked = true WHERE user_id = $1',
+        [req.user.id]
+      );
+    }
+
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
-    // Logout should always succeed from the user's perspective
     res.json({ message: 'Logged out successfully' });
   }
 };
@@ -199,4 +268,4 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, login, getMe, logout, forgotPassword, verifyResetToken, resetPassword };
+module.exports = { register, login, refresh, getMe, logout, forgotPassword, verifyResetToken, resetPassword };

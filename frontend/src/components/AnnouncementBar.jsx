@@ -1,44 +1,24 @@
 import { useState, useEffect } from 'react';
+import { useSettings } from '../context/SettingsContext';
 import './AnnouncementBar.css';
-
-// TO CUSTOMIZE: Edit these messages for your current promotions
-const MESSAGES = [
-  '🚚  Free delivery on orders over GHS 200',
-  '🌿  Handcrafted in Ghana with 100% natural ingredients',
-  '✨  New arrivals every week — Shop the latest',
-  '↩  7-day hassle-free returns on all orders',
-];
 
 const SESSION_KEY = 'bar_dismissed';
 
 export default function AnnouncementBar({ onVisibilityChange }) {
-  const [visible, setVisible]   = useState(() => !sessionStorage.getItem(SESSION_KEY));
-  const [current, setCurrent]   = useState(0);
-  const [fading, setFading]     = useState(false);
+  const { announcement_enabled, announcement_text } = useSettings();
+  const [dismissed, setDismissed] = useState(() => !!sessionStorage.getItem(SESSION_KEY));
+  const [fading, setFading] = useState(false);
 
-  // Cycle through messages every 4 seconds with a brief fade
-  useEffect(() => {
-    if (!visible || MESSAGES.length <= 1) return;
+  const visible = !dismissed && announcement_enabled;
 
-    const interval = setInterval(() => {
-      setFading(true);
-      setTimeout(() => {
-        setCurrent(i => (i + 1) % MESSAGES.length);
-        setFading(false);
-      }, 350);
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [visible]);
-
-  // Keep body class + notify parent in sync with bar visibility
   useEffect(() => {
     document.body.classList.toggle('no-bar', !visible);
     onVisibilityChange?.(visible);
   }, [visible, onVisibilityChange]);
 
+  // Single rotating message from settings — no multi-message cycling needed
   const dismiss = () => {
-    setVisible(false);
+    setDismissed(true);
     sessionStorage.setItem(SESSION_KEY, '1');
   };
 
@@ -47,24 +27,12 @@ export default function AnnouncementBar({ onVisibilityChange }) {
   return (
     <div className="announcement-bar" role="banner">
       <div className="announcement-bar-inner">
-        {/* Dot indicators */}
-        <div className="announcement-dots">
-          {MESSAGES.map((_, i) => (
-            <button
-              key={i}
-              className={`announcement-dot ${i === current ? 'active' : ''}`}
-              onClick={() => setCurrent(i)}
-              aria-label={`Message ${i + 1}`}
-            />
-          ))}
-        </div>
+        <div className="announcement-dots" />
 
-        {/* Message */}
         <p className={`announcement-msg ${fading ? 'fade-out' : 'fade-in'}`}>
-          {MESSAGES[current]}
+          {announcement_text || 'Free delivery on orders over GHS 200 · Shop now'}
         </p>
 
-        {/* Dismiss */}
         <button
           className="announcement-close"
           onClick={dismiss}

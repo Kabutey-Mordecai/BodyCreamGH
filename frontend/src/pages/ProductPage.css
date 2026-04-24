@@ -226,3 +226,119 @@
 @media (max-width: 480px) {
   .product-trust-row { grid-template-columns: 1fr; gap: 14px; }
 }
+
+/* ── Rating on product detail ─────────────────── */
+.product-detail-rating {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.product-detail-rating-label {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+}
+
+/* ── Reviews section ──────────────────────────── */
+.reviews-section {
+  padding-top: 56px;
+  padding-bottom: 64px;
+}
+.reviews-heading {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+.reviews-layout {
+  display: flex;
+  gap: 48px;
+  align-items: flex-start;
+  margin-bottom: 48px;
+}
+.reviews-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 130px;
+  padding: 24px 20px;
+  background: var(--color-blush);
+  border-radius: var(--radius-lg);
+  text-align: center;
+}
+.reviews-avg {
+  font-family: var(--font-display);
+  font-size: 3rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-primary);
+}
+.reviews-count {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+}
+.reviews-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.reviews-empty {
+  color: var(--color-muted);
+  font-style: italic;
+}
+.review-card {
+  padding: 20px 24px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.review-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.review-author {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.review-date {
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  margin-left: auto;
+}
+.review-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.review-body {
+  font-size: 0.92rem;
+  color: var(--color-text);
+  line-height: 1.65;
+  margin: 0;
+}
+
+/* ── Submit form ──────────────────────────────── */
+.review-form {
+  max-width: 580px;
+  padding: 32px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface);
+}
+.review-form-heading {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 500;
+  margin-bottom: 20px;
+}
+.review-login-prompt {
+  margin-top: 8px;
+}
+
+@media (max-width: 640px) {
+  .reviews-layout { flex-direction: column; }
+  .reviews-summary { flex-direction: row; min-width: 0; width: 100%; justify-content: center; }
+}

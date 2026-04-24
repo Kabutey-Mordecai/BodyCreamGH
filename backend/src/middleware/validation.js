@@ -1,23 +1,105 @@
-const validateRegister = (req, res, next) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password are required' });
-  }
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
-  next();
-};
+const Joi = require('joi');
 
+function validate(schema, property = 'body') {
+  return (req, res, next) => {
+    const { error, value } = schema.validate(req[property], { abortEarly: false, stripUnknown: true });
+    if (error) {
+      const messages = error.details.map(d => d.message);
+      return res.status(400).json({ error: messages.join('; ') });
+    }
+    req[property] = value;
+    next();
+  };
+}
+
+const passwordSchema = Joi.string().min(6).max(128).required();
+
+const registerSchema = Joi.object({
+  email:      Joi.string().email().max(254).required(),
+  password:   passwordSchema,
+  first_name: Joi.string().trim().min(1).max(100).required(),
+  last_name:  Joi.string().trim().min(1).max(100).required(),
+  phone:      Joi.string().trim().max(30).optional().allow('', null),
+});
+
+const loginSchema = Joi.object({
+  email:    Joi.string().email().required(),
+  password: Joi.string().required(),
+});
+
+const createOrderSchema = Joi.object({
+  shipping_address: Joi.string().trim().min(3).max(500).required(),
+  shipping_city:    Joi.string().trim().min(1).max(100).required(),
+  shipping_region:  Joi.string().trim().min(1).max(100).required(),
+  delivery_fee:     Joi.number().min(0).default(0),
+  notes:            Joi.string().trim().max(1000).optional().allow('', null),
+});
+
+const createGuestOrderSchema = Joi.object({
+  email:            Joi.string().email().max(254).required(),
+  first_name:       Joi.string().trim().min(1).max(100).required(),
+  last_name:        Joi.string().trim().max(100).optional().allow('', null),
+  phone:            Joi.string().trim().min(5).max(30).required(),
+  shipping_address: Joi.string().trim().min(3).max(500).required(),
+  shipping_city:    Joi.string().trim().min(1).max(100).required(),
+  shipping_region:  Joi.string().trim().min(1).max(100).required(),
+  delivery_fee:     Joi.number().min(0).default(0),
+  notes:            Joi.string().trim().max(1000).optional().allow('', null),
+  items: Joi.array().items(
+    Joi.object({
+      product_id: Joi.string().uuid().required(),
+      quantity:   Joi.number().integer().min(1).required(),
+    })
+  ).min(1).required(),
+});
+
+const createDeliverySchema = Joi.object({
+  order_id:           Joi.string().uuid().required(),
+  delivery_partner:   Joi.string().trim().max(100).optional().allow('', null),
+  tracking_number:    Joi.string().trim().max(100).optional().allow('', null),
+  estimated_delivery: Joi.string().isoDate().optional().allow('', null),
+  driver_phone:       Joi.string().trim().max(30).optional().allow('', null),
+});
+
+const updateDeliverySchema = Joi.object({
+  status: Joi.string().valid('pending', 'in_transit', 'out_for_delivery', 'delivered').optional(),
+  tracking_number:       Joi.string().trim().max(100).optional().allow('', null),
+  estimated_delivery:    Joi.string().isoDate().optional().allow('', null),
+  actual_delivery_date:  Joi.string().isoDate().optional().allow('', null),
+  driver_phone:          Joi.string().trim().max(30).optional().allow('', null),
+  delivery_partner:      Joi.string().trim().max(100).optional().allow('', null),
+});
+
+const updateOrderStatusSchema = Joi.object({
+  status: Joi.string()
+    .valid('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled')
+    .required(),
+  note: Joi.string().trim().max(500).optional().allow('', null),
+});
+
+const validateRegister      = validate(registerSchema);
+const validateLogin         = validate(loginSchema);
+const validateCreateOrder   = validate(createOrderSchema);
+const validateCreateGuest   = validate(createGuestOrderSchema);
+const validateCreateDelivery  = validate(createDeliverySchema);
+const validateUpdateDelivery  = validate(updateDeliverySchema);
+const validateOrderStatus     = validate(updateOrderStatusSchema);
+
+// Legacy — kept for backward compat with product routes
 const validateProduct = (req, res, next) => {
   const { name, price } = req.body;
-  if (!name || !price) {
-    return res.status(400).json({ error: 'Product name and price are required' });
-  }
-  if (isNaN(price) || price <= 0) {
-    return res.status(400).json({ error: 'Price must be a positive number' });
-  }
+  if (!name || !price) return res.status(400).json({ error: 'Product name and price are required' });
+  if (isNaN(price) || price <= 0) return res.status(400).json({ error: 'Price must be a positive number' });
   next();
 };
 
-module.exports = { validateRegister, validateProduct };
+module.exports = {
+  validateRegister,
+  validateLogin,
+  validateCreateOrder,
+  validateCreateGuest,
+  validateCreateDelivery,
+  validateUpdateDelivery,
+  validateOrderStatus,
+  validateProduct,
+};
