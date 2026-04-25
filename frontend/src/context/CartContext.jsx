@@ -23,6 +23,7 @@ export function CartProvider({ children }) {
   const [serverCart, setServerCart] = useState([]);
   const [guestCart, setGuestCart]   = useState(() => readGuestCart());
   const [loading, setLoading]       = useState(false);
+  const [mergeError, setMergeError] = useState('');
 
   // Derive which cart to expose based on auth state
   const cart = user ? serverCart : guestCart;
@@ -33,28 +34,54 @@ export function CartProvider({ children }) {
       setLoading(true);
       const { data } = await cartAPI.getCart();
       setServerCart(data);
-    } catch { /* ignore */ }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error('[CartContext] fetchCart failed:', err?.message);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // When the user logs in, merge guest cart → server cart, then clear guest cart
+  // When the user logs in, merge guest cart → server cart then clear guest cart.
+  // Uses Promise.allSettled so a single failed item does not abort the rest.
+  // Failed items are preserved in localStorage and exposed via mergeError.
   useEffect(() => {
     if (user) {
       const pending = readGuestCart();
       if (pending.length > 0) {
-        Promise.all(pending.map(item => cartAPI.addItem(item.product_id, item.quantity)))
-          .finally(() => {
+        Promise.allSettled(
+          pending.map(item => cartAPI.addItem(item.product_id, item.quantity))
+        ).then(results => {
+          const failed = pending.filter((_, i) => results[i].status === 'rejected');
+          if (failed.length) {
+            writeGuestCart(failed);
+            setGuestCart(failed);
+            setMergeError(
+              `${failed.length} item(s) could not be added to your cart and have been kept for you.`
+            );
+          } else {
             writeGuestCart([]);
             setGuestCart([]);
-            fetchCart();
-          });
+            setMergeError('');
+          }
+          fetchCart();
+        });
       } else {
+        setMergeError('');
         fetchCart();
       }
     } else {
       setServerCart([]);
+      setMergeError('');
     }
-  }, [user]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Refresh server cart whenever the window regains focus — keeps two-tab sessions in sync
+  useEffect(() => {
+    if (!user) return;
+    const onFocus = () => fetchCart();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [user, fetchCart]);
 
   // ── Guest cart ──────────────────────────────────────────────────────────────
   const guestAddItem = (product, quantity = 1) => {
@@ -69,11 +96,11 @@ export function CartProvider({ children }) {
         );
       } else {
         next = [...prev, {
-          id:           product.id,    // used as key / cart-item id for guests
-          product_id:   product.id,
-          name:         product.name,
-          price:        product.price,
-          image_url:    product.image_url,
+          id:             product.id,
+          product_id:     product.id,
+          name:           product.name,
+          price:          product.price,
+          image_url:      product.image_url,
           stock_quantity: product.stock_quantity,
           quantity,
         }];
@@ -106,12 +133,12 @@ export function CartProvider({ children }) {
   // Required for guests so the local cart has display data; ignored for auth'd users.
   const addItem = async (productId, quantity = 1, productSnapshot = null) => {
     if (!user) {
-      if (!productSnapshot) return; // can't add without display data for guest
+      if (!productSnapshot) return;
       guestAddItem(productSnapshot, quantity);
       return;
     }
-    await cartAPI.addItem(productId, quantity);
-    await fetchCart();
+    const { data } = await cartAPI.addItem(productId, quantity);
+    setServerCart(data.cart);
   };
 
   const updateItem = async (cartItemId, quantity) => {
@@ -119,8 +146,8 @@ export function CartProvider({ children }) {
       guestUpdateItem(cartItemId, quantity);
       return;
     }
-    await cartAPI.updateItem(cartItemId, quantity);
-    await fetchCart();
+    const { data } = await cartAPI.updateItem(cartItemId, quantity);
+    setServerCart(data.cart);
   };
 
   const removeItem = async (cartItemId) => {
@@ -128,17 +155,26 @@ export function CartProvider({ children }) {
       guestRemoveItem(cartItemId);
       return;
     }
-    setServerCart(prev => prev.filter(i => i.id !== cartItemId));
-    await cartAPI.removeItem(cartItemId);
+    // No optimistic delete — wait for server confirmation before updating UI
+    const { data } = await cartAPI.removeItem(cartItemId);
+    setServerCart(data.cart);
   };
 
   const clearLocalCart = async () => {
     if (!user) {
       writeGuestCart([]);
       setGuestCart([]);
-    } else {
-      setServerCart([]);
-      try { await cartAPI.clear(); } catch { /* non-fatal — server already clears on order create */ }
+      return;
+    }
+    // Optimistic clear is correct here: createOrder already deleted the server cart
+    // inside its transaction before this is ever called. cartAPI.clear() is cleanup only.
+    setServerCart([]);
+    try {
+      await cartAPI.clear();
+    } catch (err) {
+      // Non-fatal — server cart is already empty after order creation.
+      // Log for observability; do not rethrow so the caller can proceed to payment.
+      console.error('[CartContext] clearLocalCart API call failed:', err?.message);
     }
   };
 
@@ -148,6 +184,7 @@ export function CartProvider({ children }) {
   return (
     <CartContext.Provider value={{
       cart, loading, cartCount, cartTotal, isGuest: !user,
+      mergeError,
       addItem, updateItem, removeItem, clearLocalCart, fetchCart,
     }}>
       {children}

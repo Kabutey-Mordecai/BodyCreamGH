@@ -59,7 +59,8 @@
       "Bash(/c/Program Files/PostgreSQL/18/bin/psql *)",
       "Bash(PGPASSWORD=mord123 /c/Program Files/PostgreSQL/18/bin/psql *)",
       "Bash(grep -v \"^$\")",
-      "PowerShell(Remove-Item *)"
+      "PowerShell(Remove-Item *)",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\admin\" -Recurse | Where-Object { \\($_.Extension -eq \".jsx\" -or $_.Extension -eq \".js\"\\) -and $_.FullName -notmatch \"node_modules\" -and $_.FullName -notmatch \"dist\" } | Select-Object FullName)"
     ]
   }
 }

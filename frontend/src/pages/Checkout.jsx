@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
-import { ordersAPI, paymentsAPI, couponsAPI } from '../services/api';
+import { ordersAPI, paymentsAPI, couponsAPI, cartAPI } from '../services/api';
 import './Checkout.css';
 
 // Ghana's 16 administrative regions — shown in a select rather than a free text input
@@ -41,12 +41,38 @@ export default function Checkout() {
   const [couponError, setCouponError]       = useState('');
   const [couponLoading, setCouponLoading]   = useState(false);
 
+  // Guest cart validation state — unused for authenticated users
+  const [validation, setValidation]               = useState(null);   // null | { valid, items }
+  const [validating, setValidating]               = useState(false);
+  const [validationFetchError, setValidationFetchError] = useState('');
+
+  // Pre-flight: validate guest cart against backend on mount (bypasses stale localStorage prices)
+  useEffect(() => {
+    if (!isGuest || cart.length === 0) return;
+    setValidating(true);
+    setValidationFetchError('');
+    cartAPI.validateGuest(
+      cart.map(i => ({ product_id: i.product_id, quantity: i.quantity }))
+    )
+      .then(({ data }) => setValidation(data))
+      .catch(() => setValidationFetchError('Could not check item availability. Please try again.'))
+      .finally(() => setValidating(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (cart.length === 0) return setError('Your cart is empty.');
+
+    // Guest-only submit guards — keep authenticated path untouched
+    if (isGuest && !validation) {
+      return setError('Cart validation is still in progress. Please wait a moment.');
+    }
+    if (isGuest && validation && !validation.valid) {
+      return setError('Some items in your cart are unavailable. Please review your cart and remove unavailable items.');
+    }
 
     setError('');
     setLoading(true);
@@ -110,6 +136,15 @@ export default function Checkout() {
   const subtotalPlusDelivery = cartTotal + deliveryFee;
   const discountAmount = coupon?.discountAmount || 0;
   const orderTotal = Math.max(0, subtotalPlusDelivery - discountAmount);
+
+  // For guests with successful validation, use backend-verified prices for the displayed total.
+  // Authenticated users keep the existing orderTotal derived from the server cart.
+  const validatedSubtotal = (isGuest && validation?.valid)
+    ? validation.items.reduce((sum, i) => sum + parseFloat(i.subtotal), 0)
+    : cartTotal;
+  const validatedOrderTotal = isGuest
+    ? Math.max(0, validatedSubtotal + deliveryFee - discountAmount)
+    : orderTotal;
 
   const applyCoupon = async () => {
     const code = couponInput.trim();
@@ -342,9 +377,18 @@ export default function Checkout() {
             <button
               type="submit"
               className="btn btn-accent btn-full checkout-submit"
-              disabled={loading || cart.length === 0}
+              disabled={
+                loading ||
+                cart.length === 0 ||
+                validating ||
+                (isGuest && validation !== null && !validation.valid)
+              }
             >
-              {loading ? 'Processing…' : `Pay GHS ${orderTotal.toFixed(2)} with Paystack`}
+              {validating
+                ? 'Checking availability…'
+                : loading
+                ? 'Processing…'
+                : `Pay GHS ${validatedOrderTotal.toFixed(2)} with Paystack`}
             </button>
 
             <div className="checkout-note">
@@ -361,30 +405,61 @@ export default function Checkout() {
             <h2>Your Order</h2>
             <div className="gold-divider" style={{ margin: '0 0 20px' }} />
 
+            {/* Guest-only validation status messages */}
+            {isGuest && validating && (
+              <p style={{ color: 'var(--color-muted)', fontSize: '0.85rem', marginBottom: '10px' }}>
+                Checking item availability…
+              </p>
+            )}
+            {isGuest && validationFetchError && (
+              <div className="alert alert-error" style={{ marginBottom: '12px' }}>
+                {validationFetchError}
+              </div>
+            )}
+            {isGuest && !validating && validation && !validation.valid && (
+              <div className="alert alert-error" style={{ marginBottom: '12px' }}>
+                Some items are unavailable. Remove them from your cart before proceeding.
+              </div>
+            )}
+
             <ul className="checkout-items">
-              {cart.map(item => (
-                <li key={item.id} className="checkout-item">
-                  <div className="checkout-item-thumb">
-                    <img
-                      src={item.image_url || 'https://placehold.co/80x80?text=?'}
-                      alt={item.name}
-                    />
-                    <span className="checkout-item-badge">{item.quantity}</span>
-                  </div>
-                  <div className="checkout-item-meta">
-                    <span className="checkout-item-name">{item.name}</span>
-                    <span className="checkout-item-price">
-                      GHS {(parseFloat(item.price) * item.quantity).toFixed(2)}
-                    </span>
-                  </div>
-                </li>
-              ))}
+              {cart.map(item => {
+                const v = isGuest
+                  ? validation?.items?.find(vi => vi.product_id === item.product_id)
+                  : null;
+                const isUnavailable = Boolean(v && !v.available);
+                const displayPrice = parseFloat(v?.price ?? item.price);
+
+                return (
+                  <li
+                    key={item.id}
+                    className={`checkout-item${isUnavailable ? ' checkout-item--unavailable' : ''}`}
+                  >
+                    <div className="checkout-item-thumb">
+                      <img
+                        src={item.image_url || 'https://placehold.co/80x80?text=?'}
+                        alt={item.name}
+                      />
+                      <span className="checkout-item-badge">{item.quantity}</span>
+                    </div>
+                    <div className="checkout-item-meta">
+                      <span className="checkout-item-name">{item.name}</span>
+                      <span className="checkout-item-price">
+                        GHS {(displayPrice * item.quantity).toFixed(2)}
+                      </span>
+                      {isUnavailable && (
+                        <span className="checkout-item-error">{v.error}</span>
+                      )}
+                    </div>
+                  </li>
+                );
+              })}
             </ul>
 
             <div className="checkout-totals">
               <div className="summary-row">
                 <span>Subtotal</span>
-                <span>GHS {cartTotal.toFixed(2)}</span>
+                <span>GHS {validatedSubtotal.toFixed(2)}</span>
               </div>
               <div className="summary-row">
                 <span>Delivery</span>
@@ -401,7 +476,7 @@ export default function Checkout() {
               )}
               <div className="summary-row summary-total">
                 <span>Total</span>
-                <span>GHS {orderTotal.toFixed(2)}</span>
+                <span>GHS {validatedOrderTotal.toFixed(2)}</span>
               </div>
             </div>
           </aside>

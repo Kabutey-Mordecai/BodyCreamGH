@@ -114,11 +114,12 @@ export const productsAPI = {
 
 // ── Cart ──────────────────────────────────────────────────────────────────────
 export const cartAPI = {
-  getCart:    ()                      => api.get('/cart'),
-  addItem:    (productId, quantity=1) => api.post('/cart/add', { product_id: productId, quantity }),
-  updateItem: (cartItemId, quantity)  => api.patch(`/cart/${cartItemId}`, { quantity }),
-  removeItem: (cartItemId)            => api.delete(`/cart/${cartItemId}`),
-  clear:      ()                      => api.delete('/cart'),
+  getCart:       ()                      => api.get('/cart'),
+  addItem:       (productId, quantity=1) => api.post('/cart/add', { product_id: productId, quantity }),
+  updateItem:    (cartItemId, quantity)  => api.patch(`/cart/${cartItemId}`, { quantity }),
+  removeItem:    (cartItemId)            => api.delete(`/cart/${cartItemId}`),
+  clear:         ()                      => api.delete('/cart'),
+  validateGuest: (items)                 => api.post('/cart/validate-guest', { items }),
 };
 
 // ── Orders ────────────────────────────────────────────────────────────────────

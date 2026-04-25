@@ -252,3 +252,22 @@
   line-height: 1;
 }
 .coupon-remove:hover { color: var(--color-primary); }
+
+/* ── Guest cart validation ───────────────────── */
+.checkout-item--unavailable {
+  opacity: 0.6;
+}
+.checkout-item--unavailable .checkout-item-thumb img {
+  filter: grayscale(60%);
+}
+.checkout-item--unavailable .checkout-item-name {
+  text-decoration: line-through;
+  color: var(--color-muted);
+}
+
+.checkout-item-error {
+  font-size: 0.78rem;
+  color: #c0392b;
+  font-weight: 500;
+  margin-top: 2px;
+}
