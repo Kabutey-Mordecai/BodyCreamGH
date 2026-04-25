@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const logger = require('../utils/logger');
 
 // Public read — the storefront fetches all settings on page load so it can
 // render hero text, theme colors, etc. without round-trips per key.
@@ -10,7 +11,7 @@ const getAllSettings = async (req, res) => {
     for (const r of rows) out[r.key] = r.value;
     res.json(out);
   } catch (err) {
-    console.error('Settings read error:', err);
+    logger.error('Settings read error', { err: err.message });
     res.status(500).json({ error: 'Failed to load settings' });
   }
 };
@@ -19,7 +20,9 @@ const getAllSettings = async (req, res) => {
 const upsertSetting = async (req, res) => {
   try {
     const { key, value } = req.body;
-    if (!key) return res.status(400).json({ error: 'key is required' });
+    if (!key || typeof key !== 'string') return res.status(400).json({ error: 'key must be a non-empty string' });
+    if (key.length > 100) return res.status(400).json({ error: 'key too long (max 100 characters)' });
+    if (value === undefined) return res.status(400).json({ error: 'value is required' });
 
     await pool.query(
       `INSERT INTO site_settings (key, value, updated_by, updated_at)
@@ -32,7 +35,7 @@ const upsertSetting = async (req, res) => {
     );
     res.json({ ok: true });
   } catch (err) {
-    console.error('Settings upsert error:', err);
+    logger.error('Settings upsert error', { err: err.message });
     res.status(500).json({ error: 'Failed to save setting' });
   }
 };
@@ -42,15 +45,18 @@ const upsertSetting = async (req, res) => {
 // half-updated state.
 const upsertManySettings = async (req, res) => {
   const { entries } = req.body;
-  if (!Array.isArray(entries)) {
-    return res.status(400).json({ error: 'entries must be an array' });
+  if (!Array.isArray(entries) || entries.length === 0) {
+    return res.status(400).json({ error: 'entries must be a non-empty array' });
+  }
+  if (entries.length > 200) {
+    return res.status(400).json({ error: 'Too many entries (max 200 per request)' });
   }
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     for (const { key, value } of entries) {
-      if (!key) continue;
+      if (!key || typeof key !== 'string' || key.length > 100) continue;
       await client.query(
         `INSERT INTO site_settings (key, value, updated_by, updated_at)
          VALUES ($1, $2, $3, NOW())
@@ -65,7 +71,7 @@ const upsertManySettings = async (req, res) => {
     res.json({ ok: true, count: entries.length });
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Settings bulk upsert error:', err);
+    logger.error('Settings bulk upsert error', { err: err.message });
     res.status(500).json({ error: 'Failed to save settings' });
   } finally {
     client.release();

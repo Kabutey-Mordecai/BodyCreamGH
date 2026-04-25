@@ -16,11 +16,7 @@ module.exports = {
     // For guest orders the email is embedded in notes as "Guest: Name <email>\n..."
     let query = `SELECT o.*,
                         u.first_name, u.last_name, u.phone AS customer_phone,
-                        COALESCE(
-                          u.email,
-                          NULLIF(SUBSTRING(o.notes FROM '<([^>]+)>'), ''),
-                          ''
-                        ) AS email
+                        COALESCE(u.email, o.guest_email, '') AS email
                  FROM orders o
                  LEFT JOIN users u ON o.customer_id = u.id
                  WHERE o.id = $1`;
@@ -35,11 +31,7 @@ module.exports = {
   findAll: async () => {
     const { rows } = await pool.query(
       `SELECT o.*,
-              COALESCE(
-                u.email,
-                NULLIF(SUBSTRING(o.notes FROM '<([^>]+)>'), ''),
-                ''
-              ) AS email,
+              COALESCE(u.email, o.guest_email, '') AS email,
               u.first_name, u.last_name
          FROM orders o
     LEFT JOIN users u ON o.customer_id = u.id

@@ -1,7 +1,7 @@
 const express = require('express');
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 const { validateCreateOrder, validateCreateGuest, validateOrderStatus } = require('../middleware/validation');
-const { createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus, getOrderStatusLog } = require('../controllers/order.controller');
+const { createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus, getOrderStatusLog, getReviewStatus } = require('../controllers/order.controller');
 
 const router = express.Router();
 
@@ -11,6 +11,7 @@ router.get('/', verifyToken, getOrders);
 router.get('/admin/all', verifyToken, requireAdmin, getAllOrders);
 router.get('/:orderId', verifyToken, getOrderById);
 router.patch('/:orderId/status', verifyToken, requireAdmin, validateOrderStatus, updateOrderStatus);
-router.get('/:orderId/log',      verifyToken, getOrderStatusLog);
+router.get('/:orderId/log',            verifyToken, getOrderStatusLog);
+router.get('/:orderId/review-status',  verifyToken, getReviewStatus);
 
 module.exports = router;

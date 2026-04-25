@@ -1,0 +1,80 @@
+# =============================================================================
+# docker-compose.yml — Local development stack
+#
+# Starts PostgreSQL and the backend together.  The backend source is mounted
+# as a volume so nodemon picks up file changes without rebuilding the image.
+#
+# USAGE:
+#   # Start everything
+#   docker-compose up
+#
+#   # Start only the database (run the backend natively with nodemon)
+#   docker-compose up db
+#
+#   # Run migrations after first start (only needed once per fresh volume)
+#   docker-compose exec backend npm run migrate
+#
+#   # Stop and remove containers (keeps the volume / data)
+#   docker-compose down
+#
+#   # Wipe everything including data
+#   docker-compose down -v
+# =============================================================================
+
+services:
+
+  # ── PostgreSQL 15 ───────────────────────────────────────────────────────────
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       cosmetics_db
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: mord123   # dev-only password — fine for localhost
+    ports:
+      # Expose 5432 so you can connect with pgAdmin or psql from your machine
+      - "5432:5432"
+    volumes:
+      # Named volume keeps data across `docker-compose down` restarts
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cosmetics_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Node.js backend (development mode with hot-reload) ──────────────────────
+  backend:
+    # Build the dev image inline — separate from the production Dockerfile
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount source so nodemon sees changes immediately
+      - ./backend:/app
+      # Prevent the host node_modules from shadowing the container's install
+      - /app/node_modules
+    environment:
+      NODE_ENV:  development
+      PORT:      3000
+      # Override DB host to use the Compose service name instead of localhost
+      DB_HOST:   db
+      DB_PORT:   5432
+      DB_NAME:   cosmetics_db
+      DB_USER:   postgres
+      DB_PASSWORD: mord123
+      # Read the rest from your local .env (JWT secret, Paystack keys, etc.)
+      # These take precedence over env_file when both are set
+    env_file:
+      - ./backend/.env
+    depends_on:
+      db:
+        # Wait until PostgreSQL passes its health check before starting Node
+        condition: service_healthy
+
+volumes:
+  postgres_dev_data:
+    # Persists across container restarts; deleted only with `docker-compose down -v`

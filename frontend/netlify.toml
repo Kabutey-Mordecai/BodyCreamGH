@@ -1,0 +1,26 @@
+# =============================================================================
+# frontend/netlify.toml — Netlify build configuration
+#
+# Netlify reads this file from the repo root automatically.
+# You need to set the "Base directory" to "frontend" in the Netlify UI, or
+# Netlify will look for this file in the repo root.
+#
+# Alternatively, set the build settings in the Netlify dashboard:
+#   Base directory:  frontend
+#   Build command:   npm run build
+#   Publish directory: frontend/dist
+# =============================================================================
+
+[build]
+  # Vite outputs the production build to dist/
+  publish = "dist"
+  command = "npm run build"
+
+# ── SPA redirect rule ─────────────────────────────────────────────────────────
+# React Router handles routing client-side. Without this rule, refreshing any
+# page other than "/" returns a 404 from Netlify's CDN because the file doesn't
+# actually exist on disk — only index.html does.
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200

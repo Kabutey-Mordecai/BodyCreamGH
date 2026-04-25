@@ -32,6 +32,7 @@ const createOrderSchema = Joi.object({
   shipping_city:    Joi.string().trim().min(1).max(100).required(),
   shipping_region:  Joi.string().trim().min(1).max(100).required(),
   delivery_fee:     Joi.number().min(0).default(0),
+  coupon_code:      Joi.string().trim().max(50).optional().allow('', null),
   notes:            Joi.string().trim().max(1000).optional().allow('', null),
 });
 
@@ -44,6 +45,7 @@ const createGuestOrderSchema = Joi.object({
   shipping_city:    Joi.string().trim().min(1).max(100).required(),
   shipping_region:  Joi.string().trim().min(1).max(100).required(),
   delivery_fee:     Joi.number().min(0).default(0),
+  coupon_code:      Joi.string().trim().max(50).optional().allow('', null),
   notes:            Joi.string().trim().max(1000).optional().allow('', null),
   items: Joi.array().items(
     Joi.object({

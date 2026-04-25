@@ -1,0 +1,24 @@
+# Files excluded from the Docker build context.
+# Keeping the context small speeds up builds and prevents secrets from leaking
+# into intermediate layers.
+
+node_modules/
+npm-debug.log*
+
+# Real .env — injected at runtime via --env-file or Compose environment:
+.env
+.env.*
+
+# Logs written at runtime — not part of the image
+logs/
+*.log
+
+# Development-only tools
+.nyc_output/
+coverage/
+
+# Editor / OS noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

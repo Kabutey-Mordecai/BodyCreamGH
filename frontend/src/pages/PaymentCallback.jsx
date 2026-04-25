@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { paymentsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 
 export default function PaymentCallback() {
   const [status, setStatus]     = useState('verifying'); // verifying | success | failed
@@ -9,6 +10,7 @@ export default function PaymentCallback() {
   const [orderNum, setOrderNum] = useState('');
   const [message, setMessage]   = useState('');
   const { user } = useAuth();
+  const { fetchCart, clearLocalCart } = useCart();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,10 +25,18 @@ export default function PaymentCallback() {
     }
 
     paymentsAPI.verify(reference)
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         setOrderId(data.orderId);
         setOrderNum(data.orderNumber || '');
         setStatus('success');
+
+        // Sync cart state — server cart was already cleared when the order was created,
+        // but the React state may be stale if the user navigated back without a full remount.
+        if (user) {
+          await fetchCart();
+        } else {
+          await clearLocalCart();
+        }
 
         // Auto-redirect authenticated users to their order after 3 s
         if (user && data.orderId) {

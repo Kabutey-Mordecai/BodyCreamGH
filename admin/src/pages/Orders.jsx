@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ordersAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
@@ -7,23 +7,39 @@ import SearchInput from '../components/SearchInput';
 import StatusBadge from '../components/StatusBadge';
 
 const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+const POLL_MS = 30_000; // auto-refresh every 30 s
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
 
 export default function Orders() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [orders, setOrders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [query, setQuery]   = useState('');
-  const [status, setStatus] = useState('all');
+  const [orders, setOrders]       = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastRefresh, setLastRefresh] = useState(null);
+  const [query, setQuery]         = useState('');
+  const [status, setStatus]       = useState('all');
+  const timerRef = useRef(null);
 
+  const fetchOrders = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    return ordersAPI.getAll()
+      .then(({ data }) => {
+        setOrders(Array.isArray(data) ? data : (data.orders || []));
+        setLastRefresh(new Date());
+      })
+      .catch(() => { if (!silent) toast.error('Failed to load orders'); })
+      .finally(() => { setLoading(false); setRefreshing(false); });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initial load + 30-second polling
   useEffect(() => {
-    ordersAPI.getAll()
-      .then(({ data }) => setOrders(Array.isArray(data) ? data : (data.orders || [])))
-      .catch(() => toast.error('Failed to load orders'))
-      .finally(() => setLoading(false));
-  }, []);
+    fetchOrders(false);
+    timerRef.current = setInterval(() => fetchOrders(true), POLL_MS);
+    return () => clearInterval(timerRef.current);
+  }, [fetchOrders]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -48,6 +64,21 @@ export default function Orders() {
         <div>
           <h1>Orders</h1>
           <p className="muted">{filtered.length} of {orders.length} orders</p>
+        </div>
+        <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {lastRefresh && (
+            <span style={{ fontSize: '0.75rem', color: 'var(--ac-text-muted)' }}>
+              Updated {lastRefresh.toLocaleTimeString('en-GH', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => fetchOrders(true)}
+            disabled={refreshing}
+            title="Refresh orders"
+          >
+            {refreshing ? 'Refreshing…' : '↻ Refresh'}
+          </button>
         </div>
       </div>
 

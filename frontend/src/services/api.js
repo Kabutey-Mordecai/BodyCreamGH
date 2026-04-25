@@ -123,10 +123,12 @@ export const cartAPI = {
 
 // ── Orders ────────────────────────────────────────────────────────────────────
 export const ordersAPI = {
-  create:       (data) => api.post('/orders', data),
-  createGuest:  (data) => api.post('/orders/guest', data),
-  getAll:       (params) => api.get('/orders', { params }),
-  getById:      (id)   => api.get(`/orders/${id}`),
+  create:          (data)   => api.post('/orders', data),
+  createGuest:     (data)   => api.post('/orders/guest', data),
+  getAll:          (params) => api.get('/orders', { params }),
+  getById:         (id)     => api.get(`/orders/${id}`),
+  getStatusLog:    (id)     => api.get(`/orders/${id}/log`),
+  getReviewStatus: (id)     => api.get(`/orders/${id}/review-status`),
 };
 
 // ── Payments ──────────────────────────────────────────────────────────────────
@@ -145,12 +147,18 @@ export const customerAPI = {
 
 // ── Deliveries ────────────────────────────────────────────────────────────────
 export const deliveriesAPI = {
-  getByOrder: (orderId) => api.get(`/deliveries/order/${orderId}`),
+  getByOrder: (orderId)          => api.get(`/deliveries/order/${orderId}`),
+  track:      (trackingNumber)   => api.get(`/deliveries/track/${trackingNumber}`),
 };
 
 // ── Site settings — storefront reads these on load ────────────────────────────
 export const settingsAPI = {
   getAll: () => api.get('/settings'),
+};
+
+// ── Coupons ───────────────────────────────────────────────────────────────────
+export const couponsAPI = {
+  validate: (code, orderTotal) => api.post('/coupons/validate', { code, orderTotal }),
 };
 
 // ── Reviews ───────────────────────────────────────────────────────────────────

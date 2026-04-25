@@ -16,6 +16,7 @@ import Storefront    from './pages/Storefront';
 import Theme         from './pages/Theme';
 import Settings      from './pages/Settings';
 import Reviews       from './pages/Reviews';
+import Coupons       from './pages/Coupons';
 
 export default function App() {
   return (
@@ -39,6 +40,7 @@ export default function App() {
         <Route path="/theme"           element={<Theme />} />
         <Route path="/settings"        element={<Settings />} />
         <Route path="/reviews"         element={<Reviews />} />
+        <Route path="/coupons"         element={<Coupons />} />
       </Route>
 
       {/* Anything else → redirect to the dashboard (ProtectedRoute handles auth check) */}

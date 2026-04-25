@@ -132,12 +132,13 @@ export function CartProvider({ children }) {
     await cartAPI.removeItem(cartItemId);
   };
 
-  const clearLocalCart = () => {
+  const clearLocalCart = async () => {
     if (!user) {
       writeGuestCart([]);
       setGuestCart([]);
     } else {
       setServerCart([]);
+      try { await cartAPI.clear(); } catch { /* non-fatal — server already clears on order create */ }
     }
   };
 

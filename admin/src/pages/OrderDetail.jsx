@@ -18,6 +18,7 @@ export default function OrderDetail() {
   const [order, setOrder]     = useState(null);
   const [store, setStore]     = useState({});
   const [delivery, setDelivery] = useState(null);
+  const [statusLog, setStatusLog] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [pendingStatus, setPendingStatus] = useState(null);
@@ -46,6 +47,9 @@ export default function OrderDetail() {
       .catch(() => toast.error('Failed to load order'))
       .finally(() => setLoading(false));
     loadDelivery();
+    ordersAPI.getStatusLog(id)
+      .then(({ data }) => setStatusLog(Array.isArray(data) ? data : []))
+      .catch(() => setStatusLog([]));
   };
 
   useEffect(load, [id]);
@@ -54,10 +58,10 @@ export default function OrderDetail() {
     settingsAPI.getAll().then(({ data }) => setStore(data)).catch(() => {});
   }, []);
 
-  const changeStatus = async (next) => {
+  const changeStatus = async (next, note = '') => {
     setSaving(true);
     try {
-      await ordersAPI.updateStatus(id, next);
+      await ordersAPI.updateStatus(id, next, note || `Status changed to ${next} by admin`);
       toast.success(`Status updated to ${next}`);
       load();
     } catch {
@@ -239,6 +243,44 @@ export default function OrderDetail() {
           </div>
         </div>
 
+        {/* Status history */}
+        {statusLog.length > 0 && (
+          <div className="card" style={{ marginTop: 16, gridColumn: '1 / -1' }}>
+            <div className="card-header"><h2 className="card-title">Status History</h2></div>
+            <div className="card-body">
+              <div className="od-admin-log">
+                {statusLog.map((entry, i) => (
+                  <div key={i} className="od-admin-log-entry">
+                    <div className="od-admin-log-dot" />
+                    <div className="od-admin-log-body">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {entry.from_status && (
+                          <>
+                            <StatusBadge status={entry.from_status} />
+                            <span style={{ color: 'var(--ac-text-muted)', fontSize: '0.75rem' }}>→</span>
+                          </>
+                        )}
+                        <StatusBadge status={entry.to_status} />
+                      </div>
+                      {entry.note && (
+                        <p style={{ fontSize: '0.82rem', color: 'var(--ac-text-muted)', margin: '4px 0 2px', lineHeight: 1.5 }}>
+                          {entry.note}
+                        </p>
+                      )}
+                      <p style={{ fontSize: '0.72rem', color: 'var(--ac-text-muted)', marginTop: 2 }}>
+                        {new Date(entry.created_at).toLocaleString('en-GH', {
+                          day: 'numeric', month: 'short', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Customer + shipping */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card">
@@ -335,6 +377,7 @@ export default function OrderDetail() {
                     >
                       <option value="pending">Pending</option>
                       <option value="in_transit">In transit</option>
+                      <option value="out_for_delivery">Out for delivery</option>
                       <option value="delivered">Delivered</option>
                     </select>
                   </div>
@@ -481,6 +524,29 @@ export default function OrderDetail() {
           text-transform: capitalize;
         }
         .track-step.done .track-label { color: var(--ac-text); }
+        .od-admin-log {
+          display: flex;
+          flex-direction: column;
+          border-left: 2px solid var(--ac-border);
+          padding-left: 18px;
+          margin-left: 8px;
+          gap: 0;
+        }
+        .od-admin-log-entry {
+          position: relative;
+          padding-bottom: 16px;
+        }
+        .od-admin-log-entry:last-child { padding-bottom: 0; }
+        .od-admin-log-dot {
+          position: absolute;
+          left: -24px;
+          top: 5px;
+          width: 10px; height: 10px;
+          border-radius: 50%;
+          background: var(--ac-accent);
+          border: 2px solid var(--ac-bg);
+        }
+        .od-admin-log-body { }
       `}</style>
     </div>
   );

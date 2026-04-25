@@ -3,10 +3,11 @@ const { v4: uuid } = require('uuid');
 const pool         = require('../config/database');
 const DeliveryModel = require('../models/delivery.model');
 const OrderModel   = require('../models/order.model');
-const eventBus     = require('../events/eventBus');
 const notify       = require('../services/notification.service');
 const { sendShippingNotification } = require('../services/email.service');
-const { logStatusChange } = require('../events/handlers/payment.handler');
+const { logStatusChange } = require('../utils/audit');
+const { notificationQueue } = require('../queues');
+const logger      = require('../utils/logger');
 
 const VALID_DELIVERY_STATUSES = ['pending', 'in_transit', 'out_for_delivery', 'delivered'];
 
@@ -57,18 +58,9 @@ const createDelivery = async (req, res) => {
       orderNumber:     order.order_number,
       trackingNumber:  finalTracking,
       deliveryPartner: delivery_partner,
-    }).catch(console.error);
+    }).catch(err => logger.error('sendShippingNotification error', { err: err.message }));
 
     notify.shipmentCreated({ orderNumber: order.order_number, trackingNumber: finalTracking, orderId: order_id });
-
-    eventBus.emit('shipment.created', {
-      deliveryId,
-      orderId:        order_id,
-      orderNumber:    order.order_number,
-      trackingNumber: finalTracking,
-      email:          emailAddress,
-      manual:         true, // flagged so the shipment.created handler skips the duplicate status update
-    });
 
     res.status(201).json({
       deliveryId,
@@ -76,7 +68,7 @@ const createDelivery = async (req, res) => {
       message: 'Delivery created and order marked as shipped',
     });
   } catch (error) {
-    console.error('Create delivery error:', error);
+    logger.error('Create delivery error', { err: error.message });
     res.status(500).json({ error: 'Failed to create delivery' });
   }
 };
@@ -116,7 +108,7 @@ const trackShipment = async (req, res) => {
       timeline: buildTimeline(d),
     });
   } catch (error) {
-    console.error('Track shipment error:', error);
+    logger.error('Track shipment error', { err: error.message });
     res.status(500).json({ error: 'Failed to track shipment' });
   }
 };
@@ -192,26 +184,30 @@ const updateDelivery = async (req, res) => {
       const tn = tracking_number || prev.tracking_number;
       notify.shipmentUpdated({ trackingNumber: tn, from: prev.status, to: status });
 
-      eventBus.emit('shipment.updated', {
-        deliveryId,
-        orderId:        prev.order_id,
-        trackingNumber: tn,
-        from:           prev.status,
-        to:             status,
-      });
-
       if (status === 'delivered') {
-        eventBus.emit('shipment.delivered', {
-          deliveryId,
-          orderId:        prev.order_id,
-          trackingNumber: tn,
-        });
+        const { rows: orderRows } = await pool.query(
+          'SELECT status, order_number FROM orders WHERE id = $1',
+          [prev.order_id]
+        );
+        if (orderRows.length) {
+          const { status: orderFrom, order_number: orderNumber } = orderRows[0];
+          await pool.query(
+            `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1`,
+            [prev.order_id]
+          );
+          await logStatusChange(prev.order_id, orderFrom, 'delivered', `Delivered. Tracking: ${tn}`);
+          notify.shipmentDelivered({ trackingNumber: tn, orderNumber });
+          notify.orderStatusChanged({ orderNumber, from: orderFrom, to: 'delivered' });
+          await notificationQueue
+            .add('order-delivered', { orderId: prev.order_id }, { attempts: 3 })
+            .catch(err => logger.error('Failed to queue order-delivered notification', { err: err.message, orderId: prev.order_id }));
+        }
       }
     }
 
     res.json({ message: 'Delivery updated' });
   } catch (error) {
-    console.error('Update delivery error:', error);
+    logger.error('Update delivery error', { err: error.message });
     res.status(500).json({ error: 'Failed to update delivery' });
   }
 };

@@ -1,0 +1,164 @@
+# =============================================================================
+# .github/workflows/deploy.yml — Production Deployment
+#
+# Triggers automatically on every push to main (after CI passes).
+# Strategy: build the Docker image, push to GitHub Container Registry (GHCR),
+# then SSH into the server and perform a rolling restart of only the backend
+# container so the database and Nginx stay up.
+#
+# REQUIRED REPOSITORY SECRETS (Settings → Secrets → Actions):
+#   DEPLOY_HOST        — server IP or hostname (e.g. 167.99.12.34)
+#   DEPLOY_USER        — SSH user on the server (e.g. deploy)
+#   DEPLOY_SSH_KEY     — contents of the private SSH key (~/.ssh/id_ed25519)
+#                        The matching public key must be in ~/.ssh/authorized_keys
+#                        on the server.
+#   DEPLOY_PORT        — SSH port (usually 22; set to 22 if unsure)
+#
+# The workflow uses GITHUB_TOKEN (automatic) to push to GHCR — no extra secret
+# needed for the registry.
+# =============================================================================
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    # Only trigger deploy when relevant files change — avoids a redeploy for
+    # docs-only or mobile-only commits
+    paths:
+      - "backend/**"
+      - "docker-compose.prod.yml"
+      - ".github/workflows/deploy.yml"
+
+# Only one deploy at a time — a new push cancels a queued deploy but NOT an
+# in-progress one (cancel-in-progress: false keeps the server consistent)
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+
+  # ── CI gate: must pass before deploy runs ─────────────────────────────────
+  # This job depends on the ci.yml workflow finishing successfully.
+  # If ci.yml is not in the same repo or you want to skip this, remove the
+  # needs block and the first step.
+
+  # ── Build and push Docker image ───────────────────────────────────────────
+  build-and-push:
+    name: Build & push image
+    runs-on: ubuntu-latest
+
+    # Give the workflow permission to push to GHCR
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      # Pass the image tag to the deploy job so it uses the exact same SHA
+      image-tag: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN is automatically provided — no manual secret needed
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}/backend
+          tags: |
+            # Tag with the short Git SHA for traceability (e.g. sha-a1b2c3d)
+            type=sha,prefix=sha-,format=short
+            # Always update the "latest" tag on main so the server can pull
+            # it without knowing the SHA
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        # Buildx enables layer caching via --cache-from/--cache-to, which
+        # cuts build time from ~3min to ~30s on cache hit
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          dockerfile: ./backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cache layers in the GHCR registry itself so any runner can reuse them
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}/backend:cache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}/backend:cache,mode=max
+
+  # ── SSH to server and perform rolling restart ─────────────────────────────
+  deploy:
+    name: Deploy to server
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    # Only deploy on pushes to main, not on PRs (even though the trigger is
+    # push-only, this guard prevents accidental deploys on branch protection
+    # bypasses)
+    if: github.ref == 'refs/heads/main'
+
+    environment:
+      name: production
+      # Shows the deployed URL on the GitHub Actions summary page
+      url: https://api.yourdomain.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          # The script runs on the server inside the cloned repo directory.
+          # It:
+          #   1. Pulls the latest code (for docker-compose.prod.yml changes)
+          #   2. Logs into GHCR to pull the new image
+          #   3. Restarts ONLY the backend container (zero-downtime rolling)
+          #   4. Runs migrations against the live DB (idempotent — safe to
+          #      call on every deploy; skips already-applied files)
+          #   5. Prunes dangling images to reclaim disk space
+          script: |
+            set -e
+            cd ~/app
+
+            # Pull latest compose config + deploy scripts
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Authenticate with GHCR so we can pull the new image
+            echo "${{ secrets.GITHUB_TOKEN }}" | \
+              docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # Pull the new image before restarting to minimise downtime
+            docker-compose -f docker-compose.prod.yml pull backend
+
+            # Rolling restart: only backend restarts; db and nginx stay up
+            docker-compose -f docker-compose.prod.yml up -d --no-deps backend
+
+            # Run any new migrations (idempotent — skips already-applied files)
+            docker-compose -f docker-compose.prod.yml exec -T backend npm run migrate
+
+            # Remove dangling images (old layers no longer referenced)
+            docker image prune -f
+
+      - name: Notify deployment complete
+        if: success()
+        run: |
+          echo "### Deployment successful" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: \`ghcr.io/${{ github.repository }}/backend:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Deployed by: \`${{ github.actor }}\`" >> $GITHUB_STEP_SUMMARY

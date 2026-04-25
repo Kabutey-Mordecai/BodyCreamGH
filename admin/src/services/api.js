@@ -12,24 +12,68 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// Auto-logout on 401 to keep the admin from looping on a dead session.
+// Refresh-and-retry interceptor — tries to use the refresh token before logging out.
+let isRefreshing = false;
+let pendingQueue = [];
+
+function drainQueue(err, token) {
+  pendingQueue.forEach(cb => err ? cb.reject(err) : cb.resolve(token));
+  pendingQueue = [];
+}
+
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    if (err.response?.status === 401 && !window.location.pathname.startsWith('/login')) {
+  async (err) => {
+    const original = err.config;
+    if (
+      err.response?.status !== 401 ||
+      original._retry ||
+      window.location.pathname.startsWith('/login')
+    ) {
+      return Promise.reject(err);
+    }
+
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        pendingQueue.push({ resolve, reject });
+      }).then(token => {
+        original.headers.Authorization = `Bearer ${token}`;
+        return api(original);
+      });
+    }
+
+    original._retry = true;
+    isRefreshing = true;
+
+    try {
+      const refresh_token = localStorage.getItem('admin_refresh_token');
+      if (!refresh_token) throw new Error('no refresh token');
+      const { data } = await axios.post(`${API_BASE}/auth/refresh`, { refresh_token });
+      const newToken = data.token;
+      localStorage.setItem('admin_token', newToken);
+      if (data.refresh_token) localStorage.setItem('admin_refresh_token', data.refresh_token);
+      api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
+      drainQueue(null, newToken);
+      original.headers.Authorization = `Bearer ${newToken}`;
+      return api(original);
+    } catch (refreshErr) {
+      drainQueue(refreshErr, null);
       localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_refresh_token');
       localStorage.removeItem('admin_user');
       window.location.href = '/login';
+      return Promise.reject(refreshErr);
+    } finally {
+      isRefreshing = false;
     }
-    return Promise.reject(err);
   }
 );
 
 // ── Auth ──────────────────────────────────────────────────────────────
 export const authAPI = {
-  login:  (data) => api.post('/auth/login', data),
-  logout: ()     => api.post('/auth/logout'),
-  getMe:  ()     => api.get('/auth/me'),
+  login:  (data)    => api.post('/auth/login', data),
+  logout: (data={}) => api.post('/auth/logout', data),
+  getMe:  ()        => api.get('/auth/me'),
 };
 
 // ── Admin overview / analytics ────────────────────────────────────────
@@ -54,9 +98,10 @@ export const productsAPI = {
 
 // ── Orders (admin sees all) ───────────────────────────────────────────
 export const ordersAPI = {
-  getAll:       ()           => api.get('/orders/admin/all'),
-  getById:      (id)         => api.get(`/orders/${id}`),
-  updateStatus: (id, status) => api.patch(`/orders/${id}/status`, { status }),
+  getAll:       ()                  => api.get('/orders/admin/all'),
+  getById:      (id)                => api.get(`/orders/${id}`),
+  updateStatus: (id, status, note)  => api.patch(`/orders/${id}/status`, { status, note }),
+  getStatusLog: (id)                => api.get(`/orders/${id}/log`),
 };
 
 // ── Inventory ─────────────────────────────────────────────────────────
@@ -79,6 +124,14 @@ export const settingsAPI = {
 export const customersAPI = {
   getById:   (id) => api.get(`/customers/${id}`),
   getOrders: (id) => api.get(`/customers/${id}/orders`),
+};
+
+// ── Coupons ───────────────────────────────────────────────────────────
+export const couponsAPI = {
+  getAll:     ()     => api.get('/coupons'),
+  create:     (data) => api.post('/coupons', data),
+  deactivate: (id)   => api.patch(`/coupons/${id}/deactivate`),
+  remove:     (id)   => api.delete(`/coupons/${id}`),
 };
 
 // ── Deliveries ────────────────────────────────────────────────────────

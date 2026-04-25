@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { adminAPI } from '../services/api';
 import StatCard from '../components/StatCard';
@@ -13,18 +13,23 @@ export default function Dashboard() {
   const [analytics, setAnalytics] = useState([]);
   const [top, setTop] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    Promise.all([
+  const load = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    return Promise.all([
       adminAPI.getDashboard().then(r => r.data).catch(() => null),
       adminAPI.getAnalytics().then(r => r.data).catch(() => []),
       adminAPI.getTopProducts().then(r => r.data).catch(() => []),
     ]).then(([d, a, t]) => {
       setData(d);
-      setAnalytics(Array.isArray(a) ? a.slice().reverse() : []); // oldest → newest for chart
+      setAnalytics(Array.isArray(a) ? a.slice().reverse() : []);
       setTop(Array.isArray(t) ? t : []);
-    }).finally(() => setLoading(false));
+    }).finally(() => { setLoading(false); setRefreshing(false); });
   }, []);
+
+  useEffect(() => { load(false); }, [load]);
 
   if (loading) return <div className="spinner" />;
 
@@ -46,6 +51,15 @@ export default function Dashboard() {
         <div>
           <h1>Dashboard</h1>
           <p className="muted">Business at a glance — {new Date().toLocaleDateString('en-GH', { weekday: 'long', month: 'long', day: 'numeric' })}</p>
+        </div>
+        <div className="page-actions">
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => load(true)}
+            disabled={refreshing}
+          >
+            {refreshing ? 'Refreshing…' : '↻ Refresh'}
+          </button>
         </div>
       </div>
 
@@ -120,10 +134,11 @@ export default function Dashboard() {
         </div>
         <DataTable
           columns={[
-            { key: 'order_number', label: 'Order',   render: r => <span className="cell-primary">#{r.order_number || r.id?.slice(0, 8)}</span> },
-            { key: 'created_at',   label: 'Placed',  render: r => new Date(r.created_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
-            { key: 'total_amount', label: 'Total',   className: 'cell-right', render: r => fmt(r.total_amount) },
-            { key: 'status',       label: 'Status',  render: r => <StatusBadge status={r.status} /> },
+            { key: 'order_number',   label: 'Order',   render: r => <span className="cell-primary">#{r.order_number || r.id?.slice(0, 8)}</span> },
+            { key: 'created_at',     label: 'Placed',  render: r => new Date(r.created_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) },
+            { key: 'total_amount',   label: 'Total',   className: 'cell-right', render: r => fmt(r.total_amount) },
+            { key: 'payment_status', label: 'Payment', render: r => <StatusBadge status={r.payment_status} /> },
+            { key: 'status',         label: 'Status',  render: r => <StatusBadge status={r.status} /> },
           ]}
           rows={data.recentOrders || []}
           emptyMessage="No orders yet."

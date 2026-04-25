@@ -2,7 +2,11 @@ const { v4: uuid } = require('uuid');
 const pool = require('../config/database');
 const OrderModel = require('../models/order.model');
 const InventoryModel = require('../models/inventory.model');
-const { logStatusChange } = require('../events/handlers/payment.handler');
+const ReviewModel = require('../models/review.model');
+const CouponModel = require('../models/coupon.model');
+const { logStatusChange } = require('../utils/audit');
+const { assertTransition } = require('../utils/stateMachine');
+const logger = require('../utils/logger');
 
 const createOrder = async (req, res) => {
   const client = await pool.connect();
@@ -50,7 +54,21 @@ const createOrder = async (req, res) => {
 
     let subtotal = 0;
     cartResult.rows.forEach(item => { subtotal += parseFloat(item.price) * item.quantity; });
-    const total = subtotal + delivery_fee;
+    let total = subtotal + delivery_fee;
+
+    // Apply coupon discount server-side using a locked read so concurrent checkouts
+    // cannot both exceed max_uses. validateAndLock increments uses_count inside the
+    // transaction, making the whole operation atomic.
+    let discountAmount = 0;
+    let appliedCouponCode = null;
+    if (req.body.coupon_code) {
+      const cv = await CouponModel.validateAndLock(req.body.coupon_code, total, client);
+      if (cv.valid) {
+        discountAmount    = cv.discountAmount;
+        appliedCouponCode = cv.coupon.code;
+        total             = Math.max(0, total - discountAmount);
+      }
+    }
 
     const orderId = uuid();
     const orderNumber = `ORD-${Date.now()}`;
@@ -58,10 +76,10 @@ const createOrder = async (req, res) => {
     await client.query(
       `INSERT INTO orders
          (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
-          shipping_region, delivery_fee, notes, status, payment_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'pending','unpaid')`,
+          shipping_region, delivery_fee, coupon_code, discount_amount, notes, status, payment_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending','unpaid')`,
       [orderId, req.user.id, orderNumber, total, shipping_address, shipping_city,
-       shipping_region, delivery_fee, notes]
+       shipping_region, delivery_fee, appliedCouponCode, discountAmount, notes]
     );
 
     for (const item of cartResult.rows) {
@@ -76,13 +94,13 @@ const createOrder = async (req, res) => {
     await client.query('DELETE FROM cart_items WHERE customer_id=$1', [req.user.id]);
     await client.query('COMMIT');
 
-    res.status(201).json({ orderId, orderNumber, total });
+    res.status(201).json({ orderId, orderNumber, total, discountAmount, couponCode: appliedCouponCode });
   } catch (error) {
     // Only ROLLBACK if we actually opened a transaction
     if (transactionStarted) {
       await client.query('ROLLBACK').catch(() => {});
     }
-    console.error('Error creating order:', error);
+    logger.error('Error creating order', { err: error.message });
     res.status(500).json({ error: 'Failed to create order' });
   } finally {
     client.release();
@@ -143,16 +161,20 @@ const getAllOrders = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { status, note } = req.body;
-    const valid = ['pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
-    if (!valid.includes(status)) {
-      return res.status(400).json({ error: `Status must be one of: ${valid.join(', ')}` });
-    }
     const { rows } = await pool.query('SELECT status FROM orders WHERE id=$1', [req.params.orderId]);
-    const fromStatus = rows[0]?.status;
+    if (!rows[0]) return res.status(404).json({ error: 'Order not found' });
+    const fromStatus = rows[0].status;
+
+    // Enforce state machine — throws 400 on invalid transition
+    assertTransition(fromStatus, status);
+
     await OrderModel.updateStatus(req.params.orderId, status);
-    await logStatusChange(req.params.orderId, fromStatus, status, note || `Manual update by admin`);
+    await logStatusChange(req.params.orderId, fromStatus, status, note || 'Manual update by admin');
+    logger.info('Order status updated', { orderId: req.params.orderId, from: fromStatus, to: status });
     res.json({ message: 'Order status updated' });
   } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    logger.error('updateOrderStatus error', { err: error.message });
     res.status(500).json({ error: 'Failed to update order status' });
   }
 };
@@ -227,7 +249,19 @@ const createGuestOrder = async (req, res) => {
 
     let subtotal = 0;
     items.forEach(item => { subtotal += parseFloat(productMap[item.product_id].price) * item.quantity; });
-    const total = subtotal + delivery_fee;
+    let total = subtotal + delivery_fee;
+
+    // Apply coupon discount server-side (locked — same as authenticated checkout)
+    let discountAmount = 0;
+    let appliedCouponCode = null;
+    if (req.body.coupon_code) {
+      const cv = await CouponModel.validateAndLock(req.body.coupon_code, total, client);
+      if (cv.valid) {
+        discountAmount    = cv.discountAmount;
+        appliedCouponCode = cv.coupon.code;
+        total             = Math.max(0, total - discountAmount);
+      }
+    }
 
     const orderId = uuid();
     const orderNumber = `ORD-${Date.now()}`;
@@ -237,10 +271,10 @@ const createGuestOrder = async (req, res) => {
     await client.query(
       `INSERT INTO orders
          (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
-          shipping_region, delivery_fee, notes, status, payment_status)
-       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,'pending','unpaid')`,
+          shipping_region, delivery_fee, coupon_code, discount_amount, notes, guest_email, status, payment_status)
+       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending','unpaid')`,
       [orderId, orderNumber, total, shipping_address, shipping_city,
-       shipping_region, delivery_fee, fullNotes]
+       shipping_region, delivery_fee, appliedCouponCode, discountAmount, fullNotes, email]
     );
 
     for (const item of items) {
@@ -253,14 +287,36 @@ const createGuestOrder = async (req, res) => {
     }
 
     await client.query('COMMIT');
-    res.status(201).json({ orderId, orderNumber, total, email });
+
+    res.status(201).json({ orderId, orderNumber, total, discountAmount, couponCode: appliedCouponCode, email });
   } catch (error) {
     if (transactionStarted) await client.query('ROLLBACK').catch(() => {});
-    console.error('Error creating guest order:', error);
+    logger.error('Error creating guest order', { err: error.message });
     res.status(500).json({ error: 'Failed to create order' });
   } finally {
     client.release();
   }
 };
 
-module.exports = { createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus, getOrderStatusLog };
+// Returns which products in this order the logged-in user has already reviewed.
+// Only meaningful for delivered orders, but works for any status.
+const getReviewStatus = async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    const order = await OrderModel.findById(orderId, req.user.id);
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
+    const items = await OrderModel.getItems(orderId);
+    const reviewed = (
+      await Promise.all(items.map(item => ReviewModel.findByUser(req.user.id, item.product_id)))
+    )
+      .map((r, i) => r ? items[i].product_id : null)
+      .filter(Boolean);
+
+    res.json({ reviewed });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to check review status' });
+  }
+};
+
+module.exports = { createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus, getOrderStatusLog, getReviewStatus };

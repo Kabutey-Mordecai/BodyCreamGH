@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
-import { ordersAPI, paymentsAPI } from '../services/api';
+import { ordersAPI, paymentsAPI, couponsAPI } from '../services/api';
 import './Checkout.css';
 
 // Ghana's 16 administrative regions — shown in a select rather than a free text input
@@ -35,6 +35,12 @@ export default function Checkout() {
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
 
+  // Coupon state
+  const [couponInput, setCouponInput]       = useState('');
+  const [coupon, setCoupon]                 = useState(null); // { code, discountAmount }
+  const [couponError, setCouponError]       = useState('');
+  const [couponLoading, setCouponLoading]   = useState(false);
+
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
@@ -60,13 +66,14 @@ export default function Checkout() {
           shipping_region:  form.region,
           notes:            form.notes,
           delivery_fee:     deliveryFee,
+          coupon_code:      coupon?.code || undefined,
           items: cart.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
         });
         orderId = order.orderId;
         email   = order.email;
 
         const { data: payment } = await paymentsAPI.initializeGuest(orderId, email);
-        clearLocalCart();
+        await clearLocalCart();
         window.location.href = payment.authorization_url;
       } else {
         // Authenticated checkout — cart is on the server
@@ -78,11 +85,12 @@ export default function Checkout() {
             ? `Phone: ${form.phone}${form.notes ? '\n' + form.notes : ''}`
             : form.notes,
           delivery_fee: deliveryFee,
+          coupon_code:  coupon?.code || undefined,
         });
         orderId = order.orderId;
 
         const { data: payment } = await paymentsAPI.initialize(orderId);
-        clearLocalCart();
+        await clearLocalCart();
         window.location.href = payment.authorization_url;
       }
     } catch (err) {
@@ -99,7 +107,26 @@ export default function Checkout() {
   const deliveryFee = (freeOver > 0 && cartTotal >= freeOver)
     ? 0
     : isAccra ? feeAccra : feeFlat;
-  const orderTotal = cartTotal + deliveryFee;
+  const subtotalPlusDelivery = cartTotal + deliveryFee;
+  const discountAmount = coupon?.discountAmount || 0;
+  const orderTotal = Math.max(0, subtotalPlusDelivery - discountAmount);
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code) return;
+    setCouponError('');
+    setCouponLoading(true);
+    try {
+      const { data } = await couponsAPI.validate(code, subtotalPlusDelivery);
+      setCoupon({ code: data.code, discountAmount: data.discountAmount, type: data.type, value: data.value });
+      setCouponInput('');
+    } catch (err) {
+      setCouponError(err.response?.data?.error || 'Invalid coupon code.');
+      setCoupon(null);
+    } finally {
+      setCouponLoading(false);
+    }
+  };
 
   if (cart.length === 0) {
     return (
@@ -264,6 +291,54 @@ export default function Checkout() {
               </div>
             </div>
 
+            {/* ── Coupon code ─────────────────────────── */}
+            <div className="checkout-section">
+              <h2>Promo Code</h2>
+              <div className="gold-divider" style={{ margin: '0 0 16px' }} />
+
+              {coupon ? (
+                <div className="coupon-applied">
+                  <div>
+                    <span className="coupon-tag">{coupon.code}</span>
+                    <span className="coupon-desc">
+                      {coupon.type === 'percentage'
+                        ? `${coupon.value}% off`
+                        : `GHS ${coupon.value} off`}
+                      {' '}— saving GHS {coupon.discountAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="coupon-remove"
+                    onClick={() => setCoupon(null)}
+                    aria-label="Remove coupon"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <div className="coupon-row">
+                  <input
+                    type="text"
+                    placeholder="Enter promo code"
+                    value={couponInput}
+                    onChange={e => { setCouponInput(e.target.value); setCouponError(''); }}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), applyCoupon())}
+                    className="coupon-input"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    onClick={applyCoupon}
+                    disabled={couponLoading || !couponInput.trim()}
+                  >
+                    {couponLoading ? '…' : 'Apply'}
+                  </button>
+                </div>
+              )}
+              {couponError && <p className="coupon-error">{couponError}</p>}
+            </div>
+
             <button
               type="submit"
               className="btn btn-accent btn-full checkout-submit"
@@ -318,6 +393,12 @@ export default function Checkout() {
                   : 'Select region'}
                 </span>
               </div>
+              {coupon && (
+                <div className="summary-row" style={{ color: 'var(--color-accent-dark)' }}>
+                  <span>Discount ({coupon.code})</span>
+                  <span>− GHS {coupon.discountAmount.toFixed(2)}</span>
+                </div>
+              )}
               <div className="summary-row summary-total">
                 <span>Total</span>
                 <span>GHS {orderTotal.toFixed(2)}</span>

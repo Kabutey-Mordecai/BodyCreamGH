@@ -1,6 +1,6 @@
 const pool       = require('../config/database');
-const eventBus   = require('../events/eventBus');
 const notify     = require('./notification.service');
+const logger     = require('../utils/logger');
 
 // Ordered shipment lifecycle understood by this mock courier
 const SHIPMENT_FLOW = ['pending', 'in_transit', 'out_for_delivery', 'delivered'];
@@ -43,24 +43,6 @@ async function advanceShipment(trackingNumber) {
 
   notify.shipmentUpdated({ trackingNumber, from: shipment.status, to: next });
 
-  // Emit generic update event
-  eventBus.emit('shipment.updated', {
-    deliveryId:     shipment.id,
-    orderId:        shipment.order_id,
-    trackingNumber,
-    from:           shipment.status,
-    to:             next,
-  });
-
-  // If we just delivered, emit the dedicated event
-  if (next === 'delivered') {
-    eventBus.emit('shipment.delivered', {
-      deliveryId:     shipment.id,
-      orderId:        shipment.order_id,
-      trackingNumber,
-    });
-  }
-
   return { from: shipment.status, to: next, trackingNumber, orderId: shipment.order_id };
 }
 
@@ -80,7 +62,7 @@ async function simulateFullJourney(trackingNumber, delayMs = 3000) {
       const result = await advanceShipment(trackingNumber);
       if (result?.alreadyDelivered) break;
     } catch (err) {
-      console.error(`[courier] simulateFullJourney error: ${err.message}`);
+      logger.error('simulateFullJourney error', { err: err.message, trackingNumber });
       break;
     }
   }

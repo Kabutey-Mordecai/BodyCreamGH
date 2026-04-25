@@ -86,4 +86,33 @@ const sendPasswordResetEmail = async (to, resetUrl) => {
   });
 };
 
-module.exports = { sendOrderConfirmation, sendWelcomeEmail, sendShippingNotification, sendPasswordResetEmail };
+const sendReviewRequest = async (to, { customerName, orderNumber, items = [], frontendUrl }) => {
+  if (!isConfigured() || !to) return;
+
+  const url = frontendUrl || process.env.FRONTEND_URL || 'http://localhost:5173';
+  const itemList = items
+    .map(i => `<li style="margin-bottom:8px"><strong>${i.name}</strong></li>`)
+    .join('');
+
+  await getTransporter().sendMail({
+    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    to,
+    subject: `Your order ${orderNumber} has arrived — how did we do?`,
+    html: `
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+        <h2 style="font-size:22px">Your order has been delivered! 🎉</h2>
+        ${customerName ? `<p>Hi ${customerName},</p>` : ''}
+        <p>We hope you're loving your new products. It would mean a lot if you shared your thoughts:</p>
+        <ul style="padding-left:20px">${itemList}</ul>
+        <p style="margin-top:24px">
+          <a href="${url}/orders" style="background:#c9a55a;color:#fff;padding:12px 28px;border-radius:4px;text-decoration:none;font-weight:600;display:inline-block">
+            Leave a Review
+          </a>
+        </p>
+        <p style="margin-top:20px;color:#888;font-size:12px">Order: ${orderNumber}</p>
+      </div>
+    `,
+  });
+};
+
+module.exports = { sendOrderConfirmation, sendWelcomeEmail, sendShippingNotification, sendPasswordResetEmail, sendReviewRequest };

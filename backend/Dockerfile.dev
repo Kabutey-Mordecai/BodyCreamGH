@@ -1,0 +1,19 @@
+# =============================================================================
+# backend/Dockerfile.dev — Development image with nodemon hot-reload
+#
+# Used by docker-compose.yml.  The source directory is mounted as a volume,
+# so this image only needs to install dependencies — source is never COPY-ed in.
+# =============================================================================
+
+FROM node:20-alpine
+WORKDIR /app
+
+# Install all dependencies including devDependencies (nodemon lives here)
+COPY package.json package-lock.json ./
+RUN npm install
+
+# Source is provided via the docker-compose volume mount at runtime
+EXPOSE 3000
+
+# nodemon watches for file changes and restarts server automatically
+CMD ["npm", "run", "dev"]

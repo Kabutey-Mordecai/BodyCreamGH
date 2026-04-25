@@ -3,6 +3,33 @@ import { Link } from 'react-router-dom';
 import { ordersAPI } from '../services/api';
 import './Orders.css';
 
+function getDateLabel(dateStr) {
+  const now  = new Date();
+  const date = new Date(dateStr);
+
+  const todayStart     = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(todayStart.getDate() - 1);
+  const weekStart      = new Date(todayStart); weekStart.setDate(todayStart.getDate() - 6);
+
+  const orderDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+  if (orderDay >= todayStart)     return 'Today';
+  if (orderDay >= yesterdayStart) return 'Yesterday';
+  if (orderDay >= weekStart)      return 'This week';
+  return date.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+}
+
+// Preserve insertion order of groups (orders are already newest-first from the API)
+function groupOrders(orders) {
+  const map = new Map();
+  for (const order of orders) {
+    const label = getDateLabel(order.created_at);
+    if (!map.has(label)) map.set(label, []);
+    map.get(label).push(order);
+  }
+  return map;
+}
+
 export default function Orders() {
   const [orders, setOrders]         = useState([]);
   const [pagination, setPagination] = useState(null);
@@ -14,7 +41,6 @@ export default function Orders() {
     setLoading(true);
     ordersAPI.getAll({ page, limit: 20 })
       .then(({ data }) => {
-        // API returns { orders: [], pagination: {} }
         const list = Array.isArray(data) ? data : (data.orders || []);
         setOrders(list);
         if (data.pagination) setPagination(data.pagination);
@@ -24,6 +50,8 @@ export default function Orders() {
   }, [page]);
 
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
+
+  const grouped = groupOrders(orders);
 
   return (
     <div className="page-section">
@@ -53,44 +81,50 @@ export default function Orders() {
           </div>
         ) : (
           <div className="orders-list">
-            {orders.map(order => {
-              const orderNum = order.order_number || order.id.slice(0, 8).toUpperCase();
-              return (
-                <Link
-                  key={order.id}
-                  to={`/orders/${order.id}`}
-                  className="order-row"
-                >
-                  <div className="order-row-main">
-                    <div className="order-row-id">
-                      <span className="section-label" style={{ marginBottom: 4 }}>Order</span>
-                      <span className="order-number">#{orderNum}</span>
-                    </div>
-                    <div className="order-row-date">
-                      <span className="order-meta-label">Placed on</span>
-                      <span>
-                        {new Date(order.created_at).toLocaleDateString('en-GB', {
-                          day: 'numeric', month: 'short', year: 'numeric',
-                        })}
-                      </span>
-                    </div>
-                    <div className="order-row-total">
-                      <span className="order-meta-label">Total</span>
-                      <span className="order-total-amt">
-                        GHS {parseFloat(order.total_amount).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
+            {[...grouped.entries()].map(([label, group]) => (
+              <div key={label} className="orders-group">
+                <div className="orders-group-label">{label}</div>
 
-                  <div className="order-row-side">
-                    <span className={`badge badge-${order.status}`}>
-                      {order.status}
-                    </span>
-                    <span className="order-view-link">View details →</span>
-                  </div>
-                </Link>
-              );
-            })}
+                {group.map(order => {
+                  const orderNum = order.order_number || order.id.slice(0, 8).toUpperCase();
+                  return (
+                    <Link
+                      key={order.id}
+                      to={`/orders/${order.id}`}
+                      className="order-row"
+                    >
+                      <div className="order-row-main">
+                        <div className="order-row-id">
+                          <span className="section-label" style={{ marginBottom: 4 }}>Order</span>
+                          <span className="order-number">#{orderNum}</span>
+                        </div>
+                        <div className="order-row-date">
+                          <span className="order-meta-label">Placed on</span>
+                          <span>
+                            {new Date(order.created_at).toLocaleDateString('en-GB', {
+                              day: 'numeric', month: 'short', year: 'numeric',
+                            })}
+                          </span>
+                        </div>
+                        <div className="order-row-total">
+                          <span className="order-meta-label">Total</span>
+                          <span className="order-total-amt">
+                            GHS {parseFloat(order.total_amount).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="order-row-side">
+                        <span className={`badge badge-${order.status}`}>
+                          {order.status}
+                        </span>
+                        <span className="order-view-link">View details →</span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         )}
 

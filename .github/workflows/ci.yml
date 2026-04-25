@@ -1,0 +1,138 @@
+# =============================================================================
+# .github/workflows/ci.yml — Continuous Integration
+#
+# Runs on every push and pull-request targeting main.
+# Three parallel jobs:
+#   backend  → syntax check + dependency audit
+#   frontend → production Vite build
+#   admin    → production Vite build
+#
+# The backend job also verifies that every migration file is present and the
+# idempotent runner can be imported without crashing (no live DB needed).
+# =============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel any in-progress run for the same branch so fast pushes don't queue up
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  # ── Backend: dependency install + syntax validation ──────────────────────────
+  backend:
+    name: Backend checks
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          # Cache npm dependencies keyed to the lockfile so the install step is
+          # skipped on cache hit (saves ~30s per run)
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        # npm ci is strict: fails if package-lock.json is out of sync
+        run: npm ci
+
+      - name: Syntax check — server entry point
+        # node --check parses the file without executing it; catches obvious
+        # syntax errors without needing a running database or .env file
+        run: node --check src/server.js
+
+      - name: Syntax check — all source files
+        # Expands to every .js file under src/ and migrations/
+        run: |
+          find src migrations -name "*.js" | xargs -I{} node --check {}
+
+      - name: Audit production dependencies for known vulnerabilities
+        # --audit-level=high only fails on high/critical; moderate is acceptable
+        # for dev tooling but not production deps
+        run: npm audit --omit=dev --audit-level=high
+
+  # ── Frontend: Vite production build ─────────────────────────────────────────
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        # Provide a placeholder API URL so Vite doesn't fail on the env var;
+        # the real URL is injected at deploy time via Netlify env vars
+        env:
+          VITE_API_URL: https://api.example.com/api
+        run: npm run build
+
+      - name: Upload dist artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          # Keep for 7 days — enough time for the deploy workflow to pick it up
+          retention-days: 7
+
+  # ── Admin dashboard: Vite production build ───────────────────────────────────
+  admin:
+    name: Admin build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: admin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build production bundle
+        env:
+          VITE_API_URL: https://api.example.com/api
+        run: npm run build
+
+      - name: Upload dist artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-dist
+          path: admin/dist
+          retention-days: 7

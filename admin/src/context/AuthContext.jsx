@@ -26,14 +26,19 @@ export function AuthProvider({ children }) {
       throw new Error('This account does not have admin access.');
     }
     localStorage.setItem('admin_token', data.token);
+    if (data.refresh_token) localStorage.setItem('admin_refresh_token', data.refresh_token);
     localStorage.setItem('admin_user',  JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
   };
 
   const logout = async () => {
-    try { await authAPI.logout(); } catch { /* server blacklist failure is non-fatal */ }
+    try {
+      const refresh_token = localStorage.getItem('admin_refresh_token');
+      await authAPI.logout({ refresh_token });
+    } catch { /* server blacklist failure is non-fatal */ }
     localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_refresh_token');
     localStorage.removeItem('admin_user');
     setUser(null);
   };

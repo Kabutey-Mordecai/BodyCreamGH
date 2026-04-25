@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const logger = require('../utils/logger');
 
 const getDashboard = async (req, res) => {
   try {
@@ -7,7 +8,7 @@ const getDashboard = async (req, res) => {
       pool.query('SELECT COUNT(*) FROM orders'),
       pool.query(`SELECT COUNT(*) FROM users WHERE role = 'customer'`),
       pool.query('SELECT COUNT(*) FROM products'),
-      pool.query('SELECT id, order_number, total_amount, status, created_at FROM orders ORDER BY created_at DESC LIMIT 10'),
+      pool.query('SELECT id, order_number, total_amount, status, payment_status, created_at FROM orders ORDER BY created_at DESC LIMIT 10'),
     ]);
 
     res.json({
@@ -18,7 +19,7 @@ const getDashboard = async (req, res) => {
       recentOrders: recentOrders.rows,
     });
   } catch (error) {
-    console.error('Dashboard error:', error);
+    logger.error('Dashboard error', { err: error.message });
     res.status(500).json({ error: 'Failed to fetch dashboard data' });
   }
 };

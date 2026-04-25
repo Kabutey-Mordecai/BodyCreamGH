@@ -1,0 +1,41 @@
+# =============================================================================
+# .gitignore — Files that must NEVER be committed to GitHub
+# =============================================================================
+
+# ── Secrets ───────────────────────────────────────────────────────────────────
+# Real .env files contain database passwords, JWT secrets, and Paystack keys.
+# Only the .example and .production files (which contain no real values) are safe to commit.
+.env
+.env.local
+.env.development.local
+.env.test.local
+# Note: .env.production IS committed because it only contains a public API URL (no secrets).
+
+# ── Node.js ───────────────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Build output ──────────────────────────────────────────────────────────────
+# Netlify/Vite build artefacts — regenerated on every deploy, don't bloat the repo
+dist/
+build/
+.vite/
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+logs/
+*.log
+backend.log
+
+# ── OS / editor junk ─────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# ── PM2 runtime files ─────────────────────────────────────────────────────────
+.pm2/
+
+# ── Test coverage ─────────────────────────────────────────────────────────────
+coverage/

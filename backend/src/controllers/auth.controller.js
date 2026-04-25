@@ -6,6 +6,7 @@ const pool = require('../config/database');
 const UserModel = require('../models/user.model');
 const CustomerModel = require('../models/customer.model');
 const { sendWelcomeEmail, sendPasswordResetEmail } = require('../services/email.service');
+const logger = require('../utils/logger');
 
 // ─── Register ────────────────────────────────────────────────────────────────
 
@@ -22,11 +23,11 @@ const register = async (req, res) => {
     await UserModel.create(userId, { email, passwordHash, first_name, last_name, phone });
     await CustomerModel.create(userId, phone);
 
-    sendWelcomeEmail(email, first_name).catch(console.error);
+    sendWelcomeEmail(email, first_name).catch(err => logger.error('sendWelcomeEmail error', { err: err.message }));
 
     res.status(201).json({ message: 'Account created successfully', userId });
   } catch (error) {
-    console.error('Register error:', error);
+    logger.error('Register error', { err: error.message });
     res.status(500).json({ error: 'Registration failed' });
   }
 };
@@ -76,7 +77,7 @@ const login = async (req, res) => {
       user: { id: user.id, email: user.email, role: user.role },
     });
   } catch (error) {
-    console.error('Login error:', error);
+    logger.error('Login error', { err: error.message });
     res.status(500).json({ error: 'Login failed' });
   }
 };
@@ -109,7 +110,7 @@ const refresh = async (req, res) => {
 
     res.json({ token: accessToken, refresh_token: refreshToken });
   } catch (error) {
-    console.error('Refresh error:', error);
+    logger.error('Refresh error', { err: error.message });
     res.status(500).json({ error: 'Failed to refresh token' });
   }
 };
@@ -195,13 +196,13 @@ const forgotPassword = async (req, res) => {
       );
 
       const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${token}`;
-      sendPasswordResetEmail(user.email, resetUrl).catch(console.error);
+      sendPasswordResetEmail(user.email, resetUrl).catch(err => logger.error('sendPasswordResetEmail error', { err: err.message }));
     }
 
     // Same response regardless of whether email exists
     res.json({ message: 'If that email is registered, a reset link has been sent.' });
   } catch (error) {
-    console.error('Forgot password error:', error);
+    logger.error('Forgot password error', { err: error.message });
     res.status(500).json({ error: 'Failed to process request' });
   }
 };
@@ -263,7 +264,7 @@ const resetPassword = async (req, res) => {
 
     res.json({ message: 'Password reset successfully. You can now log in.' });
   } catch (error) {
-    console.error('Reset password error:', error);
+    logger.error('Reset password error', { err: error.message });
     res.status(500).json({ error: 'Failed to reset password' });
   }
 };
