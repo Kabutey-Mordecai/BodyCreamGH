@@ -60,7 +60,13 @@
       "Bash(PGPASSWORD=mord123 /c/Program Files/PostgreSQL/18/bin/psql *)",
       "Bash(grep -v \"^$\")",
       "PowerShell(Remove-Item *)",
-      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\admin\" -Recurse | Where-Object { \\($_.Extension -eq \".jsx\" -or $_.Extension -eq \".js\"\\) -and $_.FullName -notmatch \"node_modules\" -and $_.FullName -notmatch \"dist\" } | Select-Object FullName)"
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\admin\" -Recurse | Where-Object { \\($_.Extension -eq \".jsx\" -or $_.Extension -eq \".js\"\\) -and $_.FullName -notmatch \"node_modules\" -and $_.FullName -notmatch \"dist\" } | Select-Object FullName)",
+      "Bash(echo \"EXIT:$?\")",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\backend\"; node --check src/server.js; Write-Host \"Exit: $LASTEXITCODE\")",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\backend\"; node --check src/models/product.model.js; Write-Host \"Exit: $LASTEXITCODE\")",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\backend\"; node --check src/controllers/admin.controller.js; Write-Host \"Exit: $LASTEXITCODE\")",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\backend\"; node --check src/routes/admin.js; Write-Host \"Exit: $LASTEXITCODE\")",
+      "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\"; git diff --name-only -- admin/)"
     ]
   }
 }

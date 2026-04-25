@@ -1,3 +1,7 @@
 node_modules/
 .env
 *.log
+
+# Uploaded product images — keep directory skeleton, ignore actual files
+uploads/products/*
+!uploads/products/.gitkeep

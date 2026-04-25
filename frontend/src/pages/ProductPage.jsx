@@ -24,6 +24,17 @@ const HIGHLIGHTS = [
   'Cruelty-free & dermatologist tested',
 ];
 
+// Resolve /uploads/... relative paths to the backend origin using VITE_API_URL.
+// Legacy absolute URLs are returned unchanged.
+const _apiUrl = import.meta.env.VITE_API_URL || '';
+function resolveImageUrl(url) {
+  if (!url || url.startsWith('http')) return url;
+  if (_apiUrl.startsWith('http')) {
+    try { return `${new URL(_apiUrl).origin}${url}`; } catch { /* fall through */ }
+  }
+  return url;
+}
+
 export default function ProductPage() {
   const { id }          = useParams();
   const { addItem }     = useCart();
@@ -35,6 +46,7 @@ export default function ProductPage() {
   const [qty, setQty]           = useState(1);
   const [adding, setAdding]     = useState(false);
   const [addedMsg, setAddedMsg] = useState('');
+  const [selectedIdx, setSelectedIdx] = useState(0);
 
   const [reviews, setReviews]     = useState([]);
   const [reviewStats, setStats]   = useState(null);
@@ -45,7 +57,13 @@ export default function ProductPage() {
   useEffect(() => {
     setLoading(true);
     productsAPI.getById(id)
-      .then(({ data }) => setProduct(data))
+      .then(({ data }) => {
+        setProduct(data);
+        // Default to the primary image; fall back to index 0
+        const imgs = data.images ?? [];
+        const primaryIdx = imgs.findIndex(img => img.is_primary);
+        setSelectedIdx(primaryIdx >= 0 ? primaryIdx : 0);
+      })
       .catch(() => setError('Product not found.'))
       .finally(() => setLoading(false));
   }, [id]);
@@ -104,7 +122,8 @@ export default function ProductPage() {
     );
   }
 
-  const isOutOfStock = product.stock_quantity === 0;
+  const isOutOfStock  = product.stock_quantity === 0;
+  const galleryImages = product.images?.length ? product.images : [];
 
   return (
     <div className="page-section product-page">
@@ -119,13 +138,45 @@ export default function ProductPage() {
         </nav>
 
         <div className="product-detail">
-          {/* ── Left: image ─────────────────────────── */}
-          <div className="product-detail-img">
-            <img
-              src={product.image_url || PLACEHOLDER_IMG}
-              alt={product.name}
-            />
-          </div>
+          {/* ── Left: image / gallery ───────────────── */}
+          {galleryImages.length > 0 ? (
+            <div className="pdp-gallery">
+              <div className="product-detail-img">
+                <img
+                  src={resolveImageUrl(galleryImages[selectedIdx]?.url)}
+                  alt={product.name}
+                  onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
+                />
+              </div>
+              {galleryImages.length > 1 && (
+                <div className="pdp-thumbs">
+                  {galleryImages.map((img, i) => (
+                    <button
+                      key={img.id}
+                      type="button"
+                      className={`pdp-thumb${i === selectedIdx ? ' pdp-thumb--active' : ''}`}
+                      onClick={() => setSelectedIdx(i)}
+                      aria-label={img.original_name || `View image ${i + 1}`}
+                    >
+                      <img
+                        src={resolveImageUrl(img.url)}
+                        alt=""
+                        aria-hidden="true"
+                        onError={e => { e.currentTarget.onerror = null; e.currentTarget.style.opacity = '0.25'; }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="product-detail-img">
+              <img
+                src={product.image_url || PLACEHOLDER_IMG}
+                alt={product.name}
+              />
+            </div>
+          )}
 
           {/* ── Right: info ─────────────────────────── */}
           <div className="product-detail-info">

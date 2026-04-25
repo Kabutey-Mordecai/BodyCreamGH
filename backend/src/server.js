@@ -1,11 +1,18 @@
 require('dotenv').config();
 
+const path       = require('path');
+const fs         = require('fs');
 const express    = require('express');
 const cors       = require('cors');
 const bodyParser = require('body-parser');
 const errorHandler        = require('./middleware/errorHandler');
 const { makeRateLimiter } = require('./middleware/rateLimit');
 const logger              = require('./utils/logger');
+
+// Ensure the product upload directory exists before any request is handled.
+// memoryStorage uploads are written here by the image controller.
+const UPLOAD_DIR = path.join(__dirname, '..', 'uploads', 'products');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const authRoutes      = require('./routes/auth');
 const productRoutes   = require('./routes/products');
@@ -32,6 +39,11 @@ app.use(bodyParser.json({
   verify: (req, _res, buf) => { req.rawBody = buf; },
 }));
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// ── Static files — served before API routes, no auth middleware involved ─────
+// In production, Nginx should handle /uploads directly via an alias to the
+// Docker volume; Express static is the fallback for dev and bare-Node deploys.
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 // ── Rate limiting ────────────────────────────────────────────────────────────
 app.use('/api/auth/login',    makeRateLimiter(15 * 60 * 1000, 10,  'Too many login attempts'));

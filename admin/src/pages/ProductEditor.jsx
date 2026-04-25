@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { productsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import ProductImageGallery from '../components/ProductImageGallery';
 
 // Slug-ish auto-SKU — "Shea Butter Cream 200g" → "SHE-BUT-CRE-200"
 const suggestSku = (name) => {
@@ -29,15 +30,19 @@ export default function ProductEditor() {
   const navigate = useNavigate();
   const toast = useToast();
 
-  const [form, setForm] = useState(EMPTY);
-  const [loading, setLoading] = useState(!isNew);
-  const [saving,  setSaving]  = useState(false);
-  const [error,   setError]   = useState('');
+  const [form,          setForm]          = useState(EMPTY);
+  const [initialImages, setInitialImages] = useState([]);
+  const [loading,       setLoading]       = useState(!isNew);
+  const [saving,        setSaving]        = useState(false);
+  const [error,         setError]         = useState('');
 
   useEffect(() => {
     if (isNew) return;
     productsAPI.getById(id)
-      .then(({ data }) => setForm({ ...EMPTY, ...data }))
+      .then(({ data }) => {
+        setForm({ ...EMPTY, ...data });
+        setInitialImages(data.images || []);
+      })
       .catch(() => setError('Product not found.'))
       .finally(() => setLoading(false));
   }, [id, isNew]);
@@ -227,35 +232,20 @@ export default function ProductEditor() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           <div className="card">
-            <div className="card-header"><h2 className="card-title">Product image</h2></div>
+            <div className="card-header"><h2 className="card-title">Images</h2></div>
             <div className="card-body">
-              <div style={{
-                aspectRatio: '1 / 1',
-                borderRadius: 10,
-                background: form.image_url ? '#fff' : 'var(--ac-bg)',
-                border: `1px dashed var(--ac-border-strong)`,
-                overflow: 'hidden',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: 12,
-              }}>
-                {form.image_url ? (
-                  <img
-                    src={form.image_url}
-                    alt="Preview"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    onError={e => { e.target.style.display = 'none'; }}
-                  />
-                ) : (
-                  <div style={{ textAlign: 'center', color: 'var(--ac-text-soft)', padding: 20, fontSize: '0.85rem' }}>
-                    Paste an image URL below to preview
-                  </div>
-                )}
-              </div>
+              <ProductImageGallery
+                productId={isNew ? null : id}
+                initialImages={initialImages}
+              />
+            </div>
+          </div>
 
+          <div className="card">
+            <div className="card-header"><h2 className="card-title">Legacy image URL</h2></div>
+            <div className="card-body">
               <div className="field" style={{ marginBottom: 0 }}>
-                <label>Image URL</label>
+                <label>Fallback image URL</label>
                 <input
                   type="url"
                   value={form.image_url}
@@ -263,7 +253,8 @@ export default function ProductEditor() {
                   placeholder="https://…"
                 />
                 <div className="hint">
-                  Upload to a host (e.g. <a href="https://imgur.com" target="_blank" rel="noreferrer">imgur.com</a>, Cloudinary) and paste the public link here. A file-upload endpoint can be wired later.
+                  Used as a fallback when no gallery images exist.
+                  Once you upload images above, this field is no longer shown to customers.
                 </div>
               </div>
             </div>

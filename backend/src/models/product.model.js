@@ -6,9 +6,16 @@ module.exports = {
     let query = `
       SELECT p.*,
              ROUND(AVG(r.rating)::numeric, 1) AS avg_rating,
-             COUNT(r.id)::int                 AS review_count
+             COUNT(r.id)::int                 AS review_count,
+             COALESCE(pi_primary.url, p.image_url) AS image_url
       FROM products p
       LEFT JOIN product_reviews r ON r.product_id = p.id
+      LEFT JOIN LATERAL (
+        SELECT url
+        FROM product_images
+        WHERE product_id = p.id AND is_primary = true
+        LIMIT 1
+      ) pi_primary ON true
       WHERE 1=1`;
     const params = [];
 
@@ -22,7 +29,7 @@ module.exports = {
       query += ` AND (p.name ILIKE $${params.length} OR p.description ILIKE $${params.length})`;
     }
 
-    query += ' GROUP BY p.id';
+    query += ' GROUP BY p.id, pi_primary.url';
 
     if (sort === 'price_low')        query += ' ORDER BY p.price ASC';
     else if (sort === 'price_high')  query += ' ORDER BY p.price DESC';
@@ -39,11 +46,37 @@ module.exports = {
     const { rows } = await pool.query(
       `SELECT p.*,
               ROUND(AVG(r.rating)::numeric, 1) AS avg_rating,
-              COUNT(r.id)::int                 AS review_count
+              COUNT(r.id)::int                 AS review_count,
+              COALESCE(pi_primary.url, p.image_url) AS image_url,
+              COALESCE(
+                (
+                  SELECT json_agg(
+                    json_build_object(
+                      'id',            pi.id,
+                      'url',           pi.url,
+                      'filename',      pi.filename,
+                      'original_name', pi.original_name,
+                      'mime_type',     pi.mime_type,
+                      'size_bytes',    pi.size_bytes,
+                      'sort_order',    pi.sort_order,
+                      'is_primary',    pi.is_primary
+                    ) ORDER BY pi.sort_order
+                  )
+                  FROM product_images pi
+                  WHERE pi.product_id = p.id
+                ),
+                '[]'::json
+              ) AS images
        FROM products p
        LEFT JOIN product_reviews r ON r.product_id = p.id
+       LEFT JOIN LATERAL (
+         SELECT url
+         FROM product_images
+         WHERE product_id = p.id AND is_primary = true
+         LIMIT 1
+       ) pi_primary ON true
        WHERE p.id = $1
-       GROUP BY p.id`,
+       GROUP BY p.id, pi_primary.url`,
       [id]
     );
     return rows[0] || null;

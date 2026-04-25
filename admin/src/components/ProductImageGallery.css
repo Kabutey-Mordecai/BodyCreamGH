@@ -1,0 +1,205 @@
+/* ── ProductImageGallery ─────────────────────────────────────────────────── */
+
+.pig {
+  position: relative;
+}
+
+.pig--busy {
+  pointer-events: none;
+  opacity: 0.82;
+}
+
+.pig-unsaved {
+  font-size: 0.84rem;
+  color: var(--ac-text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+/* ── Header row ──────────────────────────────────────────────────────────── */
+.pig-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.pig-count {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ac-text-muted);
+  margin-right: auto;
+}
+
+/* ── Error ───────────────────────────────────────────────────────────────── */
+.pig-error {
+  background: var(--ac-danger-soft);
+  color: var(--ac-danger);
+  font-size: 0.82rem;
+  padding: 8px 12px;
+  border-radius: var(--ac-radius);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.pig-empty {
+  border: 1.5px dashed var(--ac-border-strong);
+  border-radius: var(--ac-radius);
+  padding: 28px 16px;
+  text-align: center;
+  color: var(--ac-text-muted);
+  font-size: 0.84rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.pig-empty-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--ac-accent-light);
+  color: var(--ac-accent-dark);
+  font-size: 1.3rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* ── Image grid ──────────────────────────────────────────────────────────── */
+.pig-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+/* On wider one-column layout (small screens) fit more per row */
+@media (max-width: 900px) {
+  .pig-grid { grid-template-columns: repeat(4, 1fr); }
+}
+@media (max-width: 480px) {
+  .pig-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ── Single image card ───────────────────────────────────────────────────── */
+.pig-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Thumbnail */
+.pig-thumb {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--ac-radius);
+  border: 2px solid var(--ac-border);
+  background: var(--ac-bg);
+  overflow: hidden;
+}
+
+.pig-item--primary .pig-thumb {
+  border-color: var(--ac-accent);
+  box-shadow: 0 0 0 1px var(--ac-accent);
+}
+
+.pig-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  z-index: 1;
+}
+
+/* Shown when the img fails to load (img gets display:none via onError) */
+.pig-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.1rem;
+  color: var(--ac-text-soft);
+  z-index: 0;
+}
+
+.pig-badge {
+  position: absolute;
+  bottom: 5px;
+  left: 5px;
+  background: var(--ac-accent);
+  color: #fff;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  z-index: 2;
+}
+
+/* Filename label */
+.pig-name {
+  font-size: 0.7rem;
+  color: var(--ac-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Control buttons ─────────────────────────────────────────────────────── */
+.pig-controls {
+  display: flex;
+  gap: 3px;
+}
+
+.pig-ctrl {
+  flex: 1;
+  padding: 3px 0;
+  font-size: 0.8rem;
+  background: var(--ac-bg);
+  border: 1px solid var(--ac-border);
+  border-radius: var(--ac-radius);
+  color: var(--ac-text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1.4;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.pig-ctrl:hover:not(:disabled) {
+  background: var(--ac-surface);
+  color: var(--ac-text);
+  border-color: var(--ac-border-strong);
+}
+
+.pig-ctrl:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.pig-ctrl--star-active {
+  color: var(--ac-accent-dark);
+  border-color: var(--ac-accent);
+  background: var(--ac-accent-light);
+}
+
+.pig-ctrl--delete:hover:not(:disabled) {
+  background: var(--ac-danger-soft);
+  color: var(--ac-danger);
+  border-color: var(--ac-danger);
+}
+
+/* ── Loading indicator ───────────────────────────────────────────────────── */
+.pig-loading {
+  font-size: 0.8rem;
+  color: var(--ac-text-muted);
+  margin-top: 10px;
+  text-align: center;
+}

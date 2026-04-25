@@ -94,6 +94,17 @@ export const productsAPI = {
   create:  (data)   => api.post('/products', data),
   update:  (id, d)  => api.put(`/products/${id}`, d),
   remove:  (id)     => api.delete(`/products/${id}`),
+
+  // Image gallery — admin-only endpoints under /admin/products/:id/images
+  // Axios sets Content-Type: multipart/form-data automatically for FormData.
+  uploadProductImages: (productId, files) => {
+    const formData = new FormData();
+    files.forEach(file => formData.append('images', file));
+    return api.post(`/admin/products/${productId}/images`, formData);
+  },
+  deleteProductImage:    (productId, imageId) => api.delete(`/admin/products/${productId}/images/${imageId}`),
+  reorderProductImages:  (productId, order)   => api.put(`/admin/products/${productId}/images/reorder`, { order }),
+  setPrimaryProductImage:(productId, imageId) => api.patch(`/admin/products/${productId}/images/${imageId}/primary`),
 };
 
 // ── Orders (admin sees all) ───────────────────────────────────────────
