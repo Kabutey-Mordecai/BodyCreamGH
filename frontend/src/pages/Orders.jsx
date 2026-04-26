@@ -30,6 +30,16 @@ function groupOrders(orders) {
   return map;
 }
 
+function refundHint(order) {
+  if (order.status === 'cancelled' && order.payment_status === 'paid' && (order.refund_status || 'not_requested') === 'not_requested') {
+    return 'Refund may be pending';
+  }
+  if (order.refund_status === 'pending') return 'Refund pending';
+  if (order.refund_status === 'failed') return 'Refund failed - contact support';
+  if (order.status === 'refunded' || order.refund_status === 'success') return 'Refunded';
+  return '';
+}
+
 export default function Orders() {
   const [orders, setOrders]         = useState([]);
   const [pagination, setPagination] = useState(null);
@@ -87,6 +97,7 @@ export default function Orders() {
 
                 {group.map(order => {
                   const orderNum = order.order_number || order.id.slice(0, 8).toUpperCase();
+                  const hint = refundHint(order);
                   return (
                     <Link
                       key={order.id}
@@ -115,9 +126,16 @@ export default function Orders() {
                       </div>
 
                       <div className="order-row-side">
-                        <span className={`badge badge-${order.status}`}>
-                          {order.status}
-                        </span>
+                        <div className="order-row-badges">
+                          <span className={`badge badge-${order.status}`}>
+                            {order.status}
+                          </span>
+                          {hint && (
+                            <span className={`badge ${order.refund_status === 'failed' ? 'badge-failed' : 'badge-pending-refund'}`}>
+                              {hint}
+                            </span>
+                          )}
+                        </div>
                         <span className="order-view-link">View details →</span>
                       </div>
                     </Link>

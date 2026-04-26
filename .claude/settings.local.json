@@ -66,7 +66,8 @@
       "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\backend\"; node --check src/models/product.model.js; Write-Host \"Exit: $LASTEXITCODE\")",
       "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\backend\"; node --check src/controllers/admin.controller.js; Write-Host \"Exit: $LASTEXITCODE\")",
       "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\\\\backend\"; node --check src/routes/admin.js; Write-Host \"Exit: $LASTEXITCODE\")",
-      "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\"; git diff --name-only -- admin/)"
+      "PowerShell(Set-Location \"C:\\\\Users\\\\kabut\\\\Desktop\\\\BodyCreamGH\"; git diff --name-only -- admin/)",
+      "PowerShell(netstat *)"
     ]
   }
 }

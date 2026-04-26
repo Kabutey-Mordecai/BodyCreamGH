@@ -74,9 +74,23 @@ const updateDeliverySchema = Joi.object({
 
 const updateOrderStatusSchema = Joi.object({
   status: Joi.string()
-    .valid('pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled')
+    .valid('pending', 'confirmed', 'processing', 'shipped', 'delivered')
     .required(),
   note: Joi.string().trim().max(500).optional().allow('', null),
+});
+
+const cancelOrderSchema = Joi.object({
+  reason: Joi.string().trim().max(500).optional().allow('', null),
+});
+
+const refundOrderSchema = Joi.object({
+  method: Joi.string().valid('paystack', 'manual').required(),
+  reference: Joi.when('method', {
+    is: 'manual',
+    then: Joi.string().trim().max(255).required(),
+    otherwise: Joi.string().trim().max(255).optional().allow('', null),
+  }),
+  notes: Joi.string().trim().max(1000).optional().allow('', null),
 });
 
 const validateRegister      = validate(registerSchema);
@@ -86,6 +100,8 @@ const validateCreateGuest   = validate(createGuestOrderSchema);
 const validateCreateDelivery  = validate(createDeliverySchema);
 const validateUpdateDelivery  = validate(updateDeliverySchema);
 const validateOrderStatus     = validate(updateOrderStatusSchema);
+const validateCancelOrder     = validate(cancelOrderSchema);
+const validateRefundOrder     = validate(refundOrderSchema);
 
 // Legacy — kept for backward compat with product routes
 const validateProduct = (req, res, next) => {
@@ -103,5 +119,7 @@ module.exports = {
   validateCreateDelivery,
   validateUpdateDelivery,
   validateOrderStatus,
+  validateCancelOrder,
+  validateRefundOrder,
   validateProduct,
 };

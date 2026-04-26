@@ -4,12 +4,26 @@ import { ordersAPI, settingsAPI, deliveriesAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Modal from '../components/Modal';
 import { printInvoice } from '../utils/printInvoice';
 
 // Fulfilment flow is strictly forward-moving. Skipping to "delivered" is allowed
 // if the merchant updates late (e.g. phone-confirmed pickups).
 const STATUS_FLOW = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
+const CANCELLABLE_STATUSES = ['pending', 'confirmed', 'processing'];
+const REFUNDABLE_STATUSES = ['cancelled', 'delivered'];
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
+
+function refundLabel(order) {
+  if (!order) return null;
+  if (order.status === 'cancelled' && order.payment_status === 'paid' && (order.refund_status || 'not_requested') === 'not_requested') {
+    return { status: 'refund_owed', cls: 'badge-warning', label: 'Refund owed' };
+  }
+  if (order.refund_status === 'pending') return { status: 'pending', cls: 'badge-warning', label: 'Refund pending' };
+  if (order.refund_status === 'failed') return { status: 'failed', cls: 'badge-danger', label: 'Refund failed' };
+  if (order.refund_status === 'success') return { status: 'success', cls: 'badge-success', label: 'Refunded' };
+  return { status: order.refund_status || 'not_requested', cls: 'badge-neutral', label: 'No refund requested' };
+}
 
 export default function OrderDetail() {
   const { id } = useParams();
@@ -23,6 +37,13 @@ export default function OrderDetail() {
   const [saving, setSaving]   = useState(false);
   const [pendingStatus, setPendingStatus] = useState(null);
   const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelError, setCancelError] = useState('');
+  const [cancelSaving, setCancelSaving] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
+  const [refundForm, setRefundForm] = useState({ method: 'paystack', reference: '', notes: '' });
+  const [refundError, setRefundError] = useState('');
+  const [refundSaving, setRefundSaving] = useState(false);
 
   // Delivery form state
   const [deliveryForm, setDeliveryForm] = useState({
@@ -43,7 +64,9 @@ export default function OrderDetail() {
   const load = () => {
     setLoading(true);
     ordersAPI.getById(id)
-      .then(({ data }) => setOrder(data))
+      .then(({ data }) => {
+        setOrder(data?.order ? { ...data.order, items: data.items || [] } : data);
+      })
       .catch(() => toast.error('Failed to load order'))
       .finally(() => setLoading(false));
     loadDelivery();
@@ -105,6 +128,42 @@ export default function OrderDetail() {
     }
   };
 
+  const handleCancelOrder = async () => {
+    setCancelSaving(true);
+    setCancelError('');
+    try {
+      await ordersAPI.cancelOrder(id, cancelReason);
+      toast.success('Order cancelled');
+      setCancelOpen(false);
+      setCancelReason('');
+      load();
+    } catch (err) {
+      setCancelError(err.response?.data?.error || 'Failed to cancel order');
+    } finally {
+      setCancelSaving(false);
+    }
+  };
+
+  const handleRefundOrder = async () => {
+    setRefundSaving(true);
+    setRefundError('');
+    try {
+      await ordersAPI.refundOrder(id, {
+        method: refundForm.method,
+        reference: refundForm.reference || undefined,
+        notes: refundForm.notes || undefined,
+      });
+      toast.success(refundForm.method === 'manual' ? 'Refund marked complete' : 'Paystack refund requested');
+      setRefundOpen(false);
+      setRefundForm({ method: 'paystack', reference: '', notes: '' });
+      load();
+    } catch (err) {
+      setRefundError(err.response?.data?.error || 'Failed to refund order');
+    } finally {
+      setRefundSaving(false);
+    }
+  };
+
   if (loading) return <div className="spinner" />;
   if (!order) {
     return (
@@ -116,7 +175,12 @@ export default function OrderDetail() {
   }
 
   const currentIdx = STATUS_FLOW.indexOf(order.status);
-  const isCancelled = order.status === 'cancelled';
+  const canShowStatusFlow = currentIdx >= 0;
+  const canCancel = CANCELLABLE_STATUSES.includes(order.status);
+  const canRefund = order.payment_status === 'paid' &&
+    REFUNDABLE_STATUSES.includes(order.status) &&
+    !['pending', 'success'].includes(order.refund_status);
+  const refundInfo = refundLabel(order);
   const subtotal = (order.items || []).reduce((s, it) => s + Number(it.subtotal || (it.price_at_purchase * it.quantity) || 0), 0);
 
   // Phone from user profile; delivery phone is stored in notes as "Phone: 233..."
@@ -138,6 +202,7 @@ export default function OrderDetail() {
         <div className="page-actions">
           <StatusBadge status={order.status} />
           <StatusBadge status={order.payment_status} />
+          {refundInfo && <span className={`badge ${refundInfo.cls}`}>{refundInfo.label}</span>}
           <button
             className="btn btn-outline"
             onClick={() => printInvoice(order, store)}
@@ -154,7 +219,7 @@ export default function OrderDetail() {
       </div>
 
       {/* Status progression tracker */}
-      {!isCancelled && (
+      {canShowStatusFlow && (
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-body">
             <div className="status-track">
@@ -182,15 +247,40 @@ export default function OrderDetail() {
                   Mark as {s}
                 </button>
               ))}
-              <button
-                className="btn btn-sm btn-outline"
-                style={{ color: 'var(--ac-danger)', borderColor: 'var(--ac-danger-soft)' }}
-                disabled={saving}
-                onClick={() => setCancelOpen(true)}
-              >
-                Cancel order
-              </button>
+              {canCancel && (
+                <button
+                  className="btn btn-sm btn-outline"
+                  style={{ color: 'var(--ac-danger)', borderColor: 'var(--ac-danger-soft)' }}
+                  disabled={saving}
+                  onClick={() => setCancelOpen(true)}
+                >
+                  Cancel order
+                </button>
+              )}
+              {canRefund && (
+                <button
+                  className="btn btn-sm btn-accent"
+                  disabled={refundSaving}
+                  onClick={() => setRefundOpen(true)}
+                >
+                  Refund order
+                </button>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {!canShowStatusFlow && canRefund && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 600 }}>Refund available</div>
+              <div className="muted text-sm">Full refund amount: {fmt(order.total_amount)}</div>
+            </div>
+            <button className="btn btn-accent btn-sm" onClick={() => setRefundOpen(true)} disabled={refundSaving}>
+              Refund order
+            </button>
           </div>
         </div>
       )}
@@ -318,6 +408,45 @@ export default function OrderDetail() {
                   <div className="muted text-xs">Reference</div>
                   <div className="mono" style={{ wordBreak: 'break-all' }}>{order.payment_reference}</div>
                 </div>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">Refund</h2>
+              <span className={`badge ${refundInfo.cls}`}>{refundInfo.label}</span>
+            </div>
+            <div className="card-body">
+              <div className="od-refund-grid">
+                <span className="muted">Status</span>
+                <StatusBadge status={order.refund_status || 'not_requested'} />
+                <span className="muted">Method</span>
+                <span>{order.refund_method || '—'}</span>
+                <span className="muted">Amount</span>
+                <span>{order.refund_amount ? fmt(order.refund_amount) : '—'}</span>
+                <span className="muted">Reference</span>
+                <span className="mono" style={{ wordBreak: 'break-all' }}>{order.refund_reference || '—'}</span>
+                <span className="muted">Requested</span>
+                <span>{order.refund_requested_at ? new Date(order.refund_requested_at).toLocaleString('en-GH') : '—'}</span>
+                <span className="muted">Refunded</span>
+                <span>{order.refunded_at ? new Date(order.refunded_at).toLocaleString('en-GH') : '—'}</span>
+              </div>
+              {order.refund_notes && (
+                <div style={{ marginTop: 12 }}>
+                  <div className="muted text-xs">Notes</div>
+                  <div style={{ fontSize: '0.86rem', whiteSpace: 'pre-wrap', marginTop: 4 }}>{order.refund_notes}</div>
+                </div>
+              )}
+              {canRefund && (
+                <button
+                  className="btn btn-accent btn-sm"
+                  style={{ width: '100%', marginTop: 14 }}
+                  onClick={() => setRefundOpen(true)}
+                  disabled={refundSaving}
+                >
+                  Refund order
+                </button>
               )}
             </div>
           </div>
@@ -457,15 +586,106 @@ export default function OrderDetail() {
         confirmLabel={`Mark ${pendingStatus}`}
       />
 
-      <ConfirmDialog
+      <Modal
         open={cancelOpen}
-        onClose={() => setCancelOpen(false)}
-        onConfirm={() => changeStatus('cancelled')}
-        title="Cancel this order?"
-        message="The order will be cancelled. If it was paid, handle the refund with the customer separately."
-        confirmLabel="Cancel order"
-        danger
-      />
+        onClose={() => {
+          if (!cancelSaving) {
+            setCancelOpen(false);
+            setCancelError('');
+          }
+        }}
+        title="Cancel order"
+        size="md"
+        footer={
+          <>
+            <button className="btn btn-outline" onClick={() => setCancelOpen(false)} disabled={cancelSaving}>
+              Close
+            </button>
+            <button className="btn btn-danger" onClick={handleCancelOrder} disabled={cancelSaving}>
+              {cancelSaving ? 'Cancelling...' : 'Cancel order'}
+            </button>
+          </>
+        }
+      >
+        <div className="form-group">
+          <label>Reason</label>
+          <textarea
+            rows={4}
+            maxLength={500}
+            placeholder="Optional cancellation reason"
+            value={cancelReason}
+            onChange={e => setCancelReason(e.target.value)}
+          />
+        </div>
+        {cancelError && <div className="alert alert-error" style={{ marginTop: 12 }}>{cancelError}</div>}
+      </Modal>
+
+      <Modal
+        open={refundOpen}
+        onClose={() => {
+          if (!refundSaving) {
+            setRefundOpen(false);
+            setRefundError('');
+          }
+        }}
+        title="Refund order"
+        size="md"
+        footer={
+          <>
+            <button className="btn btn-outline" onClick={() => setRefundOpen(false)} disabled={refundSaving}>
+              Close
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handleRefundOrder}
+              disabled={refundSaving || (refundForm.method === 'manual' && !refundForm.reference.trim())}
+            >
+              {refundSaving ? 'Submitting...' : 'Confirm refund'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 14 }}>
+          <span className="muted">Full refund amount</span>
+          <strong>{fmt(order.total_amount)}</strong>
+        </div>
+        <div className="form-group">
+          <label>Method</label>
+          <select
+            value={refundForm.method}
+            onChange={e => setRefundForm(f => ({ ...f, method: e.target.value }))}
+          >
+            <option value="paystack">Paystack</option>
+            <option value="manual">Manual</option>
+          </select>
+        </div>
+        <div className="form-group" style={{ marginTop: 12 }}>
+          <label>Reference{refundForm.method === 'manual' ? '' : ' (optional)'}</label>
+          <input
+            type="text"
+            maxLength={255}
+            placeholder={refundForm.method === 'manual' ? 'Required for manual refunds' : 'Optional provider/reference note'}
+            value={refundForm.reference}
+            onChange={e => setRefundForm(f => ({ ...f, reference: e.target.value }))}
+          />
+        </div>
+        <div className="form-group" style={{ marginTop: 12 }}>
+          <label>Notes</label>
+          <textarea
+            rows={4}
+            maxLength={1000}
+            placeholder="Optional refund notes"
+            value={refundForm.notes}
+            onChange={e => setRefundForm(f => ({ ...f, notes: e.target.value }))}
+          />
+        </div>
+        {refundForm.method === 'paystack' && (
+          <p className="muted text-sm" style={{ marginTop: 10 }}>
+            Paystack refunds stay pending until Paystack confirms processing by webhook.
+          </p>
+        )}
+        {refundError && <div className="alert alert-error" style={{ marginTop: 12 }}>{refundError}</div>}
+      </Modal>
 
       <style>{`
         @media (max-width: 900px) {
@@ -547,6 +767,13 @@ export default function OrderDetail() {
           border: 2px solid var(--ac-bg);
         }
         .od-admin-log-body { }
+        .od-refund-grid {
+          display: grid;
+          grid-template-columns: minmax(92px, auto) 1fr;
+          gap: 8px 12px;
+          align-items: center;
+          font-size: 0.86rem;
+        }
       `}</style>
     </div>
   );

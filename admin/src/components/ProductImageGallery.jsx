@@ -24,12 +24,14 @@ export default function ProductImageGallery({ productId, initialImages = [], onI
   const [error,  setError]  = useState('');
   const fileRef = useRef(null);
 
-  // When navigating to a different product, reset to that product's images.
+  // Sync internal images state whenever the parent finishes loading product data
+  // (initialImages goes from [] to the real array after the async fetch) OR
+  // when the user navigates to a different product (productId changes).
+  // Both cases are covered by depending on both values.
   useEffect(() => {
     setImages(initialImages);
     setError('');
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId]);
+  }, [productId, initialImages]);
 
   if (!productId) {
     return <p className="pig-unsaved">Save the product first, then add images.</p>;

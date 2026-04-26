@@ -242,6 +242,12 @@ input:focus, select:focus, textarea:focus {
 .badge-shipped   { background: #e8f0fe; color: #1a3a8f; }
 .badge-delivered { background: #e8faf1; color: #1a6b3c; }
 .badge-cancelled { background: #fdecea; color: #8b1a1a; }
+.badge-refunded  { background: #f3f4f6; color: #4b5563; }
+.badge-confirmed,
+.badge-processing { background: #e8f0fe; color: #1a3a8f; }
+.badge-success { background: #e8faf1; color: #1a6b3c; }
+.badge-failed { background: #fdecea; color: #8b1a1a; }
+.badge-pending-refund { background: #fef8e7; color: #92651e; }
 
 /* ── Loading spinner ────────────────────────────── */
 .spinner {

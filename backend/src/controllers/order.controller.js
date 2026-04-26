@@ -6,6 +6,7 @@ const ReviewModel = require('../models/review.model');
 const CouponModel = require('../models/coupon.model');
 const { logStatusChange } = require('../utils/audit');
 const { assertTransition } = require('../utils/stateMachine');
+const { createFullRefund } = require('../services/paystack.service');
 const logger = require('../utils/logger');
 
 const createOrder = async (req, res) => {
@@ -179,6 +180,409 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
+const cancelOrder = async (req, res) => {
+  const client = await pool.connect();
+  let transactionStarted = false;
+
+  try {
+    const { reason } = req.body;
+    const cancellationReason = reason || null;
+    const cancellableStatuses = ['pending', 'confirmed', 'processing'];
+
+    await client.query('BEGIN');
+    transactionStarted = true;
+
+    const { rows } = await client.query(
+      `SELECT id, order_number, status, payment_status, refund_status, coupon_code,
+              stock_restored, coupon_returned
+         FROM orders
+        WHERE id = $1
+        FOR UPDATE`,
+      [req.params.orderId]
+    );
+
+    const order = rows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    if (order.status === 'cancelled') {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(409).json({ error: 'Order is already cancelled' });
+    }
+
+    if (!cancellableStatuses.includes(order.status)) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({ error: `Cannot cancel order with status "${order.status}"` });
+    }
+
+    let stockRestored = order.stock_restored;
+    if (!stockRestored) {
+      const { rows: items } = await client.query(
+        `SELECT product_id, quantity
+           FROM order_items
+          WHERE order_id = $1
+          FOR UPDATE`,
+        [order.id]
+      );
+
+      for (const item of items) {
+        await InventoryModel.adjustStock(
+          item.product_id,
+          item.quantity,
+          'order_cancelled',
+          `Restored from cancelled order ${order.order_number || order.id}`,
+          client
+        );
+      }
+
+      stockRestored = true;
+    }
+
+    let couponReturned = order.coupon_returned;
+    if (order.coupon_code && !couponReturned) {
+      await client.query(
+        `UPDATE coupons
+            SET uses_count = GREATEST(0, uses_count - 1),
+                updated_at = NOW()
+          WHERE UPPER(code) = UPPER($1)`,
+        [order.coupon_code]
+      );
+
+      couponReturned = true;
+    }
+
+    const { rows: updatedRows } = await client.query(
+      `UPDATE orders
+          SET status = 'cancelled',
+              cancelled_at = NOW(),
+              cancellation_reason = $1,
+              cancelled_by = $2,
+              stock_restored = $3,
+              coupon_returned = $4,
+              updated_at = NOW()
+        WHERE id = $5
+        RETURNING *`,
+      [cancellationReason, req.user?.id || null, stockRestored, couponReturned, order.id]
+    );
+
+    await logStatusChange(
+      order.id,
+      order.status,
+      'cancelled',
+      cancellationReason || 'Order cancelled by admin',
+      client
+    );
+
+    await client.query('COMMIT');
+    transactionStarted = false;
+
+    logger.info('Order cancelled', { orderId: order.id, from: order.status, to: 'cancelled' });
+    res.json({ message: 'Order cancelled', order: updatedRows[0] });
+  } catch (error) {
+    if (transactionStarted) {
+      await client.query('ROLLBACK').catch(() => {});
+    }
+    logger.error('cancelOrder error', { err: error.message, orderId: req.params.orderId });
+    res.status(500).json({ error: 'Failed to cancel order' });
+  } finally {
+    client.release();
+  }
+};
+
+function getRefundEligibilityError(order) {
+  if (order.refund_status === 'pending') {
+    return { status: 409, message: 'Refund already pending' };
+  }
+  if (order.refund_status === 'success') {
+    return { status: 409, message: 'Order already refunded' };
+  }
+  if (order.payment_status !== 'paid') {
+    return { status: 400, message: 'Only paid orders can be refunded' };
+  }
+  if (!['cancelled', 'delivered'].includes(order.status)) {
+    return { status: 400, message: `Cannot refund order with status "${order.status}"` };
+  }
+  return null;
+}
+
+async function findPaystackTransactionReference(client, order) {
+  const { rows } = await client.query(
+    `SELECT COALESCE(
+              NULLIF($2, ''),
+              (
+                SELECT p.paystack_reference
+                  FROM payments p
+                 WHERE p.order_id = $1
+                   AND p.payment_method = 'paystack'
+                   AND p.status = 'success'
+                 ORDER BY p.updated_at DESC, p.created_at DESC
+                 LIMIT 1
+              ),
+              (
+                SELECT p.paystack_reference
+                  FROM payments p
+                 WHERE p.order_id = $1
+                   AND p.payment_method = 'paystack'
+                 ORDER BY p.updated_at DESC, p.created_at DESC
+                 LIMIT 1
+              )
+            ) AS reference`,
+    [order.id, order.payment_reference || null]
+  );
+
+  return rows[0]?.reference || null;
+}
+
+const refundOrder = async (req, res) => {
+  const { method, reference, notes } = req.body;
+
+  if (method === 'manual') {
+    const client = await pool.connect();
+    let transactionStarted = false;
+
+    try {
+      await client.query('BEGIN');
+      transactionStarted = true;
+
+      const { rows } = await client.query(
+        `SELECT id, status, payment_status, refund_status, total_amount
+           FROM orders
+          WHERE id = $1
+          FOR UPDATE`,
+        [req.params.orderId]
+      );
+
+      const order = rows[0];
+      if (!order) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const eligibilityError = getRefundEligibilityError(order);
+      if (eligibilityError) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(eligibilityError.status).json({ error: eligibilityError.message });
+      }
+
+      const { rows: updatedRows } = await client.query(
+        `UPDATE orders
+            SET refund_status = 'success',
+                refund_requested_at = NOW(),
+                refunded_at = NOW(),
+                refund_method = 'manual',
+                refund_amount = total_amount,
+                refund_reference = $1,
+                refund_notes = $2,
+                payment_status = 'refunded',
+                status = 'refunded',
+                updated_at = NOW()
+          WHERE id = $3
+          RETURNING *`,
+        [reference, notes || null, order.id]
+      );
+
+      await logStatusChange(
+        order.id,
+        order.status,
+        'refunded',
+        notes || `Manual refund confirmed: ${reference}`,
+        client
+      );
+
+      await client.query('COMMIT');
+      transactionStarted = false;
+
+      logger.info('Manual refund completed', { orderId: order.id, from: order.status, to: 'refunded' });
+      return res.json({ message: 'Order refunded', order: updatedRows[0] });
+    } catch (error) {
+      if (transactionStarted) {
+        await client.query('ROLLBACK').catch(() => {});
+      }
+      logger.error('manual refundOrder error', { err: error.message, orderId: req.params.orderId });
+      return res.status(500).json({ error: 'Failed to refund order' });
+    } finally {
+      client.release();
+    }
+  }
+
+  let reservedOrder = null;
+  let transactionReference = null;
+
+  const reserveClient = await pool.connect();
+  let reserveTransactionStarted = false;
+  try {
+    await reserveClient.query('BEGIN');
+    reserveTransactionStarted = true;
+
+    const { rows } = await reserveClient.query(
+      `SELECT id, status, payment_status, refund_status, total_amount, payment_reference
+         FROM orders
+        WHERE id = $1
+        FOR UPDATE`,
+      [req.params.orderId]
+    );
+
+    const order = rows[0];
+    if (!order) {
+      await reserveClient.query('ROLLBACK');
+      reserveTransactionStarted = false;
+      return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const eligibilityError = getRefundEligibilityError(order);
+    if (eligibilityError) {
+      await reserveClient.query('ROLLBACK');
+      reserveTransactionStarted = false;
+      return res.status(eligibilityError.status).json({ error: eligibilityError.message });
+    }
+
+    transactionReference = await findPaystackTransactionReference(reserveClient, order);
+    if (!transactionReference) {
+      await reserveClient.query('ROLLBACK');
+      reserveTransactionStarted = false;
+      return res.status(400).json({ error: 'Cannot find original Paystack payment reference for this order' });
+    }
+
+    const { rows: reservedRows } = await reserveClient.query(
+      `UPDATE orders
+          SET refund_status = 'pending',
+              refund_method = 'paystack',
+              refund_amount = total_amount,
+              refund_notes = $1,
+              updated_at = NOW()
+        WHERE id = $2
+        RETURNING *`,
+      [notes || null, order.id]
+    );
+
+    await reserveClient.query('COMMIT');
+    reserveTransactionStarted = false;
+    reservedOrder = reservedRows[0];
+  } catch (error) {
+    if (reserveTransactionStarted) {
+      await reserveClient.query('ROLLBACK').catch(() => {});
+    }
+    logger.error('paystack refund reserve error', { err: error.message, orderId: req.params.orderId });
+    return res.status(500).json({ error: 'Failed to request refund' });
+  } finally {
+    reserveClient.release();
+  }
+
+  let refundData;
+  try {
+    refundData = await createFullRefund({
+      transactionReference,
+      amount: reservedOrder.total_amount,
+      notes,
+    });
+  } catch (error) {
+    const failureDetail = error.response?.data?.message || error.response?.data?.error || error.message;
+    const failClient = await pool.connect();
+    let failTransactionStarted = false;
+
+    try {
+      await failClient.query('BEGIN');
+      failTransactionStarted = true;
+
+      const failedNotes = [notes, `Paystack refund request failed: ${failureDetail}`]
+        .filter(Boolean)
+        .join('\n');
+
+      const { rows: failedRows } = await failClient.query(
+        `UPDATE orders
+            SET refund_status = 'failed',
+                refund_method = 'paystack',
+                refund_amount = total_amount,
+                refund_notes = $1,
+                updated_at = NOW()
+          WHERE id = $2
+            AND refund_status = 'pending'
+          RETURNING *`,
+        [failedNotes, reservedOrder.id]
+      );
+
+      await failClient.query('COMMIT');
+      failTransactionStarted = false;
+
+      logger.error('Paystack refund request failed', {
+        orderId: reservedOrder.id,
+        err: failureDetail,
+      });
+
+      const statusCode = error.response?.status >= 400 && error.response?.status < 500 ? 400 : 502;
+      return res.status(statusCode).json({
+        error: 'Paystack refund request failed',
+        detail: failureDetail,
+        order: failedRows[0] || null,
+      });
+    } catch (updateError) {
+      if (failTransactionStarted) {
+        await failClient.query('ROLLBACK').catch(() => {});
+      }
+      logger.error('Failed to mark Paystack refund failed', {
+        err: updateError.message,
+        orderId: reservedOrder.id,
+      });
+      return res.status(500).json({ error: 'Failed to update failed refund status' });
+    } finally {
+      failClient.release();
+    }
+  }
+
+  const providerId = refundData.id || refundData.refund_id || null;
+  const providerReference = refundData.reference || reference || null;
+  const completeClient = await pool.connect();
+  let completeTransactionStarted = false;
+
+  try {
+    await completeClient.query('BEGIN');
+    completeTransactionStarted = true;
+
+    const { rows: updatedRows } = await completeClient.query(
+      `UPDATE orders
+          SET refund_status = 'pending',
+              refund_requested_at = NOW(),
+              refund_method = 'paystack',
+              refund_amount = total_amount,
+              refund_provider_id = $1,
+              refund_reference = $2,
+              refund_notes = $3,
+              refunded_at = NULL,
+              updated_at = NOW()
+        WHERE id = $4
+          AND refund_status = 'pending'
+        RETURNING *`,
+      [providerId, providerReference, notes || null, reservedOrder.id]
+    );
+
+    await completeClient.query('COMMIT');
+    completeTransactionStarted = false;
+
+    logger.info('Paystack refund requested', {
+      orderId: reservedOrder.id,
+      refundProviderId: providerId,
+      refundReference: providerReference,
+    });
+
+    return res.json({ message: 'Refund requested', order: updatedRows[0] || reservedOrder });
+  } catch (error) {
+    if (completeTransactionStarted) {
+      await completeClient.query('ROLLBACK').catch(() => {});
+    }
+    logger.error('paystack refund finalize error', { err: error.message, orderId: reservedOrder.id });
+    return res.status(500).json({ error: 'Failed to update refund request' });
+  } finally {
+    completeClient.release();
+  }
+};
+
 // Return the full status audit trail for an order
 const getOrderStatusLog = async (req, res) => {
   try {
@@ -319,4 +723,4 @@ const getReviewStatus = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus, getOrderStatusLog, getReviewStatus };
+module.exports = { createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus, cancelOrder, refundOrder, getOrderStatusLog, getReviewStatus };

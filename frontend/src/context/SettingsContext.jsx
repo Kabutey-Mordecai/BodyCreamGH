@@ -3,6 +3,7 @@ import { settingsAPI } from '../services/api';
 
 const DEFAULTS = {
   store_name: 'BodyCream GH',
+  logo_url: '',          // optional brand mark — when set, shown in nav/footer instead of text
   whatsapp_number: '',
   free_delivery_over: 200,
   delivery_fee_accra: 10,

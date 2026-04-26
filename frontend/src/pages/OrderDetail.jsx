@@ -12,6 +12,23 @@ const DELIVERY_STEPS = [
   { key: 'delivered',        label: 'Delivered' },
 ];
 
+const money = (value) => `GHS ${parseFloat(value || 0).toFixed(2)}`;
+
+function isTerminalOrder(order) {
+  return order?.status === 'cancelled' || order?.status === 'refunded' || order?.refund_status === 'success';
+}
+
+function getRefundMessage(order) {
+  if (!order) return null;
+  if (order.status === 'cancelled' && order.payment_status === 'paid' && (order.refund_status || 'not_requested') === 'not_requested') {
+    return 'This order was cancelled. A refund may be pending.';
+  }
+  if (order.refund_status === 'pending') return 'Refund pending';
+  if (order.refund_status === 'failed') return 'Refund failed - contact support';
+  if (order.status === 'refunded' || order.refund_status === 'success') return 'Refunded';
+  return null;
+}
+
 export default function OrderDetail() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -41,7 +58,7 @@ export default function OrderDetail() {
         setStatusLog(Array.isArray(logRes?.data) ? logRes.data : []);
 
         // Pre-populate which items were already reviewed (only for logged-in users)
-        if (user && orderData.status === 'delivered') {
+        if (user && orderData.status === 'delivered' && orderData.refund_status !== 'success') {
           ordersAPI.getReviewStatus(id)
             .then(({ data }) => setReviewedIds(new Set(data.reviewed)))
             .catch(() => {});
@@ -111,6 +128,12 @@ export default function OrderDetail() {
     : parseFloat(order.total_amount) - parseFloat(order.delivery_fee || 0);
 
   const deliveryStepIdx = DELIVERY_STEPS.findIndex(s => s.key === delivery?.status);
+  const terminalOrder = isTerminalOrder(order);
+  const refundMessage = getRefundMessage(order);
+  const showReviewPrompt = order.status === 'delivered' &&
+    order.refund_status !== 'success' &&
+    user &&
+    (order.items || []).length > 0;
 
   return (
     <div className="page-section">
@@ -141,8 +164,51 @@ export default function OrderDetail() {
           </span>
         </div>
 
+        {order.status === 'cancelled' && (
+          <section className="order-state-banner order-state-banner--cancelled">
+            <div>
+              <h2>Order cancelled</h2>
+              {refundMessage && <p>{refundMessage}</p>}
+              {order.cancellation_reason && <p>Reason: {order.cancellation_reason}</p>}
+              {order.cancelled_at && (
+                <p>Cancelled on {new Date(order.cancelled_at).toLocaleString('en-GB', {
+                  day: 'numeric', month: 'short', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}</p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {(order.status === 'refunded' || order.refund_status === 'success') && (
+          <section className="order-state-banner order-state-banner--refunded">
+            <div>
+              <h2>Order refunded</h2>
+              <p>{order.refund_amount ? `${money(order.refund_amount)} refunded` : 'Your refund has been completed.'}</p>
+              {order.refund_method && <p>Method: {order.refund_method}</p>}
+              {order.refund_reference && <p>Reference: {order.refund_reference}</p>}
+              {order.refunded_at && (
+                <p>Refunded on {new Date(order.refunded_at).toLocaleString('en-GB', {
+                  day: 'numeric', month: 'short', year: 'numeric',
+                  hour: '2-digit', minute: '2-digit',
+                })}</p>
+              )}
+            </div>
+          </section>
+        )}
+
+        {order.refund_status === 'failed' && order.status !== 'refunded' && (
+          <section className="order-state-banner order-state-banner--cancelled">
+            <div>
+              <h2>Refund failed</h2>
+              <p>Refund failed - contact support.</p>
+              {order.refund_reference && <p>Reference: {order.refund_reference}</p>}
+            </div>
+          </section>
+        )}
+
         {/* ── Delivery progress timeline ──────────────── */}
-        {delivery && (
+        {delivery && !terminalOrder && (
           <section className="order-section" style={{ marginBottom: '24px' }}>
             <div className="order-section-head"><h2>Shipment Progress</h2></div>
             <div className="gold-divider" style={{ margin: '0 0 24px' }} />
@@ -261,7 +327,7 @@ export default function OrderDetail() {
             </section>
 
             {/* ── Tracking details ─────────────────────── */}
-            {delivery && (
+            {delivery && !terminalOrder && (
               <section className="order-section">
                 <div className="order-section-head"><h2>Tracking</h2></div>
                 <div className="gold-divider" style={{ margin: '0 0 16px' }} />
@@ -314,7 +380,7 @@ export default function OrderDetail() {
         </div>
 
         {/* ── Review prompt — shown only on delivered orders for logged-in users ── */}
-        {order.status === 'delivered' && user && (order.items || []).length > 0 && (
+        {showReviewPrompt && (
           <section className="order-section od-review-section">
             <div className="order-section-head">
               <h2>How did we do?</h2>
@@ -439,6 +505,32 @@ export default function OrderDetail() {
           text-align: center;
         }
         .od-tl-step.done .od-tl-label { color: var(--color-primary); }
+
+        .order-state-banner {
+          border-radius: var(--radius-lg);
+          padding: 22px 26px;
+          margin-bottom: 24px;
+          border: 1px solid var(--color-border);
+        }
+        .order-state-banner h2 {
+          font-family: var(--font-display);
+          font-size: 1.35rem;
+          font-weight: 500;
+          margin-bottom: 8px;
+        }
+        .order-state-banner p {
+          margin: 4px 0;
+          color: var(--color-text);
+          line-height: 1.5;
+        }
+        .order-state-banner--cancelled {
+          background: #fff8f7;
+          border-color: #f2c7c1;
+        }
+        .order-state-banner--refunded {
+          background: #f7f8fa;
+          border-color: #d9dde5;
+        }
 
         /* ── Status log ────────────────────────────── */
         .od-status-log {

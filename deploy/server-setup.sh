@@ -17,9 +17,10 @@
 #   8. Set up the PostgreSQL database and user
 #   9. Clone the GitHub repo
 #  10. Install backend dependencies
-#  11. Prompt for the .env values and write /home/deploy/app/backend/.env
-#  12. Run all database migrations
-#  13. Start the backend with PM2 and save the process list
+#  11. Create uploads directory and set ownership/permissions
+#  12. Prompt for the .env values and write /home/deploy/app/backend/.env
+#  13. Run all database migrations
+#  14. Start the backend with PM2 and save the process list
 # =============================================================================
 
 set -e  # Exit immediately if any command fails
@@ -104,7 +105,20 @@ echo ">>> Installing backend dependencies..."
 cd "${APP_DIR}/backend"
 npm install --omit=dev  # production-only install (skip devDependencies like nodemon)
 
-# ── 11. Write production .env ─────────────────────────────────────────────────
+# ── 11. Create uploads directory and lock down permissions ───────────────────
+# git clone creates uploads/products/ via .gitkeep, but we create it explicitly
+# here so the directory exists even if .gitkeep is ever removed, and to make
+# ownership and permissions a deliberate, auditable step.
+echo ">>> Setting up uploads directory..."
+mkdir -p "${APP_DIR}/backend/uploads/products"
+chown -R deploy:deploy "${APP_DIR}/backend/uploads"
+chmod 755 "${APP_DIR}/backend/uploads"
+chmod 755 "${APP_DIR}/backend/uploads/products"
+# 644 on any files already present (e.g. .gitkeep) — readable, not executable
+find "${APP_DIR}/backend/uploads" -type f -exec chmod 644 {} \;
+echo ">>> Uploads directory ready: ${APP_DIR}/backend/uploads/products"
+
+# ── 12. Write production .env ────────────────────────────────────────────────
 # Collect each secret interactively so nothing sensitive is hard-coded in this script.
 echo ""
 echo ">>> Configure production environment variables."
@@ -154,6 +168,12 @@ SMTP_PASS=${SMTP_PASS}
 # Used in email reset links and Paystack callback redirects
 FRONTEND_URL=${FRONTEND_URL}
 
+# Public base URL of this API server.
+# Used to build absolute URLs for uploaded product images in email templates
+# and any external integrations. Relative paths (/uploads/...) are stored in
+# the database; this variable is only needed when a full URL must be assembled.
+BASE_URL=https://${DOMAIN}
+
 # ── CORS ─────────────────────────────────────────────────────────────────────
 # Comma-separated list of origins allowed to call the API
 ALLOWED_ORIGINS=${FRONTEND_URL},https://admin.yourdomain.com
@@ -170,13 +190,13 @@ chmod 600 "${APP_DIR}/backend/.env"  # owner-read-only — no other users can se
 chown deploy:deploy "${APP_DIR}/backend/.env"
 echo ">>> .env written."
 
-# ── 12. Run database migrations ───────────────────────────────────────────────
+# ── 13. Run database migrations ───────────────────────────────────────────────
 echo ">>> Running database migrations..."
 cd "${APP_DIR}/backend"
 sudo -u deploy npm run migrate
 echo ">>> Migrations complete."
 
-# ── 13. Start the API with PM2 ────────────────────────────────────────────────
+# ── 14. Start the API with PM2 ────────────────────────────────────────────────
 echo ">>> Starting backend with PM2..."
 cd "${APP_DIR}/backend"
 sudo -u deploy pm2 start ecosystem.config.js
@@ -190,8 +210,8 @@ echo ""
 echo "=== Setup complete ==="
 echo ""
 echo "Next steps:"
-echo "  1. Copy deploy/nginx.conf to /etc/nginx/sites-available/cosmetics"
-echo "     and update the server_name line to your domain."
+echo "  1. Copy deploy/nginx.host.conf to /etc/nginx/sites-available/cosmetics"
+echo "     and update every occurrence of api.yourdomain.com to your real domain."
 echo "  2. Run: certbot --nginx -d ${DOMAIN}"
 echo "  3. Build and deploy the frontend + admin to Netlify."
 echo "  4. Register the webhook URL in the Paystack dashboard:"

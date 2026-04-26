@@ -13,6 +13,13 @@ npm-debug.log*
 logs/
 *.log
 
+# Uploaded product images — runtime data, never part of the image.
+# Excluding them keeps the build context small and prevents local test uploads
+# from being baked into an image that may be pushed to a registry.
+# The .gitkeep placeholder is allowed so the directory skeleton is preserved.
+uploads/products/*
+!uploads/products/.gitkeep
+
 # Development-only tools
 .nyc_output/
 coverage/

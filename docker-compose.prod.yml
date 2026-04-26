@@ -62,6 +62,10 @@ services:
     # Backend is NOT exposed directly — only Nginx talks to it
     expose:
       - "3000"
+    volumes:
+      # Named volume keeps uploaded product images across rebuilds and restarts.
+      # Without this, every `docker-compose up -d --build` wipes /app/uploads.
+      - product_uploads:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
       interval: 30s
@@ -77,11 +81,15 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      # Mount the Nginx config from the deploy folder
-      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount the Docker-specific Nginx config (uses http://backend:3000 and
+      # /var/www/uploads alias). For PM2/VPS, use deploy/nginx.host.conf instead.
+      - ./deploy/nginx.docker.conf:/etc/nginx/conf.d/default.conf:ro
       # Mount Let's Encrypt certificates (issue them on the host first with certbot)
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
+      # Read-only access to uploaded images so Nginx can serve /uploads directly.
+      # Add a `location /uploads` block in nginx.conf to activate this (see below).
+      - product_uploads:/var/www/uploads:ro
     depends_on:
       backend:
         condition: service_healthy
@@ -91,3 +99,6 @@ volumes:
     # labelled so it's easy to find in `docker volume ls`
     labels:
       com.cosmetics.description: "PostgreSQL production data"
+  product_uploads:
+    labels:
+      com.cosmetics.description: "Product image uploads — shared between backend (rw) and Nginx (ro)"

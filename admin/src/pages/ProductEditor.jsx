@@ -241,21 +241,26 @@ export default function ProductEditor() {
             </div>
           </div>
 
-          <div className="card">
-            <div className="card-header"><h2 className="card-title">Legacy image URL</h2></div>
+          <div className="card" style={{ opacity: 0.7 }}>
+            <div className="card-header">
+              <h2 className="card-title" style={{ fontSize: '0.82rem', color: 'var(--ac-muted, #888)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Legacy fallback — not the main image system
+              </h2>
+            </div>
             <div className="card-body">
+              <div className="hint" style={{ marginBottom: 12 }}>
+                Upload product photos using the <strong>Images</strong> gallery above.
+                This URL is only used as a last-resort fallback when the gallery has no images.
+                It is hidden from customers as soon as any gallery image exists.
+              </div>
               <div className="field" style={{ marginBottom: 0 }}>
-                <label>Fallback image URL</label>
+                <label style={{ color: 'var(--ac-muted, #888)' }}>Legacy fallback image URL</label>
                 <input
                   type="url"
                   value={form.image_url}
                   onChange={e => update('image_url', e.target.value)}
                   placeholder="https://…"
                 />
-                <div className="hint">
-                  Used as a fallback when no gallery images exist.
-                  Once you upload images above, this field is no longer shown to customers.
-                </div>
               </div>
             </div>
           </div>

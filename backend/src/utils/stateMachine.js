@@ -5,8 +5,9 @@ const TRANSITIONS = {
   confirmed:  ['processing', 'cancelled'],
   processing: ['shipped',    'cancelled'],
   shipped:    ['delivered'],
-  delivered:  [],
-  cancelled:  [],
+  delivered:  ['refunded'],
+  cancelled:  ['refunded'],
+  refunded:   [],
 };
 
 function assertTransition(from, to) {

@@ -28,6 +28,10 @@ echo ">>> Pulling latest code from GitHub..."
 cd "${APP_DIR}"
 git fetch origin main
 git reset --hard origin/main  # discard any local changes (this is a server, not a workspace)
+# WARNING: never run `git clean -fd` on this server.
+# Uploaded product images in backend/uploads/products/ are untracked files.
+# git reset --hard (above) does NOT touch untracked files — uploads are safe.
+# git clean -fd WILL permanently delete every uploaded image with no recovery.
 
 # ── 2. Install/update dependencies ───────────────────────────────────────────
 # --omit=dev skips nodemon and other devDependencies on the production server

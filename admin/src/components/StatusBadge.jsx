@@ -10,9 +10,11 @@ const MAP = {
   refunded:  { cls: 'badge-neutral', label: 'Refunded' },
 
   // Payments
-  paid:     { cls: 'badge-success', label: 'Paid' },
-  unpaid:   { cls: 'badge-warning', label: 'Unpaid' },
-  failed:   { cls: 'badge-danger',  label: 'Failed' },
+  paid:          { cls: 'badge-success', label: 'Paid' },
+  unpaid:        { cls: 'badge-warning', label: 'Unpaid' },
+  not_requested: { cls: 'badge-neutral', label: 'Not requested' },
+  success:       { cls: 'badge-success', label: 'Success' },
+  failed:        { cls: 'badge-danger',  label: 'Failed' },
 
   // Stock
   in_stock:     { cls: 'badge-success', label: 'In stock' },

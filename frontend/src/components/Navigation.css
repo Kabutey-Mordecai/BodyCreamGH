@@ -25,7 +25,8 @@
 }
 
 /* Serif logo — the most important brand touchpoint */
-/* TO CUSTOMIZE: Replace text with an SVG logo inside Navigation.jsx */
+/* The text version is the fallback. When settings.logo_url is set, the
+   <img> takes over (.nav-logo--image strips the text styling). */
 .nav-logo {
   font-family: var(--font-display);
   font-size: 1.45rem;
@@ -33,6 +34,33 @@
   color: var(--color-primary);
   letter-spacing: 0.04em;
   font-style: italic;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+/* When an image logo is in use, drop the text-only typographic rules so the
+   <img> sizes itself naturally without padding from the font line-height. */
+.nav-logo--image {
+  font-size: 0;
+  letter-spacing: 0;
+  font-style: normal;
+}
+
+.nav-logo-img {
+  display: block;
+  height: 38px;            /* desktop: roughly matches the nav text logo height */
+  width: auto;
+  max-width: 180px;        /* prevents wide logos from squashing the search bar */
+  object-fit: contain;
+}
+
+@media (max-width: 768px) {
+  .nav-logo-img {
+    height: 32px;
+    max-width: 140px;
+  }
 }
 
 /* ── Desktop nav links ─────────────────────────── */

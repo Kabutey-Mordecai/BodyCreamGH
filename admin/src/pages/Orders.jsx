@@ -6,9 +6,15 @@ import DataTable from '../components/DataTable';
 import SearchInput from '../components/SearchInput';
 import StatusBadge from '../components/StatusBadge';
 
-const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled'];
+const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
 const POLL_MS = 30_000; // auto-refresh every 30 s
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
+
+function needsRefund(order) {
+  return order.status === 'cancelled' &&
+    order.payment_status === 'paid' &&
+    (order.refund_status || 'not_requested') === 'not_requested';
+}
 
 export default function Orders() {
   const navigate = useNavigate();
@@ -127,7 +133,15 @@ export default function Orders() {
             { key: 'shipping_city', label: 'Location',
               render: o => (o.shipping_city || o.shipping_region) ? `${o.shipping_city || ''}${o.shipping_region ? ', ' + o.shipping_region : ''}` : '—' },
             { key: 'total_amount', label: 'Total', className: 'cell-right', render: o => fmt(o.total_amount) },
-            { key: 'payment_status', label: 'Payment', render: o => <StatusBadge status={o.payment_status} /> },
+            { key: 'payment_status', label: 'Payment',
+              render: o => (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  <StatusBadge status={o.payment_status} />
+                  {needsRefund(o) && <span className="badge badge-warning">Refund owed</span>}
+                  {o.refund_status === 'pending' && <span className="badge badge-warning">Refund pending</span>}
+                  {o.refund_status === 'failed' && <span className="badge badge-danger">Refund failed</span>}
+                </div>
+              ) },
             { key: 'status', label: 'Status', render: o => <StatusBadge status={o.status} /> },
           ]}
         />

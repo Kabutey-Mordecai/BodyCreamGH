@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { productsAPI, reviewsAPI } from '../services/api';
 import { useCart } from '../context/CartContext';
@@ -47,6 +47,12 @@ export default function ProductPage() {
   const [adding, setAdding]     = useState(false);
   const [addedMsg, setAddedMsg] = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
+
+  const touchStartX    = useRef(null);
+  const lbTouchStartX  = useRef(null);
+
+  const [lightbox, setLightbox] = useState(false);
+  const [lbIdx,    setLbIdx]    = useState(0);
 
   const [reviews, setReviews]     = useState([]);
   const [reviewStats, setStats]   = useState(null);
@@ -124,6 +130,31 @@ export default function ProductPage() {
 
   const isOutOfStock  = product.stock_quantity === 0;
   const galleryImages = product.images?.length ? product.images : [];
+  const isMulti       = galleryImages.length > 1;
+
+  const prev = () => setSelectedIdx(i => Math.max(0, i - 1));
+  const next = () => setSelectedIdx(i => Math.min(galleryImages.length - 1, i + 1));
+
+  const handleTouchStart = e => { touchStartX.current = e.touches[0].clientX; };
+  const handleTouchEnd   = e => {
+    if (touchStartX.current === null) return;
+    const diff = touchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 40) diff > 0 ? next() : prev();
+    touchStartX.current = null;
+  };
+
+  const openLightbox = (idx) => { setLbIdx(idx); setLightbox(true); };
+  const closeLightbox = () => setLightbox(false);
+  const lbPrev = () => setLbIdx(i => Math.max(0, i - 1));
+  const lbNext = () => setLbIdx(i => Math.min(galleryImages.length - 1, i + 1));
+
+  const handleLbTouchStart = e => { lbTouchStartX.current = e.touches[0].clientX; };
+  const handleLbTouchEnd   = e => {
+    if (lbTouchStartX.current === null) return;
+    const diff = lbTouchStartX.current - e.changedTouches[0].clientX;
+    if (Math.abs(diff) > 40) diff > 0 ? lbNext() : lbPrev();
+    lbTouchStartX.current = null;
+  };
 
   return (
     <div className="page-section product-page">
@@ -138,43 +169,91 @@ export default function ProductPage() {
         </nav>
 
         <div className="product-detail">
-          {/* ── Left: image / gallery ───────────────── */}
+          {/* ── Left: image slider ──────────────────── */}
           {galleryImages.length > 0 ? (
             <div className="pdp-gallery">
-              <div className="product-detail-img">
-                <img
-                  src={resolveImageUrl(galleryImages[selectedIdx]?.url)}
-                  alt={product.name}
-                  onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
-                />
+              {/* Main slide area */}
+              <div
+                className="pdp-slider"
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onKeyDown={e => {
+                  if (!isMulti) return;
+                  if (e.key === 'ArrowLeft')  { e.preventDefault(); prev(); }
+                  if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+                }}
+                tabIndex={isMulti ? 0 : -1}
+                role={isMulti ? 'region' : undefined}
+                aria-label={isMulti ? 'Product image slider' : undefined}
+              >
+                <div
+                  className="product-detail-img pdp-img--zoomable"
+                  onClick={() => openLightbox(selectedIdx)}
+                  title="Click to enlarge"
+                >
+                  <img
+                    src={resolveImageUrl(galleryImages[selectedIdx]?.url)}
+                    alt={product.name}
+                    onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
+                  />
+                  <div className="pdp-zoom-hint" aria-hidden="true">&#128269;</div>
+                </div>
+
+                {isMulti && (
+                  <>
+                    <button
+                      type="button"
+                      className="pdp-arrow pdp-arrow--prev"
+                      onClick={prev}
+                      disabled={selectedIdx === 0}
+                      aria-label="Previous image"
+                    >
+                      &#8249;
+                    </button>
+                    <button
+                      type="button"
+                      className="pdp-arrow pdp-arrow--next"
+                      onClick={next}
+                      disabled={selectedIdx === galleryImages.length - 1}
+                      aria-label="Next image"
+                    >
+                      &#8250;
+                    </button>
+                    <div className="pdp-counter" aria-live="polite" aria-atomic="true">
+                      {selectedIdx + 1} / {galleryImages.length}
+                    </div>
+                  </>
+                )}
               </div>
-              {galleryImages.length > 1 && (
-                <div className="pdp-thumbs">
+
+              {/* Dot navigation */}
+              {isMulti && (
+                <div className="pdp-dots" role="tablist" aria-label="Select image">
                   {galleryImages.map((img, i) => (
                     <button
                       key={img.id}
                       type="button"
-                      className={`pdp-thumb${i === selectedIdx ? ' pdp-thumb--active' : ''}`}
+                      role="tab"
+                      className={`pdp-dot${i === selectedIdx ? ' pdp-dot--active' : ''}`}
                       onClick={() => setSelectedIdx(i)}
-                      aria-label={img.original_name || `View image ${i + 1}`}
-                    >
-                      <img
-                        src={resolveImageUrl(img.url)}
-                        alt=""
-                        aria-hidden="true"
-                        onError={e => { e.currentTarget.onerror = null; e.currentTarget.style.opacity = '0.25'; }}
-                      />
-                    </button>
+                      aria-label={`Image ${i + 1}${img.is_primary ? ' (primary)' : ''}`}
+                      aria-selected={i === selectedIdx}
+                    />
                   ))}
                 </div>
               )}
             </div>
           ) : (
-            <div className="product-detail-img">
+            <div
+              className="product-detail-img pdp-img--zoomable"
+              onClick={() => product.image_url && openLightbox(-1)}
+              title={product.image_url ? 'Click to enlarge' : undefined}
+            >
               <img
                 src={product.image_url || PLACEHOLDER_IMG}
                 alt={product.name}
               />
+              {product.image_url && <div className="pdp-zoom-hint" aria-hidden="true">&#128269;</div>}
             </div>
           )}
 
@@ -362,6 +441,78 @@ export default function ProductPage() {
           </div>
         )}
       </div>
+
+      {/* ── Lightbox ─────────────────────────────────────── */}
+      {lightbox && (
+        <div
+          className="pdp-lb-backdrop"
+          onClick={closeLightbox}
+          onKeyDown={e => {
+            if (e.key === 'Escape')     closeLightbox();
+            if (e.key === 'ArrowLeft')  { e.stopPropagation(); lbPrev(); }
+            if (e.key === 'ArrowRight') { e.stopPropagation(); lbNext(); }
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Image lightbox"
+          tabIndex={-1}
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
+        >
+          <div
+            className="pdp-lb-inner"
+            onClick={e => e.stopPropagation()}
+            onTouchStart={handleLbTouchStart}
+            onTouchEnd={handleLbTouchEnd}
+          >
+            <button
+              type="button"
+              className="pdp-lb-close"
+              onClick={closeLightbox}
+              aria-label="Close lightbox"
+            >
+              &#215;
+            </button>
+
+            <img
+              className="pdp-lb-img"
+              src={
+                lbIdx === -1
+                  ? (product.image_url || PLACEHOLDER_IMG)
+                  : resolveImageUrl(galleryImages[lbIdx]?.url)
+              }
+              alt={product.name}
+              onClick={closeLightbox}
+              onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
+            />
+
+            {galleryImages.length > 1 && lbIdx >= 0 && (
+              <>
+                <button
+                  type="button"
+                  className="pdp-lb-arrow pdp-lb-arrow--prev"
+                  onClick={e => { e.stopPropagation(); lbPrev(); }}
+                  disabled={lbIdx === 0}
+                  aria-label="Previous image"
+                >
+                  &#8249;
+                </button>
+                <button
+                  type="button"
+                  className="pdp-lb-arrow pdp-lb-arrow--next"
+                  onClick={e => { e.stopPropagation(); lbNext(); }}
+                  disabled={lbIdx === galleryImages.length - 1}
+                  aria-label="Next image"
+                >
+                  &#8250;
+                </button>
+                <div className="pdp-lb-counter">
+                  {lbIdx + 1} / {galleryImages.length}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

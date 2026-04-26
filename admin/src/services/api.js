@@ -112,6 +112,8 @@ export const ordersAPI = {
   getAll:       ()                  => api.get('/orders/admin/all'),
   getById:      (id)                => api.get(`/orders/${id}`),
   updateStatus: (id, status, note)  => api.patch(`/orders/${id}/status`, { status, note }),
+  cancelOrder:  (id, reason)        => api.post(`/orders/${id}/cancel`, { reason }),
+  refundOrder:  (id, data)          => api.post(`/orders/${id}/refund`, data),
   getStatusLog: (id)                => api.get(`/orders/${id}/log`),
 };
 

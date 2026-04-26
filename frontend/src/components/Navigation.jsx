@@ -7,10 +7,21 @@ import { useWishlist } from '../context/WishlistContext';
 import AnnouncementBar from './AnnouncementBar';
 import './Navigation.css';
 
+// Resolve relative /uploads/... logo URLs against the backend origin (same
+// approach used by ProductPage / ProductImageGallery).
+const _apiUrl = import.meta.env.VITE_API_URL || '';
+function resolveLogoUrl(url) {
+  if (!url || url.startsWith('http') || url.startsWith('data:')) return url;
+  if (_apiUrl.startsWith('http')) {
+    try { return `${new URL(_apiUrl).origin}${url}`; } catch { /* fall through */ }
+  }
+  return url;
+}
+
 export default function Navigation() {
-  const { user, logout }  = useAuth();
-  const { cartCount }     = useCart();
-  const { store_name }    = useSettings();
+  const { user, logout }            = useAuth();
+  const { cartCount }               = useCart();
+  const { store_name, logo_url }    = useSettings();
   const { savedIds }      = useWishlist() || { savedIds: new Set() };
   const navigate          = useNavigate();
   const [menuOpen, setMenuOpen]   = useState(false);
@@ -45,9 +56,32 @@ export default function Navigation() {
 
       <nav className={`nav ${barVisible ? 'nav--with-bar' : ''}`}>
         <div className="nav-inner container">
-          {/* Logo */}
-          <Link to="/" className="nav-logo" onClick={closeMenu}>
-            {store_name}
+          {/* Logo — image when settings.logo_url is set, else the store name */}
+          <Link
+            to="/"
+            className={`nav-logo${logo_url ? ' nav-logo--image' : ''}`}
+            onClick={closeMenu}
+            aria-label={store_name}
+          >
+            {logo_url ? (
+              <img
+                src={resolveLogoUrl(logo_url)}
+                alt={store_name}
+                className="nav-logo-img"
+                onError={e => {
+                  // If the logo fails to load, swap to the text fallback so the
+                  // brand never disappears entirely.
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.style.display = 'none';
+                  e.currentTarget.parentElement?.classList.remove('nav-logo--image');
+                  if (e.currentTarget.parentElement) {
+                    e.currentTarget.parentElement.textContent = store_name;
+                  }
+                }}
+              />
+            ) : (
+              store_name
+            )}
           </Link>
 
           {/* Search bar — desktop (hidden on mobile via CSS) */}
