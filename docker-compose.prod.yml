@@ -18,8 +18,10 @@
 #   docker-compose -f docker-compose.prod.yml logs -f backend
 #
 # SECRETS:
-#   Create a real ./backend/.env file from backend/.env.production.example
-#   before running this. Never commit the real .env to git.
+#   1. Create backend/.env from backend/.env.production.example (backend config).
+#   2. Create deploy/postgres.env from deploy/postgres.env.example (DB init creds).
+#      Keep DB_NAME / DB_USER / DB_PASSWORD in both files in sync.
+#   Neither file must ever be committed — both are listed in .gitignore.
 # =============================================================================
 
 services:
@@ -28,19 +30,21 @@ services:
   db:
     image: postgres:15-alpine
     restart: always
-    # Read DB credentials from the backend .env to keep them in one place
-    env_file: ./backend/.env
-    environment:
-      # Postgres uses its own variable names — map from our .env
-      POSTGRES_DB:       ${DB_NAME}
-      POSTGRES_USER:     ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    # deploy/postgres.env provides POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD.
+    # These variable names are what the postgres image requires for initialisation.
+    # Create this file from deploy/postgres.env.example before first run.
+    # Do NOT use backend/.env here: Compose env_file injects vars into the
+    # container only — it does NOT make them available for YAML ${} substitution,
+    # so ${DB_NAME} style references would expand to empty strings.
+    env_file: ./deploy/postgres.env
     volumes:
       # Named volume — data survives container rebuilds and restarts
       - postgres_prod_data:/var/lib/postgresql/data
     # Do NOT expose 5432 to the host in production — only the backend needs it
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      # pg_isready without flags uses the container's own postgres defaults,
+      # avoiding YAML variable-substitution that would fail without a root .env.
+      test: ["CMD-SHELL", "pg_isready"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -72,6 +76,28 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  # ── Background workers (single instance — must NOT be scaled) ────────────────
+  # Runs pg-boss, payment/shipment/notification/reconciliation workers.
+  # Uses the same image as the backend service but overrides the default CMD.
+  # The Dockerfile HEALTHCHECK pings HTTP localhost:3000 — disabled here because
+  # the worker has no HTTP server. Docker would mark it unhealthy otherwise.
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["node", "src/worker.js"]
+    restart: always
+    env_file: ./backend/.env
+    environment:
+      NODE_ENV: production
+      # Override so the worker reaches the Compose db service, same as backend
+      DB_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      disable: true
 
   # ── Nginx reverse proxy + SSL termination ────────────────────────────────────
   nginx:
