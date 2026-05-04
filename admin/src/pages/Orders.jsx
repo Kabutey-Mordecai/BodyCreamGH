@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ordersAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
@@ -7,7 +7,8 @@ import SearchInput from '../components/SearchInput';
 import StatusBadge from '../components/StatusBadge';
 
 const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
-const POLL_MS = 30_000; // auto-refresh every 30 s
+const POLL_MS = 30_000;
+const PAGE_SIZE = 20;
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
 
 function needsRefund(order) {
@@ -21,68 +22,97 @@ export default function Orders() {
   const toast = useToast();
 
   const [orders, setOrders]       = useState([]);
+  const [total, setTotal]         = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading]     = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
-  const [query, setQuery]         = useState('');
+  const [search, setSearch]       = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus]       = useState('all');
+  const [page, setPage]           = useState(1);
+  const [exporting, setExporting] = useState(false);
   const timerRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  // Debounce search input
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  // Reset page when status filter changes
+  useEffect(() => { setPage(1); }, [status]);
 
   const fetchOrders = useCallback((silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
-    return ordersAPI.getAll()
+    const params = {
+      page,
+      limit: PAGE_SIZE,
+      ...(status !== 'all' && { status }),
+      ...(debouncedSearch && { search: debouncedSearch }),
+    };
+    return ordersAPI.getAll(params)
       .then(({ data }) => {
-        setOrders(Array.isArray(data) ? data : (data.orders || []));
+        setOrders(data.orders || []);
+        setTotal(data.total || 0);
+        setTotalPages(data.totalPages || 1);
         setLastRefresh(new Date());
       })
       .catch(() => { if (!silent) toast.error('Failed to load orders'); })
       .finally(() => { setLoading(false); setRefreshing(false); });
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [page, status, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Initial load + 30-second polling
   useEffect(() => {
     fetchOrders(false);
+    clearInterval(timerRef.current);
     timerRef.current = setInterval(() => fetchOrders(true), POLL_MS);
     return () => clearInterval(timerRef.current);
   }, [fetchOrders]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return orders.filter(o => {
-      if (status !== 'all' && o.status !== status) return false;
-      if (!q) return true;
-      return [o.order_number, o.id, o.email, o.first_name, o.last_name, o.shipping_city]
-        .some(v => String(v || '').toLowerCase().includes(q));
-    });
-  }, [orders, query, status]);
-
-  // Compute quick counts for the tab labels
-  const counts = useMemo(() => {
-    const c = { all: orders.length };
-    for (const o of orders) c[o.status] = (c[o.status] || 0) + 1;
-    return c;
-  }, [orders]);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const params = {
+        ...(status !== 'all' && { status }),
+        ...(debouncedSearch && { search: debouncedSearch }),
+      };
+      const { data } = await ordersAPI.exportOrders(params);
+      const url = URL.createObjectURL(new Blob([data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `orders-${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to export orders');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div>
       <div className="page-header">
         <div>
           <h1>Orders</h1>
-          <p className="muted">{filtered.length} of {orders.length} orders</p>
+          <p className="muted">{total.toLocaleString()} order{total !== 1 ? 's' : ''}</p>
         </div>
-        <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="page-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {lastRefresh && (
             <span style={{ fontSize: '0.75rem', color: 'var(--ac-text-muted)' }}>
               Updated {lastRefresh.toLocaleTimeString('en-GH', { hour: '2-digit', minute: '2-digit' })}
             </span>
           )}
-          <button
-            className="btn btn-outline btn-sm"
-            onClick={() => fetchOrders(true)}
-            disabled={refreshing}
-            title="Refresh orders"
-          >
+          <button className="btn btn-outline btn-sm" onClick={handleExport} disabled={exporting}>
+            {exporting ? 'Exporting…' : '↓ Export CSV'}
+          </button>
+          <button className="btn btn-outline btn-sm" onClick={() => fetchOrders(true)} disabled={refreshing}>
             {refreshing ? 'Refreshing…' : '↻ Refresh'}
           </button>
         </div>
@@ -98,7 +128,6 @@ export default function Orders() {
             style={{ textTransform: 'capitalize', whiteSpace: 'nowrap' }}
           >
             {s === 'all' ? 'All' : s}
-            {counts[s] > 0 && <span style={{ opacity: 0.65, marginLeft: 4 }}>({counts[s]})</span>}
           </button>
         ))}
       </div>
@@ -106,9 +135,9 @@ export default function Orders() {
       <div className="toolbar">
         <div className="toolbar-left">
           <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Search by order #, customer email, city…"
+            value={search}
+            onChange={setSearch}
+            placeholder="Search by order #, customer email…"
           />
         </div>
       </div>
@@ -116,9 +145,9 @@ export default function Orders() {
       <div className="card">
         <DataTable
           loading={loading}
-          rows={filtered}
+          rows={orders}
           onRowClick={(row) => navigate(`/orders/${row.id}`)}
-          emptyMessage={orders.length === 0 ? 'No orders yet.' : 'No orders match your filters.'}
+          emptyMessage={total === 0 ? 'No orders yet.' : 'No orders match your filters.'}
           columns={[
             { key: 'order_number', label: 'Order #', render: o => <span className="cell-primary">#{o.order_number || o.id?.slice(0, 8)}</span> },
             { key: 'created_at', label: 'Placed',
@@ -126,12 +155,10 @@ export default function Orders() {
             { key: 'customer', label: 'Customer',
               render: o => (
                 <div>
-                  <div>{o.first_name || o.customer_name || '—'} {o.last_name || ''}</div>
-                  <div className="cell-muted text-xs">{o.email || ''}</div>
+                  <div>{o.customer_name || '—'}</div>
+                  <div className="cell-muted text-xs">{o.customer_email || ''}</div>
                 </div>
               ) },
-            { key: 'shipping_city', label: 'Location',
-              render: o => (o.shipping_city || o.shipping_region) ? `${o.shipping_city || ''}${o.shipping_region ? ', ' + o.shipping_region : ''}` : '—' },
             { key: 'total_amount', label: 'Total', className: 'cell-right', render: o => fmt(o.total_amount) },
             { key: 'payment_status', label: 'Payment',
               render: o => (
@@ -146,6 +173,15 @@ export default function Orders() {
           ]}
         />
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 16 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>← Prev</button>
+          <span style={{ fontSize: '0.85rem', color: 'var(--ac-text-muted)' }}>Page {page} of {totalPages}</span>
+          <button className="btn btn-outline btn-sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Next →</button>
+        </div>
+      )}
     </div>
   );
 }

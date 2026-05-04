@@ -15,8 +15,15 @@ import Analytics     from './pages/Analytics';
 import Storefront    from './pages/Storefront';
 import Theme         from './pages/Theme';
 import Settings      from './pages/Settings';
-import Reviews       from './pages/Reviews';
-import Coupons       from './pages/Coupons';
+import Reviews        from './pages/Reviews';
+import Coupons        from './pages/Coupons';
+import Requests         from './pages/Requests';
+import Financials       from './pages/Financials';
+import AdminAccounts    from './pages/AdminAccounts';
+import Compose          from './pages/Compose';
+import Subscribers      from './pages/Subscribers';
+import CampaignHistory  from './pages/CampaignHistory';
+import Promotions       from './pages/Promotions';
 
 export default function App() {
   return (
@@ -38,9 +45,16 @@ export default function App() {
         <Route path="/analytics"       element={<Analytics />} />
         <Route path="/storefront"      element={<Storefront />} />
         <Route path="/theme"           element={<Theme />} />
-        <Route path="/settings"        element={<Settings />} />
-        <Route path="/reviews"         element={<Reviews />} />
-        <Route path="/coupons"         element={<Coupons />} />
+        <Route path="/settings"              element={<Settings />} />
+        <Route path="/settings/admins"       element={<AdminAccounts />} />
+        <Route path="/reviews"               element={<Reviews />} />
+        <Route path="/coupons"               element={<Coupons />} />
+        <Route path="/requests"              element={<Requests />} />
+        <Route path="/financials"            element={<Financials />} />
+        <Route path="/newsletter/compose"    element={<Compose />} />
+        <Route path="/newsletter/subscribers" element={<Subscribers />} />
+        <Route path="/newsletter/history"    element={<CampaignHistory />} />
+        <Route path="/promotions"            element={<Promotions />} />
       </Route>
 
       {/* Anything else → redirect to the dashboard (ProtectedRoute handles auth check) */}

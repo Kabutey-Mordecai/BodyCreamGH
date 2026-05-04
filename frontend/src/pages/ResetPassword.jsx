@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import { authAPI } from '../services/api';
+import PasswordStrength, { getPasswordStrength } from '../components/PasswordStrength';
 
 export default function ResetPassword() {
   // The reset token comes in the URL query string: /reset-password?token=abc123
@@ -33,13 +34,13 @@ export default function ResetPassword() {
     if (form.password !== form.confirm) {
       return setError('Passwords do not match.');
     }
-    if (form.password.length < 8) {
-      return setError('Password must be at least 8 characters.');
+    if (getPasswordStrength(form.password).score < 4) {
+      return setError('Please meet all password requirements before continuing.');
     }
 
     setLoading(true);
     try {
-      await authAPI.resetPassword({ token, password: form.password });
+      await authAPI.resetPassword({ token, new_password: form.password });
       setSuccess(true);
       // Redirect to login after 3 seconds so the user sees the success message
       setTimeout(() => navigate('/login'), 3000);
@@ -107,6 +108,7 @@ export default function ResetPassword() {
               minLength={8}
               autoComplete="new-password"
             />
+            {form.password.length > 0 && <PasswordStrength password={form.password} />}
           </div>
 
           <div className="form-group">

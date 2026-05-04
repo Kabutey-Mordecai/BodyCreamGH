@@ -3,6 +3,9 @@ import { settingsAPI } from '../services/api';
 
 const DEFAULTS = {
   store_name: 'BodyCream GH',
+  low_stock_threshold: 5,
+  delivery_estimate_accra: '1–2 business days',
+  delivery_estimate_nationwide: '3–5 business days',
   logo_url: '',          // optional brand mark — when set, shown in nav/footer instead of text
   whatsapp_number: '',
   free_delivery_over: 200,

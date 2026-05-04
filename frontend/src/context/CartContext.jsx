@@ -84,24 +84,29 @@ export function CartProvider({ children }) {
   }, [user, fetchCart]);
 
   // ── Guest cart ──────────────────────────────────────────────────────────────
-  const guestAddItem = (product, quantity = 1) => {
+  const guestAddItem = (product, quantity = 1, variantId = null, variantLabel = null) => {
     setGuestCart(prev => {
-      const existing = prev.find(i => i.product_id === product.id);
+      const existing = prev.find(i =>
+        i.product_id === product.id && (i.variant_id || null) === (variantId || null)
+      );
+      const effectiveStock = product.variant_stock ?? product.stock_quantity ?? 999;
       let next;
       if (existing) {
         next = prev.map(i =>
-          i.product_id === product.id
-            ? { ...i, quantity: Math.min(product.stock_quantity || 999, i.quantity + quantity) }
+          i.product_id === product.id && (i.variant_id || null) === (variantId || null)
+            ? { ...i, quantity: Math.min(effectiveStock, i.quantity + quantity) }
             : i
         );
       } else {
         next = [...prev, {
-          id:             product.id,
+          id:             `${product.id}-${variantId || 'base'}`,
           product_id:     product.id,
+          variant_id:     variantId || null,
+          variant_label:  variantLabel || null,
           name:           product.name,
-          price:          product.price,
+          price:          product.variant_price ?? product.price,
           image_url:      product.image_url,
-          stock_quantity: product.stock_quantity,
+          stock_quantity: effectiveStock,
           quantity,
         }];
       }
@@ -130,14 +135,15 @@ export function CartProvider({ children }) {
 
   // ── Unified API ─────────────────────────────────────────────────────────────
   // productSnapshot = { id, name, price, image_url, stock_quantity }
-  // Required for guests so the local cart has display data; ignored for auth'd users.
-  const addItem = async (productId, quantity = 1, productSnapshot = null) => {
+  // For variant items pass variantId and variantLabel; also set variant_price /
+  // variant_stock on the snapshot so the guest cart shows the right values.
+  const addItem = async (productId, quantity = 1, productSnapshot = null, variantId = null, variantLabel = null) => {
     if (!user) {
       if (!productSnapshot) return;
-      guestAddItem(productSnapshot, quantity);
+      guestAddItem(productSnapshot, quantity, variantId, variantLabel);
       return;
     }
-    const { data } = await cartAPI.addItem(productId, quantity);
+    const { data } = await cartAPI.addItem(productId, quantity, variantId);
     setServerCart(data.cart);
   };
 

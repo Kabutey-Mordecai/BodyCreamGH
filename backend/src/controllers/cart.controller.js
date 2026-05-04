@@ -4,12 +4,17 @@ const logger       = require('../utils/logger');
 
 const MAX_VALIDATE_ITEMS = 50;
 
-// Returns caller's current cart — used by all mutating endpoints after commit
+// Returns caller's current cart. Uses variant price/stock when variant_id is present.
 async function fetchUserCart(userId) {
   const { rows } = await pool.query(
-    `SELECT ci.id, ci.quantity, p.id AS product_id, p.name, p.price, p.image_url, p.stock_quantity
+    `SELECT ci.id, ci.quantity, ci.variant_id, ci.variant_label,
+            p.id AS product_id, p.name,
+            COALESCE(pv.image_url, p.image_url) AS image_url,
+            COALESCE(pv.price,          p.price)          AS price,
+            COALESCE(pv.stock_quantity, p.stock_quantity)  AS stock_quantity
        FROM cart_items ci
        JOIN products p ON ci.product_id = p.id
+       LEFT JOIN product_variants pv ON ci.variant_id = pv.id
       WHERE ci.customer_id = $1
       ORDER BY ci.added_at`,
     [userId]
@@ -19,15 +24,7 @@ async function fetchUserCart(userId) {
 
 const getCart = async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT ci.id, ci.quantity, p.id AS product_id, p.name, p.price, p.image_url, p.stock_quantity
-         FROM cart_items ci
-         JOIN products p ON ci.product_id = p.id
-        WHERE ci.customer_id = $1
-        ORDER BY ci.added_at`,
-      [req.user.id]
-    );
-    res.json(rows);
+    res.json(await fetchUserCart(req.user.id));
   } catch (error) {
     logger.error('Error fetching cart', { err: error.message });
     res.status(500).json({ error: 'Failed to fetch cart' });
@@ -37,12 +34,12 @@ const getCart = async (req, res) => {
 const addItem = async (req, res) => {
   const client = await pool.connect();
   try {
-    const { product_id, quantity = 1 } = req.body;
+    const { product_id, quantity = 1, variant_id } = req.body;
     if (!product_id) return res.status(400).json({ error: 'product_id is required' });
 
     await client.query('BEGIN');
 
-    // Lock the product row — serialises concurrent addItem calls for the same product
+    // Lock the product row
     const { rows: productRows } = await client.query(
       'SELECT id, stock_quantity FROM products WHERE id = $1 FOR UPDATE',
       [product_id]
@@ -52,29 +49,75 @@ const addItem = async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    // Read existing cart quantity inside the same transaction
+    let stockToCheck;
+    let variantLabel = null;
+
+    if (variant_id) {
+      // Lock and validate the specific variant
+      const { rows: vRows } = await client.query(
+        'SELECT id, stock_quantity, is_active FROM product_variants WHERE id = $1 AND product_id = $2 FOR UPDATE',
+        [variant_id, product_id]
+      );
+      if (!vRows.length) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Variant not found' });
+      }
+      if (!vRows[0].is_active) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Variant is not available' });
+      }
+      stockToCheck = vRows[0].stock_quantity;
+
+      // Build the label ("100ml / Lavender") for cart display
+      const { rows: lRows } = await client.query(
+        `SELECT string_agg(ov.value, ' / ' ORDER BY ot.position) AS label
+           FROM product_variant_option_values pvov
+           JOIN product_option_values ov ON pvov.option_value_id = ov.id
+           JOIN product_option_types  ot ON ov.option_type_id = ot.id
+          WHERE pvov.variant_id = $1`,
+        [variant_id]
+      );
+      variantLabel = lRows[0]?.label || null;
+    } else {
+      // If the product has active variants, a variant_id is required
+      const { rows: hvRows } = await client.query(
+        'SELECT 1 FROM product_variants WHERE product_id = $1 AND is_active = TRUE LIMIT 1',
+        [product_id]
+      );
+      if (hvRows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Please select a variant' });
+      }
+      stockToCheck = productRows[0].stock_quantity;
+    }
+
+    // Check existing cart quantity for this exact product + variant combination
     const { rows: existing } = await client.query(
-      'SELECT id, quantity FROM cart_items WHERE customer_id = $1 AND product_id = $2',
-      [req.user.id, product_id]
+      `SELECT id, quantity FROM cart_items
+        WHERE customer_id = $1
+          AND product_id  = $2
+          AND (variant_id = $3 OR (variant_id IS NULL AND $3::uuid IS NULL))`,
+      [req.user.id, product_id, variant_id || null]
     );
 
     const currentQty  = existing.length ? existing[0].quantity : 0;
     const newTotalQty = currentQty + quantity;
 
-    if (newTotalQty > productRows[0].stock_quantity) {
+    if (newTotalQty > stockToCheck) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Insufficient stock' });
     }
 
     if (existing.length) {
       await client.query(
-        'UPDATE cart_items SET quantity = $1 WHERE customer_id = $2 AND product_id = $3',
-        [newTotalQty, req.user.id, product_id]
+        'UPDATE cart_items SET quantity = $1 WHERE id = $2',
+        [newTotalQty, existing[0].id]
       );
     } else {
       await client.query(
-        'INSERT INTO cart_items (id, customer_id, product_id, quantity) VALUES ($1,$2,$3,$4)',
-        [uuid(), req.user.id, product_id, quantity]
+        `INSERT INTO cart_items (id, customer_id, product_id, quantity, variant_id, variant_label)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [uuid(), req.user.id, product_id, quantity, variant_id || null, variantLabel]
       );
     }
 
@@ -97,13 +140,15 @@ const updateItem = async (req, res) => {
 
     await client.query('BEGIN');
 
-    // Single query: verify ownership, fetch live stock, lock both rows explicitly
+    // Use variant stock when present, fall back to product stock
     const { rows } = await client.query(
-      `SELECT ci.id, p.stock_quantity
+      `SELECT ci.id,
+              COALESCE(pv.stock_quantity, p.stock_quantity) AS stock_quantity
          FROM cart_items ci
          JOIN products p ON ci.product_id = p.id
+         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
         WHERE ci.id = $1 AND ci.customer_id = $2
-        FOR UPDATE OF ci, p`,
+        FOR UPDATE OF ci`,
       [req.params.cartItemId, req.user.id]
     );
 
@@ -160,7 +205,6 @@ const validateGuestCart = async (req, res) => {
   try {
     const { items } = req.body;
 
-    // ── Shape validation ───────────────────────────────────────────────────
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'items must be a non-empty array' });
     }
@@ -178,67 +222,66 @@ const validateGuestCart = async (req, res) => {
       }
     }
 
-    // ── Normalise: merge duplicate product_ids by summing quantities ───────
+    // Normalise: merge duplicate product_id + variant_id combinations
     const merged = Object.values(
       items.reduce((acc, item) => {
-        const id = item.product_id;
-        if (acc[id]) {
-          acc[id] = { product_id: id, quantity: acc[id].quantity + Number(item.quantity) };
+        const key = `${item.product_id}:${item.variant_id || ''}`;
+        if (acc[key]) {
+          acc[key] = { ...acc[key], quantity: acc[key].quantity + Number(item.quantity) };
         } else {
-          acc[id] = { product_id: id, quantity: Number(item.quantity) };
+          acc[key] = { product_id: item.product_id, variant_id: item.variant_id || null, quantity: Number(item.quantity) };
         }
         return acc;
       }, {})
     );
 
-    // ── Direct DB read — intentionally bypasses NodeCache ──────────────────
-    const productIds = merged.map(i => i.product_id);
+    const productIds = [...new Set(merged.map(i => i.product_id))];
     const { rows: products } = await pool.query(
-      `SELECT id, name, price, stock_quantity
-         FROM products
-        WHERE id = ANY($1)`,
+      `SELECT id, name, price, stock_quantity FROM products WHERE id = ANY($1)`,
       [productIds]
     );
     const productMap = Object.fromEntries(products.map(p => [p.id, p]));
 
-    // ── Build per-item result ──────────────────────────────────────────────
+    // Fetch variant stock for items with variant_id
+    const variantIds = merged.map(i => i.variant_id).filter(Boolean);
+    let variantMap = {};
+    if (variantIds.length > 0) {
+      const { rows: variants } = await pool.query(
+        `SELECT id, price, stock_quantity FROM product_variants WHERE id = ANY($1)`,
+        [variantIds]
+      );
+      variantMap = Object.fromEntries(variants.map(v => [v.id, v]));
+    }
+
     let valid = true;
     const result = merged.map(item => {
       const p = productMap[item.product_id];
-
       if (!p) {
         valid = false;
-        return {
-          product_id: item.product_id,
-          name:       null,
-          quantity:   item.quantity,
-          available:  false,
-          error:      'Product no longer available',
-        };
+        return { product_id: item.product_id, quantity: item.quantity, available: false, error: 'Product no longer available' };
       }
 
-      if (item.quantity > p.stock_quantity) {
+      const effectiveStock = item.variant_id && variantMap[item.variant_id]
+        ? variantMap[item.variant_id].stock_quantity
+        : p.stock_quantity;
+      const effectivePrice = item.variant_id && variantMap[item.variant_id]
+        ? variantMap[item.variant_id].price
+        : p.price;
+
+      if (item.quantity > effectiveStock) {
         valid = false;
         return {
-          product_id:         item.product_id,
-          name:               p.name,
-          quantity:           item.quantity,
-          quantity_available: p.stock_quantity,
-          price:              p.price,
-          available:          false,
-          error: p.stock_quantity === 0
-            ? 'Out of stock'
-            : `Only ${p.stock_quantity} in stock`,
+          product_id: item.product_id, variant_id: item.variant_id,
+          name: p.name, quantity: item.quantity, quantity_available: effectiveStock,
+          price: effectivePrice, available: false,
+          error: effectiveStock === 0 ? 'Out of stock' : `Only ${effectiveStock} in stock`,
         };
       }
 
       return {
-        product_id: item.product_id,
-        name:       p.name,
-        quantity:   item.quantity,
-        price:      p.price,
-        subtotal:   (parseFloat(p.price) * item.quantity).toFixed(2),
-        available:  true,
+        product_id: item.product_id, variant_id: item.variant_id,
+        name: p.name, quantity: item.quantity, price: effectivePrice,
+        subtotal: (parseFloat(effectivePrice) * item.quantity).toFixed(2), available: true,
       };
     });
 

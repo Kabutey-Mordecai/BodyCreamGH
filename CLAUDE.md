@@ -21,7 +21,6 @@ The platform to be built has four distinct applications that share a single Post
 backend/     → Node.js + Express REST API (source of truth)
 frontend/    → React web storefront
 admin/       → React admin dashboard
-mobile/      → Flutter iOS/Android app
 migrations/  → PostgreSQL DDL scripts
 ```
 
@@ -34,7 +33,6 @@ migrations/  → PostgreSQL DDL scripts
 - **Backend:** Node.js + Express, PostgreSQL (`pg` library, raw SQL — no ORM), JWT auth, bcryptjs
 - **Payments:** Paystack (Ghana-specific; ~1.5% transaction fee vs Shopify's 2.5%)
 - **Frontend/Admin:** React with Context API for state, axios for API calls
-- **Mobile:** Flutter (Dart)
 - **Hosting:** DigitalOcean Droplet ($5-20/month) for backend + Netlify (free) for frontend
 - **Process manager:** PM2 for Node.js in production; Nginx as reverse proxy with SSL
 

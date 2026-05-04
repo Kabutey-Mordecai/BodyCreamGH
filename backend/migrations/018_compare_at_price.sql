@@ -1,0 +1,6 @@
+BEGIN;
+
+ALTER TABLE products
+  ADD COLUMN IF NOT EXISTS compare_at_price DECIMAL(12,2) DEFAULT NULL;
+
+COMMIT;

@@ -1,7 +1,14 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
 
 import Home            from './pages/Home';
 import Shop            from './pages/Shop';
@@ -17,10 +24,13 @@ import Account         from './pages/Account';
 import Orders          from './pages/Orders';
 import OrderDetail     from './pages/OrderDetail';
 import Wishlist        from './pages/Wishlist';
+import Unsubscribe     from './pages/Unsubscribe';
+import TrackOrder      from './pages/TrackOrder';
 
 export default function App() {
   return (
     <div className="app">
+      <ScrollToTop />
       <Navigation />
 
       <main className="main-content">
@@ -33,6 +43,8 @@ export default function App() {
           <Route path="/register"            element={<Register />} />
           <Route path="/forgot-password"     element={<ForgotPassword />} />
           <Route path="/reset-password"      element={<ResetPassword />} />
+          <Route path="/unsubscribe"         element={<Unsubscribe />} />
+          <Route path="/track"               element={<TrackOrder />} />
 
           {/* Payment callback — visited after Paystack redirects back */}
           <Route path="/payment/callback"    element={<PaymentCallback />} />

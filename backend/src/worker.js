@@ -69,6 +69,9 @@ async function start() {
   await require('./workers/reconciliation.worker')(boss);
   logger.info('Payment reconciliation worker registered');
 
+  await require('./workers/newsletter.worker')(boss);
+  logger.info('Newsletter worker registered');
+
   await require('./workers/refund.reconciliation.worker')(boss);
   logger.info('Refund reconciliation worker registered');
 

@@ -1,9 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { productsAPI, reviewsAPI } from '../services/api';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
+import { useWishlist } from '../context/WishlistContext';
+import { useSettings } from '../context/SettingsContext';
 import StarRating from '../components/StarRating';
+import ProductCard from '../components/ProductCard';
 import './ProductPage.css';
 
 // TO CUSTOMIZE: Placeholder shown when the product has no image
@@ -24,6 +28,29 @@ const HIGHLIGHTS = [
   'Cruelty-free & dermatologist tested',
 ];
 
+const RECENTLY_VIEWED_KEY = 'bodycream_recently_viewed';
+const RECENTLY_VIEWED_MAX = 8;
+
+function saveToRecentlyViewed(product) {
+  try {
+    const snapshot = {
+      id: product.id, name: product.name, price: product.price,
+      image_url: product.image_url, category: product.category,
+      stock_quantity: product.stock_quantity, avg_rating: product.avg_rating,
+      review_count: product.review_count, created_at: product.created_at,
+    };
+    const existing = JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]');
+    const updated = [snapshot, ...existing.filter(p => p.id !== product.id)].slice(0, RECENTLY_VIEWED_MAX);
+    localStorage.setItem(RECENTLY_VIEWED_KEY, JSON.stringify(updated));
+  } catch { /* storage unavailable */ }
+}
+
+function loadRecentlyViewed(excludeId) {
+  try {
+    return JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]').filter(p => p.id !== excludeId);
+  } catch { return []; }
+}
+
 // Resolve /uploads/... relative paths to the backend origin using VITE_API_URL.
 // Legacy absolute URLs are returned unchanged.
 const _apiUrl = import.meta.env.VITE_API_URL || '';
@@ -39,13 +66,17 @@ export default function ProductPage() {
   const { id }          = useParams();
   const { addItem }     = useCart();
   const { user }        = useAuth();
+  const { showToast }   = useToast();
+  const navigate        = useNavigate();
+  const { savedIds, toggle } = useWishlist();
+  const settings        = useSettings();
 
   const [product, setProduct]   = useState(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
+  const [retryCount, setRetryCount] = useState(0);
   const [qty, setQty]           = useState(1);
   const [adding, setAdding]     = useState(false);
-  const [addedMsg, setAddedMsg] = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
 
   const touchStartX    = useRef(null);
@@ -54,60 +85,195 @@ export default function ProductPage() {
   const [lightbox, setLightbox] = useState(false);
   const [lbIdx,    setLbIdx]    = useState(0);
 
-  const [reviews, setReviews]     = useState([]);
-  const [reviewStats, setStats]   = useState(null);
+  const [related, setRelated]         = useState([]);
+  const [recentlyViewed, setRecentlyViewed] = useState([]);
+
+  const [reviews, setReviews]       = useState([]);
+  const [reviewMeta, setReviewMeta] = useState({ total: 0, totalPages: 1, summary: null });
   const [reviewForm, setReviewForm] = useState({ rating: 0, title: '', body: '' });
-  const [submitMsg, setSubmitMsg] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [reviewSort, setReviewSort] = useState('recent');
+  const [reviewPage, setReviewPage] = useState(1);
+  const [canReviewData, setCanReviewData] = useState(null); // { can_review, already_reviewed }
+  const [expandedReviews, setExpandedReviews] = useState({});
+  const [helpfulSent, setHelpfulSent]         = useState({});
+  const [countdown, setCountdown] = useState('');
+
+  // Variant data: option_types + variants fetched separately
+  const [variantData, setVariantData] = useState(null);
+  // Selected option value ID per option type: { [optionTypeId]: optionValueId }
+  const [selectedOptions, setSelectedOptions] = useState({});
 
   useEffect(() => {
     setLoading(true);
+    setError('');
     productsAPI.getById(id)
       .then(({ data }) => {
         setProduct(data);
-        // Default to the primary image; fall back to index 0
         const imgs = data.images ?? [];
         const primaryIdx = imgs.findIndex(img => img.is_primary);
         setSelectedIdx(primaryIdx >= 0 ? primaryIdx : 0);
+        saveToRecentlyViewed(data);
+        setRecentlyViewed(loadRecentlyViewed(data.id));
       })
-      .catch(() => setError('Product not found.'))
+      .catch(() => setError('Could not load product. Please try again.'))
       .finally(() => setLoading(false));
+  }, [id, retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setRelated([]);
+    productsAPI.getRelated(id)
+      .then(({ data }) => setRelated(data))
+      .catch(() => {});
   }, [id]);
 
-  const loadReviews = () =>
-    reviewsAPI.getByProduct(id)
-      .then(({ data }) => { setReviews(data.reviews || []); setStats(data.stats); })
+  // Fetch variants when product has_variants
+  useEffect(() => {
+    setVariantData(null);
+    setSelectedOptions({});
+    if (!product?.has_variants) return;
+    productsAPI.getVariants(id)
+      .then(({ data }) => {
+        setVariantData(data);
+        // Pre-select first available value for each option type
+        const init = {};
+        data.option_types.forEach(t => {
+          const firstAvailable = (t.values || []).find(v =>
+            data.variants.some(vr =>
+              vr.is_active &&
+              vr.option_values.some(ov => ov.option_value_id === v.id)
+            )
+          );
+          if (firstAvailable) init[t.id] = firstAvailable.id;
+        });
+        setSelectedOptions(init);
+      })
+      .catch(() => {});
+  }, [id, product?.has_variants]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const loadReviews = (page = 1, sort = 'recent') =>
+    reviewsAPI.getByProduct(id, { page, limit: 10, sort })
+      .then(({ data }) => {
+        setReviews(prev => page === 1 ? (data.reviews || []) : [...prev, ...(data.reviews || [])]);
+        setReviewMeta({ total: data.total, totalPages: data.totalPages, summary: data.summary });
+      })
       .catch(() => {});
 
-  useEffect(() => { loadReviews(); }, [id]);
+  useEffect(() => {
+    setReviews([]);
+    setReviewPage(1);
+    setReviewMeta({ total: 0, totalPages: 1, summary: null });
+    loadReviews(1, reviewSort);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!user) { setCanReviewData(null); return; }
+    reviewsAPI.canReview(id)
+      .then(({ data }) => setCanReviewData(data))
+      .catch(() => {});
+  }, [id, user]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Live countdown for promotions expiring within 24 hours
+  useEffect(() => {
+    const endsAt = product?.active_promotion?.ends_at;
+    if (!endsAt) { setCountdown(''); return; }
+    const msLeft = new Date(endsAt) - Date.now();
+    if (msLeft <= 0 || msLeft >= 24 * 60 * 60 * 1000) { setCountdown(''); return; }
+
+    const tick = () => {
+      const ms = new Date(endsAt) - Date.now();
+      if (ms <= 0) { setCountdown(''); return; }
+      const h = Math.floor(ms / 3_600_000);
+      const m = Math.floor((ms % 3_600_000) / 60_000);
+      const s = Math.floor((ms % 60_000) / 1_000);
+      setCountdown(`Ends in ${h}h ${m}m ${s}s`);
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [product]);
 
   const submitReview = async (e) => {
     e.preventDefault();
-    if (!reviewForm.rating) return setSubmitMsg('Please select a star rating.');
+    if (!reviewForm.rating) return showToast('Please select a star rating.', 'error');
     setSubmitting(true);
-    setSubmitMsg('');
     try {
       await reviewsAPI.create(id, reviewForm);
-      setSubmitMsg('Review submitted — thank you!');
+      showToast('Review submitted and awaiting approval.', 'success');
       setReviewForm({ rating: 0, title: '', body: '' });
-      loadReviews();
+      setCanReviewData({ can_review: false, already_reviewed: true });
     } catch (err) {
-      setSubmitMsg(err.response?.data?.error || 'Failed to submit review.');
+      showToast(err.response?.data?.error || 'Failed to submit review.', 'error');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleAddToCart = async () => {
-    setAdding(true);
-    setAddedMsg('');
+  const handleHelpful = async (reviewId) => {
+    if (helpfulSent[reviewId]) return;
+    setHelpfulSent(prev => ({ ...prev, [reviewId]: true }));
     try {
-      await addItem(product.id, qty, product);
-      // Brief feedback message instead of a toast library to keep dependencies light
-      setAddedMsg('Added to cart!');
-      setTimeout(() => setAddedMsg(''), 3000);
+      await reviewsAPI.markHelpful(id, reviewId);
+      setReviews(prev => prev.map(r =>
+        r.id === reviewId ? { ...r, helpful_count: (r.helpful_count || 0) + 1 } : r
+      ));
+    } catch {
+      setHelpfulSent(prev => ({ ...prev, [reviewId]: false }));
+    }
+  };
+
+  const handleSortChange = (newSort) => {
+    setReviewSort(newSort);
+    setReviewPage(1);
+    setReviews([]);
+    loadReviews(1, newSort);
+  };
+
+  const handleLoadMore = () => {
+    const nextPage = reviewPage + 1;
+    setReviewPage(nextPage);
+    loadReviews(nextPage, reviewSort);
+  };
+
+  const handleWishlist = async () => {
+    if (!user) { navigate('/login'); return; }
+    const nowSaved = await toggle(product.id);
+    showToast(nowSaved ? 'Added to wishlist!' : 'Removed from wishlist', 'info');
+  };
+
+  // Resolve which variant matches the current option selections
+  const selectedVariant = useMemo(() => {
+    if (!variantData || !product?.has_variants) return null;
+    const typeIds = (variantData.option_types || []).map(t => t.id);
+    if (typeIds.length === 0) return null;
+    const allSelected = typeIds.every(tid => selectedOptions[tid]);
+    if (!allSelected) return null;
+    return variantData.variants.find(v =>
+      v.option_values.length === typeIds.length &&
+      v.option_values.every(ov => selectedOptions[ov.option_type_id] === ov.option_value_id)
+    ) || null;
+  }, [variantData, selectedOptions, product?.has_variants]);
+
+  const handleAddToCart = async () => {
+    if (product.has_variants && !selectedVariant) {
+      showToast('Please select all options before adding to cart.', 'error');
+      return;
+    }
+    setAdding(true);
+    try {
+      const variantId    = selectedVariant?.id || null;
+      const variantLabel = selectedVariant
+        ? selectedVariant.option_values.map(ov => ov.value).join(' / ')
+        : null;
+      const snapshot = {
+        ...product,
+        variant_price: selectedVariant ? parseFloat(selectedVariant.price) : undefined,
+        variant_stock: selectedVariant ? selectedVariant.stock_quantity : undefined,
+      };
+      await addItem(product.id, qty, snapshot, variantId, variantLabel);
+      showToast('Added to cart!', 'success');
     } catch (err) {
-      setAddedMsg(err.response?.data?.error || 'Failed to add item.');
+      showToast(err.response?.data?.error || 'Failed to add item.', 'error');
     } finally {
       setAdding(false);
     }
@@ -118,17 +284,66 @@ export default function ProductPage() {
   if (error || !product) {
     return (
       <div className="page-section">
-        <div className="container" style={{ textAlign: 'center' }}>
-          <p>{error || 'Product not found.'}</p>
-          <Link to="/shop" className="btn btn-outline" style={{ marginTop: '16px' }}>
-            Back to Shop
-          </Link>
+        <div className="container" style={{ textAlign: 'center', padding: '60px 0' }}>
+          <p style={{ marginBottom: '20px', color: 'var(--color-muted)' }}>
+            {error || 'Product not found.'}
+          </p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            {error && (
+              <button
+                className="btn btn-accent"
+                onClick={() => setRetryCount(c => c + 1)}
+              >
+                Try Again
+              </button>
+            )}
+            <Link to="/shop" className="btn btn-outline">
+              Back to Shop
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  const isOutOfStock  = product.stock_quantity === 0;
+  const threshold = Number(settings.low_stock_threshold) || 5;
+  const isSaved   = savedIds.has(product.id);
+
+  // When a variant is selected, use its price and stock; otherwise use product base values
+  const effectivePrice = selectedVariant
+    ? parseFloat(selectedVariant.price)
+    : parseFloat(product.price);
+  const effectiveStock = selectedVariant
+    ? selectedVariant.stock_quantity
+    : product.stock_quantity;
+  const effectiveCompareAt = selectedVariant?.compare_at_price
+    ? parseFloat(selectedVariant.compare_at_price)
+    : (product.compare_at_price ? parseFloat(product.compare_at_price) : null);
+
+  const isOutOfStock = effectiveStock === 0;
+  const isLowStock   = !isOutOfStock && effectiveStock < threshold;
+
+  // Sale / promotion resolution — promotion takes precedence over compare_at_price.
+  // When a variant is selected, use the variant's compare_at_price instead.
+  const promo = !selectedVariant ? product.active_promotion : null;
+  const isSaleByPromo   = promo && parseFloat(promo.discounted_price) < parseFloat(product.price);
+  const isSaleByCompare = !isSaleByPromo
+    && effectiveCompareAt
+    && effectiveCompareAt > effectivePrice;
+  const isOnSale = isSaleByPromo || isSaleByCompare;
+
+  let pdpEffectivePrice, pdpOriginalPrice, pdpDiscountPct, pdpSaleBadge;
+  if (isSaleByPromo) {
+    pdpEffectivePrice = parseFloat(promo.discounted_price);
+    pdpOriginalPrice  = parseFloat(product.price);
+    pdpDiscountPct    = Math.round((1 - pdpEffectivePrice / pdpOriginalPrice) * 100);
+    pdpSaleBadge      = promo.name;
+  } else if (isSaleByCompare) {
+    pdpEffectivePrice = effectivePrice;
+    pdpOriginalPrice  = effectiveCompareAt;
+    pdpDiscountPct    = Math.round((1 - pdpEffectivePrice / pdpOriginalPrice) * 100);
+    pdpSaleBadge      = 'SALE';
+  }
   const galleryImages = product.images?.length ? product.images : [];
   const isMulti       = galleryImages.length > 1;
 
@@ -226,19 +441,25 @@ export default function ProductPage() {
                 )}
               </div>
 
-              {/* Dot navigation */}
+              {/* Thumbnail strip */}
               {isMulti && (
-                <div className="pdp-dots" role="tablist" aria-label="Select image">
+                <div className="pdp-thumbs" role="tablist" aria-label="Select image">
                   {galleryImages.map((img, i) => (
                     <button
-                      key={img.id}
+                      key={img.id ?? i}
                       type="button"
                       role="tab"
-                      className={`pdp-dot${i === selectedIdx ? ' pdp-dot--active' : ''}`}
+                      className={`pdp-thumb${i === selectedIdx ? ' pdp-thumb--active' : ''}`}
                       onClick={() => setSelectedIdx(i)}
                       aria-label={`Image ${i + 1}${img.is_primary ? ' (primary)' : ''}`}
                       aria-selected={i === selectedIdx}
-                    />
+                    >
+                      <img
+                        src={resolveImageUrl(img.url)}
+                        alt=""
+                        onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
+                      />
+                    </button>
                   ))}
                 </div>
               )}
@@ -275,16 +496,86 @@ export default function ProductPage() {
               </span>
             </div>
 
-            <p className="product-detail-price">
-              GHS {parseFloat(product.price).toFixed(2)}
-            </p>
+            {isOnSale ? (
+              <div className="pdp-price-sale">
+                <span className="pdp-price-badge">{pdpSaleBadge}</span>
+                <div className="pdp-price-row">
+                  <span className="pdp-price-current">GHS {pdpEffectivePrice.toFixed(2)}</span>
+                  <span className="pdp-price-was">GHS {pdpOriginalPrice.toFixed(2)}</span>
+                  <span className="pdp-price-off">{pdpDiscountPct}% off</span>
+                </div>
+                {countdown && !selectedVariant && (
+                  <div className="pdp-countdown">{countdown}</div>
+                )}
+              </div>
+            ) : (
+              <p className="product-detail-price">
+                {product.has_variants && !selectedVariant
+                  ? `From GHS ${parseFloat(product.min_price || product.price).toFixed(2)}`
+                  : `GHS ${effectivePrice.toFixed(2)}`}
+              </p>
+            )}
+
+            {/* ── Variant selector ──────────────────────────── */}
+            {variantData && (variantData.option_types || []).length > 0 && (
+              <div className="pdp-variant-selector">
+                {variantData.option_types.map(optType => (
+                  <div key={optType.id} className="pdp-variant-group">
+                    <div className="pdp-variant-label">
+                      {optType.name}
+                      {selectedOptions[optType.id] && (
+                        <span className="pdp-variant-selected-val">
+                          {' — '}{(optType.values || []).find(v => v.id === selectedOptions[optType.id])?.value}
+                        </span>
+                      )}
+                    </div>
+                    <div className="pdp-variant-options">
+                      {(optType.values || []).map(val => {
+                        const isSelected = selectedOptions[optType.id] === val.id;
+                        const hasStock   = variantData.variants.some(v =>
+                          v.is_active &&
+                          v.option_values.some(ov => ov.option_value_id === val.id)
+                        );
+                        return (
+                          <button
+                            key={val.id}
+                            type="button"
+                            className={`pdp-variant-btn${isSelected ? ' pdp-variant-btn--selected' : ''}${!hasStock ? ' pdp-variant-btn--oos' : ''}`}
+                            onClick={() => setSelectedOptions(prev => ({ ...prev, [optType.id]: val.id }))}
+                          >
+                            {val.value}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {product.has_variants && !selectedVariant && (
+                  <p className="pdp-variant-prompt">Select all options to add to cart.</p>
+                )}
+              </div>
+            )}
 
             {isOutOfStock ? (
               <span className="badge badge-cancelled">Out of Stock</span>
+            ) : isLowStock ? (
+              <span className="stock-hint stock-hint--low">
+                <span className="stock-dot stock-dot--low" /> Low stock — only {effectiveStock} left!
+              </span>
             ) : (
               <span className="stock-hint">
-                <span className="stock-dot" /> In stock — {product.stock_quantity} available
+                <span className="stock-dot" /> In stock — {effectiveStock} available
               </span>
+            )}
+            {!isOutOfStock && (
+              <p className="pdp-delivery-est">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 5 }}>
+                  <rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                </svg>
+                {settings.delivery_estimate_accra
+                  ? `Accra: ${settings.delivery_estimate_accra} · Nationwide: ${settings.delivery_estimate_nationwide}`
+                  : 'Estimated delivery: 2–5 business days'}
+              </p>
             )}
 
             {product.description && (
@@ -298,8 +589,8 @@ export default function ProductPage() {
               ))}
             </ul>
 
-            {/* Quantity selector — capped at available stock */}
-            {!isOutOfStock && (
+            {/* Quantity selector — only shown when variant is resolved (or product has no variants) */}
+            {!isOutOfStock && (!product.has_variants || selectedVariant) && (
               <div className="qty-selector">
                 <label htmlFor="qty">Quantity</label>
                 <div className="qty-control">
@@ -312,36 +603,46 @@ export default function ProductPage() {
                     id="qty"
                     type="number"
                     min={1}
-                    max={product.stock_quantity}
+                    max={effectiveStock}
                     value={qty}
                     onChange={e =>
                       setQty(Math.min(
-                        product.stock_quantity,
+                        effectiveStock,
                         Math.max(1, parseInt(e.target.value) || 1)
                       ))
                     }
                   />
                   <button
-                    onClick={() => setQty(q => Math.min(product.stock_quantity, q + 1))}
-                    disabled={qty >= product.stock_quantity}
+                    onClick={() => setQty(q => Math.min(effectiveStock, q + 1))}
+                    disabled={qty >= effectiveStock}
                     aria-label="Increase quantity"
                   >+</button>
                 </div>
               </div>
             )}
 
-            {addedMsg && (
-              <div className={`alert ${addedMsg === 'Added to cart!' ? 'alert-success' : 'alert-error'}`}>
-                {addedMsg}
-              </div>
-            )}
-
             <button
               className="btn btn-accent btn-full product-cta"
               onClick={handleAddToCart}
-              disabled={isOutOfStock || adding}
+              disabled={isOutOfStock || adding || (product.has_variants && !selectedVariant)}
             >
-              {adding ? 'Adding…' : isOutOfStock ? 'Out of Stock' : 'Add to Cart'}
+              {adding ? 'Adding…'
+                : isOutOfStock ? 'Out of Stock'
+                : product.has_variants && !selectedVariant ? 'Select options'
+                : 'Add to Cart'}
+            </button>
+
+            {/* Wishlist — secondary action */}
+            <button
+              type="button"
+              className={`btn btn-outline btn-full pdp-wishlist-btn${isSaved ? ' pdp-wishlist-btn--saved' : ''}`}
+              onClick={handleWishlist}
+              aria-label={isSaved ? 'Remove from wishlist' : 'Save to wishlist'}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+              </svg>
+              {isSaved ? 'Saved to Wishlist' : 'Add to Wishlist'}
             </button>
 
             {/* Trust row under the CTA */}
@@ -360,87 +661,206 @@ export default function ProductPage() {
         </div>
       </div>
 
+      {/* ── Related products ─────────────────────────────────── */}
+      {related.length > 0 && (
+        <div className="container pdp-strip-section">
+          <h2 className="pdp-strip-heading">You may also like</h2>
+          <div className="gold-divider" style={{ margin: '0 0 20px' }} />
+          <div className="pdp-card-strip">
+            {related.map(p => <ProductCard key={p.id} product={p} />)}
+          </div>
+        </div>
+      )}
+
       {/* ── Reviews ──────────────────────────────────────────── */}
       <div className="container reviews-section">
         <h2 className="reviews-heading">Customer Reviews</h2>
         <div className="gold-divider" style={{ margin: '0 0 32px' }} />
 
         <div className="reviews-layout">
-          {/* Summary */}
-          {reviewStats && Number(reviewStats.review_count) > 0 && (
+          {/* ── Summary + distribution ── */}
+          {reviewMeta.summary && reviewMeta.summary.review_count > 0 ? (
             <div className="reviews-summary">
-              <div className="reviews-avg">{parseFloat(reviewStats.avg_rating).toFixed(1)}</div>
-              <StarRating value={parseFloat(reviewStats.avg_rating)} size="lg" />
-              <div className="reviews-count">{reviewStats.review_count} review{reviewStats.review_count !== 1 ? 's' : ''}</div>
+              <div className="reviews-avg">{parseFloat(reviewMeta.summary.avg_rating).toFixed(1)}</div>
+              <StarRating value={parseFloat(reviewMeta.summary.avg_rating)} size="lg" />
+              <div className="reviews-count">
+                Based on {reviewMeta.summary.review_count} review{reviewMeta.summary.review_count !== 1 ? 's' : ''}
+              </div>
+
+              {/* Distribution bars */}
+              <div className="reviews-distribution">
+                {[5,4,3,2,1].map(star => {
+                  const count = reviewMeta.summary.distribution[star] || 0;
+                  const pct   = reviewMeta.summary.review_count > 0
+                    ? Math.round((count / reviewMeta.summary.review_count) * 100) : 0;
+                  return (
+                    <div key={star} className="reviews-dist-row">
+                      <span className="reviews-dist-label">{star} ★</span>
+                      <div className="reviews-dist-bar-wrap">
+                        <div className="reviews-dist-bar" style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="reviews-dist-pct">{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="reviews-summary reviews-summary--empty">
+              <div className="reviews-avg reviews-avg--none">—</div>
+              <div className="reviews-count">No reviews yet</div>
             </div>
           )}
 
-          {/* List */}
+          {/* ── Review list ── */}
           <div className="reviews-list">
-            {reviews.length === 0 && (
+            {/* Sort controls */}
+            {reviews.length > 0 && (
+              <div className="reviews-sort">
+                <span className="reviews-sort-label">Sort:</span>
+                {[
+                  { key: 'recent',  label: 'Most Recent' },
+                  { key: 'helpful', label: 'Most Helpful' },
+                  { key: 'highest', label: 'Highest Rated' },
+                  { key: 'lowest',  label: 'Lowest Rated' },
+                ].map(s => (
+                  <button
+                    key={s.key}
+                    className={`reviews-sort-btn${reviewSort === s.key ? ' reviews-sort-btn--active' : ''}`}
+                    onClick={() => handleSortChange(s.key)}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {reviews.length === 0 && reviewMeta.total === 0 && (
               <p className="reviews-empty">No reviews yet. Be the first to share your experience!</p>
             )}
-            {reviews.map(r => (
-              <div key={r.id} className="review-card">
-                <div className="review-header">
-                  <StarRating value={r.rating} size="sm" />
-                  <span className="review-author">{r.first_name} {r.last_name?.charAt(0)}.</span>
-                  <span className="review-date">{new Date(r.created_at).toLocaleDateString('en-GH', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+
+            {reviews.map(r => {
+              const isLong    = r.body && r.body.length > 200;
+              const expanded  = expandedReviews[r.id];
+              const bodyText  = isLong && !expanded ? r.body.slice(0, 200) + '…' : r.body;
+              const relDate   = (() => {
+                const diff = Date.now() - new Date(r.created_at).getTime();
+                const days = Math.floor(diff / 86400000);
+                if (days < 1)   return 'Today';
+                if (days < 7)   return `${days} day${days !== 1 ? 's' : ''} ago`;
+                if (days < 30)  return `${Math.floor(days / 7)} week${Math.floor(days / 7) !== 1 ? 's' : ''} ago`;
+                if (days < 365) return `${Math.floor(days / 30)} month${Math.floor(days / 30) !== 1 ? 's' : ''} ago`;
+                return `${Math.floor(days / 365)} year${Math.floor(days / 365) !== 1 ? 's' : ''} ago`;
+              })();
+
+              return (
+                <div key={r.id} className="review-card">
+                  <div className="review-header">
+                    <StarRating value={r.rating} size="sm" />
+                    <span className="review-verified">✓ Verified Purchase</span>
+                  </div>
+                  <div className="review-meta">
+                    <span className="review-author">{r.first_name} {r.last_initial}.</span>
+                    <span className="review-date">{relDate}</span>
+                  </div>
+                  {r.title && <div className="review-title">{r.title}</div>}
+                  {r.body && (
+                    <p className="review-body">
+                      {bodyText}
+                      {isLong && (
+                        <button
+                          className="review-expand-btn"
+                          onClick={() => setExpandedReviews(prev => ({ ...prev, [r.id]: !expanded }))}
+                        >
+                          {expanded ? ' Show less' : ' Read more'}
+                        </button>
+                      )}
+                    </p>
+                  )}
+                  <button
+                    className={`review-helpful-btn${helpfulSent[r.id] ? ' review-helpful-btn--sent' : ''}`}
+                    onClick={() => handleHelpful(r.id)}
+                    disabled={helpfulSent[r.id]}
+                  >
+                    {helpfulSent[r.id] ? '✓ Marked helpful' : `Helpful? Yes (${r.helpful_count || 0})`}
+                  </button>
                 </div>
-                {r.title && <div className="review-title">{r.title}</div>}
-                {r.body  && <p  className="review-body">{r.body}</p>}
-              </div>
-            ))}
+              );
+            })}
+
+            {/* Load more */}
+            {reviewPage < reviewMeta.totalPages && (
+              <button className="reviews-load-more" onClick={handleLoadMore}>
+                Load more reviews
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Submit form — only for logged-in users */}
-        {user ? (
-          <form className="review-form" onSubmit={submitReview}>
-            <h3 className="review-form-heading">Write a Review</h3>
-            <div className="field">
-              <label>Your rating</label>
-              <StarRating
-                value={reviewForm.rating}
-                interactive
-                size="lg"
-                onChange={v => setReviewForm(f => ({ ...f, rating: v }))}
-              />
+        {/* ── Write a review ── */}
+        <div className="reviews-write-section">
+          {!user ? (
+            <div className="review-login-prompt">
+              <p>Want to share your experience?</p>
+              <Link to="/login" className="btn btn-outline">Log in to leave a review</Link>
             </div>
-            <div className="field">
-              <label>Title <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
-              <input
-                type="text"
-                maxLength={150}
-                placeholder="Summarise your experience"
-                value={reviewForm.title}
-                onChange={e => setReviewForm(f => ({ ...f, title: e.target.value }))}
-              />
+          ) : canReviewData === null ? null /* loading */ : canReviewData.already_reviewed ? (
+            <div className="review-already-done">
+              <span>✓</span> Your review has been submitted and is awaiting approval.
             </div>
-            <div className="field">
-              <label>Review <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
-              <textarea
-                rows={4}
-                placeholder="What did you think of the product?"
-                value={reviewForm.body}
-                onChange={e => setReviewForm(f => ({ ...f, body: e.target.value }))}
-              />
-            </div>
-            {submitMsg && (
-              <div className={`alert ${submitMsg.startsWith('Review submitted') ? 'alert-success' : 'alert-error'}`}>
-                {submitMsg}
+          ) : canReviewData.can_review ? (
+            <form className="review-form" onSubmit={submitReview}>
+              <h3 className="review-form-heading">Write a Review</h3>
+              <div className="field">
+                <label>Your rating</label>
+                <StarRating
+                  value={reviewForm.rating}
+                  interactive
+                  size="lg"
+                  onChange={v => setReviewForm(f => ({ ...f, rating: v }))}
+                />
               </div>
-            )}
-            <button type="submit" className="btn btn-accent" disabled={submitting}>
-              {submitting ? 'Submitting…' : 'Submit Review'}
-            </button>
-          </form>
-        ) : (
-          <div className="review-login-prompt">
-            <Link to="/login" className="btn btn-outline">Login to write a review</Link>
-          </div>
-        )}
+              <div className="field">
+                <label>Title <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+                <input
+                  type="text"
+                  maxLength={120}
+                  placeholder="Summarise your experience"
+                  value={reviewForm.title}
+                  onChange={e => setReviewForm(f => ({ ...f, title: e.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label>Review <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+                <textarea
+                  rows={4}
+                  placeholder="What did you think of the product?"
+                  value={reviewForm.body}
+                  onChange={e => setReviewForm(f => ({ ...f, body: e.target.value }))}
+                />
+              </div>
+              <button type="submit" className="btn btn-accent" disabled={submitting}>
+                {submitting ? 'Submitting…' : 'Submit Review'}
+              </button>
+            </form>
+          ) : (
+            <div className="review-not-purchased">
+              Purchase this product to leave a review.
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* ── Recently viewed ──────────────────────────────────── */}
+      {recentlyViewed.length > 0 && (
+        <div className="container pdp-strip-section">
+          <h2 className="pdp-strip-heading">Recently Viewed</h2>
+          <div className="gold-divider" style={{ margin: '0 0 20px' }} />
+          <div className="pdp-card-strip">
+            {recentlyViewed.map(p => <ProductCard key={p.id} product={p} />)}
+          </div>
+        </div>
+      )}
 
       {/* ── Lightbox ─────────────────────────────────────── */}
       {lightbox && (

@@ -1,15 +1,39 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { authAPI } from '../services/api';
+
+function formatCountdown(secs) {
+  const m = Math.floor(secs / 60).toString().padStart(2, '0');
+  const s = (secs % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
 
 export default function ForgotPassword() {
   const [email, setEmail]     = useState('');
   const [sent, setSent]       = useState(false);
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [lockout, setLockout] = useState(0);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (lockout <= 0) return;
+    timerRef.current = setInterval(() => {
+      setLockout(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          setError('');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [lockout]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (lockout > 0) return;
     setError('');
     setLoading(true);
     try {
@@ -18,17 +42,27 @@ export default function ForgotPassword() {
       // The server does the same — this prevents leaking which emails are registered.
       setSent(true);
     } catch (err) {
-      setError(err.response?.data?.error || 'Something went wrong. Please try again.');
+      if (err.response?.status === 429) {
+        const wait = parseInt(
+          err.response.headers?.['retry-after'] || err.response.data?.retryAfter || 60,
+          10
+        );
+        setLockout(wait);
+        setError(`Too many requests. Try again in ${formatCountdown(wait)}.`);
+      } else {
+        setError(err.response?.data?.error || 'Something went wrong. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const isLocked = lockout > 0;
+
   if (sent) {
     return (
       <div className="auth-page">
         <div className="auth-card" style={{ textAlign: 'center' }}>
-          {/* TO CUSTOMIZE: Replace with a real icon / illustration */}
           <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📧</div>
           <h1>Check your inbox</h1>
           <p>
@@ -49,7 +83,13 @@ export default function ForgotPassword() {
         <h1>Forgot password?</h1>
         <p>Enter your email and we'll send you a reset link.</p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && (
+          <div className={`alert ${isLocked ? 'alert-warning' : 'alert-error'}`}>
+            {isLocked
+              ? `Too many requests. Try again in ${formatCountdown(lockout)}.`
+              : error}
+          </div>
+        )}
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="form-group">
@@ -61,15 +101,16 @@ export default function ForgotPassword() {
               onChange={e => setEmail(e.target.value)}
               required
               autoComplete="email"
+              disabled={isLocked}
             />
           </div>
 
           <button
             type="submit"
             className="btn btn-primary btn-full"
-            disabled={loading}
+            disabled={loading || isLocked}
           >
-            {loading ? 'Sending…' : 'Send Reset Link'}
+            {loading ? 'Sending…' : isLocked ? `Try again in ${formatCountdown(lockout)}` : 'Send Reset Link'}
           </button>
         </form>
 

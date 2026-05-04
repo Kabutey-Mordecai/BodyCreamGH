@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { productsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import ProductImageGallery from '../components/ProductImageGallery';
+import VariantManager from '../components/VariantManager';
 
 // Slug-ish auto-SKU — "Shea Butter Cream 200g" → "SHE-BUT-CRE-200"
 const suggestSku = (name) => {
@@ -18,10 +19,11 @@ const suggestSku = (name) => {
 };
 
 const EMPTY = {
-  name: '', description: '', price: '', cost: '',
+  name: '', description: '', price: '', cost: '', compare_at_price: '',
   category: '', brand: '', image_url: '',
   stock_quantity: 0, sku: '',
   ingredients: '', usage_instructions: '',
+  is_active: true,
 };
 
 export default function ProductEditor() {
@@ -57,9 +59,10 @@ export default function ProductEditor() {
     // Build the payload with numeric casts — the backend validator expects numbers.
     const payload = {
       ...form,
-      price:          Number(form.price),
-      cost:           form.cost === '' ? null : Number(form.cost),
-      stock_quantity: Number(form.stock_quantity) || 0,
+      price:             Number(form.price),
+      cost:              form.cost === '' ? null : Number(form.cost),
+      compare_at_price:  form.compare_at_price === '' ? null : Number(form.compare_at_price),
+      stock_quantity:    Number(form.stock_quantity) || 0,
     };
 
     try {
@@ -224,6 +227,38 @@ export default function ProductEditor() {
                   {' '}({Math.round(((Number(form.price) - Number(form.cost)) / Number(form.price)) * 100)}%)
                 </div>
               )}
+
+              <div className="field" style={{ marginTop: 12 }}>
+                <label>Compare at price (GHS)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.compare_at_price ?? ''}
+                  onChange={e => update('compare_at_price', e.target.value)}
+                  placeholder="Leave blank for no sale"
+                />
+                <div className="hint">
+                  Optional — shows as crossed-out original price. Leave blank for no sale display.
+                </div>
+                {form.compare_at_price && form.price &&
+                  Number(form.compare_at_price) > Number(form.price) && (
+                  <div className="alert alert-info" style={{ marginTop: 6, marginBottom: 0 }}>
+                    Showing as: <strong>GHS {Number(form.price).toFixed(2)}</strong>{' '}
+                    <span style={{ textDecoration: 'line-through', color: 'var(--ac-muted)' }}>
+                      GHS {Number(form.compare_at_price).toFixed(2)}
+                    </span>{' '}
+                    — {Math.round((1 - Number(form.price) / Number(form.compare_at_price)) * 100)}% off
+                  </div>
+                )}
+                {form.compare_at_price && form.price &&
+                  Number(form.compare_at_price) > 0 &&
+                  Number(form.compare_at_price) <= Number(form.price) && (
+                  <div className="alert alert-warning" style={{ marginTop: 6, marginBottom: 0 }}>
+                    Compare at price must be higher than the selling price to show a sale.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -293,8 +328,48 @@ export default function ProductEditor() {
             </div>
           </div>
 
+          <div className="card">
+            <div className="card-header"><h2 className="card-title">Visibility</h2></div>
+            <div className="card-body">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', userSelect: 'none' }}>
+                <input
+                  type="checkbox"
+                  checked={form.is_active !== false}
+                  onChange={e => update('is_active', e.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                <div>
+                  <div style={{ fontWeight: 500 }}>Visible on storefront</div>
+                  <div className="hint" style={{ marginTop: 2 }}>Uncheck to hide this product from customers without deleting it.</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
         </div>
       </div>
+
+      {/* ── Variants ── only shown after product is saved ─────── */}
+      {!isNew && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-header">
+            <h2 className="card-title">Product Variants</h2>
+            <p className="muted" style={{ marginTop: 4, fontSize: '0.83rem' }}>
+              Define option types (e.g. Size, Scent) and the system generates all combinations.
+              Each combination is its own variant with its own price and stock.
+              Products with no variants use the base price and stock above.
+            </p>
+          </div>
+          <div className="card-body">
+            <VariantManager productId={id} />
+          </div>
+        </div>
+      )}
+      {isNew && (
+        <div className="alert alert-info" style={{ marginTop: 16 }}>
+          Save this product first, then return here to add variants (sizes, scents, bundles, etc.).
+        </div>
+      )}
 
       <style>{`
         @media (max-width: 900px) {

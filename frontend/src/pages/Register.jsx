@@ -1,6 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import PasswordStrength, { getPasswordStrength } from '../components/PasswordStrength';
+
+function formatCountdown(secs) {
+  const m = Math.floor(secs / 60).toString().padStart(2, '0');
+  const s = (secs % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
 
 export default function Register() {
   const { register } = useAuth();
@@ -16,25 +23,42 @@ export default function Register() {
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [lockout, setLockout] = useState(0);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (lockout <= 0) return;
+    timerRef.current = setInterval(() => {
+      setLockout(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          setError('');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [lockout]);
 
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (lockout > 0) return;
     setError('');
 
-    // Client-side password match check to save a round trip
     if (form.password !== form.confirm) {
       return setError('Passwords do not match.');
     }
-    if (form.password.length < 8) {
-      return setError('Password must be at least 8 characters.');
+    const { score } = getPasswordStrength(form.password);
+    if (score < 4) {
+      return setError('Please meet all password requirements before continuing.');
     }
 
     setLoading(true);
     try {
-      // register() also logs the user in automatically (see AuthContext)
       await register({
         first_name: form.first_name,
         last_name:  form.last_name,
@@ -42,26 +66,40 @@ export default function Register() {
         password:   form.password,
         phone:      form.phone,
       });
-      // After registration + auto-login, send them to the shop
       navigate('/shop');
     } catch (err) {
-      setError(err.response?.data?.error || 'Registration failed. Please try again.');
+      if (err.response?.status === 429) {
+        const wait = parseInt(
+          err.response.headers?.['retry-after'] || err.response.data?.retryAfter || 60,
+          10
+        );
+        setLockout(wait);
+        setError(`Too many registration attempts. Try again in ${formatCountdown(wait)}.`);
+      } else {
+        setError(err.response?.data?.error || 'Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const isLocked = lockout > 0;
+
   return (
     <div className="auth-page">
       <div className="auth-card">
         <h1>Create account</h1>
-        {/* TO CUSTOMIZE: Change this subtitle text */}
         <p>Join us and start shopping for premium body creams.</p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && (
+          <div className={`alert ${isLocked ? 'alert-warning' : 'alert-error'}`}>
+            {isLocked
+              ? `Too many registration attempts. Try again in ${formatCountdown(lockout)}.`
+              : error}
+          </div>
+        )}
 
         <form className="auth-form" onSubmit={handleSubmit}>
-          {/* Side-by-side first + last name on wider screens */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
             <div className="form-group">
               <label htmlFor="first_name">First name</label>
@@ -73,6 +111,7 @@ export default function Register() {
                 onChange={handleChange}
                 required
                 autoComplete="given-name"
+                disabled={isLocked}
               />
             </div>
             <div className="form-group">
@@ -85,6 +124,7 @@ export default function Register() {
                 onChange={handleChange}
                 required
                 autoComplete="family-name"
+                disabled={isLocked}
               />
             </div>
           </div>
@@ -99,6 +139,7 @@ export default function Register() {
               onChange={handleChange}
               required
               autoComplete="email"
+              disabled={isLocked}
             />
           </div>
 
@@ -112,6 +153,7 @@ export default function Register() {
               onChange={handleChange}
               autoComplete="tel"
               placeholder="+233 XX XXX XXXX"
+              disabled={isLocked}
             />
           </div>
 
@@ -126,7 +168,9 @@ export default function Register() {
               required
               minLength={8}
               autoComplete="new-password"
+              disabled={isLocked}
             />
+            {form.password.length > 0 && <PasswordStrength password={form.password} />}
           </div>
 
           <div className="form-group">
@@ -139,15 +183,16 @@ export default function Register() {
               onChange={handleChange}
               required
               autoComplete="new-password"
+              disabled={isLocked}
             />
           </div>
 
           <button
             type="submit"
             className="btn btn-primary btn-full"
-            disabled={loading}
+            disabled={loading || isLocked}
           >
-            {loading ? 'Creating account…' : 'Create Account'}
+            {loading ? 'Creating account…' : isLocked ? `Try again in ${formatCountdown(lockout)}` : 'Create Account'}
           </button>
         </form>
 

@@ -2,8 +2,30 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ordersAPI, deliveriesAPI, reviewsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import StarRating from '../components/StarRating';
 import './OrderDetail.css';
+
+const ORDER_STATUS_STEPS = [
+  { key: 'pending',    label: 'Order Placed' },
+  { key: 'confirmed',  label: 'Confirmed' },
+  { key: 'processing', label: 'Processing' },
+  { key: 'shipped',    label: 'Shipped' },
+  { key: 'delivered',  label: 'Delivered' },
+];
+const NORMAL_STATUS_KEYS = ORDER_STATUS_STEPS.map(s => s.key);
+
+function getLastNormalIdx(order, log) {
+  if (NORMAL_STATUS_KEYS.includes(order.status)) {
+    return NORMAL_STATUS_KEYS.indexOf(order.status);
+  }
+  let maxIdx = 0;
+  for (const entry of log) {
+    const idx = NORMAL_STATUS_KEYS.indexOf(entry.to_status);
+    if (idx > maxIdx) maxIdx = idx;
+  }
+  return maxIdx;
+}
 
 const DELIVERY_STEPS = [
   { key: 'pending',          label: 'Order packed & ready' },
@@ -32,12 +54,26 @@ function getRefundMessage(order) {
 export default function OrderDetail() {
   const { id } = useParams();
   const { user } = useAuth();
+  const { showToast } = useToast();
 
   const [order, setOrder]         = useState(null);
   const [delivery, setDelivery]   = useState(null);
   const [statusLog, setStatusLog] = useState([]);
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
+  const [retryCount, setRetryCount] = useState(0);
+
+  // Cancel request form
+  const [cancelFormOpen, setCancelFormOpen] = useState(false);
+  const [cancelReason, setCancelReason]     = useState('');
+  const [cancelSaving, setCancelSaving]     = useState(false);
+  const [cancelError, setCancelError]       = useState('');
+
+  // Return request form
+  const [returnFormOpen, setReturnFormOpen] = useState(false);
+  const [returnReason, setReturnReason]     = useState('');
+  const [returnSaving, setReturnSaving]     = useState(false);
+  const [returnError, setReturnError]       = useState('');
 
   // Review prompt state — only populated for delivered orders when auth'd
   const [reviewedIds, setReviewedIds]   = useState(new Set());
@@ -45,7 +81,35 @@ export default function OrderDetail() {
   const [reviewErrors, setReviewErrors] = useState({}); // { productId: errorMsg }
   const [reviewSaving, setReviewSaving] = useState({}); // { productId: bool }
 
+  // Silent background poll — only active while a cancel/return is awaiting admin action.
   useEffect(() => {
+    if (!order) return;
+    const needsPoll =
+      (order.cancel_requested && !order.cancel_request_rejected && order.status !== 'cancelled') ||
+      (order.return_requested && !order.return_request_rejected && order.status !== 'refunded' && order.refund_status !== 'success');
+    if (!needsPoll) return;
+
+    const intervalId = setInterval(() => {
+      Promise.all([
+        ordersAPI.getById(id),
+        deliveriesAPI.getByOrder(id).catch(() => null),
+        ordersAPI.getStatusLog(id).catch(() => null),
+      ])
+        .then(([orderRes, deliveryRes, logRes]) => {
+          const { order: orderData, items } = orderRes.data;
+          setOrder({ ...orderData, items });
+          setDelivery(deliveryRes?.data || null);
+          setStatusLog(Array.isArray(logRes?.data) ? logRes.data : []);
+        })
+        .catch(() => {});
+    }, 30000);
+
+    return () => clearInterval(intervalId);
+  }, [id, order?.cancel_requested, order?.cancel_request_rejected, order?.status, order?.return_requested, order?.return_request_rejected, order?.refund_status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setLoading(true);
+    setError('');
     Promise.all([
       ordersAPI.getById(id),
       deliveriesAPI.getByOrder(id).catch(() => null),
@@ -64,9 +128,9 @@ export default function OrderDetail() {
             .catch(() => {});
         }
       })
-      .catch(() => setError('Order not found.'))
+      .catch(() => setError('Could not load order details. Please try again.'))
       .finally(() => setLoading(false));
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [id, retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateReviewForm = (productId, field, value) =>
     setReviewForms(prev => ({
@@ -85,6 +149,7 @@ export default function OrderDetail() {
     try {
       await reviewsAPI.create(productId, { rating: form.rating, title: form.title, body: form.body });
       setReviewedIds(prev => new Set([...prev, productId]));
+      showToast('Review submitted — thank you!', 'success');
     } catch (err) {
       const msg = err.response?.status === 409
         ? 'You already reviewed this product.'
@@ -99,16 +164,62 @@ export default function OrderDetail() {
     }
   };
 
+  const handleRequestCancel = async () => {
+    if (!cancelReason.trim()) { setCancelError('Please provide a reason.'); return; }
+    setCancelSaving(true);
+    setCancelError('');
+    try {
+      await ordersAPI.requestCancel(id, cancelReason.trim());
+      setOrder(prev => ({ ...prev, cancel_requested: true, cancel_request_rejected: false }));
+      setCancelFormOpen(false);
+      setCancelReason('');
+      showToast('Cancellation request submitted', 'success');
+    } catch (err) {
+      setCancelError(err.response?.data?.error || 'Could not submit request. Please try again.');
+    } finally {
+      setCancelSaving(false);
+    }
+  };
+
+  const handleRequestReturn = async () => {
+    if (!returnReason.trim()) { setReturnError('Please provide a reason.'); return; }
+    setReturnSaving(true);
+    setReturnError('');
+    try {
+      await ordersAPI.requestReturn(id, returnReason.trim());
+      setOrder(prev => ({ ...prev, return_requested: true, return_request_rejected: false }));
+      setReturnFormOpen(false);
+      setReturnReason('');
+      showToast('Return request submitted', 'success');
+    } catch (err) {
+      setReturnError(err.response?.data?.error || 'Could not submit request. Please try again.');
+    } finally {
+      setReturnSaving(false);
+    }
+  };
+
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
 
   if (error || !order) {
     return (
       <div className="page-section">
-        <div className="container" style={{ textAlign: 'center' }}>
-          <p>{error || 'Order not found.'}</p>
-          <Link to="/orders" className="btn btn-outline" style={{ marginTop: '16px' }}>
-            Back to Orders
-          </Link>
+        <div className="container" style={{ textAlign: 'center', padding: '60px 0' }}>
+          <p style={{ marginBottom: '20px', color: 'var(--color-muted)' }}>
+            {error || 'Order not found.'}
+          </p>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+            {error && (
+              <button
+                className="btn btn-accent"
+                onClick={() => setRetryCount(c => c + 1)}
+              >
+                Try Again
+              </button>
+            )}
+            <Link to="/orders" className="btn btn-outline">
+              Back to Orders
+            </Link>
+          </div>
         </div>
       </div>
     );
@@ -206,6 +317,178 @@ export default function OrderDetail() {
             </div>
           </section>
         )}
+
+        {/* ── Cancel request banner/form ───────────────── */}
+        {user && ['pending', 'confirmed'].includes(order.status) && (
+          <section className="order-state-banner order-state-banner--info">
+            {order.cancel_requested && !order.cancel_request_rejected ? (
+              <div>
+                <h2>Cancellation requested</h2>
+                <p>Your request is pending admin review. We will notify you once processed.</p>
+              </div>
+            ) : order.cancel_request_rejected ? (
+              <div>
+                <h2>Cancellation request rejected</h2>
+                <p>Your cancellation request was not approved. Contact support for assistance.</p>
+                {!cancelFormOpen && (
+                  <button
+                    className="btn btn-outline"
+                    style={{ marginTop: '12px' }}
+                    onClick={() => { setCancelFormOpen(true); setCancelError(''); }}
+                  >
+                    Resubmit request
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div>
+                <h2>Need to cancel?</h2>
+                <p>You can request a cancellation while your order is pending or confirmed.</p>
+                {!cancelFormOpen && (
+                  <button
+                    className="btn btn-outline"
+                    style={{ marginTop: '12px' }}
+                    onClick={() => { setCancelFormOpen(true); setCancelError(''); }}
+                  >
+                    Request cancellation
+                  </button>
+                )}
+              </div>
+            )}
+            {cancelFormOpen && (
+              <div className="od-request-form">
+                <textarea
+                  rows={3}
+                  className="od-review-input od-review-textarea"
+                  placeholder="Please explain why you want to cancel this order…"
+                  value={cancelReason}
+                  onChange={e => setCancelReason(e.target.value)}
+                  maxLength={500}
+                />
+                {cancelError && <p className="od-review-error">{cancelError}</p>}
+                <div className="od-request-actions">
+                  <button
+                    className="btn btn-accent"
+                    disabled={cancelSaving}
+                    onClick={handleRequestCancel}
+                  >
+                    {cancelSaving ? 'Submitting…' : 'Submit request'}
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    disabled={cancelSaving}
+                    onClick={() => { setCancelFormOpen(false); setCancelError(''); setCancelReason(''); }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ── Return request banner/form ────────────────── */}
+        {user && order.status === 'delivered' &&
+          order.payment_status === 'paid' &&
+          (!order.refund_status || order.refund_status === 'not_requested') && (
+          <section className="order-state-banner order-state-banner--info">
+            {order.return_requested && !order.return_request_rejected ? (
+              <div>
+                <h2>Return requested</h2>
+                <p>Your return request is pending admin review. We will notify you once processed.</p>
+              </div>
+            ) : order.return_request_rejected ? (
+              <div>
+                <h2>Return request rejected</h2>
+                <p>Your return request was not approved. Contact support for assistance.</p>
+                {!returnFormOpen && (
+                  <button
+                    className="btn btn-outline"
+                    style={{ marginTop: '12px' }}
+                    onClick={() => { setReturnFormOpen(true); setReturnError(''); }}
+                  >
+                    Resubmit request
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div>
+                <h2>Need a return or refund?</h2>
+                <p>Not satisfied with your order? Request a return and our team will review it.</p>
+                {!returnFormOpen && (
+                  <button
+                    className="btn btn-outline"
+                    style={{ marginTop: '12px' }}
+                    onClick={() => { setReturnFormOpen(true); setReturnError(''); }}
+                  >
+                    Request return
+                  </button>
+                )}
+              </div>
+            )}
+            {returnFormOpen && (
+              <div className="od-request-form">
+                <textarea
+                  rows={3}
+                  className="od-review-input od-review-textarea"
+                  placeholder="Please describe the reason for your return…"
+                  value={returnReason}
+                  onChange={e => setReturnReason(e.target.value)}
+                  maxLength={500}
+                />
+                {returnError && <p className="od-review-error">{returnError}</p>}
+                <div className="od-request-actions">
+                  <button
+                    className="btn btn-accent"
+                    disabled={returnSaving}
+                    onClick={handleRequestReturn}
+                  >
+                    {returnSaving ? 'Submitting…' : 'Submit request'}
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    disabled={returnSaving}
+                    onClick={() => { setReturnFormOpen(false); setReturnError(''); setReturnReason(''); }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* ── Order status timeline ──────────────────── */}
+        {(() => {
+          const osIdx      = getLastNormalIdx(order, statusLog);
+          const isTerminal = order.status === 'cancelled' || order.status === 'refunded';
+          return (
+            <section className="order-section" style={{ marginBottom: '24px' }}>
+              <div className="order-section-head"><h2>Order Progress</h2></div>
+              <div className="gold-divider" style={{ margin: '0 0 24px' }} />
+              <div className="od-os-timeline">
+                {ORDER_STATUS_STEPS.map((step, i) => {
+                  const done    = i <= osIdx;
+                  const current = !isTerminal && i === osIdx;
+                  return (
+                    <div key={step.key} className={`od-os-step${done ? ' done' : ''}${current ? ' current' : ''}`}>
+                      <div className="od-os-dot">{done ? '✓' : i + 1}</div>
+                      <div className="od-os-label">{step.label}</div>
+                    </div>
+                  );
+                })}
+                {isTerminal && (
+                  <div className={`od-os-step od-os-step--terminal ${order.status}`}>
+                    <div className="od-os-dot od-os-dot--terminal">✗</div>
+                    <div className="od-os-label">
+                      {order.status === 'cancelled' ? 'Cancelled' : 'Refunded'}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* ── Delivery progress timeline ──────────────── */}
         {delivery && !terminalOrder && (
@@ -454,6 +737,74 @@ export default function OrderDetail() {
       </div>
 
       <style>{`
+        /* ── Order status timeline ──────────────────── */
+        .od-os-timeline {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          position: relative;
+        }
+        .od-os-timeline::before {
+          content: '';
+          position: absolute;
+          top: 14px;
+          left: 14px;
+          right: 14px;
+          height: 2px;
+          background: var(--color-border);
+        }
+        .od-os-step {
+          position: relative;
+          z-index: 1;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 8px;
+          flex: 1;
+        }
+        .od-os-dot {
+          width: 28px; height: 28px;
+          border-radius: 50%;
+          background: var(--color-bg);
+          border: 2px solid var(--color-border);
+          display: flex; align-items: center; justify-content: center;
+          font-size: 0.75rem; font-weight: 600;
+          color: var(--color-muted);
+        }
+        .od-os-step.done .od-os-dot {
+          background: var(--color-accent);
+          border-color: var(--color-accent);
+          color: #fff;
+        }
+        .od-os-step.current .od-os-dot {
+          box-shadow: 0 0 0 4px rgba(201,165,90,0.2);
+        }
+        .od-os-label {
+          font-size: 0.7rem;
+          font-weight: 600;
+          letter-spacing: 0.06em;
+          text-transform: uppercase;
+          color: var(--color-muted);
+          text-align: center;
+        }
+        .od-os-step.done .od-os-label    { color: var(--color-primary); }
+        .od-os-step.current .od-os-label { color: var(--color-accent-dark); }
+        .od-os-step--terminal { flex: 1; }
+        .od-os-dot--terminal {
+          background: #fff0f0;
+          border-color: #f2c7c1;
+          color: #c0392b;
+        }
+        .od-os-step--terminal.refunded .od-os-dot--terminal {
+          background: #f7f8fa;
+          border-color: #d9dde5;
+          color: var(--color-muted);
+        }
+        .od-os-step--terminal .od-os-label { color: var(--color-muted); }
+        @media (max-width: 640px) {
+          .od-os-label { font-size: 0.6rem; letter-spacing: 0.03em; }
+        }
+
         /* ── Delivery timeline ─────────────────────── */
         .od-timeline {
           display: flex;
@@ -531,6 +882,10 @@ export default function OrderDetail() {
           background: #f7f8fa;
           border-color: #d9dde5;
         }
+        .order-state-banner--info {
+          background: #f7f9f2;
+          border-color: #c9dba0;
+        }
 
         /* ── Status log ────────────────────────────── */
         .od-status-log {
@@ -577,6 +932,19 @@ export default function OrderDetail() {
 
         @media (max-width: 640px) {
           .od-tl-label { font-size: 0.62rem; }
+        }
+
+        /* ── Request forms ────────────────────────── */
+        .od-request-form {
+          margin-top: 14px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .od-request-actions {
+          display: flex;
+          gap: 10px;
+          flex-wrap: wrap;
         }
 
         /* ── Review section ───────────────────────── */

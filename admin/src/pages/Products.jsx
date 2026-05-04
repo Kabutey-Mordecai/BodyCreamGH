@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { productsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
@@ -7,50 +7,54 @@ import SearchInput from '../components/SearchInput';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 
-const LOW_STOCK_THRESHOLD = 5;
+const PAGE_SIZE = 20;
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
+
+const stockStatus = (qty) => {
+  if (qty === 0) return 'out_of_stock';
+  if (qty <= 5) return 'low_stock';
+  return 'in_stock';
+};
 
 export default function Products() {
   const navigate = useNavigate();
   const toast = useToast();
 
   const [products, setProducts] = useState([]);
+  const [total, setTotal]       = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [loading, setLoading]   = useState(true);
-  const [query, setQuery]       = useState('');
+  const [search, setSearch]     = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [page, setPage]         = useState(1);
   const [confirm, setConfirm]   = useState(null);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
+
+  useEffect(() => { setPage(1); }, [category]);
 
   const load = () => {
     setLoading(true);
-    productsAPI.getAll({ limit: 500 })
-      .then(({ data }) => setProducts(Array.isArray(data) ? data : (data.products || [])))
+    productsAPI.getAdminAll({ page, limit: PAGE_SIZE, search: debouncedSearch, category })
+      .then(({ data }) => {
+        setProducts(data.data || []);
+        setTotal(data.total || 0);
+        setTotalPages(data.totalPages || 1);
+      })
       .catch(() => toast.error('Failed to load products'))
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
-
-  // Derive category list from existing products — no separate categories table needed.
-  const categories = useMemo(() => {
-    const set = new Set(products.map(p => p.category).filter(Boolean));
-    return Array.from(set).sort();
-  }, [products]);
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return products.filter(p => {
-      if (category && p.category !== category) return false;
-      if (!q) return true;
-      return [p.name, p.sku, p.brand, p.category]
-        .some(f => String(f || '').toLowerCase().includes(q));
-    });
-  }, [products, query, category]);
-
-  const stockStatus = (qty) => {
-    if (qty === 0) return 'out_of_stock';
-    if (qty <= LOW_STOCK_THRESHOLD) return 'low_stock';
-    return 'in_stock';
-  };
+  useEffect(load, [page, debouncedSearch, category]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleDelete = async (product) => {
     try {
@@ -62,12 +66,23 @@ export default function Products() {
     }
   };
 
+  const handleToggleVisibility = async (product, e) => {
+    e.stopPropagation();
+    try {
+      const { data } = await productsAPI.toggleVisibility(product.id);
+      toast.success(`"${product.name}" is now ${data.is_active ? 'visible' : 'hidden'}`);
+      load();
+    } catch {
+      toast.error('Failed to toggle visibility');
+    }
+  };
+
   return (
     <div>
       <div className="page-header">
         <div>
           <h1>Products</h1>
-          <p className="muted">{filtered.length} of {products.length} products</p>
+          <p className="muted">{total.toLocaleString()} product{total !== 1 ? 's' : ''}</p>
         </div>
         <div className="page-actions">
           <Link to="/products/new" className="btn btn-accent">
@@ -79,14 +94,13 @@ export default function Products() {
 
       <div className="toolbar">
         <div className="toolbar-left">
-          <SearchInput
-            value={query}
-            onChange={setQuery}
-            placeholder="Search by name, SKU, brand…"
-          />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search by name, SKU, brand…" />
           <select value={category} onChange={e => setCategory(e.target.value)} style={{ width: 180 }}>
             <option value="">All categories</option>
-            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            {/* categories derive from loaded data — let user filter after they appear */}
+            {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
       </div>
@@ -94,21 +108,16 @@ export default function Products() {
       <div className="card">
         <DataTable
           loading={loading}
-          rows={filtered}
+          rows={products}
           onRowClick={(row) => navigate(`/products/${row.id}`)}
-          emptyMessage={products.length === 0 ? 'No products yet. Create your first one!' : 'No products match your filters.'}
+          emptyMessage={total === 0 ? 'No products yet. Create your first one!' : 'No products match your filters.'}
           columns={[
             {
               key: 'name',
               label: 'Product',
               render: p => (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{
-                    width: 42, height: 42, borderRadius: 6, background: 'var(--ac-bg)',
-                    backgroundImage: p.image_url ? `url(${p.image_url})` : 'none',
-                    backgroundSize: 'cover', backgroundPosition: 'center',
-                    flexShrink: 0,
-                  }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: p.is_active ? 1 : 0.45 }}>
+                  <div style={{ width: 42, height: 42, borderRadius: 6, background: 'var(--ac-bg)', backgroundImage: p.image_url ? `url(${p.image_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />
                   <div style={{ minWidth: 0 }}>
                     <div className="cell-primary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                     <div className="cell-muted text-xs">{p.brand || '—'}</div>
@@ -127,6 +136,20 @@ export default function Products() {
                   <span>{p.stock_quantity ?? 0}</span>
                   <StatusBadge status={stockStatus(p.stock_quantity)} />
                 </div>
+              )
+            },
+            {
+              key: 'visible',
+              label: 'Visible',
+              render: p => (
+                <button
+                  className={`btn btn-sm ${p.is_active ? 'btn-outline' : 'btn-ghost'}`}
+                  style={{ color: p.is_active ? 'var(--ac-success)' : 'var(--ac-text-muted)' }}
+                  onClick={(e) => handleToggleVisibility(p, e)}
+                  title={p.is_active ? 'Hide from storefront' : 'Show on storefront'}
+                >
+                  {p.is_active ? '● On' : '○ Off'}
+                </button>
               )
             },
             {
@@ -150,6 +173,14 @@ export default function Products() {
           ]}
         />
       </div>
+
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, marginTop: 16 }}>
+          <button className="btn btn-outline btn-sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>← Prev</button>
+          <span style={{ fontSize: '0.85rem', color: 'var(--ac-text-muted)' }}>Page {page} of {totalPages}</span>
+          <button className="btn btn-outline btn-sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Next →</button>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!confirm}

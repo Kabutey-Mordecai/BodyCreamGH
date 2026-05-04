@@ -65,6 +65,59 @@
   margin-bottom: 14px;
 }
 
+/* ── Sale / promotion price ───────────────────── */
+.pdp-price-sale {
+  margin-bottom: 14px;
+}
+.pdp-price-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--color-accent);
+  color: #fff;
+  margin-bottom: 8px;
+}
+.pdp-price-row {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.pdp-price-current {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #c0392b;
+}
+.pdp-price-was {
+  font-size: 1.1rem;
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+.pdp-price-off {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #c0392b;
+  background: rgba(192,57,43,0.08);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+.pdp-countdown {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #92651e;
+  background: #fffbec;
+  border: 1px solid rgba(232,184,75,0.5);
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+
 /* In-stock pill with a subtle dot */
 .stock-hint {
   display: inline-flex;
@@ -81,6 +134,34 @@
   border-radius: 50%;
   background: var(--color-success);
   display: inline-block;
+  flex-shrink: 0;
+}
+.stock-hint--low { color: #92651e; }
+.stock-dot--low  { background: #e8b84b; }
+
+/* Delivery estimate */
+.pdp-delivery-est {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 8px;
+}
+
+/* Wishlist button */
+.pdp-wishlist-btn {
+  margin-top: 10px;
+  gap: 8px;
+}
+.pdp-wishlist-btn--saved {
+  border-color: var(--color-accent);
+  color: var(--color-accent-dark);
+}
+.pdp-wishlist-btn--saved:hover {
+  background: var(--color-accent-light);
+  color: var(--color-accent-dark);
+  opacity: 1;
 }
 
 .product-detail-desc {
@@ -318,6 +399,142 @@
   color: var(--color-text);
   line-height: 1.65;
   margin: 0;
+}
+
+/* ── Distribution bars ────────────────────────── */
+.reviews-distribution {
+  width: 100%;
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.reviews-dist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+}
+.reviews-dist-label { min-width: 28px; color: var(--color-muted); text-align: right; }
+.reviews-dist-bar-wrap {
+  flex: 1;
+  height: 8px;
+  background: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.reviews-dist-bar {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.reviews-dist-pct { min-width: 32px; text-align: right; color: var(--color-muted); }
+
+.reviews-summary--empty { opacity: 0.6; }
+.reviews-avg--none { font-size: 2rem; color: var(--color-muted); }
+
+/* ── Sort controls ─────────────────────────────── */
+.reviews-sort {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.reviews-sort-label { font-size: 0.8rem; color: var(--color-muted); }
+.reviews-sort-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  padding: 3px 12px;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.reviews-sort-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.reviews-sort-btn--active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #fff;
+}
+
+/* ── Review card extras ────────────────────────── */
+.review-verified {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #1a7a34;
+  background: #e6f4ea;
+  border-radius: 9999px;
+  padding: 2px 8px;
+}
+.review-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+}
+.review-expand-btn {
+  background: none;
+  border: none;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0;
+  text-decoration: underline;
+}
+.review-helpful-btn {
+  margin-top: 10px;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 3px 12px;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.review-helpful-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+.review-helpful-btn--sent { color: #1a7a34; border-color: #1a7a34; }
+.review-helpful-btn:disabled { cursor: default; }
+
+/* ── Load more ─────────────────────────────────── */
+.reviews-load-more {
+  align-self: center;
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 10px 28px;
+  font-size: 0.9rem;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.reviews-load-more:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+/* ── Write section ─────────────────────────────── */
+.reviews-write-section { margin-top: 16px; }
+.review-already-done {
+  padding: 14px 20px;
+  background: #e6f4ea;
+  border-radius: var(--radius);
+  color: #1a7a34;
+  font-size: 0.9rem;
+  font-weight: 600;
+  max-width: 580px;
+}
+.review-not-purchased {
+  padding: 14px 20px;
+  background: var(--color-blush);
+  border-radius: var(--radius);
+  color: var(--color-muted);
+  font-size: 0.9rem;
+  max-width: 580px;
 }
 
 /* ── Submit form ──────────────────────────────── */
@@ -605,4 +822,114 @@
   .pdp-lb-arrow--prev { left: 8px; }
   .pdp-lb-arrow--next { right: 8px; }
   .pdp-lb-close { top: 12px; right: 12px; }
+}
+
+/* ── Thumbnail strip ─────────────────────── */
+.pdp-thumbs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 0 4px;
+  scrollbar-width: none;
+}
+.pdp-thumbs::-webkit-scrollbar { display: none; }
+
+.pdp-thumb {
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  border: 2px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 0;
+  background: var(--color-blush);
+  cursor: pointer;
+  opacity: 0.65;
+  transition: opacity 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.pdp-thumb:hover { opacity: 0.9; }
+.pdp-thumb--active {
+  border-color: var(--color-accent);
+  opacity: 1;
+}
+.pdp-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  pointer-events: none;
+}
+
+@media (max-width: 480px) {
+  .pdp-thumb { width: 50px; height: 50px; }
+}
+
+/* ── Related / recently-viewed card strips ── */
+.pdp-strip-section {
+  padding: 48px 0 0;
+}
+.pdp-strip-heading {
+  font-family: var(--font-display);
+  font-size: 1.5rem;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+.pdp-card-strip {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.pdp-card-strip::-webkit-scrollbar { display: none; }
+.pdp-card-strip .product-card {
+  flex: 0 0 220px;
+  min-width: 220px;
+}
+
+/* ── Variant selector ─────────────────────────────── */
+.pdp-variant-selector { margin: 14px 0 6px; }
+.pdp-variant-group { margin-bottom: 14px; }
+.pdp-variant-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  margin-bottom: 8px;
+}
+.pdp-variant-selected-val {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-text);
+}
+.pdp-variant-options { display: flex; flex-wrap: wrap; gap: 8px; }
+.pdp-variant-btn {
+  padding: 7px 16px;
+  border: 1.5px solid var(--color-border, #ddd);
+  border-radius: 6px;
+  background: transparent;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.pdp-variant-btn:hover { border-color: var(--color-accent); }
+.pdp-variant-btn--selected {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: #fff;
+  font-weight: 600;
+}
+.pdp-variant-btn--oos {
+  opacity: 0.45;
+  text-decoration: line-through;
+  cursor: default;
+}
+.pdp-variant-prompt {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--color-muted);
 }

@@ -34,4 +34,16 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
-module.exports = { verifyToken, requireAdmin };
+// Like verifyToken but never rejects — just attaches req.user if valid token present.
+// Used on public endpoints that behave differently for authenticated admin users.
+const optionalToken = async (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return next();
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+  } catch { /* ignore invalid tokens */ }
+  next();
+};
+
+module.exports = { verifyToken, requireAdmin, optionalToken };

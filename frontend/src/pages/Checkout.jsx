@@ -195,7 +195,7 @@ export default function Checkout() {
           <div className="guest-notice">
             <p>
               <strong>Checking out as guest.</strong>{' '}
-              <Link to={`/login?next=/checkout`}>Sign in</Link> or{' '}
+              <Link to="/login" state={{ from: { pathname: '/checkout' } }}>Sign in</Link> or{' '}
               <Link to="/register">create an account</Link> to track your orders.
             </p>
           </div>

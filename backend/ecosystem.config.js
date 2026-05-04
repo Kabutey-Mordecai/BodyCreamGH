@@ -1,50 +1,71 @@
-// PM2 ecosystem config — used by:
-//   pm2 start ecosystem.config.js          (first start)
-//   pm2 reload ecosystem.config.js         (zero-downtime reload after a git pull)
+// PM2 ecosystem config
 //
+// First start:    pm2 start ecosystem.config.js
+// Zero-downtime:  pm2 reload ecosystem.config.js
+// Stop all:       pm2 stop ecosystem.config.js
 // Docs: https://pm2.keymetrics.io/docs/usage/application-declaration/
 
 module.exports = {
   apps: [
+
+    // ── HTTP API (cluster — one process per CPU) ───────────────────────────
+    // Handles all Express routes. Does NOT start pg-boss or queue workers.
+    // Scale horizontally by increasing 'instances' or keeping 'max'.
     {
-      name: 'cosmetics-api',
+      name:       'bodycream-api',
+      script:     'src/server.js',
+      cwd:        '/home/deploy/app/backend',
+      env_file:   '.env',
 
-      // Entry point
-      script: 'src/server.js',
+      instances:  'max',       // one process per vCPU; 1 on a $6 droplet
+      exec_mode:  'cluster',   // shared port via Node cluster
 
-      // Working directory — PM2 resolves all paths relative to this
-      cwd: '/home/deploy/app/backend',
+      autorestart:          true,
+      max_restarts:         10,
+      restart_delay:        4000,
+      max_memory_restart:   '500M',
 
-      // Load the production .env file before starting
-      // (dotenv is also called inside server.js, but this ensures PM2's
-      //  environment table shows the right values in `pm2 env 0`)
-      env_file: '.env',
+      // Allow up to 10 s for in-flight HTTP requests to drain on SIGTERM.
+      // Our shutdown handler exits after 10 s max; set kill_timeout slightly
+      // higher so PM2 doesn't SIGKILL before the handler finishes.
+      kill_timeout: 12_000,
 
-      // Run one process per CPU core for better throughput.
-      // For a $6 droplet (1 vCPU) this means 1 process — increase when you
-      // upgrade the server.
-      instances: 'max',
-      exec_mode: 'cluster',   // cluster mode shares the same port across instances
-
-      // Restart the process if it crashes, with an exponential back-off
-      autorestart: true,
-      max_restarts: 10,
-      restart_delay: 4000,    // ms between restarts
-
-      // Restart if RSS memory exceeds 500 MB (catches slow memory leaks)
-      max_memory_restart: '500M',
-
-      // Write stdout/stderr to these files so you can review them later.
-      // Use `pm2 logs cosmetics-api` for a live tail.
-      out_file: '/home/deploy/app/logs/pm2-out.log',
-      error_file: '/home/deploy/app/logs/pm2-error.log',
+      out_file:   '/home/deploy/app/logs/api-out.log',
+      error_file: '/home/deploy/app/logs/api-error.log',
       merge_logs: true,
-
-      // Log with timestamps so you know exactly when each line was written
-      time: true,
-
-      // Watch is OFF in production — restarts triggered manually via `pm2 reload`
-      watch: false,
+      time:       true,
+      watch:      false,
     },
+
+    // ── Background workers (single fork process) ───────────────────────────
+    // Runs pg-boss, payment/shipment/notification/reconciliation workers.
+    // Must be a single instance — having multiple worker processes duplicates
+    // the pg-boss connection pool and re-registers schedules unnecessarily.
+    // pg-boss coordinates job dispatch at the DB level, so one instance is enough.
+    {
+      name:       'bodycream-workers',
+      script:     'src/worker.js',
+      cwd:        '/home/deploy/app/backend',
+      env_file:   '.env',
+
+      instances:  1,
+      exec_mode:  'fork',      // not cluster — workers must not fork
+
+      autorestart:          true,
+      max_restarts:         10,
+      restart_delay:        4000,
+      max_memory_restart:   '500M',
+
+      // boss.stop() waits up to 30 s for in-progress jobs to finish.
+      // Give PM2 a 35 s window before it escalates to SIGKILL.
+      kill_timeout: 35_000,
+
+      out_file:   '/home/deploy/app/logs/workers-out.log',
+      error_file: '/home/deploy/app/logs/workers-error.log',
+      merge_logs: true,
+      time:       true,
+      watch:      false,
+    },
+
   ],
 };

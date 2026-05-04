@@ -39,3 +39,9 @@ Thumbs.db
 
 # ── Test coverage ─────────────────────────────────────────────────────────────
 coverage/
+
+# ── Claude Code local settings (may contain shell command history with secrets) ─
+.claude/settings.local.json
+
+# ── Docker Compose runtime secrets (created from deploy/postgres.env.example) ──
+deploy/postgres.env

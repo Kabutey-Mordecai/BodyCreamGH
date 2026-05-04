@@ -19,15 +19,35 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
+  // Step 1: password check.
+  // Returns { mfaRequired: true, mfaToken } when admin MFA is needed,
+  // or sets user state directly for non-admin accounts (not expected in this app).
   const login = async (email, password) => {
     const { data } = await authAPI.login({ email, password });
-    // Hard block: only admin-role accounts may enter the admin app.
+
+    if (data.mfa_required) {
+      return { mfaRequired: true, mfaToken: data.mfa_token };
+    }
+
     if (data.user?.role !== 'admin') {
       throw new Error('This account does not have admin access.');
     }
     localStorage.setItem('admin_token', data.token);
     if (data.refresh_token) localStorage.setItem('admin_refresh_token', data.refresh_token);
-    localStorage.setItem('admin_user',  JSON.stringify(data.user));
+    localStorage.setItem('admin_user', JSON.stringify(data.user));
+    setUser(data.user);
+    return { mfaRequired: false };
+  };
+
+  // Step 2: OTP verification. Called after login() returns mfaRequired: true.
+  const completeOtpLogin = async (mfaToken, otpCode) => {
+    const { data } = await authAPI.verifyOtp({ mfa_token: mfaToken, otp_code: otpCode });
+    if (data.user?.role !== 'admin') {
+      throw new Error('This account does not have admin access.');
+    }
+    localStorage.setItem('admin_token', data.token);
+    if (data.refresh_token) localStorage.setItem('admin_refresh_token', data.refresh_token);
+    localStorage.setItem('admin_user', JSON.stringify(data.user));
     setUser(data.user);
     return data.user;
   };
@@ -44,7 +64,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, completeOtpLogin, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,62 +1,44 @@
 const express = require('express');
-const multer  = require('multer');
 const { verifyToken, requireAdmin }    = require('../middleware/auth');
+const { uploadMiddleware }             = require('../middleware/uploadFilter');
 const {
-  getDashboard, getAnalytics, getTopProducts, getInventoryOverview, getAllCustomers,
+  getDashboard, getAnalytics, getFinancials, getTopProducts, getInventoryOverview, getAllCustomers,
+  getAdminAccounts, createAdminAccount, deactivateAdminAccount, activateAdminAccount,
   uploadProductImages, deleteProductImage, reorderProductImages, setPrimaryProductImage,
 } = require('../controllers/admin.controller');
-const { getAllReviews, deleteReview } = require('../controllers/review.controller');
+const {
+  getAllReviews, getReviewCounts, approveReview, rejectReview, deleteReview,
+} = require('../controllers/review.controller');
+const {
+  getSubscribers, deleteSubscriber, importSubscribers,
+  getPreviewCount, createCampaign, sendCampaign,
+  getCampaignStatus, getCampaigns, getCampaignById,
+} = require('../controllers/newsletter.controller');
+const {
+  getPromotions, createPromotion, updatePromotion, togglePromotion, deletePromotion,
+} = require('../controllers/promotions.controller');
 
 const router = express.Router();
-
-// ── Multer — memory storage, applied per-route on the upload endpoint ─────────
-const MAX_FILES_PER_REQUEST = 8; // multer hard ceiling; per-product limit enforced in controller
-
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 5 * 1024 * 1024,   // 5 MB per file
-    files: MAX_FILES_PER_REQUEST,
-  },
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!allowed.includes(file.mimetype)) {
-      return cb(new Error('Only JPG, PNG, and WebP images are allowed'));
-    }
-    cb(null, true);
-  },
-});
-
-// Wraps upload.array with typed error handling for multer validation failures
-function uploadMiddleware(req, res, next) {
-  upload.array('images')(req, res, (err) => {
-    if (!err) return next();
-
-    if (err instanceof multer.MulterError) {
-      if (err.code === 'LIMIT_FILE_SIZE') {
-        return res.status(413).json({ error: 'Image file too large. Maximum size is 5MB.' });
-      }
-      if (err.code === 'LIMIT_FILE_COUNT') {
-        return res.status(400).json({ error: `Too many files. Maximum ${MAX_FILES_PER_REQUEST} files per upload.` });
-      }
-      if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-        return res.status(400).json({ error: "Unexpected field. Use the 'images' field name for uploads." });
-      }
-    }
-
-    // fileFilter rejection or any other upload error
-    return res.status(400).json({ error: err.message });
-  });
-}
 
 // ── Existing routes ───────────────────────────────────────────────────────────
 router.get('/dashboard',     verifyToken, requireAdmin, getDashboard);
 router.get('/analytics',     verifyToken, requireAdmin, getAnalytics);
+router.get('/financials',    verifyToken, requireAdmin, getFinancials);
 router.get('/top-products',  verifyToken, requireAdmin, getTopProducts);
 router.get('/inventory',     verifyToken, requireAdmin, getInventoryOverview);
 router.get('/customers',     verifyToken, requireAdmin, getAllCustomers);
-router.get('/reviews',       verifyToken, requireAdmin, getAllReviews);
-router.delete('/reviews/:reviewId', verifyToken, requireAdmin, deleteReview);
+// Review management — /counts must be before /:id to avoid being swallowed
+router.get('/reviews/counts',        verifyToken, requireAdmin, getReviewCounts);
+router.get('/reviews',               verifyToken, requireAdmin, getAllReviews);
+router.patch('/reviews/:id/approve', verifyToken, requireAdmin, approveReview);
+router.patch('/reviews/:id/reject',  verifyToken, requireAdmin, rejectReview);
+router.delete('/reviews/:id',        verifyToken, requireAdmin, deleteReview);
+
+// ── Admin account management ──────────────────────────────────────────────────
+router.get('/accounts',                       verifyToken, requireAdmin, getAdminAccounts);
+router.post('/accounts',                      verifyToken, requireAdmin, createAdminAccount);
+router.patch('/accounts/:id/deactivate',      verifyToken, requireAdmin, deactivateAdminAccount);
+router.patch('/accounts/:id/activate',        verifyToken, requireAdmin, activateAdminAccount);
 
 // ── Product image routes ──────────────────────────────────────────────────────
 // Auth runs before multer so unauthenticated requests are rejected without
@@ -81,5 +63,25 @@ router.patch(
   verifyToken, requireAdmin,
   setPrimaryProductImage
 );
+
+// ── Newsletter: subscriber management ────────────────────────────────────────
+router.get('/newsletter/subscribers',          verifyToken, requireAdmin, getSubscribers);
+router.delete('/newsletter/subscribers/:id',   verifyToken, requireAdmin, deleteSubscriber);
+router.post('/newsletter/subscribers/import',  verifyToken, requireAdmin, importSubscribers);
+
+// ── Newsletter: campaign management ──────────────────────────────────────────
+router.get('/newsletter/preview-count',            verifyToken, requireAdmin, getPreviewCount);
+router.get('/newsletter/campaigns',                verifyToken, requireAdmin, getCampaigns);
+router.post('/newsletter/campaigns',               verifyToken, requireAdmin, createCampaign);
+router.get('/newsletter/campaigns/:id/status',     verifyToken, requireAdmin, getCampaignStatus);
+router.post('/newsletter/campaigns/:id/send',      verifyToken, requireAdmin, sendCampaign);
+router.get('/newsletter/campaigns/:id',            verifyToken, requireAdmin, getCampaignById);
+
+// ── Promotions ────────────────────────────────────────────────────────────────
+router.get('/promotions',             verifyToken, requireAdmin, getPromotions);
+router.post('/promotions',            verifyToken, requireAdmin, createPromotion);
+router.put('/promotions/:id',         verifyToken, requireAdmin, updatePromotion);
+router.patch('/promotions/:id/toggle',verifyToken, requireAdmin, togglePromotion);
+router.delete('/promotions/:id',      verifyToken, requireAdmin, deletePromotion);
 
 module.exports = router;

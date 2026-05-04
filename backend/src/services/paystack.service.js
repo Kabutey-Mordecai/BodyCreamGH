@@ -14,4 +14,30 @@ async function createFullRefund({ transactionReference, amount, notes }) {
   return response.data?.data || {};
 }
 
-module.exports = { createFullRefund };
+// Fetch a specific Paystack refund by its numeric provider ID.
+// Returns the refund object or null if not found.
+async function fetchRefundById(refundId) {
+  try {
+    const { data } = await paystackAPI.get(`/refund/${refundId}`);
+    return data?.data || null;
+  } catch (err) {
+    if (err.response?.status === 404) return null;
+    throw err;
+  }
+}
+
+// Fetch all Paystack refunds linked to a transaction reference.
+// Paystack returns newest-first; callers take [0] for the latest refund.
+async function fetchRefundsByTransaction(transactionReference) {
+  try {
+    const { data } = await paystackAPI.get('/refund', {
+      params: { reference: transactionReference, perPage: 10 },
+    });
+    return data?.data || [];
+  } catch (err) {
+    if (err.response?.status === 404) return [];
+    throw err;
+  }
+}
+
+module.exports = { createFullRefund, fetchRefundById, fetchRefundsByTransaction };

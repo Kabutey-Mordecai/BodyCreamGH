@@ -5,7 +5,6 @@ import ProductCard from '../components/ProductCard';
 import TrustStrip from '../components/TrustStrip';
 import './Shop.css';
 
-// TO CUSTOMIZE: Add/remove categories to match your actual product range
 const CATEGORIES = [
   { label: 'All',         value: '' },
   { label: 'Body Cream',  value: 'Body Cream' },
@@ -20,6 +19,7 @@ const SORT_OPTIONS = [
   { label: 'Price: low → high', value: 'price_low' },
   { label: 'Price: high → low', value: 'price_high' },
   { label: 'Name: A–Z',         value: 'name_asc' },
+  { label: 'Top rated',         value: 'top_rated' },
 ];
 
 export default function Shop() {
@@ -30,20 +30,36 @@ export default function Shop() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
 
-  const search   = searchParams.get('search')   || '';
-  const sort     = searchParams.get('sort')     || 'newest';
-  const category = searchParams.get('category') || '';
-  const page     = parseInt(searchParams.get('page') || '1');
-  const LIMIT    = 12;
+  // Local state for price range inputs — only committed to URL on "Apply"
+  const [priceMinInput, setPriceMinInput] = useState('');
+  const [priceMaxInput, setPriceMaxInput] = useState('');
+
+  const search    = searchParams.get('search')    || '';
+  const sort      = searchParams.get('sort')      || 'newest';
+  const category  = searchParams.get('category')  || '';
+  const page      = parseInt(searchParams.get('page') || '1');
+  const minPrice  = searchParams.get('min_price') || '';
+  const maxPrice  = searchParams.get('max_price') || '';
+  const inStock   = searchParams.get('in_stock')  || '';
+  const LIMIT     = 12;
+
+  // Keep price inputs in sync when URL changes (e.g. browser back)
+  useEffect(() => {
+    setPriceMinInput(minPrice);
+    setPriceMaxInput(maxPrice);
+  }, [minPrice, maxPrice]);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const params = { limit: LIMIT, offset: (page - 1) * LIMIT };
-      if (search)   params.search   = search;
-      if (sort)     params.sort     = sort;
-      if (category) params.category = category;
+      if (search)   params.search    = search;
+      if (sort)     params.sort      = sort;
+      if (category) params.category  = category;
+      if (minPrice) params.min_price = minPrice;
+      if (maxPrice) params.max_price = maxPrice;
+      if (inStock)  params.in_stock  = inStock;
 
       const { data } = await productsAPI.getAll(params);
       if (Array.isArray(data)) {
@@ -58,7 +74,7 @@ export default function Shop() {
     } finally {
       setLoading(false);
     }
-  }, [search, sort, category, page]);
+  }, [search, sort, category, page, minPrice, maxPrice, inStock]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -69,6 +85,36 @@ export default function Shop() {
     if (key !== 'page') next.set('page', '1');
     setSearchParams(next);
   };
+
+  const applyPriceFilter = () => {
+    const next = new URLSearchParams(searchParams);
+    if (priceMinInput) next.set('min_price', priceMinInput);
+    else               next.delete('min_price');
+    if (priceMaxInput) next.set('max_price', priceMaxInput);
+    else               next.delete('max_price');
+    next.set('page', '1');
+    setSearchParams(next);
+  };
+
+  const clearPriceFilter = () => {
+    setPriceMinInput('');
+    setPriceMaxInput('');
+    const next = new URLSearchParams(searchParams);
+    next.delete('min_price');
+    next.delete('max_price');
+    next.set('page', '1');
+    setSearchParams(next);
+  };
+
+  const clearAllFilters = () => {
+    setPriceMinInput('');
+    setPriceMaxInput('');
+    setSearchParams({});
+  };
+
+  const hasPriceFilter   = minPrice || maxPrice;
+  const hasInStockFilter = inStock === 'true';
+  const hasActiveFilters = hasPriceFilter || hasInStockFilter || category || search;
 
   const totalPages = Math.ceil(total / LIMIT);
 
@@ -99,6 +145,68 @@ export default function Shop() {
             </button>
           ))}
         </div>
+
+        {/* ── Price range + In-stock filter bar ──── */}
+        <div className="shop-filter-bar">
+          <div className="shop-price-range">
+            <span className="shop-filter-label">Price (GH₵)</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="Min"
+              value={priceMinInput}
+              onChange={e => setPriceMinInput(e.target.value)}
+              className="shop-price-input"
+              aria-label="Minimum price"
+            />
+            <span className="shop-price-sep">–</span>
+            <input
+              type="number"
+              min="0"
+              placeholder="Max"
+              value={priceMaxInput}
+              onChange={e => setPriceMaxInput(e.target.value)}
+              className="shop-price-input"
+              aria-label="Maximum price"
+              onKeyDown={e => e.key === 'Enter' && applyPriceFilter()}
+            />
+            <button className="btn btn-sm btn-outline" onClick={applyPriceFilter}>
+              Apply
+            </button>
+            {hasPriceFilter && (
+              <button className="shop-filter-clear" onClick={clearPriceFilter}>
+                Clear
+              </button>
+            )}
+          </div>
+
+          <label className="shop-instock-label">
+            <input
+              type="checkbox"
+              checked={hasInStockFilter}
+              onChange={e => setParam('in_stock', e.target.checked ? 'true' : '')}
+            />
+            In stock only
+          </label>
+        </div>
+
+        {/* ── Active filter pills ──────────────────── */}
+        {(hasPriceFilter || hasInStockFilter) && (
+          <div className="shop-active-filters">
+            {hasPriceFilter && (
+              <span className="shop-filter-pill">
+                GH₵{minPrice || '0'} – GH₵{maxPrice || '∞'}
+                <button onClick={clearPriceFilter} aria-label="Remove price filter">✕</button>
+              </span>
+            )}
+            {hasInStockFilter && (
+              <span className="shop-filter-pill">
+                In stock only
+                <button onClick={() => setParam('in_stock', '')} aria-label="Remove in-stock filter">✕</button>
+              </span>
+            )}
+          </div>
+        )}
 
         {/* ── Search + Sort toolbar ─────────────── */}
         <div className="shop-toolbar">
@@ -160,15 +268,17 @@ export default function Shop() {
                 ? `No products match "${search}".`
                 : category
                   ? `No ${category} products yet.`
-                  : 'No products are available right now.'}
+                  : hasPriceFilter
+                    ? 'No products in that price range.'
+                    : 'No products are available right now.'}
             </p>
-            {(search || category) && (
+            {hasActiveFilters && (
               <button
                 className="btn btn-outline"
-                onClick={() => setSearchParams({})}
+                onClick={clearAllFilters}
                 style={{ marginTop: '20px' }}
               >
-                Clear Filters
+                Clear All Filters
               </button>
             )}
           </div>

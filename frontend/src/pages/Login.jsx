@@ -1,46 +1,85 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+
+function formatCountdown(secs) {
+  const m = Math.floor(secs / 60).toString().padStart(2, '0');
+  const s = (secs % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
 
 export default function Login() {
   const { login }    = useAuth();
   const navigate     = useNavigate();
   const location     = useLocation();
 
-  // If the user was redirected here from a protected page,
-  // send them back there after login instead of going to home.
   const from = location.state?.from?.pathname || '/';
 
-  const [form, setForm]   = useState({ email: '', password: '' });
-  const [error, setError] = useState('');
+  const [form, setForm]       = useState({ email: '', password: '' });
+  const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [lockout, setLockout] = useState(0); // seconds remaining in rate-limit lockout
+  const timerRef = useRef(null);
+
+  // Count down the lockout every second; clear when it reaches 0.
+  useEffect(() => {
+    if (lockout <= 0) return;
+    timerRef.current = setInterval(() => {
+      setLockout(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          setError('');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timerRef.current);
+  }, [lockout]);
 
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (lockout > 0) return;
     setError('');
     setLoading(true);
     try {
       await login(form.email, form.password);
       navigate(from, { replace: true });
     } catch (err) {
-      // Show the server's error message, or a fallback
-      setError(err.response?.data?.error || 'Login failed. Please try again.');
+      if (err.response?.status === 429) {
+        // Prefer the header; fall back to the JSON body field the server also sends.
+        const wait = parseInt(
+          err.response.headers?.['retry-after'] || err.response.data?.retryAfter || 60,
+          10
+        );
+        setLockout(wait);
+        setError(`Too many login attempts. Try again in ${formatCountdown(wait)}.`);
+      } else {
+        setError(err.response?.data?.error || 'Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const isLocked = lockout > 0;
+
   return (
     <div className="auth-page">
       <div className="auth-card">
         <h1>Welcome back</h1>
-        {/* TO CUSTOMIZE: Change this subtitle text */}
         <p>Sign in to your account to continue shopping.</p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && (
+          <div className={`alert ${isLocked ? 'alert-warning' : 'alert-error'}`}>
+            {isLocked
+              ? `Too many login attempts. Try again in ${formatCountdown(lockout)}.`
+              : error}
+          </div>
+        )}
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <div className="form-group">
@@ -53,6 +92,7 @@ export default function Login() {
               onChange={handleChange}
               required
               autoComplete="email"
+              disabled={isLocked}
             />
           </div>
 
@@ -66,10 +106,10 @@ export default function Login() {
               onChange={handleChange}
               required
               autoComplete="current-password"
+              disabled={isLocked}
             />
           </div>
 
-          {/* Forgot password link sits right-aligned above the button */}
           <div style={{ textAlign: 'right', marginTop: '-8px' }}>
             <Link
               to="/forgot-password"
@@ -82,9 +122,9 @@ export default function Login() {
           <button
             type="submit"
             className="btn btn-primary btn-full"
-            disabled={loading}
+            disabled={loading || isLocked}
           >
-            {loading ? 'Signing in…' : 'Sign In'}
+            {loading ? 'Signing in…' : isLocked ? `Try again in ${formatCountdown(lockout)}` : 'Sign In'}
           </button>
         </form>
 

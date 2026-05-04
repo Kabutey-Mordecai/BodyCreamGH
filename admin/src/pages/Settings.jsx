@@ -25,6 +25,10 @@ const DEFAULTS = {
   delivery_fee_flat:    15,
   delivery_fee_accra:   10,
   free_delivery_over:   200,
+  delivery_estimate_accra:      '1–2 business days',
+  delivery_estimate_nationwide: '3–5 business days',
+
+  low_stock_threshold: 5,
 
   paystack_public_key:  '',
   whatsapp_number:      '',
@@ -68,7 +72,7 @@ export default function Settings() {
       setDirty(false);
     } catch {
       localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
-      toast.info('Saved locally (backend /api/settings endpoint pending)');
+      toast.error('Failed to save settings to server. Changes saved locally.');
       setDirty(false);
     } finally {
       setSaving(false);
@@ -141,10 +145,40 @@ export default function Settings() {
                 <input type="number" min="0" step="0.01" value={data.delivery_fee_flat} onChange={e => update('delivery_fee_flat', e.target.value)} />
               </div>
             </div>
-            <div className="field" style={{ marginBottom: 0 }}>
+            <div className="field">
               <label>Free delivery threshold (GHS)</label>
               <input type="number" min="0" step="0.01" value={data.free_delivery_over} onChange={e => update('free_delivery_over', e.target.value)} />
               <div className="hint">Orders above this total ship for free. Set to 0 to disable.</div>
+            </div>
+            <div className="field-row">
+              <div className="field">
+                <label>Delivery estimate — Accra</label>
+                <input
+                  type="text"
+                  value={data.delivery_estimate_accra}
+                  onChange={e => update('delivery_estimate_accra', e.target.value)}
+                  placeholder="1–2 business days"
+                />
+              </div>
+              <div className="field">
+                <label>Delivery estimate — Nationwide</label>
+                <input
+                  type="text"
+                  value={data.delivery_estimate_nationwide}
+                  onChange={e => update('delivery_estimate_nationwide', e.target.value)}
+                  placeholder="3–5 business days"
+                />
+              </div>
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Low stock threshold (units)</label>
+              <input
+                type="number"
+                min="1"
+                value={data.low_stock_threshold}
+                onChange={e => update('low_stock_threshold', Number(e.target.value) || 5)}
+              />
+              <div className="hint">Products at or below this quantity show a "low stock" warning to customers.</div>
             </div>
           </div>
         </div>

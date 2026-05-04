@@ -12,7 +12,7 @@ function validate(schema, property = 'body') {
   };
 }
 
-const passwordSchema = Joi.string().min(6).max(128).required();
+const passwordSchema = Joi.string().min(8).max(128).required();
 
 const registerSchema = Joi.object({
   email:      Joi.string().email().max(254).required(),
@@ -93,6 +93,14 @@ const refundOrderSchema = Joi.object({
   notes: Joi.string().trim().max(1000).optional().allow('', null),
 });
 
+const requestCancelSchema = Joi.object({
+  reason: Joi.string().trim().min(3).max(500).required(),
+});
+
+const requestReturnSchema = Joi.object({
+  reason: Joi.string().trim().min(3).max(500).required(),
+});
+
 const validateRegister      = validate(registerSchema);
 const validateLogin         = validate(loginSchema);
 const validateCreateOrder   = validate(createOrderSchema);
@@ -102,6 +110,8 @@ const validateUpdateDelivery  = validate(updateDeliverySchema);
 const validateOrderStatus     = validate(updateOrderStatusSchema);
 const validateCancelOrder     = validate(cancelOrderSchema);
 const validateRefundOrder     = validate(refundOrderSchema);
+const validateRequestCancel   = validate(requestCancelSchema);
+const validateRequestReturn   = validate(requestReturnSchema);
 
 // Legacy — kept for backward compat with product routes
 const validateProduct = (req, res, next) => {
@@ -121,5 +131,7 @@ module.exports = {
   validateOrderStatus,
   validateCancelOrder,
   validateRefundOrder,
+  validateRequestCancel,
+  validateRequestReturn,
   validateProduct,
 };

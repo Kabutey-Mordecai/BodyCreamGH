@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { productsAPI } from '../services/api';
+import { productsAPI, newsletterAPI } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import ProductCard from '../components/ProductCard';
 import TrustStrip from '../components/TrustStrip';
@@ -37,11 +37,14 @@ export default function Home() {
     hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image,
     categories, testimonials, trust_items,
   } = useSettings();
-  const [heroSearch, setHeroSearch] = useState('');
-  const [featured, setFeatured]   = useState([]);
-  const [loading, setLoading]     = useState(true);
-  const [saleProducts, setSaleProducts] = useState([]);
-  const [timeLeft, setTimeLeft]   = useState(() => getTimeLeft(SALE_END_TIME));
+  const [heroSearch, setHeroSearch]         = useState('');
+  const [featured, setFeatured]             = useState([]);
+  const [loading, setLoading]               = useState(true);
+  const [saleProducts, setSaleProducts]     = useState([]);
+  const [timeLeft, setTimeLeft]             = useState(() => getTimeLeft(SALE_END_TIME));
+  const [nlEmail, setNlEmail]               = useState('');
+  const [nlState, setNlState]               = useState('idle'); // idle | loading | success | error
+  const [nlError, setNlError]               = useState('');
 
   useEffect(() => {
     productsAPI.getAll({ limit: 4 })
@@ -56,6 +59,21 @@ export default function Home() {
       .then(({ data }) => setSaleProducts(data.products || data))
       .catch(() => {});
   }, []);
+
+  const handleNewsletterSubmit = async (e) => {
+    e.preventDefault();
+    if (nlState === 'loading') return;
+    setNlState('loading');
+    setNlError('');
+    try {
+      await newsletterAPI.subscribe(nlEmail);
+      setNlState('success');
+      setNlEmail('');
+    } catch (err) {
+      setNlState('error');
+      setNlError(err.response?.data?.error || 'Something went wrong. Please try again.');
+    }
+  };
 
   const handleHeroSearch = (e) => {
     e.preventDefault();
@@ -295,19 +313,35 @@ export default function Home() {
 
       {/* ══════════════════════════════════════════
           NEWSLETTER CTA
-          TO CUSTOMIZE: Wire this up to Mailchimp or your email service
           ══════════════════════════════════════════ */}
       <section className="newsletter-section">
         <div className="container newsletter-inner">
-          <h2>Get 10% off your first order</h2>
+          <h2>Get 1% off your first order</h2>
           <p>Join our newsletter for exclusive offers, skincare tips, and new arrivals.</p>
-          <form
-            className="newsletter-form"
-            onSubmit={e => { e.preventDefault(); alert('Thank you! We will be in touch.'); }}
-          >
-            <input type="email" placeholder="Enter your email address" required />
-            <button type="submit" className="btn btn-accent">Subscribe</button>
-          </form>
+
+          {nlState === 'success' ? (
+            <p style={{ marginTop: '16px', color: '#22c55e', fontWeight: 600 }}>
+              You're in! Check your inbox for your discount.
+            </p>
+          ) : (
+            <form className="newsletter-form" onSubmit={handleNewsletterSubmit}>
+              <input
+                type="email"
+                placeholder="Enter your email address"
+                required
+                value={nlEmail}
+                onChange={e => setNlEmail(e.target.value)}
+                disabled={nlState === 'loading'}
+              />
+              <button type="submit" className="btn btn-accent" disabled={nlState === 'loading'}>
+                {nlState === 'loading' ? 'Subscribing…' : 'Subscribe'}
+              </button>
+            </form>
+          )}
+
+          {nlState === 'error' && (
+            <p style={{ marginTop: '8px', color: '#ef4444', fontSize: '0.85rem' }}>{nlError}</p>
+          )}
         </div>
       </section>
 

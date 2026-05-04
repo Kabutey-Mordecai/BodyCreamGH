@@ -2,6 +2,7 @@ const { v4: uuid } = require('uuid');
 const pool = require('../config/database');
 const OrderModel = require('../models/order.model');
 const InventoryModel = require('../models/inventory.model');
+const VariantModel = require('../models/variant.model');
 const ReviewModel = require('../models/review.model');
 const CouponModel = require('../models/coupon.model');
 const { logStatusChange } = require('../utils/audit');
@@ -30,13 +31,17 @@ const createOrder = async (req, res) => {
     await client.query('BEGIN');
     transactionStarted = true;
 
-    // Lock the cart rows to prevent concurrent modifications
+    // Lock cart rows — include variant price/stock when variant_id is present
     const cartResult = await client.query(
-      `SELECT ci.quantity, p.id as product_id, p.price, p.stock_quantity
-       FROM cart_items ci
-       JOIN products p ON ci.product_id = p.id
-       WHERE ci.customer_id = $1
-       FOR UPDATE`,
+      `SELECT ci.quantity, ci.variant_id, ci.variant_label,
+              p.id AS product_id,
+              COALESCE(pv.price,          p.price)          AS price,
+              COALESCE(pv.stock_quantity, p.stock_quantity)  AS stock_quantity
+         FROM cart_items ci
+         JOIN products p ON ci.product_id = p.id
+         LEFT JOIN product_variants pv ON ci.variant_id = pv.id
+        WHERE ci.customer_id = $1
+        FOR UPDATE`,
       [req.user.id]
     );
 
@@ -85,11 +90,18 @@ const createOrder = async (req, res) => {
 
     for (const item of cartResult.rows) {
       await client.query(
-        'INSERT INTO order_items (id, order_id, product_id, quantity, price_at_purchase, subtotal) VALUES ($1,$2,$3,$4,$5,$6)',
+        `INSERT INTO order_items
+           (id, order_id, product_id, quantity, price_at_purchase, subtotal, variant_id, variant_label)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [uuid(), orderId, item.product_id, item.quantity, item.price,
-         parseFloat(item.price) * item.quantity]
+         parseFloat(item.price) * item.quantity,
+         item.variant_id || null, item.variant_label || null]
       );
-      await InventoryModel.adjustStock(item.product_id, -item.quantity, 'sale', null, client);
+      if (item.variant_id) {
+        await VariantModel.adjustStock(item.variant_id, -item.quantity, client);
+      } else {
+        await InventoryModel.adjustStock(item.product_id, -item.quantity, 'sale', null, client);
+      }
     }
 
     await client.query('DELETE FROM cart_items WHERE customer_id=$1', [req.user.id]);
@@ -115,7 +127,9 @@ const getOrders = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const { rows } = await pool.query(
-      `SELECT id, order_number, total_amount, status, payment_status, created_at
+      `SELECT id, order_number, total_amount, status, payment_status, refund_status, created_at,
+              cancel_requested, cancel_request_rejected,
+              return_requested, return_request_rejected
          FROM orders
         WHERE customer_id = $1
         ORDER BY created_at DESC
@@ -153,9 +167,168 @@ const getOrderById = async (req, res) => {
 
 const getAllOrders = async (req, res) => {
   try {
-    res.json(await OrderModel.findAll());
+    const page   = Math.max(1, parseInt(req.query.page)  || 1);
+    const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
+    const offset = (page - 1) * limit;
+    const { status, search } = req.query;
+
+    const params = [];
+    const clauses = [];
+
+    if (status) {
+      params.push(status);
+      clauses.push(`o.status = $${params.length}`);
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      clauses.push(`(o.order_number ILIKE $${params.length} OR COALESCE(u.email, o.guest_email) ILIKE $${params.length})`);
+    }
+
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+    const countParams = [...params];
+    params.push(limit, offset);
+
+    const [dataResult, countResult] = await Promise.all([
+      pool.query(`
+        SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status,
+               o.refund_status, o.created_at,
+               o.cancel_requested, o.cancel_request_rejected,
+               o.return_requested, o.return_request_rejected,
+               COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name,
+               COALESCE(u.email, o.guest_email) AS customer_email
+          FROM orders o
+          LEFT JOIN users u ON o.customer_id = u.id
+          ${where}
+         ORDER BY o.created_at DESC
+         LIMIT $${params.length - 1} OFFSET $${params.length}
+      `, params),
+      pool.query(`
+        SELECT COUNT(*) FROM orders o
+        LEFT JOIN users u ON o.customer_id = u.id
+        ${where}
+      `, countParams),
+    ]);
+
+    const total = parseInt(countResult.rows[0].count);
+    res.json({
+      orders:     dataResult.rows,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch orders' });
+  }
+};
+
+const getRequestCounts = async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        COUNT(*) FILTER (
+          WHERE cancel_requested = true AND cancel_request_rejected = false
+            AND status NOT IN ('cancelled', 'refunded')
+        ) AS cancel_count,
+        COUNT(*) FILTER (
+          WHERE return_requested = true AND return_request_rejected = false
+            AND status NOT IN ('cancelled', 'refunded')
+        ) AS return_count,
+        COUNT(*) FILTER (WHERE status = 'pending') AS pending_orders
+      FROM orders
+    `);
+    res.json({
+      cancel:        parseInt(rows[0].cancel_count),
+      return:        parseInt(rows[0].return_count),
+      pendingOrders: parseInt(rows[0].pending_orders),
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch request counts' });
+  }
+};
+
+const getRequests = async (req, res) => {
+  try {
+    const { type } = req.query;
+    if (type !== 'cancel' && type !== 'return') {
+      return res.status(400).json({ error: 'type must be "cancel" or "return"' });
+    }
+
+    const where = type === 'cancel'
+      ? `WHERE o.cancel_requested = true AND o.cancel_request_rejected = false AND o.status NOT IN ('cancelled', 'refunded')`
+      : `WHERE o.return_requested = true AND o.return_request_rejected = false AND o.status NOT IN ('cancelled', 'refunded')`;
+
+    const { rows } = await pool.query(`
+      SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status,
+             o.cancel_reason, o.cancel_requested_at,
+             o.return_reason, o.return_requested_at,
+             COALESCE(u.email, o.guest_email) AS customer_email,
+             COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name
+        FROM orders o
+        LEFT JOIN users u ON o.customer_id = u.id
+        ${where}
+       ORDER BY COALESCE(o.cancel_requested_at, o.return_requested_at) DESC
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch requests' });
+  }
+};
+
+const exportOrders = async (req, res) => {
+  try {
+    const { status, search, from, to } = req.query;
+    const params = [];
+    const clauses = [];
+
+    if (status) {
+      params.push(status);
+      clauses.push(`o.status = $${params.length}`);
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      clauses.push(`(o.order_number ILIKE $${params.length} OR COALESCE(u.email, o.guest_email) ILIKE $${params.length})`);
+    }
+    if (from) {
+      params.push(from);
+      clauses.push(`o.created_at >= $${params.length}::date`);
+    }
+    if (to) {
+      params.push(to);
+      clauses.push(`o.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+    }
+
+    const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+
+    const { rows } = await pool.query(`
+      SELECT o.order_number, o.total_amount, o.status, o.payment_status, o.created_at,
+             COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name,
+             COALESCE(u.email, o.guest_email, '') AS customer_email
+        FROM orders o
+        LEFT JOIN users u ON o.customer_id = u.id
+        ${where}
+       ORDER BY o.created_at DESC
+    `, params);
+
+    const headers = ['Order Number', 'Customer Name', 'Customer Email', 'Total (GHS)', 'Status', 'Payment Status', 'Created At'];
+    const csvRows = rows.map(r => [
+      r.order_number,
+      r.customer_name,
+      r.customer_email,
+      parseFloat(r.total_amount).toFixed(2),
+      r.status,
+      r.payment_status,
+      new Date(r.created_at).toISOString(),
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+
+    const csv = [headers.join(','), ...csvRows].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="orders-${Date.now()}.csv"`);
+    res.send(csv);
+  } catch (err) {
+    logger.error('exportOrders error', { err: err.message });
+    res.status(500).json({ error: 'Failed to export orders' });
   }
 };
 
@@ -223,7 +396,7 @@ const cancelOrder = async (req, res) => {
     let stockRestored = order.stock_restored;
     if (!stockRestored) {
       const { rows: items } = await client.query(
-        `SELECT product_id, quantity
+        `SELECT product_id, quantity, variant_id
            FROM order_items
           WHERE order_id = $1
           FOR UPDATE`,
@@ -231,13 +404,17 @@ const cancelOrder = async (req, res) => {
       );
 
       for (const item of items) {
-        await InventoryModel.adjustStock(
-          item.product_id,
-          item.quantity,
-          'order_cancelled',
-          `Restored from cancelled order ${order.order_number || order.id}`,
-          client
-        );
+        if (item.variant_id) {
+          await VariantModel.adjustStock(item.variant_id, item.quantity, client);
+        } else {
+          await InventoryModel.adjustStock(
+            item.product_id,
+            item.quantity,
+            'order_cancelled',
+            `Restored from cancelled order ${order.order_number || order.id}`,
+            client
+          );
+        }
       }
 
       stockRestored = true;
@@ -261,7 +438,7 @@ const cancelOrder = async (req, res) => {
           SET status = 'cancelled',
               cancelled_at = NOW(),
               cancellation_reason = $1,
-              cancelled_by = $2,
+              cancelled_by = (SELECT id FROM users WHERE id = $2 LIMIT 1),
               stock_restored = $3,
               coupon_returned = $4,
               updated_at = NOW()
@@ -280,6 +457,10 @@ const cancelOrder = async (req, res) => {
 
     await client.query('COMMIT');
     transactionStarted = false;
+
+    const { notificationQueue } = require('../queues');
+    notificationQueue.add('order-cancelled', { orderId: order.id })
+      .catch(err => logger.error('Failed to enqueue cancellation notification', { err: err.message, orderId: order.id }));
 
     logger.info('Order cancelled', { orderId: order.id, from: order.status, to: 'cancelled' });
     res.json({ message: 'Order cancelled', order: updatedRows[0] });
@@ -398,6 +579,10 @@ const refundOrder = async (req, res) => {
 
       await client.query('COMMIT');
       transactionStarted = false;
+
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('order-refunded', { orderId: order.id })
+        .catch(err => logger.error('Failed to enqueue refund notification', { err: err.message, orderId: order.id }));
 
       logger.info('Manual refund completed', { orderId: order.id, from: order.status, to: 'refunded' });
       return res.json({ message: 'Order refunded', order: updatedRows[0] });
@@ -632,12 +817,23 @@ const createGuestOrder = async (req, res) => {
     transactionStarted = true;
 
     // Fetch and lock products
-    const productIds = items.map(i => i.product_id);
+    const productIds = [...new Set(items.map(i => i.product_id))];
     const { rows: products } = await client.query(
       `SELECT id, price, stock_quantity FROM products WHERE id = ANY($1) FOR UPDATE`,
       [productIds]
     );
     const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+    // Fetch and lock variants when present
+    const variantIds = items.map(i => i.variant_id).filter(Boolean);
+    let variantMap = {};
+    if (variantIds.length > 0) {
+      const { rows: variants } = await client.query(
+        `SELECT id, price, stock_quantity, is_active FROM product_variants WHERE id = ANY($1) FOR UPDATE`,
+        [variantIds]
+      );
+      variantMap = Object.fromEntries(variants.map(v => [v.id, v]));
+    }
 
     for (const item of items) {
       const p = productMap[item.product_id];
@@ -645,14 +841,23 @@ const createGuestOrder = async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: `Product not found: ${item.product_id}` });
       }
-      if (p.stock_quantity < item.quantity) {
+      const effectiveStock = item.variant_id && variantMap[item.variant_id]
+        ? variantMap[item.variant_id].stock_quantity
+        : p.stock_quantity;
+      if (effectiveStock < item.quantity) {
         await client.query('ROLLBACK');
         return res.status(400).json({ error: 'Insufficient stock for one or more items' });
       }
     }
 
     let subtotal = 0;
-    items.forEach(item => { subtotal += parseFloat(productMap[item.product_id].price) * item.quantity; });
+    items.forEach(item => {
+      const p = productMap[item.product_id];
+      const effectivePrice = item.variant_id && variantMap[item.variant_id]
+        ? variantMap[item.variant_id].price
+        : p.price;
+      subtotal += parseFloat(effectivePrice) * item.quantity;
+    });
     let total = subtotal + delivery_fee;
 
     // Apply coupon discount server-side (locked — same as authenticated checkout)
@@ -683,11 +888,22 @@ const createGuestOrder = async (req, res) => {
 
     for (const item of items) {
       const p = productMap[item.product_id];
+      const effectivePrice = item.variant_id && variantMap[item.variant_id]
+        ? variantMap[item.variant_id].price
+        : p.price;
       await client.query(
-        'INSERT INTO order_items (id, order_id, product_id, quantity, price_at_purchase, subtotal) VALUES ($1,$2,$3,$4,$5,$6)',
-        [uuid(), orderId, item.product_id, item.quantity, p.price, parseFloat(p.price) * item.quantity]
+        `INSERT INTO order_items
+           (id, order_id, product_id, quantity, price_at_purchase, subtotal, variant_id, variant_label)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [uuid(), orderId, item.product_id, item.quantity,
+         effectivePrice, parseFloat(effectivePrice) * item.quantity,
+         item.variant_id || null, item.variant_label || null]
       );
-      await InventoryModel.adjustStock(item.product_id, -item.quantity, 'sale', null, client);
+      if (item.variant_id) {
+        await VariantModel.adjustStock(item.variant_id, -item.quantity, client);
+      } else {
+        await InventoryModel.adjustStock(item.product_id, -item.quantity, 'sale', null, client);
+      }
     }
 
     await client.query('COMMIT');
@@ -699,6 +915,212 @@ const createGuestOrder = async (req, res) => {
     res.status(500).json({ error: 'Failed to create order' });
   } finally {
     client.release();
+  }
+};
+
+// ── Customer cancel request ───────────────────────────────────────────────────
+const requestCancel = async (req, res) => {
+  const { reason } = req.body;
+  const { orderId } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, status, customer_id, cancel_requested, cancel_request_rejected
+         FROM orders WHERE id = $1`,
+      [orderId]
+    );
+    const order = rows[0];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.customer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    if (!['pending', 'confirmed'].includes(order.status)) {
+      return res.status(400).json({ error: `Cannot request cancellation for order with status "${order.status}"` });
+    }
+    if (order.cancel_requested && !order.cancel_request_rejected) {
+      return res.status(409).json({ error: 'Cancellation already requested' });
+    }
+
+    await pool.query(
+      `UPDATE orders
+          SET cancel_requested = true,
+              cancel_reason = $1,
+              cancel_requested_at = NOW(),
+              cancel_request_rejected = false,
+              updated_at = NOW()
+        WHERE id = $2`,
+      [reason, orderId]
+    );
+
+    const { notificationQueue } = require('../queues');
+    notificationQueue.add('cancel-requested', { orderId })
+      .catch(err => logger.error('Failed to enqueue cancel-requested notification', { err: err.message, orderId }));
+
+    res.json({ message: 'Cancellation request submitted' });
+  } catch (err) {
+    logger.error('requestCancel error', { err: err.message, orderId });
+    res.status(500).json({ error: 'Failed to submit cancellation request' });
+  }
+};
+
+// ── Customer return request ────────────────────────────────────────────────────
+const requestReturn = async (req, res) => {
+  const { reason } = req.body;
+  const { orderId } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, status, payment_status, customer_id, return_requested, return_request_rejected
+         FROM orders WHERE id = $1`,
+      [orderId]
+    );
+    const order = rows[0];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (order.customer_id !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    if (order.status !== 'delivered') {
+      return res.status(400).json({ error: 'Returns can only be requested for delivered orders' });
+    }
+    if (order.payment_status !== 'paid') {
+      return res.status(400).json({ error: 'Only paid orders are eligible for return' });
+    }
+    if (order.return_requested && !order.return_request_rejected) {
+      return res.status(409).json({ error: 'Return already requested' });
+    }
+
+    await pool.query(
+      `UPDATE orders
+          SET return_requested = true,
+              return_reason = $1,
+              return_requested_at = NOW(),
+              return_request_rejected = false,
+              updated_at = NOW()
+        WHERE id = $2`,
+      [reason, orderId]
+    );
+
+    const { notificationQueue } = require('../queues');
+    notificationQueue.add('return-requested', { orderId })
+      .catch(err => logger.error('Failed to enqueue return-requested notification', { err: err.message, orderId }));
+
+    res.json({ message: 'Return request submitted' });
+  } catch (err) {
+    logger.error('requestReturn error', { err: err.message, orderId });
+    res.status(500).json({ error: 'Failed to submit return request' });
+  }
+};
+
+// ── Admin: approve cancel request ─────────────────────────────────────────────
+// Delegates to the existing cancelOrder logic by calling it as if it were a direct
+// cancel, passing the customer's reason through and resetting the request flag.
+const approveCancelRequest = async (req, res) => {
+  const { orderId } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, cancel_requested, cancel_reason, status FROM orders WHERE id = $1`,
+      [orderId]
+    );
+    const order = rows[0];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order.cancel_requested) return res.status(400).json({ error: 'No cancellation request pending' });
+
+    // Delegate to cancelOrder — fake req to reuse the full transactional logic
+    req.body = { reason: order.cancel_reason || 'Approved customer cancellation request' };
+    return cancelOrder(req, res);
+  } catch (err) {
+    logger.error('approveCancelRequest error', { err: err.message, orderId });
+    res.status(500).json({ error: 'Failed to approve cancellation request' });
+  }
+};
+
+// ── Admin: reject cancel request ──────────────────────────────────────────────
+const rejectCancelRequest = async (req, res) => {
+  const { orderId } = req.params;
+
+  try {
+    const result = await pool.query(
+      `UPDATE orders
+          SET cancel_request_rejected = true,
+              updated_at = NOW()
+        WHERE id = $1 AND cancel_requested = true
+        RETURNING id`,
+      [orderId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Order not found or no cancel request pending' });
+    }
+
+    const { notificationQueue } = require('../queues');
+    notificationQueue.add('cancel-rejected', { orderId })
+      .catch(err => logger.error('Failed to enqueue cancel-rejected notification', { err: err.message, orderId }));
+
+    res.json({ message: 'Cancellation request rejected' });
+  } catch (err) {
+    logger.error('rejectCancelRequest error', { err: err.message, orderId });
+    res.status(500).json({ error: 'Failed to reject cancellation request' });
+  }
+};
+
+// ── Admin: approve return request ─────────────────────────────────────────────
+// Delegates to the existing refundOrder logic.
+const approveReturnRequest = async (req, res) => {
+  const { orderId } = req.params;
+
+  try {
+    const { rows } = await pool.query(
+      `SELECT o.id, o.return_requested, o.return_reason,
+              (SELECT p.paystack_reference
+                 FROM payments p
+                WHERE p.order_id = o.id
+                  AND p.payment_method = 'paystack'
+                  AND p.status = 'success'
+                ORDER BY p.updated_at DESC
+                LIMIT 1) AS paystack_ref
+         FROM orders o WHERE o.id = $1`,
+      [orderId]
+    );
+    const order = rows[0];
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    if (!order.return_requested) return res.status(400).json({ error: 'No return request pending' });
+
+    // Use Paystack refund if the order was paid via Paystack so money is
+    // actually returned. Fall back to manual for cash/external payments.
+    req.body = order.paystack_ref
+      ? { method: 'paystack', notes: order.return_reason || 'Approved customer return request' }
+      : { method: 'manual', reference: `RETURN-APPROVED-${orderId.slice(0, 8).toUpperCase()}`, notes: order.return_reason || 'Approved customer return request' };
+
+    return refundOrder(req, res);
+  } catch (err) {
+    logger.error('approveReturnRequest error', { err: err.message, orderId });
+    res.status(500).json({ error: 'Failed to approve return request' });
+  }
+};
+
+// ── Admin: reject return request ──────────────────────────────────────────────
+const rejectReturnRequest = async (req, res) => {
+  const { orderId } = req.params;
+
+  try {
+    const result = await pool.query(
+      `UPDATE orders
+          SET return_request_rejected = true,
+              updated_at = NOW()
+        WHERE id = $1 AND return_requested = true
+        RETURNING id`,
+      [orderId]
+    );
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Order not found or no return request pending' });
+    }
+
+    const { notificationQueue } = require('../queues');
+    notificationQueue.add('return-rejected', { orderId })
+      .catch(err => logger.error('Failed to enqueue return-rejected notification', { err: err.message, orderId }));
+
+    res.json({ message: 'Return request rejected' });
+  } catch (err) {
+    logger.error('rejectReturnRequest error', { err: err.message, orderId });
+    res.status(500).json({ error: 'Failed to reject return request' });
   }
 };
 
@@ -723,4 +1145,85 @@ const getReviewStatus = async (req, res) => {
   }
 };
 
-module.exports = { createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders, updateOrderStatus, cancelOrder, refundOrder, getOrderStatusLog, getReviewStatus };
+// POST /api/orders/track  (public — no auth)
+const trackOrder = async (req, res) => {
+  const { order_number, email } = req.body;
+  if (!order_number || !email) {
+    return res.status(400).json({ message: 'Order number and email are required' });
+  }
+
+  try {
+    const { rows: orderRows } = await pool.query(
+      `SELECT o.id, o.order_number, o.status, o.payment_status,
+              o.created_at, o.updated_at,
+              o.shipping_city, o.shipping_region
+       FROM orders o
+       LEFT JOIN users u ON o.customer_id = u.id
+       WHERE o.order_number = $1
+         AND (LOWER(u.email) = LOWER($2) OR LOWER(o.guest_email) = LOWER($2))
+       LIMIT 1`,
+      [order_number, email]
+    );
+
+    if (!orderRows.length) {
+      return res.status(404).json({
+        message: 'Order not found. Please check your order number and email address.',
+      });
+    }
+
+    const order = orderRows[0];
+
+    const [itemsResult, deliveryResult, logResult] = await Promise.all([
+      pool.query(
+        `SELECT p.name, oi.variant_label, oi.quantity,
+                oi.price_at_purchase AS price, p.image_url
+         FROM order_items oi
+         JOIN products p ON oi.product_id = p.id
+         WHERE oi.order_id = $1`,
+        [order.id]
+      ),
+      pool.query(
+        `SELECT status, delivery_partner, tracking_number, estimated_delivery
+         FROM deliveries
+         WHERE order_id = $1
+         ORDER BY created_at DESC LIMIT 1`,
+        [order.id]
+      ),
+      pool.query(
+        `SELECT to_status AS status, created_at, note
+         FROM order_status_log
+         WHERE order_id = $1
+         ORDER BY created_at ASC`,
+        [order.id]
+      ),
+    ]);
+
+    res.json({
+      order_number:    order.order_number,
+      status:          order.status,
+      payment_status:  order.payment_status,
+      created_at:      order.created_at,
+      updated_at:      order.updated_at,
+      items:           itemsResult.rows,
+      delivery:        deliveryResult.rows[0] || null,
+      status_history:  logResult.rows,
+      shipping_address: {
+        city:   order.shipping_city,
+        region: order.shipping_region,
+      },
+    });
+  } catch (err) {
+    console.error('[trackOrder] error:', err);
+    res.status(500).json({ message: 'Failed to track order' });
+  }
+};
+
+module.exports = {
+  createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders,
+  getRequestCounts, getRequests, exportOrders,
+  updateOrderStatus, cancelOrder, refundOrder, getOrderStatusLog, getReviewStatus,
+  requestCancel, requestReturn,
+  approveCancelRequest, rejectCancelRequest,
+  approveReturnRequest, rejectReturnRequest,
+  trackOrder,
+};

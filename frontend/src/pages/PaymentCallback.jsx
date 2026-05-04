@@ -5,12 +5,11 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 
 function hasCancelledRefundState(data) {
-  const order = data?.order || data;
-  return order?.status === 'cancelled' ||
-    order?.status === 'refunded' ||
-    order?.refund_status === 'pending' ||
-    order?.refund_status === 'failed' ||
-    order?.refund_status === 'success';
+  return data?.order_status === 'cancelled' ||
+    data?.order_status === 'refunded' ||
+    data?.refund_status === 'pending' ||
+    data?.refund_status === 'failed' ||
+    data?.refund_status === 'success';
 }
 
 export default function PaymentCallback() {

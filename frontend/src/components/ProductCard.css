@@ -56,10 +56,27 @@
   background: var(--color-accent);
   color: #fff;
 }
+.badge-low-stock {
+  background: #fffbec;
+  color: #92651e;
+  border: 1px solid rgba(232,184,75,0.6);
+}
 .badge-oos {
   background: rgba(28, 20, 16, 0.72);
   color: rgba(255,255,255,0.9);
   backdrop-filter: blur(2px);
+}
+.badge-sale {
+  background: #c0392b;
+  color: #fff;
+}
+.badge-promo {
+  background: var(--color-accent);
+  color: #fff;
+  max-width: 110px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ══ HOVER OVERLAY ════════════════════════════════��══════════════════════════ */
@@ -113,6 +130,44 @@
   background: var(--color-success) !important;
   color: #fff !important;
 }
+.overlay-atc-btn--error {
+  background: #c0392b !important;
+  color: #fff !important;
+}
+
+/* ── Quantity stepper shown when item is already in cart ─── */
+.overlay-qty-stepper {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  background: #fff;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.overlay-qty-btn {
+  flex: 0 0 40px;
+  height: 40px;
+  border: none;
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.overlay-qty-btn:hover:not(:disabled) { background: var(--color-accent); color: #fff; }
+.overlay-qty-btn:disabled { opacity: 0.4; cursor: default; }
+.overlay-qty-count {
+  flex: 1;
+  text-align: center;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  letter-spacing: 0.04em;
+}
 
 .overlay-sold-out {
   display: block;
@@ -144,8 +199,8 @@
 .product-card-body {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px 18px 18px;
+  gap: 4px;
+  padding: 10px 12px 12px;
 }
 
 .product-card-category {
@@ -173,6 +228,44 @@
   font-weight: 700;
   color: var(--color-accent-dark);
   margin-top: 2px;
+}
+
+/* ── Sale / promotion price block ────────────── */
+.product-card-price-sale {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 2px;
+}
+.product-card-price-current {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #c0392b;
+}
+.product-card-price-was {
+  font-size: 0.8rem;
+  color: var(--color-muted);
+  text-decoration: line-through;
+}
+.product-card-price-off {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #c0392b;
+  background: rgba(192,57,43,0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.product-card-countdown {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #92651e;
+  background: #fffbec;
+  border: 1px solid rgba(232,184,75,0.5);
+  padding: 1px 6px;
+  border-radius: 4px;
+  width: 100%;
 }
 
 /* ── Touch devices — always show overlay ────── */

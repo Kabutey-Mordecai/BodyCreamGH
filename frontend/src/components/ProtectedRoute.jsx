@@ -1,4 +1,4 @@
-import { Navigate } from 'react-router-dom';
+import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 // Wraps any route that requires login.
@@ -6,12 +6,13 @@ import { useAuth } from '../context/AuthContext';
 // (avoids a flash of the login page for users who are already logged in).
 export default function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) return null;
 
   // Redirect to /login and remember where the user was trying to go
   // so we can send them back after a successful login.
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
 
   return children;
 }

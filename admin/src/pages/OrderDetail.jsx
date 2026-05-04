@@ -45,6 +45,8 @@ export default function OrderDetail() {
   const [refundError, setRefundError] = useState('');
   const [refundSaving, setRefundSaving] = useState(false);
 
+  const [requestActionSaving, setRequestActionSaving] = useState(false);
+
   // Delivery form state
   const [deliveryForm, setDeliveryForm] = useState({
     delivery_partner: '', tracking_number: '', estimated_delivery: '', driver_phone: '',
@@ -87,8 +89,8 @@ export default function OrderDetail() {
       await ordersAPI.updateStatus(id, next, note || `Status changed to ${next} by admin`);
       toast.success(`Status updated to ${next}`);
       load();
-    } catch {
-      toast.error('Failed to update status — endpoint may not be implemented yet');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update status');
     } finally {
       setSaving(false);
     }
@@ -161,6 +163,19 @@ export default function OrderDetail() {
       setRefundError(err.response?.data?.error || 'Failed to refund order');
     } finally {
       setRefundSaving(false);
+    }
+  };
+
+  const handleRequestAction = async (action, label) => {
+    setRequestActionSaving(true);
+    try {
+      await ordersAPI[action](id);
+      toast.success(label);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || `Failed: ${label}`);
+    } finally {
+      setRequestActionSaving(false);
     }
   };
 
@@ -240,7 +255,7 @@ export default function OrderDetail() {
                 <button
                   key={s}
                   className={`btn btn-sm ${i === currentIdx + 1 ? 'btn-accent' : 'btn-outline'}`}
-                  disabled={saving || i <= currentIdx}
+                  disabled={saving || i !== currentIdx + 1}
                   onClick={() => setPendingStatus(s)}
                   style={{ textTransform: 'capitalize' }}
                 >
@@ -281,6 +296,88 @@ export default function OrderDetail() {
             <button className="btn btn-accent btn-sm" onClick={() => setRefundOpen(true)} disabled={refundSaving}>
               Refund order
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Cancel request pending banner ──────────────────────── */}
+      {order.cancel_requested && !order.cancel_request_rejected && order.status !== 'cancelled' && (
+        <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--ac-warning, #e8b84b)' }}>
+          <div className="card-body">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  ⚠ Customer requested cancellation
+                </div>
+                {order.cancel_reason && (
+                  <div className="muted text-sm" style={{ maxWidth: 480 }}>
+                    Reason: {order.cancel_reason}
+                  </div>
+                )}
+                {order.cancel_requested_at && (
+                  <div className="muted text-sm">
+                    Requested {new Date(order.cancel_requested_at).toLocaleString('en-GH')}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  className="btn btn-sm btn-danger"
+                  disabled={requestActionSaving}
+                  onClick={() => handleRequestAction('approveCancelRequest', 'Cancellation approved')}
+                >
+                  Approve & cancel
+                </button>
+                <button
+                  className="btn btn-sm btn-outline"
+                  disabled={requestActionSaving}
+                  onClick={() => handleRequestAction('rejectCancelRequest', 'Cancellation request rejected')}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Return request pending banner ───────────────────────── */}
+      {order.return_requested && !order.return_request_rejected && order.status === 'delivered' && (
+        <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--ac-info, #5ba4cf)' }}>
+          <div className="card-body">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  ↩ Customer requested a return
+                </div>
+                {order.return_reason && (
+                  <div className="muted text-sm" style={{ maxWidth: 480 }}>
+                    Reason: {order.return_reason}
+                  </div>
+                )}
+                {order.return_requested_at && (
+                  <div className="muted text-sm">
+                    Requested {new Date(order.return_requested_at).toLocaleString('en-GH')}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button
+                  className="btn btn-sm btn-accent"
+                  disabled={requestActionSaving}
+                  onClick={() => handleRequestAction('approveReturnRequest', 'Return approved & refund initiated')}
+                >
+                  Approve & refund
+                </button>
+                <button
+                  className="btn btn-sm btn-outline"
+                  disabled={requestActionSaving}
+                  onClick={() => handleRequestAction('rejectReturnRequest', 'Return request rejected')}
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -332,44 +429,6 @@ export default function OrderDetail() {
             </div>
           </div>
         </div>
-
-        {/* Status history */}
-        {statusLog.length > 0 && (
-          <div className="card" style={{ marginTop: 16, gridColumn: '1 / -1' }}>
-            <div className="card-header"><h2 className="card-title">Status History</h2></div>
-            <div className="card-body">
-              <div className="od-admin-log">
-                {statusLog.map((entry, i) => (
-                  <div key={i} className="od-admin-log-entry">
-                    <div className="od-admin-log-dot" />
-                    <div className="od-admin-log-body">
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        {entry.from_status && (
-                          <>
-                            <StatusBadge status={entry.from_status} />
-                            <span style={{ color: 'var(--ac-text-muted)', fontSize: '0.75rem' }}>→</span>
-                          </>
-                        )}
-                        <StatusBadge status={entry.to_status} />
-                      </div>
-                      {entry.note && (
-                        <p style={{ fontSize: '0.82rem', color: 'var(--ac-text-muted)', margin: '4px 0 2px', lineHeight: 1.5 }}>
-                          {entry.note}
-                        </p>
-                      )}
-                      <p style={{ fontSize: '0.72rem', color: 'var(--ac-text-muted)', marginTop: 2 }}>
-                        {new Date(entry.created_at).toLocaleString('en-GH', {
-                          day: 'numeric', month: 'short', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* Customer + shipping */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -576,6 +635,45 @@ export default function OrderDetail() {
           </div>
         </div>
       </div>
+
+      {/* Status history — rendered below the 2-col grid so it spans full width
+          without displacing the Customer column from the right-hand slot */}
+      {statusLog.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card-header"><h2 className="card-title">Status History</h2></div>
+          <div className="card-body">
+            <div className="od-admin-log">
+              {statusLog.map((entry, i) => (
+                <div key={i} className="od-admin-log-entry">
+                  <div className="od-admin-log-dot" />
+                  <div className="od-admin-log-body">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      {entry.from_status && (
+                        <>
+                          <StatusBadge status={entry.from_status} />
+                          <span style={{ color: 'var(--ac-text-muted)', fontSize: '0.75rem' }}>→</span>
+                        </>
+                      )}
+                      <StatusBadge status={entry.to_status} />
+                    </div>
+                    {entry.note && (
+                      <p style={{ fontSize: '0.82rem', color: 'var(--ac-text-muted)', margin: '4px 0 2px', lineHeight: 1.5 }}>
+                        {entry.note}
+                      </p>
+                    )}
+                    <p style={{ fontSize: '0.72rem', color: 'var(--ac-text-muted)', marginTop: 2 }}>
+                      {new Date(entry.created_at).toLocaleString('en-GH', {
+                        day: 'numeric', month: 'short', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <ConfirmDialog
         open={!!pendingStatus}

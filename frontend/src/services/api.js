@@ -108,18 +108,20 @@ export const authAPI = {
 
 // ── Products ──────────────────────────────────────────────────────────────────
 export const productsAPI = {
-  getAll:  (params) => api.get('/products', { params }),
-  getById: (id)     => api.get(`/products/${id}`),
+  getAll:      (params) => api.get('/products', { params }),
+  getById:     (id)     => api.get(`/products/${id}`),
+  getRelated:  (id)     => api.get(`/products/${id}/related`),
+  getVariants: (id)     => api.get(`/products/${id}/variants`),
 };
 
 // ── Cart ──────────────────────────────────────────────────────────────────────
 export const cartAPI = {
-  getCart:       ()                      => api.get('/cart'),
-  addItem:       (productId, quantity=1) => api.post('/cart/add', { product_id: productId, quantity }),
-  updateItem:    (cartItemId, quantity)  => api.patch(`/cart/${cartItemId}`, { quantity }),
-  removeItem:    (cartItemId)            => api.delete(`/cart/${cartItemId}`),
-  clear:         ()                      => api.delete('/cart'),
-  validateGuest: (items)                 => api.post('/cart/validate-guest', { items }),
+  getCart:       ()                                                    => api.get('/cart'),
+  addItem:       (productId, quantity=1, variantId=null)              => api.post('/cart/add', { product_id: productId, quantity, variant_id: variantId || undefined }),
+  updateItem:    (cartItemId, quantity)                               => api.patch(`/cart/${cartItemId}`, { quantity }),
+  removeItem:    (cartItemId)                                         => api.delete(`/cart/${cartItemId}`),
+  clear:         ()                                                    => api.delete('/cart'),
+  validateGuest: (items)                                              => api.post('/cart/validate-guest', { items }),
 };
 
 // ── Orders ────────────────────────────────────────────────────────────────────
@@ -130,6 +132,8 @@ export const ordersAPI = {
   getById:         (id)     => api.get(`/orders/${id}`),
   getStatusLog:    (id)     => api.get(`/orders/${id}/log`),
   getReviewStatus: (id)     => api.get(`/orders/${id}/review-status`),
+  requestCancel:   (id, reason) => api.post(`/orders/${id}/request-cancel`, { reason }),
+  requestReturn:   (id, reason) => api.post(`/orders/${id}/request-return`, { reason }),
 };
 
 // ── Payments ──────────────────────────────────────────────────────────────────
@@ -164,8 +168,15 @@ export const couponsAPI = {
 
 // ── Reviews ───────────────────────────────────────────────────────────────────
 export const reviewsAPI = {
-  getByProduct: (productId)        => api.get(`/products/${productId}/reviews`),
-  create:       (productId, data)  => api.post(`/products/${productId}/reviews`, data),
+  getByProduct: (productId, params) => api.get(`/products/${productId}/reviews`, { params }),
+  canReview:    (productId)         => api.get(`/products/${productId}/reviews/can-review`),
+  create:       (productId, data)   => api.post(`/products/${productId}/reviews`, data),
+  markHelpful:  (productId, reviewId) => api.post(`/products/${productId}/reviews/${reviewId}/helpful`),
+};
+
+// ── Order tracking (public) ───────────────────────────────────────────────────
+export const trackingAPI = {
+  track: (order_number, email) => api.post('/orders/track', { order_number, email }),
 };
 
 // ── Wishlist ──────────────────────────────────────────────────────────────────
@@ -174,6 +185,12 @@ export const wishlistAPI = {
   getIds:  ()          => api.get('/wishlist/ids'),
   add:     (productId) => api.post(`/wishlist/${productId}`),
   remove:  (productId) => api.delete(`/wishlist/${productId}`),
+};
+
+// ── Newsletter (public) ───────────────────────────────────────────────────────
+export const newsletterAPI = {
+  subscribe:   (email, name) => api.post('/newsletter/subscribe', { email, name }),
+  unsubscribe: (token)       => api.get('/newsletter/unsubscribe', { params: { token } }),
 };
 
 export default api;

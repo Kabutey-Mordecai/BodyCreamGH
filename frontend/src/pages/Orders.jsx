@@ -46,18 +46,20 @@ export default function Orders() {
   const [page, setPage]             = useState(1);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     setLoading(true);
+    setError('');
     ordersAPI.getAll({ page, limit: 20 })
       .then(({ data }) => {
         const list = Array.isArray(data) ? data : (data.orders || []);
         setOrders(list);
         if (data.pagination) setPagination(data.pagination);
       })
-      .catch(() => setError('Failed to load orders.'))
+      .catch(() => setError('Failed to load orders. Please check your connection.'))
       .finally(() => setLoading(false));
-  }, [page]);
+  }, [page, retryCount]);
 
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
 
@@ -78,7 +80,18 @@ export default function Orders() {
           </p>
         </div>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && (
+          <div className="alert alert-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+            <span>{error}</span>
+            <button
+              className="btn btn-outline"
+              style={{ padding: '6px 16px', fontSize: '0.78rem', flexShrink: 0 }}
+              onClick={() => setRetryCount(c => c + 1)}
+            >
+              Retry
+            </button>
+          </div>
+        )}
 
         {orders.length === 0 ? (
           <div className="orders-empty">
@@ -131,7 +144,13 @@ export default function Orders() {
                             {order.status}
                           </span>
                           {hint && (
-                            <span className={`badge ${order.refund_status === 'failed' ? 'badge-failed' : 'badge-pending-refund'}`}>
+                            <span className={`badge ${
+                              hint === 'Refunded' || order.refund_status === 'success'
+                                ? 'badge-refunded'
+                                : order.refund_status === 'failed'
+                                ? 'badge-failed'
+                                : 'badge-pending-refund'
+                            }`}>
                               {hint}
                             </span>
                           )}

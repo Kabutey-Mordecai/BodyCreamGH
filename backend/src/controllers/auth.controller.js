@@ -1,14 +1,16 @@
+'use strict';
+
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
+const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
 const { v4: uuid } = require('uuid');
-const pool = require('../config/database');
-const UserModel = require('../models/user.model');
+const pool         = require('../config/database');
+const UserModel    = require('../models/user.model');
 const CustomerModel = require('../models/customer.model');
-const { sendWelcomeEmail, sendPasswordResetEmail } = require('../services/email.service');
+const { sendWelcomeEmail, sendPasswordResetEmail, sendOtpEmail } = require('../services/email.service');
 const logger = require('../utils/logger');
 
-// ─── Register ────────────────────────────────────────────────────────────────
+// ── Register ──────────────────────────────────────────────────────────────────
 
 const register = async (req, res) => {
   try {
@@ -32,11 +34,18 @@ const register = async (req, res) => {
   }
 };
 
-// ─── Login ───────────────────────────────────────────────────────────────────
+// ── Login / Token issuance ────────────────────────────────────────────────────
 
-// Helpers shared by login and refresh
-const ACCESS_EXPIRE  = process.env.JWT_EXPIRE        || '15m';
-const REFRESH_DAYS   = parseInt(process.env.REFRESH_TOKEN_DAYS || '7');
+const ACCESS_EXPIRE = process.env.JWT_EXPIRE        || '15m';
+const REFRESH_DAYS  = parseInt(process.env.REFRESH_TOKEN_DAYS || '7');
+
+// Derive the SHA-256 hex digest of a refresh token.
+// The raw token is handed to the client; the digest is what we store.
+// SHA-256 is appropriate here because the raw token is already 320 bits of
+// CSPRNG output — there is no brute-force risk that would require bcrypt.
+function hashRefreshToken(raw) {
+  return crypto.createHash('sha256').update(raw).digest('hex');
+}
 
 async function issueTokenPair(user, req) {
   const jti = uuid();
@@ -46,16 +55,18 @@ async function issueTokenPair(user, req) {
     { expiresIn: ACCESS_EXPIRE }
   );
 
-  const refreshToken = crypto.randomBytes(40).toString('hex');
-  const expiresAt    = new Date(Date.now() + REFRESH_DAYS * 24 * 60 * 60 * 1000);
+  const rawRefreshToken = crypto.randomBytes(40).toString('hex');
+  const tokenHash       = hashRefreshToken(rawRefreshToken);
+  const expiresAt       = new Date(Date.now() + REFRESH_DAYS * 24 * 60 * 60 * 1000);
 
+  // Store only the hash — the raw token is returned to the client and never persisted.
   await pool.query(
-    `INSERT INTO refresh_tokens (id, user_id, token, expires_at, user_agent)
+    `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, user_agent)
      VALUES ($1, $2, $3, $4, $5)`,
-    [uuid(), user.id, refreshToken, expiresAt, req.headers['user-agent'] || null]
+    [uuid(), user.id, tokenHash, expiresAt, req.headers['user-agent'] || null]
   );
 
-  return { accessToken, refreshToken, expiresAt };
+  return { accessToken, refreshToken: rawRefreshToken, expiresAt };
 }
 
 const login = async (req, res) => {
@@ -69,7 +80,35 @@ const login = async (req, res) => {
     const match = await bcrypt.compare(password, user.password_hash);
     if (!match) return res.status(401).json({ error: 'Invalid credentials' });
 
+    if (user.is_active === false) {
+      return res.status(401).json({ error: 'This account has been deactivated.' });
+    }
+
+    // Admin accounts require a second factor (Email OTP) before JWT is issued.
+    if (user.role === 'admin') {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await pool.query(
+        `UPDATE users SET otp_code = $1, otp_expires_at = $2, otp_attempts = 0 WHERE id = $3`,
+        [otp, otpExpiresAt, user.id]
+      );
+
+      const mfaToken = jwt.sign(
+        { sub: user.id, purpose: 'mfa_challenge' },
+        process.env.JWT_SECRET,
+        { expiresIn: '10m' }
+      );
+
+      sendOtpEmail(user.email, { firstName: user.first_name, otp })
+        .catch(err => logger.error('Failed to send OTP email', { recipient: user.email, err: err.message }));
+
+      logger.info('Admin MFA challenge issued', { userId: user.id });
+      return res.json({ mfa_required: true, mfa_token: mfaToken });
+    }
+
     const { accessToken, refreshToken } = await issueTokenPair(user, req);
+    pool.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]).catch(() => {});
 
     res.json({
       token:         accessToken,
@@ -82,18 +121,83 @@ const login = async (req, res) => {
   }
 };
 
-// ─── Refresh access token ────────────────────────────────────────────────────
+// ── Verify OTP (admin MFA second factor) ─────────────────────────────────────
+
+const verifyOtp = async (req, res) => {
+  try {
+    const { mfa_token, otp_code } = req.body;
+    if (!mfa_token || !otp_code) {
+      return res.status(400).json({ error: 'mfa_token and otp_code are required' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(mfa_token, process.env.JWT_SECRET);
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired MFA session. Please log in again.' });
+    }
+    if (decoded.purpose !== 'mfa_challenge') {
+      return res.status(401).json({ error: 'Invalid token purpose' });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, email, role, first_name, otp_code, otp_expires_at, otp_attempts
+         FROM users WHERE id = $1`,
+      [decoded.sub]
+    );
+    const user = rows[0];
+    if (!user || user.role !== 'admin') {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    if (user.otp_attempts >= 5) {
+      return res.status(429).json({ error: 'Too many incorrect attempts. Please log in again to get a new code.' });
+    }
+
+    if (!user.otp_expires_at || new Date(user.otp_expires_at) < new Date()) {
+      return res.status(401).json({ error: 'OTP has expired. Please log in again.' });
+    }
+
+    if (user.otp_code !== otp_code) {
+      await pool.query('UPDATE users SET otp_attempts = otp_attempts + 1 WHERE id = $1', [user.id]);
+      return res.status(401).json({ error: 'Incorrect verification code.' });
+    }
+
+    // Clear OTP fields and record last login — code is single-use.
+    await pool.query(
+      `UPDATE users SET otp_code = NULL, otp_expires_at = NULL, otp_attempts = 0, last_login_at = NOW() WHERE id = $1`,
+      [user.id]
+    );
+
+    const { accessToken, refreshToken } = await issueTokenPair(user, req);
+    logger.info('Admin MFA verified, session issued', { userId: user.id });
+
+    res.json({
+      token:         accessToken,
+      refresh_token: refreshToken,
+      user: { id: user.id, email: user.email, role: user.role },
+    });
+  } catch (error) {
+    logger.error('verifyOtp error', { err: error.message });
+    res.status(500).json({ error: 'Verification failed' });
+  }
+};
+
+// ── Refresh access token ──────────────────────────────────────────────────────
+
 const refresh = async (req, res) => {
   try {
     const { refresh_token } = req.body;
     if (!refresh_token) return res.status(400).json({ error: 'refresh_token is required' });
 
+    const tokenHash = hashRefreshToken(refresh_token);
+
     const { rows } = await pool.query(
       `SELECT rt.*, u.id AS uid, u.email, u.role
          FROM refresh_tokens rt
          JOIN users u ON u.id = rt.user_id
-        WHERE rt.token = $1 AND rt.revoked = false AND rt.expires_at > NOW()`,
-      [refresh_token]
+        WHERE rt.token_hash = $1 AND rt.revoked = false AND rt.expires_at > NOW()`,
+      [tokenHash]
     );
 
     if (!rows.length) {
@@ -102,7 +206,7 @@ const refresh = async (req, res) => {
 
     const record = rows[0];
 
-    // Rotate: revoke the old token and issue a brand-new pair
+    // Rotate: revoke the old token and issue a brand-new pair.
     await pool.query('UPDATE refresh_tokens SET revoked = true WHERE id = $1', [record.id]);
 
     const user = { id: record.uid, email: record.email, role: record.role };
@@ -115,7 +219,7 @@ const refresh = async (req, res) => {
   }
 };
 
-// ─── Get current user ────────────────────────────────────────────────────────
+// ── Get current user ──────────────────────────────────────────────────────────
 
 const getMe = async (req, res) => {
   try {
@@ -126,11 +230,14 @@ const getMe = async (req, res) => {
   }
 };
 
-// ─── Logout ──────────────────────────────────────────────────────────────────
-// Adds the token's jti to the blacklist so it cannot be reused even before it expires.
+// ── Logout ────────────────────────────────────────────────────────────────────
+// Adds the access token's jti to the blacklist and revokes the refresh token.
 
 const logout = async (req, res) => {
   try {
+    // Decode (not verify) the access token so we can blacklist its jti even
+    // when it has already expired. jwt.decode never throws on expiry.
+    let userId = null;
     const token = req.headers.authorization?.split(' ')[1];
     if (token) {
       const decoded = jwt.decode(token);
@@ -142,22 +249,27 @@ const logout = async (req, res) => {
           [decoded.jti, decoded.exp]
         );
       }
+      userId = decoded?.id || null;
     }
 
-    // Also revoke the refresh token if provided
+    // Revoke the submitted refresh token by its hash.
     const { refresh_token } = req.body;
     if (refresh_token) {
-      await pool.query(
-        'UPDATE refresh_tokens SET revoked = true WHERE token = $1',
-        [refresh_token]
+      const tokenHash = hashRefreshToken(refresh_token);
+      const { rows } = await pool.query(
+        'UPDATE refresh_tokens SET revoked = true WHERE token_hash = $1 RETURNING user_id',
+        [tokenHash]
       );
+      // Fall back to the user_id from the refresh token row if the access
+      // token was missing or unparseable (e.g. already expired and absent).
+      if (!userId && rows[0]?.user_id) userId = rows[0].user_id;
     }
 
-    // Revoke ALL refresh tokens for this user (full logout all devices) if requested
-    if (req.query.all === 'true') {
+    // Revoke ALL refresh tokens for this user (full logout all devices) if requested.
+    if (req.query.all === 'true' && userId) {
       await pool.query(
         'UPDATE refresh_tokens SET revoked = true WHERE user_id = $1',
-        [req.user.id]
+        [userId]
       );
     }
 
@@ -167,7 +279,7 @@ const logout = async (req, res) => {
   }
 };
 
-// ─── Forgot password ─────────────────────────────────────────────────────────
+// ── Forgot password ───────────────────────────────────────────────────────────
 // Always returns the same message whether the email exists or not (prevents
 // attackers from discovering which emails are registered).
 
@@ -179,13 +291,12 @@ const forgotPassword = async (req, res) => {
     const user = await UserModel.findByEmail(email);
 
     if (user) {
-      // Invalidate any existing unused tokens for this user
+      // Invalidate any existing unused reset tokens for this user.
       await pool.query(
         `UPDATE password_reset_tokens SET used = true WHERE user_id = $1 AND used = false`,
         [user.id]
       );
 
-      // Generate a secure random 64-char hex token
       const token = crypto.randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
@@ -196,10 +307,16 @@ const forgotPassword = async (req, res) => {
       );
 
       const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${token}`;
-      sendPasswordResetEmail(user.email, resetUrl).catch(err => logger.error('sendPasswordResetEmail error', { err: err.message }));
+      sendPasswordResetEmail(user.email, resetUrl).catch(err =>
+        // Log the failure with the recipient address so SMTP issues are
+        // diagnosable in production logs. Never log the token or the reset URL.
+        logger.error('Password reset email failed to send', {
+          recipient: user.email,
+          err:       err.message,
+        })
+      );
     }
 
-    // Same response regardless of whether email exists
     res.json({ message: 'If that email is registered, a reset link has been sent.' });
   } catch (error) {
     logger.error('Forgot password error', { err: error.message });
@@ -207,7 +324,7 @@ const forgotPassword = async (req, res) => {
   }
 };
 
-// ─── Verify reset token ──────────────────────────────────────────────────────
+// ── Verify reset token ────────────────────────────────────────────────────────
 // Frontend calls this first to decide whether to show the reset form.
 
 const verifyResetToken = async (req, res) => {
@@ -227,7 +344,7 @@ const verifyResetToken = async (req, res) => {
   }
 };
 
-// ─── Reset password ──────────────────────────────────────────────────────────
+// ── Reset password ────────────────────────────────────────────────────────────
 
 const resetPassword = async (req, res) => {
   try {
@@ -236,37 +353,65 @@ const resetPassword = async (req, res) => {
     if (!token || !new_password) {
       return res.status(400).json({ error: 'Token and new password are required' });
     }
-    if (new_password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (new_password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
 
-    const { rows } = await pool.query(
-      `SELECT * FROM password_reset_tokens
-       WHERE token = $1 AND used = false AND expires_at > NOW()`,
-      [token]
-    );
-
-    if (rows.length === 0) {
-      return res.status(400).json({ error: 'This link is invalid or has expired.' });
-    }
-
-    const resetToken = rows[0];
+    // Compute the bcrypt hash BEFORE opening a transaction. bcrypt is intentionally
+    // slow (~100ms) — holding a database row lock during that time is wrong.
     const passwordHash = await bcrypt.hash(new_password, 10);
 
-    // Update password and mark token as used in one go
-    await Promise.all([
-      UserModel.updatePassword(resetToken.user_id, passwordHash),
-      pool.query(
-        `UPDATE password_reset_tokens SET used = true WHERE id = $1`,
-        [resetToken.id]
-      ),
-    ]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    res.json({ message: 'Password reset successfully. You can now log in.' });
+      // FOR UPDATE locks the reset token row for the duration of this transaction.
+      // A concurrent request with the same token blocks here until we commit
+      // (used = true → their query returns 0 rows) or roll back (they proceed).
+      const { rows } = await client.query(
+        `SELECT * FROM password_reset_tokens
+         WHERE token = $1 AND used = false AND expires_at > NOW()
+         FOR UPDATE`,
+        [token]
+      );
+
+      if (rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'This link is invalid or has expired.' });
+      }
+
+      const resetRecord = rows[0];
+
+      // Update the password.
+      await client.query(
+        'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+        [passwordHash, resetRecord.user_id]
+      );
+
+      // Mark the reset token as used so it cannot be replayed.
+      await client.query(
+        'UPDATE password_reset_tokens SET used = true WHERE id = $1',
+        [resetRecord.id]
+      );
+
+      // Revoke all refresh tokens — a password change must end all existing sessions.
+      await client.query(
+        'UPDATE refresh_tokens SET revoked = true WHERE user_id = $1',
+        [resetRecord.user_id]
+      );
+
+      await client.query('COMMIT');
+      res.json({ message: 'Password reset successfully. You can now log in.' });
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     logger.error('Reset password error', { err: error.message });
     res.status(500).json({ error: 'Failed to reset password' });
   }
 };
 
-module.exports = { register, login, refresh, getMe, logout, forgotPassword, verifyResetToken, resetPassword };
+module.exports = { register, login, verifyOtp, refresh, getMe, logout, forgotPassword, verifyResetToken, resetPassword };

@@ -1,12 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
-import { adminAPI, inventoryAPI } from '../services/api';
+import { adminAPI, inventoryAPI, settingsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
 import StatCard from '../components/StatCard';
 
-const LOW = 5;
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
 
 export default function Inventory() {
@@ -17,6 +16,7 @@ export default function Inventory() {
   const [adjusting, setAdjusting] = useState(null);
   const [adjustForm, setAdjustForm] = useState({ quantity_change: '', reason: 'restock', notes: '' });
   const [saving, setSaving] = useState(false);
+  const [LOW, setLOW] = useState(5);
 
   const load = () => {
     setLoading(true);
@@ -26,9 +26,18 @@ export default function Inventory() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    settingsAPI.getAll()
+      .then(({ data }) => {
+        const t = parseInt(data?.low_stock_threshold, 10);
+        if (t > 0) setLOW(t);
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const status = (q) => q === 0 ? 'out_of_stock' : q <= LOW ? 'low_stock' : 'in_stock';
+
 
   const filtered = useMemo(() => {
     if (filter === 'low') return items.filter(p => p.stock_quantity > 0 && p.stock_quantity <= LOW);
@@ -85,7 +94,7 @@ export default function Inventory() {
         <StatCard
           label="Low stock"
           value={stats.lowStock}
-          sub={`At or below ${LOW} units`}
+          sub={`At or below ${LOW} unit${LOW !== 1 ? 's' : ''}`}
           accent="var(--ac-warning)"
         />
         <StatCard

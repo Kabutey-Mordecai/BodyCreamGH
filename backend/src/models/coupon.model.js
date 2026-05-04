@@ -36,6 +36,24 @@ const CouponModel = {
     await pool.query('DELETE FROM coupons WHERE id = $1', [id]);
   },
 
+  update: async (id, { code, type, value, min_order, max_uses, expires_at, active }) => {
+    const { rows } = await pool.query(
+      `UPDATE coupons
+          SET code       = UPPER($1),
+              type       = $2,
+              value      = $3,
+              min_order  = $4,
+              max_uses   = $5,
+              expires_at = $6,
+              active     = $7,
+              updated_at = NOW()
+        WHERE id = $8
+        RETURNING *`,
+      [code, type, value, min_order ?? 0, max_uses ?? null, expires_at ?? null, active !== false, id]
+    );
+    return rows[0] || null;
+  },
+
   incrementUses: async (id) => {
     await pool.query(
       'UPDATE coupons SET uses_count = uses_count + 1, updated_at = NOW() WHERE id = $1',

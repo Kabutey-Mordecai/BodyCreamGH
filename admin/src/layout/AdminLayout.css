@@ -90,6 +90,18 @@
   box-shadow: inset 2px 0 0 var(--ac-accent);
 }
 .sidebar-link.active svg { color: var(--ac-accent); }
+.sidebar-badge {
+  margin-left: auto;
+  background: var(--ac-danger, #ef4444);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 18px;
+  text-align: center;
+}
 
 .sidebar-footer {
   border-top: 1px solid rgba(255, 255, 255, 0.06);

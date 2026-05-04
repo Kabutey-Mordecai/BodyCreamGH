@@ -71,29 +71,40 @@ api.interceptors.response.use(
 
 // ── Auth ──────────────────────────────────────────────────────────────
 export const authAPI = {
-  login:  (data)    => api.post('/auth/login', data),
-  logout: (data={}) => api.post('/auth/logout', data),
-  getMe:  ()        => api.get('/auth/me'),
+  login:     (data)    => api.post('/auth/login', data),
+  verifyOtp: (data)    => api.post('/auth/verify-otp', data),
+  logout:    (data={}) => api.post('/auth/logout', data),
+  getMe:     ()        => api.get('/auth/me'),
 };
 
 // ── Admin overview / analytics ────────────────────────────────────────
 export const adminAPI = {
-  getDashboard:          ()     => api.get('/admin/dashboard'),
-  getAnalytics:          ()     => api.get('/admin/analytics'),
-  getTopProducts:        ()     => api.get('/admin/top-products'),
-  getInventoryOverview:  ()     => api.get('/admin/inventory'),
-  getAllCustomers:        ()     => api.get('/admin/customers'),
-  getAllReviews:          ()     => api.get('/admin/reviews'),
-  deleteReview:          (id)   => api.delete(`/admin/reviews/${id}`),
+  getDashboard:           ()       => api.get('/admin/dashboard'),
+  getAnalytics:           (params) => api.get('/admin/analytics', { params }),
+  getFinancials:          (params) => api.get('/admin/financials', { params }),
+  getTopProducts:         ()       => api.get('/admin/top-products'),
+  getInventoryOverview:   ()       => api.get('/admin/inventory'),
+  getAllCustomers:         (params) => api.get('/admin/customers', { params }),
+  getReviews:              (params) => api.get('/admin/reviews', { params }),
+  getReviewCounts:         ()       => api.get('/admin/reviews/counts'),
+  approveReview:           (id)     => api.patch(`/admin/reviews/${id}/approve`),
+  rejectReview:            (id, reason) => api.patch(`/admin/reviews/${id}/reject`, { rejection_reason: reason }),
+  deleteReview:            (id)     => api.delete(`/admin/reviews/${id}`),
+  getAdminAccounts:       ()       => api.get('/admin/accounts'),
+  createAdminAccount:     (data)   => api.post('/admin/accounts', data),
+  deactivateAdminAccount: (id)     => api.patch(`/admin/accounts/${id}/deactivate`),
+  activateAdminAccount:   (id)     => api.patch(`/admin/accounts/${id}/activate`),
 };
 
 // ── Products ──────────────────────────────────────────────────────────
 export const productsAPI = {
-  getAll:  (params) => api.get('/products', { params }),
-  getById: (id)     => api.get(`/products/${id}`),
-  create:  (data)   => api.post('/products', data),
-  update:  (id, d)  => api.put(`/products/${id}`, d),
-  remove:  (id)     => api.delete(`/products/${id}`),
+  getAll:          (params) => api.get('/products', { params }),
+  getAdminAll:     (params) => api.get('/products/admin', { params }),
+  getById:         (id)     => api.get(`/products/${id}`),
+  create:          (data)   => api.post('/products', data),
+  update:          (id, d)  => api.put(`/products/${id}`, d),
+  remove:          (id)     => api.delete(`/products/${id}`),
+  toggleVisibility:(id)     => api.patch(`/products/${id}/toggle-visibility`),
 
   // Image gallery — admin-only endpoints under /admin/products/:id/images
   // Axios sets Content-Type: multipart/form-data automatically for FormData.
@@ -109,12 +120,19 @@ export const productsAPI = {
 
 // ── Orders (admin sees all) ───────────────────────────────────────────
 export const ordersAPI = {
-  getAll:       ()                  => api.get('/orders/admin/all'),
-  getById:      (id)                => api.get(`/orders/${id}`),
-  updateStatus: (id, status, note)  => api.patch(`/orders/${id}/status`, { status, note }),
-  cancelOrder:  (id, reason)        => api.post(`/orders/${id}/cancel`, { reason }),
-  refundOrder:  (id, data)          => api.post(`/orders/${id}/refund`, data),
-  getStatusLog: (id)                => api.get(`/orders/${id}/log`),
+  getAll:              (params)            => api.get('/orders/admin/all', { params }),
+  getRequestCounts:    ()                  => api.get('/orders/admin/requests/counts'),
+  getRequests:         (type)              => api.get('/orders/admin/requests', { params: { type } }),
+  exportOrders:        (params)            => api.get('/orders/admin/export', { params, responseType: 'blob' }),
+  getById:             (id)                => api.get(`/orders/${id}`),
+  updateStatus:        (id, status, note)  => api.patch(`/orders/${id}/status`, { status, note }),
+  cancelOrder:         (id, reason)        => api.post(`/orders/${id}/cancel`, { reason }),
+  refundOrder:         (id, data)          => api.post(`/orders/${id}/refund`, data),
+  getStatusLog:        (id)                => api.get(`/orders/${id}/log`),
+  approveCancelRequest:(id)                => api.post(`/orders/${id}/approve-cancel`),
+  rejectCancelRequest: (id)                => api.post(`/orders/${id}/reject-cancel`),
+  approveReturnRequest:(id)                => api.post(`/orders/${id}/approve-return`),
+  rejectReturnRequest: (id)                => api.post(`/orders/${id}/reject-return`),
 };
 
 // ── Inventory ─────────────────────────────────────────────────────────
@@ -141,10 +159,11 @@ export const customersAPI = {
 
 // ── Coupons ───────────────────────────────────────────────────────────
 export const couponsAPI = {
-  getAll:     ()     => api.get('/coupons'),
-  create:     (data) => api.post('/coupons', data),
-  deactivate: (id)   => api.patch(`/coupons/${id}/deactivate`),
-  remove:     (id)   => api.delete(`/coupons/${id}`),
+  getAll:     ()          => api.get('/coupons'),
+  create:     (data)      => api.post('/coupons', data),
+  update:     (id, data)  => api.put(`/coupons/${id}`, data),
+  deactivate: (id)        => api.patch(`/coupons/${id}/deactivate`),
+  remove:     (id)        => api.delete(`/coupons/${id}`),
 };
 
 // ── Deliveries ────────────────────────────────────────────────────────
@@ -152,6 +171,43 @@ export const deliveriesAPI = {
   getByOrder: (orderId)              => api.get(`/deliveries/order/${orderId}`),
   create:     (data)                 => api.post('/deliveries', data),
   update:     (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
+};
+
+// ── Product variants ──────────────────────────────────────────────────────────
+export const variantsAPI = {
+  getByProduct:    (productId)              => api.get(`/products/${productId}/variants`),
+  create:          (productId, data)        => api.post(`/products/${productId}/variants`, data),
+  update:          (productId, variantId, data) => api.put(`/products/${productId}/variants/${variantId}`, data),
+  remove:          (productId, variantId)   => api.delete(`/products/${productId}/variants/${variantId}`),
+  createOptionType:(productId, data)        => api.post(`/products/${productId}/option-types`, data),
+  deleteOptionType:(productId, typeId)      => api.delete(`/products/${productId}/option-types/${typeId}`),
+  createOptionValue:(productId, typeId, data) => api.post(`/products/${productId}/option-types/${typeId}/values`, data),
+  deleteOptionValue:(productId, valueId)    => api.delete(`/products/${productId}/option-values/${valueId}`),
+};
+
+// ── Promotions ───────────────────────────────────────────────────────────────
+export const promotionsAPI = {
+  getAll:  (params)   => api.get('/admin/promotions', { params }),
+  create:  (data)     => api.post('/admin/promotions', data),
+  update:  (id, data) => api.put(`/admin/promotions/${id}`, data),
+  toggle:  (id)       => api.patch(`/admin/promotions/${id}/toggle`),
+  remove:  (id)       => api.delete(`/admin/promotions/${id}`),
+};
+
+// ── Newsletter ────────────────────────────────────────────────────────
+export const newsletterAPI = {
+  // Subscribers
+  getSubscribers:    (params) => api.get('/admin/newsletter/subscribers', { params }),
+  deleteSubscriber:  (id)     => api.delete(`/admin/newsletter/subscribers/${id}`),
+  importSubscribers: (emails) => api.post('/admin/newsletter/subscribers/import', { emails }),
+
+  // Campaigns
+  getPreviewCount:   (segment)  => api.get('/admin/newsletter/preview-count', { params: { segment } }),
+  getCampaigns:      (params)   => api.get('/admin/newsletter/campaigns', { params }),
+  createCampaign:    (data)     => api.post('/admin/newsletter/campaigns', data),
+  getCampaignStatus: (id)       => api.get(`/admin/newsletter/campaigns/${id}/status`),
+  sendCampaign:      (id)       => api.post(`/admin/newsletter/campaigns/${id}/send`),
+  getCampaignById:   (id)       => api.get(`/admin/newsletter/campaigns/${id}`),
 };
 
 export default api;

@@ -21,10 +21,11 @@ const ACCOUNT_LINKS = [
 ];
 
 const INFO_LINKS = [
-  { label: 'About Us',          to: '/' },
+  { label: 'About Us',           to: '/' },
   { label: 'Shipping & Returns', to: '/' },
-  { label: 'Ingredients',       to: '/' },
-  { label: 'Contact Us',        to: '/' },
+  { label: 'Ingredients',        to: '/' },
+  { label: 'Contact Us',         to: '/' },
+  { label: 'Track your order',   to: '/track' },
 ];
 
 const SOCIALS_META = [
@@ -89,29 +90,8 @@ export default function Footer() {
         : s.href,
   }));
 
-  const handleNewsletter = (e) => {
-    e.preventDefault();
-    e.target.reset();
-    alert('Thank you! Check your inbox for your 10% discount code.');
-  };
-
   return (
     <footer className="footer">
-
-      {/* ── Newsletter strip ─────────────────── */}
-      <div className="footer-newsletter">
-        <div className="container footer-newsletter-inner">
-          <div className="footer-newsletter-text">
-            <span className="footer-nl-eyebrow">Join the family</span>
-            <h3>Get 10% off your first order</h3>
-            <p>Skincare tips, new arrivals, and exclusive offers — straight to your inbox.</p>
-          </div>
-          <form className="footer-nl-form" onSubmit={handleNewsletter}>
-            <input type="email" placeholder="Your email address" required />
-            <button type="submit" className="btn btn-accent">Subscribe</button>
-          </form>
-        </div>
-      </div>
 
       {/* ── Main footer body ─────────────────── */}
       <div className="footer-body">
