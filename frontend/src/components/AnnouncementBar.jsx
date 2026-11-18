@@ -5,7 +5,7 @@ import './AnnouncementBar.css';
 const SESSION_KEY = 'bar_dismissed';
 
 export default function AnnouncementBar({ onVisibilityChange }) {
-  const { announcement_enabled, announcement_text, whatsapp_number } = useSettings();
+  const { announcement_enabled, announcement_text, announcement_show_whatsapp, whatsapp_number } = useSettings();
   const [dismissed, setDismissed] = useState(() => !!sessionStorage.getItem(SESSION_KEY));
   const [fading, setFading] = useState(false);
 
@@ -24,7 +24,8 @@ export default function AnnouncementBar({ onVisibilityChange }) {
 
   if (!visible) return null;
 
-  const rawWa = String(whatsapp_number || '').replace(/\D/g, '');
+  const showWa = announcement_show_whatsapp !== false && announcement_show_whatsapp !== 'false';
+  const rawWa = showWa ? String(whatsapp_number || '').replace(/\D/g, '') : '';
   const waHref = rawWa
     ? `https://wa.me/${rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa}`
     : '';

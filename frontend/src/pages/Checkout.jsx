@@ -246,7 +246,7 @@ export default function Checkout() {
               </div>
             )}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
-              <Link to="/track-order" className="btn btn-accent">Track Your Order</Link>
+              <Link to="/track" className="btn btn-accent">Track Your Order</Link>
               <Link to="/shop" className="btn btn-outline">Continue Shopping</Link>
             </div>
           </div>

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -26,9 +26,21 @@ export default function Navigation() {
   const { savedIds }      = useWishlist() || { savedIds: new Set() };
   const navigate          = useNavigate();
   const [menuOpen, setMenuOpen]   = useState(false);
+  const [badgePop, setBadgePop]   = useState(false);
+  const prevCartCount             = useRef(cartCount);
   const [barVisible, setBarVisible] = useState(
     () => !sessionStorage.getItem('bar_dismissed')
   );
+
+  useEffect(() => {
+    if (cartCount > prevCartCount.current) {
+      setBadgePop(true);
+      const t = setTimeout(() => setBadgePop(false), 450);
+      prevCartCount.current = cartCount;
+      return () => clearTimeout(t);
+    }
+    prevCartCount.current = cartCount;
+  }, [cartCount]);
 
   const handleLogout = async () => {
     await logout();
@@ -102,7 +114,10 @@ export default function Navigation() {
               <NavLink to="/cart" className="nav-cart" onClick={closeMenu}>
                 Cart
                 {cartCount > 0 && (
-                  <span className="cart-badge" aria-label={`${cartCount} items`}>
+                  <span
+                    className={`cart-badge${badgePop ? ' cart-badge--pop' : ''}`}
+                    aria-label={`${cartCount} items`}
+                  >
                     {cartCount}
                   </span>
                 )}

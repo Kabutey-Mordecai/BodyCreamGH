@@ -282,7 +282,7 @@ export default function Settings() {
                 onChange={e => update('whatsapp_number', e.target.value)}
                 placeholder="233XXXXXXXXX (no +)"
               />
-              <div className="hint">Powers the WhatsApp contact link in the footer.</div>
+              <div className="hint">Powers the WhatsApp link in the footer, announcement bar, product page "Order via WhatsApp" button, and floating "Chat with us" pill.</div>
             </div>
             <div className="field" style={{ marginBottom: 0 }}>
               <label>Order notification email</label>

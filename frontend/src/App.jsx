@@ -1,14 +1,26 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
 import Navigation from './components/Navigation';
+import CategoryBar from './components/CategoryBar';
 import Footer from './components/Footer';
+import WhatsAppFloat from './components/WhatsAppFloat';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
 
 function ScrollToTop() {
-  const { pathname } = useLocation();
-  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    if (hash) {
+      const id = hash.slice(1);
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
+    }
+    window.scrollTo(0, 0);
+  }, [pathname, hash]);
   return null;
 }
 
@@ -37,6 +49,11 @@ const Wishlist        = lazy(() => import('./pages/Wishlist'));
 const Unsubscribe     = lazy(() => import('./pages/Unsubscribe'));
 const TrackOrder      = lazy(() => import('./pages/TrackOrder'));
 
+function RouteFade({ children }) {
+  const { pathname } = useLocation();
+  return <div key={pathname} className="page-transition">{children}</div>;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -45,7 +62,9 @@ export default function App() {
         <Navigation />
 
         <main className="main-content">
+          <CategoryBar />
           <Suspense fallback={<PageFallback />}>
+            <RouteFade>
             <Routes>
               {/* Public routes — anyone can visit these */}
               <Route path="/"                    element={<Home />} />
@@ -57,6 +76,7 @@ export default function App() {
               <Route path="/reset-password"      element={<ResetPassword />} />
               <Route path="/unsubscribe"         element={<Unsubscribe />} />
               <Route path="/track"               element={<TrackOrder />} />
+              <Route path="/track-order"         element={<TrackOrder />} />
 
               {/* Payment callback — visited after Paystack redirects back */}
               <Route path="/payment/callback"    element={<ErrorBoundary><PaymentCallback /></ErrorBoundary>} />
@@ -71,10 +91,12 @@ export default function App() {
               <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
               <Route path="/wishlist"   element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
             </Routes>
+            </RouteFade>
           </Suspense>
         </main>
 
         <Footer />
+        <WhatsAppFloat />
       </div>
     </ErrorBoundary>
   );

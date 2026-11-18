@@ -149,6 +149,48 @@ export default function ProductCard({ product }) {
           {isOutOfStock && <span className="badge-pill badge-oos">Sold out</span>}
         </div>
 
+        {/* Always-reachable quick-add pill (visible at rest & on mobile touch) */}
+        {!isOutOfStock && settings.quick_add_enabled !== false && settings.quick_add_enabled !== 'false' && (
+          <div className="product-card-quick-add">
+            {product.has_variants ? (
+              <Link
+                to={`/products/${product.id}`}
+                className="quick-add-options"
+                aria-label={`Select options for ${product.name}`}
+              >
+                Options
+              </Link>
+            ) : cartItem ? (
+              <div className="quick-add-stepper" aria-label={`Quantity of ${product.name} in cart`}>
+                <button
+                  type="button"
+                  onClick={handleDecrease}
+                  disabled={adding}
+                  aria-label="Decrease quantity"
+                >−</button>
+                <span>{cartQty}</span>
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={adding || cartQty >= product.stock_quantity}
+                  aria-label="Increase quantity"
+                >+</button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={`quick-add-btn${added ? ' is-added' : ''}`}
+                onClick={handleAddToCart}
+                disabled={adding}
+                aria-label={`Add ${product.name} to cart`}
+                title="Quick add to cart"
+              >
+                {added ? '✓' : '+'}
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Hover / touch overlay */}
         <div className="product-card-overlay">
           {isOutOfStock ? (

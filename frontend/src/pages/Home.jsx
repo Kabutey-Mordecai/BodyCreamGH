@@ -3,13 +3,26 @@ import { Link } from 'react-router-dom';
 import { productsAPI, newsletterAPI } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
-import ProductCard from '../components/ProductCard';
+import ProductShelf from '../components/ProductShelf';
 import TrustStrip from '../components/TrustStrip';
 import SearchBar from '../components/SearchBar';
+import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
+import Reveal from '../components/Reveal';
 import './Home.css';
 
-// Sale resets each time the page loads — ends at 11:59 PM today
-const SALE_END_TIME = (() => {
+const RECENTLY_VIEWED_KEY = 'bodycream_recently_viewed';
+
+function loadRecentlyViewed() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]');
+    return Array.isArray(raw) ? raw.filter(p => p && p.id && p.name) : [];
+  } catch {
+    return [];
+  }
+}
+
+// Default fallback countdown — ends at 11:59 PM today when no promotion ends_at is set
+const DEFAULT_SALE_END_TIME = (() => {
   const d = new Date();
   d.setHours(23, 59, 59, 0);
   return d.getTime();
@@ -26,12 +39,14 @@ function getTimeLeft(endTime) {
 }
 
 // Isolated timer component so the 1-second tick does NOT re-render the full Home page.
-function FlashSaleTimer() {
-  const [timeLeft, setTimeLeft] = useState(() => getTimeLeft(SALE_END_TIME));
+function FlashSaleTimer({ endTime = DEFAULT_SALE_END_TIME }) {
+  const targetTime = endTime && endTime > Date.now() ? endTime : DEFAULT_SALE_END_TIME;
+  const [timeLeft, setTimeLeft] = useState(() => getTimeLeft(targetTime));
   useEffect(() => {
-    const id = setInterval(() => setTimeLeft(getTimeLeft(SALE_END_TIME)), 1000);
+    setTimeLeft(getTimeLeft(targetTime));
+    const id = setInterval(() => setTimeLeft(getTimeLeft(targetTime)), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [targetTime]);
   return (
     <div className="flash-sale-timer">
       <span className="timer-label">Ends in</span>
@@ -66,37 +81,60 @@ const GALLERY = [
 ];
 
 export default function Home() {
+  const settings = useSettings();
   const {
     store_name, hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image,
     categories, testimonials,
-  } = useSettings();
+  } = settings;
   const [featured, setFeatured]             = useState([]);
   const [loading, setLoading]               = useState(true);
   const [saleProducts, setSaleProducts]     = useState([]);
+  const [flashEndTime, setFlashEndTime]     = useState(DEFAULT_SALE_END_TIME);
+  const [recentlyViewed, setRecentlyViewed] = useState(() => loadRecentlyViewed());
   const [nlEmail, setNlEmail]               = useState('');
   const [nlState, setNlState]               = useState('idle'); // idle | loading | success | error
   const [nlError, setNlError]               = useState('');
 
-  const homeJsonLd = useMemo(() => ({
-    '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': 'Organization',
-        name: store_name || 'BodyCream GH',
-        url: window.location.origin,
-      },
-      {
-        '@type': 'WebSite',
-        name: store_name || 'BodyCream GH',
-        url: window.location.origin,
-        potentialAction: {
-          '@type': 'SearchAction',
-          target: `${window.location.origin}/shop?search={search_term_string}`,
-          'query-input': 'required name=search_term_string',
+  const clearRecentlyViewed = () => {
+    try { localStorage.removeItem(RECENTLY_VIEWED_KEY); } catch { /* ignore */ }
+    setRecentlyViewed([]);
+  };
+
+  const homeJsonLd = useMemo(() => {
+    const faqEnabled = settings.faq_enabled !== false && settings.faq_enabled !== 'false';
+    const faqItems = faqEnabled ? buildFaqItems(settings) : [];
+    return {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'Organization',
+          name: store_name || 'BodyCream GH',
+          url: window.location.origin,
         },
-      },
-    ],
-  }), [store_name]);
+        {
+          '@type': 'WebSite',
+          name: store_name || 'BodyCream GH',
+          url: window.location.origin,
+          potentialAction: {
+            '@type': 'SearchAction',
+            target: `${window.location.origin}/shop?search={search_term_string}`,
+            'query-input': 'required name=search_term_string',
+          },
+        },
+        ...(faqItems.length > 0 ? [{
+          '@type': 'FAQPage',
+          mainEntity: faqItems.map(item => ({
+            '@type': 'Question',
+            name: item.q,
+            acceptedAnswer: {
+              '@type': 'Answer',
+              text: item.a,
+            },
+          })),
+        }] : []),
+      ],
+    };
+  }, [settings, store_name]);
 
   useSeo({
     title: `${store_name || 'BodyCream GH'} — Luxury Handcrafted Skincare in Ghana`,
@@ -106,16 +144,30 @@ export default function Home() {
   });
 
   useEffect(() => {
-    productsAPI.getAll({ limit: 4 })
+    productsAPI.getAll({ limit: 8, sort: 'top_rated' })
       .then(({ data }) => setFeatured(data.products || data))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
 
-  // Fetch 3 products for the flash sale (cheapest first so deals look good)
+  // Prefer genuine active promotions or compare_at discounts; fall back to value picks
   useEffect(() => {
-    productsAPI.getAll({ limit: 3, sort: 'price_low' })
-      .then(({ data }) => setSaleProducts(data.products || data))
+    productsAPI.getAll({ limit: 12, sort: 'price_low' })
+      .then(({ data }) => {
+        const list = data.products || data || [];
+        const realDeals = list.filter(p =>
+          (p.active_promotion && parseFloat(p.active_promotion.discounted_price) < parseFloat(p.price)) ||
+          (p.compare_at_price && parseFloat(p.compare_at_price) > parseFloat(p.price))
+        );
+        const chosen = realDeals.length > 0 ? realDeals.slice(0, 8) : list.slice(0, 6);
+        setSaleProducts(chosen);
+
+        const promoEnds = realDeals
+          .map(p => p.active_promotion?.ends_at ? new Date(p.active_promotion.ends_at).getTime() : null)
+          .filter(t => Number.isFinite(t) && t > Date.now())
+          .sort((a, b) => a - b);
+        if (promoEnds.length > 0) setFlashEndTime(promoEnds[0]);
+      })
       .catch(() => {});
   }, []);
 
@@ -177,25 +229,23 @@ export default function Home() {
       <TrustStrip />
 
       {/* ══════════════════════════════════════════
-          FLASH SALE — countdown timer + deals
+          FLASH SALE — countdown timer + deals shelf
           ══════════════════════════════════════════ */}
-      {saleProducts.length > 0 && (
+      {settings.flash_sale_enabled !== false && settings.flash_sale_enabled !== 'false' && saleProducts.length > 0 && (
         <section className="flash-sale-section">
-          <div className="container">
+          <Reveal className="container">
             <div className="flash-sale-header">
               <div className="flash-sale-title">
-                <span className="flash-badge">Flash Sale</span>
-                <h2>Today's Deals</h2>
+                <span className="flash-badge">{settings.flash_sale_badge || 'Flash Sale'}</span>
+                <h2>{settings.flash_sale_title || "Today's Deals"}</h2>
               </div>
-              <FlashSaleTimer />
+              <FlashSaleTimer endTime={flashEndTime} />
             </div>
-            <div className="products-grid">
-              {saleProducts.map(p => <ProductCard key={p.id} product={p} />)}
+            <ProductShelf products={saleProducts} ariaLabel={settings.flash_sale_title || "Today's Deals"} dark />
+            <div style={{ textAlign: 'center', marginTop: '28px' }}>
+              <Link to="/shop" className="btn btn-outline-gold">See All Deals →</Link>
             </div>
-            <div style={{ textAlign: 'center', marginTop: '32px' }}>
-              <Link to="/shop" className="btn btn-outline-gold">View All Products</Link>
-            </div>
-          </div>
+          </Reveal>
         </section>
       )}
 
@@ -204,32 +254,58 @@ export default function Home() {
           ══════════════════════════════════════════ */}
       <section className="categories-section">
         <div className="container">
-          <div className="section-header">
+          <Reveal className="section-header">
             <span className="section-label">Browse by category</span>
             <h2 className="page-title">Shop the range</h2>
             <div className="gold-divider" style={{ margin: '0 0 40px' }} />
-          </div>
+          </Reveal>
           <div className="categories-grid">
-            {(categories || []).map(cat => (
-              <Link
-                key={cat.label}
-                to={`/shop?category=${encodeURIComponent(cat.label)}`}
-                className="cat-card"
-              >
-                <img src={cat.image} alt={cat.label} loading="lazy" />
-                <div className="cat-card-overlay" />
-                <span className="cat-card-label">{cat.label}</span>
-              </Link>
+            {(categories || []).map((cat, idx) => (
+              <Reveal key={cat.label} delay={idx * 70}>
+                <Link
+                  to={`/shop?category=${encodeURIComponent(cat.label)}`}
+                  className="cat-card"
+                >
+                  <img src={cat.image} alt={cat.label} loading="lazy" />
+                  <div className="cat-card-overlay" />
+                  <span className="cat-card-label">{cat.label}</span>
+                </Link>
+              </Reveal>
             ))}
           </div>
         </div>
       </section>
 
       {/* ══════════════════════════════════════════
+          RECENTLY VIEWED — personalized localStorage shelf
+          ══════════════════════════════════════════ */}
+      {settings.recently_viewed_enabled !== false && settings.recently_viewed_enabled !== 'false' && recentlyViewed.length > 0 && (
+        <section className="page-section recently-viewed-section">
+          <Reveal className="container">
+            <div className="shelf-section-head">
+              <div>
+                <span className="section-label">Picked up where you left off</span>
+                <h2 className="page-title" style={{ marginBottom: 0 }}>Recently viewed</h2>
+              </div>
+              <button
+                type="button"
+                className="shelf-clear-btn"
+                onClick={clearRecentlyViewed}
+              >
+                Clear history
+              </button>
+            </div>
+            <div className="gold-divider" style={{ margin: '12px 0 28px' }} />
+            <ProductShelf products={recentlyViewed} ariaLabel="Recently viewed products" />
+          </Reveal>
+        </section>
+      )}
+
+      {/* ══════════════════════════════════════════
           FEATURED PRODUCTS
           ══════════════════════════════════════════ */}
       <section className="page-section featured-section">
-        <div className="container">
+        <Reveal className="container">
           <div className="section-header">
             <span className="section-label">Bestsellers</span>
             <h2 className="page-title">Loved by thousands</h2>
@@ -243,9 +319,7 @@ export default function Home() {
             <div className="spinner" />
           ) : (
             <>
-              <div className="products-grid">
-                {featured.map(p => <ProductCard key={p.id} product={p} />)}
-              </div>
+              <ProductShelf products={featured} ariaLabel="Bestsellers" />
               <div className="view-all-wrap">
                 <Link to="/shop" className="btn btn-outline">
                   View Full Collection
@@ -253,23 +327,23 @@ export default function Home() {
               </div>
             </>
           )}
-        </div>
+        </Reveal>
       </section>
 
       {/* ══════════════════════════════════════════
           BRAND STORY — split image + text
           TO CUSTOMIZE: Swap the image URL and edit the story text
           ══════════════════════════════════════════ */}
-      <section className="brand-story">
+      <section id="our-story" className="brand-story">
         <div className="container brand-story-inner">
-          <div className="brand-story-img">
+          <Reveal direction="left" className="brand-story-img">
             <img
               src="https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80"
               alt="Our story — handcrafting body creams"
               loading="lazy"
             />
-          </div>
-          <div className="brand-story-text">
+          </Reveal>
+          <Reveal direction="right" delay={100} className="brand-story-text">
             <span className="section-label">Our Story</span>
             <h2>Born in Ghana,<br />made for her.</h2>
             <div className="gold-divider" style={{ margin: '12px 0 20px' }} />
@@ -290,7 +364,7 @@ export default function Home() {
             >
               Discover the Range
             </Link>
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -299,14 +373,14 @@ export default function Home() {
           ══════════════════════════════════════════ */}
       <section className="page-section testimonials-section">
         <div className="container">
-          <div className="section-header">
+          <Reveal className="section-header">
             <span className="section-label">Reviews</span>
             <h2 className="page-title">What our customers say</h2>
             <div className="gold-divider" style={{ margin: '0 0 48px' }} />
-          </div>
+          </Reveal>
           <div className="testimonials-grid">
             {(testimonials || []).map((t, i) => (
-              <div key={i} className="testimonial-card card">
+              <Reveal key={i} delay={i * 90} className="testimonial-card card">
                 <p className="testimonial-text">"{t.text}"</p>
                 <div className="testimonial-author">
                   {t.avatar && <img src={t.avatar} alt={t.name} className="testimonial-avatar" />}
@@ -315,7 +389,7 @@ export default function Home() {
                     <span>{t.location}</span>
                   </div>
                 </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -332,6 +406,11 @@ export default function Home() {
           </div>
         ))}
       </section>
+
+      {/* ══════════════════════════════════════════
+          FREQUENTLY ASKED QUESTIONS (with FAQPage JSON-LD)
+          ══════════════════════════════════════════ */}
+      <HomeFaq />
 
       {/* ══════════════════════════════════════════
           NEWSLETTER CTA

@@ -19,6 +19,21 @@ const DEFAULTS = {
 
   announcement_enabled: true,
   announcement_text: 'Free delivery on orders over GHS 200 · Shop now',
+  announcement_show_whatsapp: true,
+
+  category_bar_enabled: true,
+  quick_add_enabled: true,
+  recently_viewed_enabled: true,
+  flash_sale_enabled: true,
+  flash_sale_badge: 'Flash Sale',
+  flash_sale_title: "Today's Deals",
+  whatsapp_float_enabled: true,
+  back_to_top_enabled: true,
+  footer_payment_badges_enabled: true,
+  animations_enabled: true,
+  faq_enabled: true,
+  faq_heading: 'Frequently asked questions',
+  faq_items: [],
 
   hero_label: 'Handcrafted in Ghana',
   hero_headline: 'Reveal your natural glow.',
@@ -97,6 +112,8 @@ function applyTheme(s) {
   root.style.setProperty('--color-blush',       s.theme_color_blush);
   root.style.setProperty('--font-display',      `"${s.theme_font_display}", serif`);
   root.style.setProperty('--font-body',         `"${s.theme_font_body}", sans-serif`);
+  const animOff = s.animations_enabled === false || s.animations_enabled === 'false';
+  root.classList.toggle('no-animations', animOff);
 }
 
 export const useSettings = () => useContext(SettingsContext);

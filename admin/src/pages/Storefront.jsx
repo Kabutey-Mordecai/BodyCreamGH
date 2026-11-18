@@ -19,15 +19,41 @@ const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'http://localhost:
 const SECTIONS = [
   { id: 'announcement', label: 'Announcement bar' },
   { id: 'hero',         label: 'Hero banner' },
+  { id: 'layout',       label: 'Layout & features' },
   { id: 'categories',   label: 'Category cards' },
   { id: 'testimonials', label: 'Testimonials' },
   { id: 'trust',        label: 'Trust promises' },
+  { id: 'faq',          label: 'FAQs' },
   { id: 'footer',       label: 'Footer' },
+];
+
+const DEFAULT_FAQS = [
+  {
+    q: 'How do I place an order on BodyCream GH?',
+    a: 'Add your favourite products to cart and check out online as a guest or registered customer in under 2 minutes. You can also tap "Order via WhatsApp" on any product page.',
+  },
+  {
+    q: 'What payment methods do you accept?',
+    a: 'We accept MTN Mobile Money, Telecel Cash, Visa, Mastercard, and bank transfers securely via Paystack (plus Pay on Delivery when enabled).',
+  },
+  {
+    q: 'How long does delivery take, and is Store Pickup available?',
+    a: 'Accra deliveries take 1–2 business days and nationwide deliveries take 3–5 business days. Free Store Pickup is available in Accra.',
+  },
+  {
+    q: 'What is your return & refund policy?',
+    a: 'We offer hassle-free 7-day returns on unopened items and prompt replacements for any damaged delivery.',
+  },
+  {
+    q: 'Are your skincare products authentic and safe for melanin-rich skin?',
+    a: 'Yes. Every batch is handcrafted in Ghana with 100% raw Northern Ghana shea butter and botanical oils, free from parabens, sulfates, and harsh bleaching agents.',
+  },
 ];
 
 const DEFAULTS = {
   announcement_enabled: true,
   announcement_text: 'Free delivery on orders over GHS 200 · Shop now',
+  announcement_show_whatsapp: true,
 
   hero_label:      'Handcrafted in Ghana',
   hero_headline:   'Reveal your natural glow.',
@@ -35,6 +61,21 @@ const DEFAULTS = {
   hero_cta_text:   'Shop the Collection',
   hero_cta_link:   '/shop',
   hero_image:      'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1600&q=85',
+
+  category_bar_enabled: true,
+  quick_add_enabled: true,
+  recently_viewed_enabled: true,
+  flash_sale_enabled: true,
+  flash_sale_badge: 'Flash Sale',
+  flash_sale_title: "Today's Deals",
+  whatsapp_float_enabled: true,
+  back_to_top_enabled: true,
+  footer_payment_badges_enabled: true,
+  animations_enabled: true,
+
+  faq_enabled: true,
+  faq_heading: 'Frequently asked questions',
+  faq_items: [],
 
   categories: [
     { label: 'Body Cream',  image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=400&h=500&q=80' },
@@ -207,9 +248,150 @@ export default function Storefront() {
                   />
                   <div className="hint">Keep it short — customers scan, they don't read.</div>
                 </div>
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={data.announcement_show_whatsapp !== false}
+                      onChange={e => update('announcement_show_whatsapp', e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <span>Show "Order on WhatsApp" link in the bar (when WhatsApp number is set in Settings)</span>
+                  </label>
+                </div>
 
                 <div className="sf-preview" style={{ background: 'var(--ac-sidebar)', color: '#fff', textAlign: 'center', padding: '10px 20px', fontSize: '0.8rem', letterSpacing: '0.04em' }}>
                   {data.announcement_enabled ? (data.announcement_text || 'Your announcement here') : <em>Bar is hidden</em>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {active === 'layout' && (
+            <div className="card">
+              <div className="card-header"><h2 className="card-title">Layout &amp; conversion features</h2></div>
+              <div className="card-body">
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={data.category_bar_enabled !== false}
+                      onChange={e => update('category_bar_enabled', e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <span>Show horizontal Category Quick-Bar below navigation</span>
+                  </label>
+                  <div className="hint">Displays scrollable category shortcuts, Deals, and Track Order directly under the header.</div>
+                </div>
+
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={data.quick_add_enabled !== false}
+                      onChange={e => update('quick_add_enabled', e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <span>Show one-tap "+" Quick-Add button on product cards</span>
+                  </label>
+                  <div className="hint">Lets mobile &amp; desktop shoppers add items to cart directly from product shelves.</div>
+                </div>
+
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={data.recently_viewed_enabled !== false}
+                      onChange={e => update('recently_viewed_enabled', e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <span>Show "Recently viewed" shelf on the home page</span>
+                  </label>
+                  <div className="hint">Automatically appears for returning visitors who have viewed products on this device.</div>
+                </div>
+
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={data.whatsapp_float_enabled !== false}
+                      onChange={e => update('whatsapp_float_enabled', e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <span>Show floating "Chat with us" WhatsApp button</span>
+                  </label>
+                  <div className="hint">Requires a WhatsApp number in Settings → Customer support. Automatically hidden on Cart and Checkout.</div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 14, marginTop: 14 }}>
+                  <div className="field">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={data.flash_sale_enabled !== false}
+                        onChange={e => update('flash_sale_enabled', e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      <span>Show Flash Sale / Deals shelf on home page</span>
+                    </label>
+                  </div>
+                  <div className="field-row">
+                    <div className="field">
+                      <label>Flash sale badge</label>
+                      <input
+                        type="text"
+                        value={data.flash_sale_badge || ''}
+                        onChange={e => update('flash_sale_badge', e.target.value)}
+                        placeholder="Flash Sale"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Flash sale heading</label>
+                      <input
+                        type="text"
+                        value={data.flash_sale_title || ''}
+                        onChange={e => update('flash_sale_title', e.target.value)}
+                        placeholder="Today's Deals"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 14, marginTop: 14 }}>
+                  <div className="field">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={data.back_to_top_enabled !== false}
+                        onChange={e => update('back_to_top_enabled', e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      <span>Show "Back to top ↑" bar above the footer</span>
+                    </label>
+                  </div>
+                  <div className="field">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={data.footer_payment_badges_enabled !== false}
+                        onChange={e => update('footer_payment_badges_enabled', e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      <span>Show payment &amp; delivery method badges in footer</span>
+                    </label>
+                  </div>
+                  <div className="field" style={{ marginBottom: 0 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={data.animations_enabled !== false}
+                        onChange={e => update('animations_enabled', e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      <span>Enable storefront animations (scroll reveals, hero entrance &amp; micro-interactions)</span>
+                    </label>
+                    <div className="hint">Automatically respects visitors' OS "Reduce Motion" accessibility preference.</div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -314,6 +496,9 @@ export default function Storefront() {
                 >+ Add category</button>
               </div>
               <div className="card-body">
+                <div className="hint" style={{ marginBottom: 14 }}>
+                  These categories power both the homepage Category Cards grid and the horizontal Category Quick-Bar below the header.
+                </div>
                 {(data.categories || []).map((cat, i) => (
                   <div key={i} className="sf-row" style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr auto', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                     <div style={{
@@ -407,6 +592,90 @@ export default function Storefront() {
                   </div>
                 ))}
                 <div className="hint" style={{ marginTop: 8 }}>Icons can be emoji (🚚) or single characters (✦, ↩).</div>
+              </div>
+            </div>
+          )}
+
+          {active === 'faq' && (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">Frequently asked questions</h2>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => update('faq_items', DEFAULT_FAQS)}
+                    title="Populate with editable starter questions"
+                  >Load starter FAQs</button>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => addToArray('faq_items', { q: '', a: '' })}
+                  >+ Add question</button>
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={data.faq_enabled !== false}
+                      onChange={e => update('faq_enabled', e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <span>Show FAQ section on the home page (also emits FAQPage SEO schema)</span>
+                  </label>
+                </div>
+
+                <div className="field">
+                  <label>Section heading</label>
+                  <input
+                    type="text"
+                    value={data.faq_heading || ''}
+                    onChange={e => update('faq_heading', e.target.value)}
+                    placeholder="Frequently asked questions"
+                  />
+                </div>
+
+                {(!data.faq_items || data.faq_items.length === 0) ? (
+                  <div className="empty" style={{ padding: 24, textAlign: 'left' }}>
+                    <p style={{ marginBottom: 6 }}>
+                      <strong>Using smart automatic FAQs.</strong>
+                    </p>
+                    <p className="muted text-sm" style={{ margin: 0 }}>
+                      When left empty, the storefront automatically generates 5 Ghana-focused FAQs using your live Delivery, Store Pickup, and Pay on Delivery settings. Click <strong>Load starter FAQs</strong> or <strong>+ Add question</strong> to customize them manually.
+                    </p>
+                  </div>
+                ) : (
+                  (data.faq_items || []).map((item, i) => (
+                    <div key={i} style={{ padding: 14, background: 'var(--ac-surface-2)', borderRadius: 8, marginBottom: 12 }}>
+                      <div className="field" style={{ marginBottom: 10 }}>
+                        <label>Question #{i + 1}</label>
+                        <input
+                          value={item.q || ''}
+                          onChange={e => updateArray('faq_items', i, 'q', e.target.value)}
+                          placeholder="e.g. How long does delivery take?"
+                        />
+                      </div>
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>Answer</label>
+                        <textarea
+                          rows={2}
+                          value={item.a || ''}
+                          onChange={e => updateArray('faq_items', i, 'a', e.target.value)}
+                          placeholder="Write a clear, concise answer..."
+                        />
+                      </div>
+                      <div style={{ textAlign: 'right', marginTop: 6 }}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: 'var(--ac-danger)' }}
+                          onClick={() => removeFromArray('faq_items', i)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
