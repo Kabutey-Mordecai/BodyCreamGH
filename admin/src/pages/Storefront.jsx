@@ -107,8 +107,10 @@ const DEFAULTS = {
   tile2_link: '/shop?category=Body+Oil',
   tile2_image: 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
 
-  // Jumia-inspired mid-page graphic banner
+  // Jumia-inspired mid-page graphic banner & story carousel
   mid_banner_enabled: true,
+  mid_banner_autoplay: true,
+  mid_banner_interval_sec: 5,
   mid_banner_badge: 'PURE GHANAIAN BOTANICALS',
   mid_banner_title: 'Handcrafted in Small Batches.',
   mid_banner_highlight: 'Zero Harsh Bleaching Agents.',
@@ -116,6 +118,35 @@ const DEFAULTS = {
   mid_banner_cta_text: 'Learn Our Story',
   mid_banner_cta_link: '/#our-story',
   mid_banner_image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
+  mid_banner_slides: [
+    {
+      badge: 'PURE GHANAIAN BOTANICALS',
+      title: 'Handcrafted in Small Batches.',
+      highlight: 'Zero Harsh Bleaching Agents.',
+      subtitle: 'Raw unrefined shea butter from Northern Ghana cooperatives, blended with botanical oils for rich, natural skin nutrition.',
+      cta_text: 'Learn Our Story',
+      cta_link: '/#our-story',
+      image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
+    },
+    {
+      badge: 'CLINICALLY PROVEN HYDRATION',
+      title: '48-Hour Deep Moisture Lock.',
+      highlight: 'Melanin-Rich Formula.',
+      subtitle: 'Enriched with cold-pressed baobab and virgin coconut oil to soothe eczema, stretch marks, and dry harmattan skin.',
+      cta_text: 'Shop Body Creams',
+      cta_link: '/shop?category=Body+Cream',
+      image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=700&q=80',
+    },
+    {
+      badge: 'BESTSELLER RADIANCE',
+      title: 'Rose Gold Botanical Glow.',
+      highlight: 'Non-Greasy Velvet Finish.',
+      subtitle: 'Infused with golden mica particles and wild rosehip seed oil for an instant sun-kissed Ghanaian summer glow.',
+      cta_text: 'Discover Glow Oils',
+      cta_link: '/shop?category=Body+Oil',
+      image: 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
+    },
+  ],
 
   // Jumia-inspired bottom SEO & regional editorial guide
   seo_editorial_enabled: true,
@@ -159,6 +190,7 @@ export default function Storefront() {
   const [dirty, setDirty]   = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [previewSlideIdx, setPreviewSlideIdx] = useState(0);
 
   // Load from backend; fall back to localStorage so the editor is always usable.
   useEffect(() => {
@@ -200,6 +232,77 @@ export default function Storefront() {
   const removeFromArray = (key, index) => {
     setData(prev => ({ ...prev, [key]: prev[key].filter((_, i) => i !== index) }));
     setDirty(true);
+  };
+
+  const midBannerSlides = (Array.isArray(data.mid_banner_slides) && data.mid_banner_slides.length > 0)
+    ? data.mid_banner_slides
+    : [
+        {
+          badge: data.mid_banner_badge || DEFAULTS.mid_banner_badge,
+          title: data.mid_banner_title || DEFAULTS.mid_banner_title,
+          highlight: data.mid_banner_highlight || DEFAULTS.mid_banner_highlight,
+          subtitle: data.mid_banner_subtitle || DEFAULTS.mid_banner_subtitle,
+          cta_text: data.mid_banner_cta_text || DEFAULTS.mid_banner_cta_text,
+          cta_link: data.mid_banner_cta_link || DEFAULTS.mid_banner_cta_link,
+          image: data.mid_banner_image || DEFAULTS.mid_banner_image,
+        },
+      ];
+
+  const updateMidSlide = (index, field, value) => {
+    const list = [...midBannerSlides];
+    list[index] = { ...list[index], [field]: value };
+    setData(prev => {
+      const next = { ...prev, mid_banner_slides: list };
+      if (index === 0) {
+        if (field === 'badge') next.mid_banner_badge = value;
+        if (field === 'title') next.mid_banner_title = value;
+        if (field === 'highlight') next.mid_banner_highlight = value;
+        if (field === 'subtitle') next.mid_banner_subtitle = value;
+        if (field === 'cta_text') next.mid_banner_cta_text = value;
+        if (field === 'cta_link') next.mid_banner_cta_link = value;
+        if (field === 'image') next.mid_banner_image = value;
+      }
+      return next;
+    });
+    setDirty(true);
+  };
+
+  const addMidSlide = () => {
+    const list = [
+      ...midBannerSlides,
+      {
+        badge: 'NEW PROMOTION',
+        title: 'Featured Botanical Care',
+        highlight: 'Limited Time Offer',
+        subtitle: 'Handcrafted luxury body care blended with Ghana botanicals.',
+        cta_text: 'Shop Now',
+        cta_link: '/shop',
+        image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
+      },
+    ];
+    setData(prev => ({ ...prev, mid_banner_slides: list }));
+    setDirty(true);
+    setPreviewSlideIdx(list.length - 1);
+  };
+
+  const removeMidSlide = (index) => {
+    if (midBannerSlides.length <= 1) return;
+    const list = midBannerSlides.filter((_, i) => i !== index);
+    setData(prev => {
+      const next = { ...prev, mid_banner_slides: list };
+      if (list[0]) {
+        next.mid_banner_badge = list[0].badge;
+        next.mid_banner_title = list[0].title;
+        next.mid_banner_highlight = list[0].highlight;
+        next.mid_banner_subtitle = list[0].subtitle;
+        next.mid_banner_cta_text = list[0].cta_text;
+        next.mid_banner_cta_link = list[0].cta_link;
+        next.mid_banner_image = list[0].image;
+      }
+      return next;
+    });
+    setDirty(true);
+    setPreviewSlideIdx(prev => Math.min(prev, list.length - 1));
   };
 
   const save = async () => {
@@ -685,7 +788,7 @@ export default function Storefront() {
                   </div>
                 </div>
 
-                {/* 2. Mid-Page Graphic Trust Banner */}
+                {/* 2. Mid-Page Graphic Trust Banner & Story Carousel */}
                 <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 20 }}>
                   <div className="field">
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -695,81 +798,308 @@ export default function Storefront() {
                         onChange={e => update('mid_banner_enabled', e.target.checked)}
                         style={{ width: 'auto' }}
                       />
-                      <strong>Show Mid-Page Graphic Campaign Banner</strong>
+                      <strong>Show Mid-Page Story Carousel &amp; Graphic Campaign Banner</strong>
                     </label>
-                    <div className="hint">Full-width high-contrast banner (like Jumia's "Beat the Heat" campaign) showcasing quality guarantees.</div>
+                    <div className="hint">Full-width high-contrast banner &amp; auto-flipping product story carousel showcasing quality guarantees, botanical stories, and product collections.</div>
                   </div>
 
-                  <div className="field-row">
-                    <div className="field">
-                      <label>Badge pill</label>
-                      <input
-                        type="text"
-                        value={data.mid_banner_badge || ''}
-                        onChange={e => update('mid_banner_badge', e.target.value)}
-                        placeholder="PURE GHANAIAN BOTANICALS"
-                      />
+                  {/* Autoplay & Interval Controls */}
+                  <div className="field-row" style={{ marginTop: 12, padding: 12, background: 'var(--ac-surface-2)', borderRadius: 8 }}>
+                    <div className="field" style={{ marginBottom: 0 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={data.mid_banner_autoplay !== false}
+                          onChange={e => update('mid_banner_autoplay', e.target.checked)}
+                          style={{ width: 'auto' }}
+                        />
+                        <span>Enable Automatic Slide Flipping (Auto-Play)</span>
+                      </label>
+                      <div className="hint">Slides smoothly transition automatically; pauses when user hovers or touches.</div>
                     </div>
-                    <div className="field">
-                      <label>Image URL</label>
-                      <input
-                        type="url"
-                        value={data.mid_banner_image || ''}
-                        onChange={e => update('mid_banner_image', e.target.value)}
-                      />
-                    </div>
-                  </div>
 
-                  <div className="field-row">
-                    <div className="field">
-                      <label>Title</label>
+                    <div className="field" style={{ marginBottom: 0 }}>
+                      <label>Flip Interval (seconds)</label>
                       <input
-                        type="text"
-                        value={data.mid_banner_title || ''}
-                        onChange={e => update('mid_banner_title', e.target.value)}
-                        placeholder="Handcrafted in Small Batches."
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Highlighted accent</label>
-                      <input
-                        type="text"
-                        value={data.mid_banner_highlight || ''}
-                        onChange={e => update('mid_banner_highlight', e.target.value)}
-                        placeholder="Zero Harsh Bleaching Agents."
+                        type="number"
+                        min="2"
+                        max="30"
+                        value={data.mid_banner_interval_sec || 5}
+                        onChange={e => update('mid_banner_interval_sec', Math.max(2, parseInt(e.target.value) || 5))}
                       />
                     </div>
                   </div>
 
-                  <div className="field">
-                    <label>Subtitle</label>
-                    <textarea
-                      rows={2}
-                      value={data.mid_banner_subtitle || ''}
-                      onChange={e => update('mid_banner_subtitle', e.target.value)}
-                      placeholder="Raw unrefined shea butter from Northern Ghana..."
-                    />
+                  {/* Slide Manager Header */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 20, marginBottom: 12 }}>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: '0.95rem' }}>Carousel Story Slides ({midBannerSlides.length})</h4>
+                      <p className="hint" style={{ margin: '2px 0 0 0' }}>Add multiple promotional stories or product highlights that shoppers can flip through.</p>
+                    </div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={() => update('mid_banner_slides', DEFAULTS.mid_banner_slides)}
+                        title="Load 3 default luxury beauty slides"
+                      >
+                        Reset Defaults
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-accent btn-sm"
+                        onClick={addMidSlide}
+                      >
+                        + Add Slide
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="field-row">
-                    <div className="field">
-                      <label>Button text</label>
-                      <input
-                        type="text"
-                        value={data.mid_banner_cta_text || ''}
-                        onChange={e => update('mid_banner_cta_text', e.target.value)}
-                        placeholder="Learn Our Story"
-                      />
+                  {/* Slide Cards List */}
+                  {midBannerSlides.map((slide, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: 16,
+                        background: 'var(--ac-surface-2)',
+                        border: previewSlideIdx === idx ? '2px solid var(--ac-accent)' : '1px solid var(--ac-border)',
+                        borderRadius: 8,
+                        marginBottom: 14,
+                        transition: 'border-color 0.2s ease',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <span style={{
+                            background: previewSlideIdx === idx ? 'var(--ac-accent)' : 'var(--ac-border)',
+                            color: previewSlideIdx === idx ? '#fff' : 'inherit',
+                            padding: '2px 8px',
+                            borderRadius: 12,
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                          }}>
+                            Slide #{idx + 1}
+                          </span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{slide.title || 'Untitled Slide'}</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => setPreviewSlideIdx(idx)}
+                            style={{ fontSize: '0.8rem' }}
+                          >
+                            {previewSlideIdx === idx ? '● Previewing' : 'Preview'}
+                          </button>
+                          {midBannerSlides.length > 1 && (
+                            <button
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: 'var(--ac-danger)' }}
+                              onClick={() => removeMidSlide(idx)}
+                              title="Delete this slide"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="field-row">
+                        <div className="field">
+                          <label>Badge pill text</label>
+                          <input
+                            type="text"
+                            value={slide.badge || ''}
+                            onChange={e => updateMidSlide(idx, 'badge', e.target.value)}
+                            placeholder="PURE GHANAIAN BOTANICALS"
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Product / Story Image URL</label>
+                          <input
+                            type="url"
+                            value={slide.image || ''}
+                            onChange={e => updateMidSlide(idx, 'image', e.target.value)}
+                            placeholder="https://images.unsplash.com/..."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="field-row">
+                        <div className="field">
+                          <label>Headline Title</label>
+                          <input
+                            type="text"
+                            value={slide.title || ''}
+                            onChange={e => updateMidSlide(idx, 'title', e.target.value)}
+                            placeholder="Handcrafted in Small Batches."
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Highlighted Accent Text</label>
+                          <input
+                            type="text"
+                            value={slide.highlight || ''}
+                            onChange={e => updateMidSlide(idx, 'highlight', e.target.value)}
+                            placeholder="Zero Harsh Bleaching Agents."
+                          />
+                        </div>
+                      </div>
+
+                      <div className="field">
+                        <label>Subtitle / Description</label>
+                        <textarea
+                          rows={2}
+                          value={slide.subtitle || ''}
+                          onChange={e => updateMidSlide(idx, 'subtitle', e.target.value)}
+                          placeholder="Raw unrefined shea butter from Northern Ghana..."
+                        />
+                      </div>
+
+                      <div className="field-row" style={{ marginBottom: 0 }}>
+                        <div className="field" style={{ marginBottom: 0 }}>
+                          <label>Button Text</label>
+                          <input
+                            type="text"
+                            value={slide.cta_text || ''}
+                            onChange={e => updateMidSlide(idx, 'cta_text', e.target.value)}
+                            placeholder="Learn Our Story"
+                          />
+                        </div>
+                        <div className="field" style={{ marginBottom: 0 }}>
+                          <label>Button Link</label>
+                          <input
+                            type="text"
+                            value={slide.cta_link || ''}
+                            onChange={e => updateMidSlide(idx, 'cta_link', e.target.value)}
+                            placeholder="/#our-story or /shop?category=Body+Cream"
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="field">
-                      <label>Button link</label>
-                      <input
-                        type="text"
-                        value={data.mid_banner_cta_link || ''}
-                        onChange={e => update('mid_banner_cta_link', e.target.value)}
-                        placeholder="/#our-story"
-                      />
+                  ))}
+
+                  {/* Live Visual Preview Card */}
+                  <div style={{ marginTop: 20 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <label style={{ margin: 0, fontWeight: 700, fontSize: '0.88rem' }}>Live Carousel Preview (Admin)</label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => setPreviewSlideIdx(prev => (prev - 1 + midBannerSlides.length) % midBannerSlides.length)}
+                          disabled={midBannerSlides.length <= 1}
+                        >
+                          ‹
+                        </button>
+                        <span style={{ fontSize: '0.78rem', color: 'var(--ac-text-muted)' }}>
+                          {previewSlideIdx + 1} / {midBannerSlides.length}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-sm"
+                          onClick={() => setPreviewSlideIdx(prev => (prev + 1) % midBannerSlides.length)}
+                          disabled={midBannerSlides.length <= 1}
+                        >
+                          ›
+                        </button>
+                      </div>
                     </div>
+
+                    {(() => {
+                      const cur = midBannerSlides[previewSlideIdx] || midBannerSlides[0];
+                      return (
+                        <div
+                          style={{
+                            background: '#14110e',
+                            borderRadius: 12,
+                            padding: 20,
+                            color: '#fff',
+                            display: 'grid',
+                            gridTemplateColumns: '1.4fr 1fr',
+                            gap: 20,
+                            alignItems: 'center',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
+                            overflow: 'hidden',
+                            position: 'relative',
+                          }}
+                        >
+                          <div>
+                            {cur.badge && (
+                              <span style={{
+                                display: 'inline-block',
+                                padding: '3px 8px',
+                                background: 'rgba(217,119,6,0.18)',
+                                border: '1px solid rgba(217,119,6,0.4)',
+                                borderRadius: 10,
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                letterSpacing: '0.06em',
+                                color: '#f59e0b',
+                                marginBottom: 10,
+                              }}>
+                                {cur.badge}
+                              </span>
+                            )}
+                            <h3 style={{ margin: '0 0 6px 0', fontSize: '1.15rem', lineHeight: 1.25, color: '#f5f5f4' }}>
+                              {cur.title}{' '}
+                              {cur.highlight && (
+                                <span style={{ color: '#d97706', fontStyle: 'italic', display: 'block' }}>
+                                  {cur.highlight}
+                                </span>
+                              )}
+                            </h3>
+                            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.78rem', margin: '0 0 14px 0', lineHeight: 1.45 }}>
+                              {cur.subtitle}
+                            </p>
+                            <button
+                              type="button"
+                              className="btn btn-accent btn-sm"
+                              style={{ pointerEvents: 'none' }}
+                            >
+                              {cur.cta_text || 'Learn More'} →
+                            </button>
+                          </div>
+
+                          <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', height: 140 }}>
+                            <img
+                              src={cur.image}
+                              alt={cur.title}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          </div>
+
+                          {/* Dots in preview */}
+                          <div style={{
+                            position: 'absolute',
+                            bottom: 8,
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            display: 'flex',
+                            gap: 6,
+                          }}>
+                            {midBannerSlides.map((_, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => setPreviewSlideIdx(i)}
+                                style={{
+                                  width: i === previewSlideIdx ? 18 : 6,
+                                  height: 6,
+                                  borderRadius: 3,
+                                  border: 'none',
+                                  padding: 0,
+                                  cursor: 'pointer',
+                                  background: i === previewSlideIdx ? '#d97706' : 'rgba(255,255,255,0.3)',
+                                  transition: 'all 0.2s ease',
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 

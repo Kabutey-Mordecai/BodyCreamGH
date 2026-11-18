@@ -1,30 +1,40 @@
 /* ═══════════════════════════════════════════════════════════════
-   MID-PAGE CAMPAIGN & TRUST BANNER (Jumia Graphic Banner Pattern)
-   High-contrast graphic banner highlighting quality and brand heritage
+   MID-PAGE CAMPAIGN & TRUST BANNER (Auto-Flip Story Carousel)
+   Multi-slide rotating banner with auto-flip, smooth transitions,
+   navigation arrows, and progress pill indicators.
    ═══════════════════════════════════════════════════════════════ */
 
 .mid-banner-section {
   padding: 48px 0 24px;
 }
 
-.mid-banner-card {
+.mid-banner-card-wrapper {
   position: relative;
-  border-radius: 18px;
-  background: linear-gradient(135deg, #18120e 0%, #251c16 60%, #1a130f 100%);
-  border: 1px solid rgba(201, 165, 90, 0.3);
-  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.4);
-  display: grid;
-  grid-template-columns: 1.25fr 0.85fr;
-  align-items: center;
-  overflow: hidden;
 }
 
+.mid-banner-card {
+  position: relative;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #18120e 0%, #251c16 60%, #1a130f 100%);
+  border: 1px solid rgba(201, 165, 90, 0.35);
+  box-shadow:
+    0 20px 48px -12px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  display: grid;
+  grid-template-columns: 1.2fr 0.9fr;
+  align-items: center;
+  overflow: hidden;
+  min-height: 380px;
+}
+
+/* Content Column with Entrance Animation */
 .mid-banner-content {
-  padding: 44px 40px;
+  padding: 48px 44px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   z-index: 2;
+  animation: bannerSlideIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .mid-banner-badge {
@@ -59,6 +69,7 @@
   line-height: 1.15;
   color: #ffffff;
   margin: 0 0 14px 0;
+  letter-spacing: -0.01em;
 }
 
 .mid-banner-highlight {
@@ -72,9 +83,9 @@
 .mid-banner-sub {
   font-size: 0.92rem;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.78);
   margin: 0 0 24px 0;
-  max-width: 540px;
+  max-width: 520px;
 }
 
 .mid-banner-actions {
@@ -88,33 +99,46 @@
   gap: 8px;
   font-weight: 700;
   padding: 12px 26px;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  text-decoration: none;
+  background: linear-gradient(135deg, #c9a55a 0%, #b89347 100%);
+  color: #14110f;
+  box-shadow: 0 6px 18px -3px rgba(201, 165, 90, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Visual Column */
+.mid-banner-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -3px rgba(201, 165, 90, 0.6);
+}
+
+/* Visual Column with Smooth Crossfade & Scale */
 .mid-banner-visual {
   position: relative;
   height: 100%;
-  min-height: 300px;
+  min-height: 380px;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  animation: bannerImageIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .mid-banner-img {
   width: 100%;
   height: 100%;
+  min-height: 380px;
   object-fit: cover;
-  transition: transform 0.5s ease;
-  mask-image: linear-gradient(to right, transparent 0%, black 20%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 20%);
+  transition: transform 0.6s ease;
+  mask-image: linear-gradient(to right, transparent 0%, black 22%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 22%);
 }
 
 .mid-banner-card:hover .mid-banner-img {
-  transform: scale(1.05);
+  transform: scale(1.04);
 }
 
-/* Subtle corner glow shine */
 .mid-banner-shine {
   position: absolute;
   top: -50%;
@@ -125,25 +149,153 @@
   pointer-events: none;
 }
 
-/* Mobile Adaptation */
+/* Navigation Arrows (Prev / Next) */
+.mid-banner-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(20, 16, 14, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(201, 165, 90, 0.3);
+  color: #e5c378;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.mid-banner-arrow:hover {
+  background: #c9a55a;
+  color: #14110f;
+  border-color: #c9a55a;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.mid-banner-arrow:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.mid-banner-arrow-prev {
+  left: 14px;
+}
+
+.mid-banner-arrow-next {
+  right: 14px;
+}
+
+/* Bottom Progress Pill Indicators */
+.mid-banner-nav {
+  position: absolute;
+  bottom: 16px;
+  left: 44px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mid-banner-dot {
+  position: relative;
+  width: 32px;
+  height: 5px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.mid-banner-dot:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.mid-banner-dot.active {
+  width: 48px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mid-banner-dot .dot-fill {
+  position: absolute;
+  inset: 0;
+  background: #c9a55a;
+  border-radius: 9999px;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.mid-banner-dot.active .dot-fill {
+  animation: progressFill linear forwards;
+}
+
+/* Animations */
+@keyframes bannerSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes bannerImageIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes progressFill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* Mobile Responsive */
 @media (max-width: 768px) {
   .mid-banner-card {
     grid-template-columns: 1fr;
+    min-height: auto;
+    border-radius: 16px;
   }
 
   .mid-banner-content {
-    padding: 32px 24px 28px;
+    padding: 36px 24px 44px;
     order: 2;
   }
 
   .mid-banner-visual {
-    height: 180px;
-    min-height: 180px;
+    height: 220px;
+    min-height: 220px;
     order: 1;
   }
 
   .mid-banner-img {
+    min-height: 220px;
     mask-image: linear-gradient(to top, transparent 0%, black 25%);
     -webkit-mask-image: linear-gradient(to top, transparent 0%, black 25%);
+  }
+
+  .mid-banner-nav {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 14px;
+  }
+
+  .mid-banner-arrow {
+    display: none; /* Mobile touch swipe handles flipping seamlessly */
   }
 }

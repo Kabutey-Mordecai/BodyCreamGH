@@ -62,8 +62,10 @@ const DEFAULTS = {
   tile2_link: '/shop?category=Body+Oil',
   tile2_image: 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
 
-  // Jumia-inspired mid-page graphic banner
+  // Jumia-inspired mid-page graphic banner & story carousel
   mid_banner_enabled: true,
+  mid_banner_autoplay: true,
+  mid_banner_interval_sec: 5,
   mid_banner_badge: 'PURE GHANAIAN BOTANICALS',
   mid_banner_title: 'Handcrafted in Small Batches.',
   mid_banner_highlight: 'Zero Harsh Bleaching Agents.',
@@ -71,6 +73,35 @@ const DEFAULTS = {
   mid_banner_cta_text: 'Learn Our Story',
   mid_banner_cta_link: '/#our-story',
   mid_banner_image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
+  mid_banner_slides: [
+    {
+      badge: 'PURE GHANAIAN BOTANICALS',
+      title: 'Handcrafted in Small Batches.',
+      highlight: 'Zero Harsh Bleaching Agents.',
+      subtitle: 'Raw unrefined shea butter from Northern Ghana cooperatives, blended with botanical oils for rich, natural skin nutrition.',
+      cta_text: 'Learn Our Story',
+      cta_link: '/#our-story',
+      image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
+    },
+    {
+      badge: 'CLINICALLY PROVEN HYDRATION',
+      title: '48-Hour Deep Moisture Lock.',
+      highlight: 'Melanin-Rich Formula.',
+      subtitle: 'Enriched with cold-pressed baobab and virgin coconut oil to soothe eczema, stretch marks, and dry harmattan skin.',
+      cta_text: 'Shop Body Creams',
+      cta_link: '/shop?category=Body+Cream',
+      image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=700&q=80',
+    },
+    {
+      badge: 'BESTSELLER RADIANCE',
+      title: 'Rose Gold Botanical Glow.',
+      highlight: 'Non-Greasy Velvet Finish.',
+      subtitle: 'Infused with golden mica particles and wild rosehip seed oil for an instant sun-kissed Ghanaian summer glow.',
+      cta_text: 'Discover Glow Oils',
+      cta_link: '/shop?category=Body+Oil',
+      image: 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
+    },
+  ],
 
   // Jumia-inspired bottom SEO & regional editorial guide
   seo_editorial_enabled: true,
