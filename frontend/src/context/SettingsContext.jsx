@@ -167,7 +167,7 @@ const SettingsContext = createContext(DEFAULTS);
 export function SettingsProvider({ children }) {
   const [settings, setSettings] = useState(DEFAULTS);
 
-  useEffect(() => {
+  const loadSettings = () => {
     settingsAPI.getAll()
       .then(({ data }) => {
         const merged = { ...DEFAULTS, ...data };
@@ -178,6 +178,22 @@ export function SettingsProvider({ children }) {
         // Backend unreachable — defaults are already applied
         applyTheme(DEFAULTS);
       });
+  };
+
+  useEffect(() => {
+    loadSettings();
+
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') {
+        loadSettings();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   return (

@@ -160,15 +160,12 @@ export default function Home() {
     jsonLd: homeJsonLd,
   });
 
-  useEffect(() => {
+  const fetchDealsAndProducts = () => {
     productsAPI.getAll({ limit: 8, sort: 'top_rated' })
       .then(({ data }) => setFeatured(data.products || data))
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
 
-  // Prefer genuine active promotions or compare_at discounts; fall back to value picks
-  useEffect(() => {
     productsAPI.getAll({ limit: 12, sort: 'price_low' })
       .then(({ data }) => {
         const list = data.products || data || [];
@@ -176,16 +173,39 @@ export default function Home() {
           (p.active_promotion && parseFloat(p.active_promotion.discounted_price) < parseFloat(p.price)) ||
           (p.compare_at_price && parseFloat(p.compare_at_price) > parseFloat(p.price))
         );
-        const chosen = realDeals.length > 0 ? realDeals.slice(0, 8) : list.slice(0, 6);
-        setSaleProducts(chosen);
+        // Only display products that are genuinely on promotion or discounted.
+        // If all promotions have been removed in the admin panel, cleanly empty the list.
+        setSaleProducts(realDeals.slice(0, 8));
 
         const promoEnds = realDeals
           .map(p => p.active_promotion?.ends_at ? new Date(p.active_promotion.ends_at).getTime() : null)
           .filter(t => Number.isFinite(t) && t > Date.now())
           .sort((a, b) => a - b);
-        if (promoEnds.length > 0) setFlashEndTime(promoEnds[0]);
+        if (promoEnds.length > 0) {
+          setFlashEndTime(promoEnds[0]);
+        } else {
+          setFlashEndTime(null);
+        }
       })
       .catch(() => {});
+  };
+
+  useEffect(() => {
+    fetchDealsAndProducts();
+
+    // Re-fetch immediately when the tab regains focus or visibility
+    // (e.g. store owner switching from Admin tab back to Storefront)
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') {
+        fetchDealsAndProducts();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleFocus);
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleFocus);
+    };
   }, []);
 
   const handleNewsletterSubmit = async (e) => {

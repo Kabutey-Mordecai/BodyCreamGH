@@ -9,7 +9,7 @@ const SETTINGS_CACHE_KEY = 'site_settings:all';
 // render hero text, theme colors, etc. without round-trips per key.
 const getAllSettings = async (req, res) => {
   try {
-    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     const cached = settingsCache.get(SETTINGS_CACHE_KEY);
     if (cached) return res.json(cached);
 
@@ -42,7 +42,7 @@ const upsertSetting = async (req, res) => {
            updated_at = NOW()`,
       [key, JSON.stringify(value), req.user?.id || null]
     );
-    settingsCache.del(SETTINGS_CACHE_KEY);
+    settingsCache.flushAll();
     res.json({ ok: true });
   } catch (err) {
     logger.error('Settings upsert error', { err: err.message });
@@ -78,7 +78,7 @@ const upsertManySettings = async (req, res) => {
       );
     }
     await client.query('COMMIT');
-    settingsCache.del(SETTINGS_CACHE_KEY);
+    settingsCache.flushAll();
     res.json({ ok: true, count: entries.length });
   } catch (err) {
     await client.query('ROLLBACK');

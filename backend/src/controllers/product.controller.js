@@ -22,14 +22,13 @@ function buildCanonicalProductKey(query = {}) {
 }
 
 function bustCache() {
-  const keys = cache.keys().filter(k => k.startsWith('products:'));
-  if (keys.length) cache.del(keys);
+  cache.flushAll();
   suggestCache.flushAll();
 }
 
 const getProducts = async (req, res) => {
   try {
-    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     const cacheKey = buildCanonicalProductKey(req.query);
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
@@ -46,7 +45,7 @@ const getProducts = async (req, res) => {
 const suggestProducts = async (req, res) => {
   try {
     const raw = String(req.query.q || '').trim().slice(0, 60);
-    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     if (raw.length < 2) {
       return res.json({ products: [], categories: [] });
     }
@@ -96,7 +95,7 @@ const suggestProducts = async (req, res) => {
 
 const getProductById = async (req, res) => {
   try {
-    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     const product = await ProductModel.findById(req.params.id);
     if (!product) return res.status(404).json({ error: 'Product not found' });
     res.json(product);
@@ -107,7 +106,7 @@ const getProductById = async (req, res) => {
 
 const getRelatedProducts = async (req, res) => {
   try {
-    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     const { id } = req.params;
     const cacheKey = `products:related:${id}`;
     const cached = cache.get(cacheKey);

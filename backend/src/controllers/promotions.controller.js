@@ -17,7 +17,7 @@ const getActivePromotions = async (req, res) => {
          AND ends_at   >= NOW()
        ORDER BY created_at DESC`
     );
-    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.json(rows);
   } catch (err) {
     logger.error('Get active promotions error', { err: err.message });
