@@ -29,17 +29,17 @@ jobs:
   # ── Backend: dependency install + syntax validation ──────────────────────────
   backend:
     name: Backend checks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
         working-directory: backend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
           # Cache npm dependencies keyed to the lockfile so the install step is
@@ -69,17 +69,17 @@ jobs:
   # ── Frontend: Vite production build ─────────────────────────────────────────
   frontend:
     name: Frontend build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
         working-directory: frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
@@ -96,7 +96,7 @@ jobs:
         run: npm run build
 
       - name: Upload dist artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-dist
           path: frontend/dist
@@ -106,17 +106,17 @@ jobs:
   # ── Admin dashboard: Vite production build ───────────────────────────────────
   admin:
     name: Admin build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     defaults:
       run:
         working-directory: admin
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Node.js 20
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: npm
@@ -131,7 +131,7 @@ jobs:
         run: npm run build
 
       - name: Upload dist artefact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: admin-dist
           path: admin/dist
