@@ -26,9 +26,9 @@
   grid-template-columns: 1.25fr 0.95fr;
   align-items: stretch;
   overflow: hidden;
-  height: 420px;
-  min-height: 420px;
-  max-height: 420px;
+  height: 520px;
+  min-height: 520px;
+  max-height: 520px;
   transform-style: preserve-3d;
 }
 
@@ -94,7 +94,7 @@
 
 /* Content Column with 3D Page Unfold Animation (Zero Shrink) */
 .mid-banner-content {
-  padding: 44px 44px 54px;
+  padding: 56px 52px 64px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -270,8 +270,8 @@
 /* Bottom Progress Pill Indicators & Page Pill */
 .mid-banner-nav {
   position: absolute;
-  bottom: 18px;
-  left: 44px;
+  bottom: 24px;
+  left: 52px;
   z-index: 10;
   display: flex;
   align-items: center;
