@@ -11,6 +11,7 @@ export default class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, info) {
+    console.error('[ErrorBoundary caught error]:', error?.message, error?.stack, info?.componentStack);
     try {
       const apiBase = import.meta.env.VITE_API_URL || '/api';
       const payload = JSON.stringify({

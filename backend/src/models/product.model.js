@@ -79,7 +79,7 @@ module.exports = {
     else if (sort === 'price_high') orderBy = 'ORDER BY p.price DESC';
     else if (sort === 'name_asc')   orderBy = 'ORDER BY p.name ASC';
     else if (sort === 'name_desc')  orderBy = 'ORDER BY p.name DESC';
-    else if (sort === 'top_rated')  orderBy = 'ORDER BY avg_rating DESC NULLS LAST';
+    else if (sort === 'top_rated')  orderBy = 'ORDER BY COALESCE(ROUND(AVG(r.rating)::numeric, 1), p.avg_rating, 0) DESC, p.id DESC';
 
     const selectSql = `
       SELECT p.*,
