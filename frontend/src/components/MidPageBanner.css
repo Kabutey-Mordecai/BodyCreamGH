@@ -1,0 +1,149 @@
+/* ═══════════════════════════════════════════════════════════════
+   MID-PAGE CAMPAIGN & TRUST BANNER (Jumia Graphic Banner Pattern)
+   High-contrast graphic banner highlighting quality and brand heritage
+   ═══════════════════════════════════════════════════════════════ */
+
+.mid-banner-section {
+  padding: 48px 0 24px;
+}
+
+.mid-banner-card {
+  position: relative;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #18120e 0%, #251c16 60%, #1a130f 100%);
+  border: 1px solid rgba(201, 165, 90, 0.3);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.4);
+  display: grid;
+  grid-template-columns: 1.25fr 0.85fr;
+  align-items: center;
+  overflow: hidden;
+}
+
+.mid-banner-content {
+  padding: 44px 40px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  z-index: 2;
+}
+
+.mid-banner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e5c378;
+  background: rgba(201, 165, 90, 0.15);
+  border: 1px solid rgba(201, 165, 90, 0.35);
+  padding: 4px 12px;
+  border-radius: 9999px;
+  margin-bottom: 16px;
+}
+
+.mid-banner-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+.mid-banner-title {
+  font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
+  font-size: clamp(1.8rem, 3.2vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.15;
+  color: #ffffff;
+  margin: 0 0 14px 0;
+}
+
+.mid-banner-highlight {
+  display: inline-block;
+  color: #c9a55a;
+  background: linear-gradient(135deg, #f5d78e, #c9a55a);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.mid-banner-sub {
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0 0 24px 0;
+  max-width: 540px;
+}
+
+.mid-banner-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.mid-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  padding: 12px 26px;
+}
+
+/* Visual Column */
+.mid-banner-visual {
+  position: relative;
+  height: 100%;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.mid-banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+  mask-image: linear-gradient(to right, transparent 0%, black 20%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 20%);
+}
+
+.mid-banner-card:hover .mid-banner-img {
+  transform: scale(1.05);
+}
+
+/* Subtle corner glow shine */
+.mid-banner-shine {
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(201, 165, 90, 0.12) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+/* Mobile Adaptation */
+@media (max-width: 768px) {
+  .mid-banner-card {
+    grid-template-columns: 1fr;
+  }
+
+  .mid-banner-content {
+    padding: 32px 24px 28px;
+    order: 2;
+  }
+
+  .mid-banner-visual {
+    height: 180px;
+    min-height: 180px;
+    order: 1;
+  }
+
+  .mid-banner-img {
+    mask-image: linear-gradient(to top, transparent 0%, black 25%);
+    -webkit-mask-image: linear-gradient(to top, transparent 0%, black 25%);
+  }
+}

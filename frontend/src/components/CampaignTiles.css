@@ -1,0 +1,152 @@
+/* ═══════════════════════════════════════════════════════════════
+   CAMPAIGN TILES (Jumia Ghana Dual Split Promo Banner Pattern)
+   High-converting side-by-side promotional cards
+   ═══════════════════════════════════════════════════════════════ */
+
+.campaign-tiles-section {
+  padding: 32px 0 20px;
+}
+
+.campaign-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 24px;
+}
+
+.campaign-tile-card {
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.campaign-tile-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 32px -8px rgba(28, 20, 16, 0.25);
+}
+
+.campaign-tile-inner {
+  display: block;
+  position: relative;
+  min-height: 240px;
+  text-decoration: none;
+  overflow: hidden;
+}
+
+.campaign-tile-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.campaign-tile-card:hover .campaign-tile-bg {
+  transform: scale(1.06);
+}
+
+.campaign-tile-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(20, 14, 10, 0.88) 0%,
+    rgba(20, 14, 10, 0.65) 55%,
+    rgba(20, 14, 10, 0.25) 100%
+  );
+  transition: opacity 0.3s ease;
+}
+
+.campaign-tile-content {
+  position: relative;
+  z-index: 2;
+  padding: 36px 32px;
+  max-width: 75%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 240px;
+}
+
+.campaign-tile-badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e5c378;
+  background: rgba(201, 165, 90, 0.2);
+  border: 1px solid rgba(201, 165, 90, 0.4);
+  padding: 3px 10px;
+  border-radius: 9999px;
+  margin-bottom: 12px;
+}
+
+.campaign-tile-title {
+  font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
+  font-size: clamp(1.4rem, 2.2vw, 1.85rem);
+  font-weight: 700;
+  line-height: 1.2;
+  color: #ffffff;
+  margin: 0 0 8px 0;
+}
+
+.campaign-tile-sub {
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.8);
+  margin: 0 0 18px 0;
+}
+
+.campaign-tile-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-accent, #c9a55a);
+  transition: gap 0.2s ease, color 0.2s ease;
+}
+
+.campaign-tile-card:hover .campaign-tile-cta {
+  color: #e5c378;
+  gap: 10px;
+}
+
+.campaign-tile-cta .arrow {
+  transition: transform 0.2s ease;
+}
+
+.campaign-tile-card:hover .campaign-tile-cta .arrow {
+  transform: translateX(4px);
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .campaign-tiles-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .campaign-tile-inner {
+    min-height: 200px;
+  }
+
+  .campaign-tile-content {
+    max-width: 90%;
+    padding: 24px 20px;
+    min-height: 200px;
+  }
+
+  .campaign-tile-overlay {
+    background: linear-gradient(
+      180deg,
+      rgba(20, 14, 10, 0.4) 0%,
+      rgba(20, 14, 10, 0.85) 100%
+    );
+  }
+}

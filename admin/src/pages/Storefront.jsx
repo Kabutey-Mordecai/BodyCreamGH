@@ -18,12 +18,15 @@ const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'http://localhost:
 // Each section is one tab with its own fields.
 const SECTIONS = [
   { id: 'announcement', label: 'Announcement bar' },
+  { id: 'popup',        label: 'Promotional popup ✦' },
   { id: 'hero',         label: 'Hero banner' },
+  { id: 'campaigns',    label: 'Campaign banners' },
   { id: 'layout',       label: 'Layout & features' },
   { id: 'categories',   label: 'Category cards' },
   { id: 'testimonials', label: 'Testimonials' },
   { id: 'trust',        label: 'Trust promises' },
   { id: 'faq',          label: 'FAQs' },
+  { id: 'seo',          label: 'SEO editorial' },
   { id: 'footer',       label: 'Footer' },
 ];
 
@@ -76,6 +79,48 @@ const DEFAULTS = {
   faq_enabled: true,
   faq_heading: 'Frequently asked questions',
   faq_items: [],
+
+  // Jumia-inspired promotional modal popup (100% admin controlled)
+  promo_popup_enabled: false,
+  promo_popup_badge: '● BRAND DAY · TODAY ONLY',
+  promo_popup_title: 'Pure Shea Radiance.',
+  promo_popup_highlight: 'Slashed Prices',
+  promo_popup_discount: 'UP TO 50% OFF',
+  promo_popup_subtext: 'Limited quantity · Handcrafted in Ghana · T&Cs apply',
+  promo_popup_image: 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=600&q=80',
+  promo_popup_cta_text: 'Claim Your Glow',
+  promo_popup_cta_link: '/shop',
+  promo_popup_delay_sec: 2,
+
+  // Jumia-inspired dual campaign split tiles
+  campaign_tiles_enabled: true,
+  tile1_badge: 'LIMITED BATCH',
+  tile1_title: 'Whipped Shea Butters',
+  tile1_subtitle: 'Deep 48-hour moisture crafted with raw Northern Ghana shea.',
+  tile1_cta_text: 'Shop Butters',
+  tile1_link: '/shop?category=Body+Butter',
+  tile1_image: 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80',
+  tile2_badge: 'HOT SELLER',
+  tile2_title: 'Botanical Radiance Oils',
+  tile2_subtitle: 'Fast-absorbing golden glow with hibiscus and baobab oils.',
+  tile2_cta_text: 'Explore Oils',
+  tile2_link: '/shop?category=Body+Oil',
+  tile2_image: 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
+
+  // Jumia-inspired mid-page graphic banner
+  mid_banner_enabled: true,
+  mid_banner_badge: 'PURE GHANAIAN BOTANICALS',
+  mid_banner_title: 'Handcrafted in Small Batches.',
+  mid_banner_highlight: 'Zero Harsh Bleaching Agents.',
+  mid_banner_subtitle: 'Raw unrefined shea butter from Northern Ghana cooperatives, blended with botanical oils for rich, natural skin nutrition.',
+  mid_banner_cta_text: 'Learn Our Story',
+  mid_banner_cta_link: '/#our-story',
+  mid_banner_image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
+
+  // Jumia-inspired bottom SEO & regional editorial guide
+  seo_editorial_enabled: true,
+  seo_editorial_title: 'Handcrafted Luxury Skincare & Organic Body Creams in Ghana',
+  seo_editorial_text: "Welcome to BodyCream GH, Ghana's premier destination for raw, unrefined shea butter creams, botanical radiance oils, and whipped moisturizing butters. Every formulation is handcrafted in Ghana using sustainably wildcrafted shea nuts harvested by women cooperatives across the Northern Region. Whether you are in Accra, Tema, Kumasi, Takoradi, Sunyani, or Tamale, we deliver glowing, deeply nourished skin directly to your doorstep with same-day express delivery in Accra and swift nationwide dispatch. Enjoy complete peace of mind with 100% secure Paystack checkout supporting MTN Mobile Money, Telecel Cash, Visa, and Mastercard, plus Pay on Delivery and free Store Pickup in Accra.",
 
   categories: [
     { label: 'Body Cream',  image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=400&h=500&q=80' },
@@ -263,6 +308,471 @@ export default function Storefront() {
                 <div className="sf-preview" style={{ background: 'var(--ac-sidebar)', color: '#fff', textAlign: 'center', padding: '10px 20px', fontSize: '0.8rem', letterSpacing: '0.04em' }}>
                   {data.announcement_enabled ? (data.announcement_text || 'Your announcement here') : <em>Bar is hidden</em>}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {active === 'popup' && (
+            <div className="card">
+              <div className="card-header">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <h2 className="card-title">Promotional Popup (Jumia Brand Day Style)</h2>
+                  <span className="badge" style={{
+                    background: data.promo_popup_enabled ? 'var(--ac-success-light, #dcfce7)' : 'var(--ac-border, #e5e7eb)',
+                    color: data.promo_popup_enabled ? 'var(--ac-success, #16a34a)' : 'var(--ac-text-muted, #64748b)',
+                    fontWeight: 600,
+                  }}>
+                    {data.promo_popup_enabled ? '● Active' : '○ Disabled'}
+                  </span>
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!data.promo_popup_enabled}
+                      onChange={e => update('promo_popup_enabled', e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <strong>Enable Promotional Popup Modal on Storefront</strong>
+                  </label>
+                  <div className="hint">
+                    Turn this on when running special sales, Brand Days, or flash promotions. It shows once per session to visitors after a brief delay.
+                  </div>
+                </div>
+
+                <div className="field-row">
+                  <div className="field">
+                    <label>Eyebrow pill badge</label>
+                    <input
+                      type="text"
+                      value={data.promo_popup_badge || ''}
+                      onChange={e => update('promo_popup_badge', e.target.value)}
+                      placeholder="● BRAND DAY · TODAY ONLY"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Floating discount badge pill</label>
+                    <input
+                      type="text"
+                      value={data.promo_popup_discount || ''}
+                      onChange={e => update('promo_popup_discount', e.target.value)}
+                      placeholder="UP TO 50% OFF"
+                    />
+                  </div>
+                </div>
+
+                <div className="field-row">
+                  <div className="field">
+                    <label>Primary headline</label>
+                    <input
+                      type="text"
+                      value={data.promo_popup_title || ''}
+                      onChange={e => update('promo_popup_title', e.target.value)}
+                      placeholder="Pure Shea Radiance."
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Highlighted accent phrase</label>
+                    <input
+                      type="text"
+                      value={data.promo_popup_highlight || ''}
+                      onChange={e => update('promo_popup_highlight', e.target.value)}
+                      placeholder="Slashed Prices"
+                    />
+                    <div className="hint">Styled in glowing flame/gold color to catch immediate attention.</div>
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label>Subtitle / Terms &amp; disclaimer</label>
+                  <textarea
+                    rows={2}
+                    value={data.promo_popup_subtext || ''}
+                    onChange={e => update('promo_popup_subtext', e.target.value)}
+                    placeholder="Limited quantity · Handcrafted in Ghana · T&Cs apply"
+                  />
+                </div>
+
+                <div className="field-row">
+                  <div className="field">
+                    <label>Action button label (CTA)</label>
+                    <input
+                      type="text"
+                      value={data.promo_popup_cta_text || ''}
+                      onChange={e => update('promo_popup_cta_text', e.target.value)}
+                      placeholder="Claim Your Glow"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Action button link</label>
+                    <input
+                      type="text"
+                      value={data.promo_popup_cta_link || ''}
+                      onChange={e => update('promo_popup_cta_link', e.target.value)}
+                      placeholder="/shop"
+                    />
+                  </div>
+                  <div className="field" style={{ maxWidth: 120 }}>
+                    <label>Delay (sec)</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={60}
+                      value={data.promo_popup_delay_sec ?? 2}
+                      onChange={e => update('promo_popup_delay_sec', Number(e.target.value))}
+                    />
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label>Featured promotion image URL</label>
+                  <input
+                    type="url"
+                    value={data.promo_popup_image || ''}
+                    onChange={e => update('promo_popup_image', e.target.value)}
+                    placeholder="https://..."
+                  />
+                  <div className="hint">Paste any image URL or leave blank for default collection photography.</div>
+                </div>
+
+                {/* Live Preview of Promotional Popup */}
+                <div style={{ marginTop: 24 }}>
+                  <label style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ac-text-muted)' }}>
+                    Live Modal Preview {data.promo_popup_enabled ? '' : '(Currently Disabled on Live Site)'}
+                  </label>
+                  <div style={{
+                    marginTop: 8,
+                    background: '#14110f',
+                    border: '1px solid rgba(201, 165, 90, 0.3)',
+                    borderRadius: 14,
+                    padding: 20,
+                    display: 'grid',
+                    gridTemplateColumns: '1.2fr 0.8fr',
+                    gap: 16,
+                    position: 'relative',
+                    overflow: 'hidden',
+                    boxShadow: '0 12px 30px rgba(0,0,0,0.5)',
+                  }}>
+                    {/* Simulated Close X */}
+                    <div style={{
+                      position: 'absolute',
+                      top: 10,
+                      right: 10,
+                      width: 24,
+                      height: 24,
+                      borderRadius: '50%',
+                      background: '#fff',
+                      color: '#000',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 12,
+                      fontWeight: 'bold',
+                      zIndex: 5,
+                    }}>✕</div>
+
+                    <div>
+                      <div style={{
+                        display: 'inline-block',
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.08em',
+                        color: '#e5c378',
+                        background: 'rgba(201,165,90,0.15)',
+                        border: '1px solid rgba(201,165,90,0.35)',
+                        padding: '2px 8px',
+                        borderRadius: 9999,
+                        marginBottom: 8,
+                      }}>
+                        {data.promo_popup_badge || '● BRAND DAY · TODAY ONLY'}
+                      </div>
+                      <h3 style={{
+                        color: '#fff',
+                        fontSize: '1.25rem',
+                        fontWeight: 700,
+                        margin: '0 0 6px 0',
+                        fontFamily: 'Cormorant Garamond, serif',
+                        lineHeight: 1.2,
+                      }}>
+                        {data.promo_popup_title || 'Pure Shea Radiance.'}{' '}
+                        <span style={{ color: '#f97316' }}>{data.promo_popup_highlight || 'Slashed Prices'}</span>
+                      </h3>
+                      <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.78rem', margin: '0 0 14px 0', lineHeight: 1.4 }}>
+                        {data.promo_popup_subtext || 'Limited quantity · Handcrafted in Ghana · T&Cs apply'}
+                      </p>
+                      <button type="button" className="btn btn-accent btn-sm" style={{ pointerEvents: 'none' }}>
+                        {data.promo_popup_cta_text || 'Claim Your Glow'} →
+                      </button>
+                    </div>
+
+                    <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', minHeight: 120 }}>
+                      <img
+                        src={data.promo_popup_image || 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=600&q=80'}
+                        alt="Preview"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      />
+                      {data.promo_popup_discount && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: 6,
+                          transform: 'translateY(-50%) rotate(-8deg)',
+                          background: 'linear-gradient(135deg, #4f46e5, #3730a3)',
+                          color: '#fff',
+                          width: 48,
+                          height: 48,
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          textAlign: 'center',
+                          fontSize: '0.58rem',
+                          fontWeight: 800,
+                          boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+                        }}>
+                          {data.promo_popup_discount}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          )}
+
+          {active === 'campaigns' && (
+            <div className="card">
+              <div className="card-header"><h2 className="card-title">Campaign Banners (Jumia Layout Pattern)</h2></div>
+              <div className="card-body">
+                {/* 1. Dual Split Campaign Tiles */}
+                <div style={{ marginBottom: 28 }}>
+                  <div className="field">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={data.campaign_tiles_enabled !== false}
+                        onChange={e => update('campaign_tiles_enabled', e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      <strong>Show Dual Split Campaign Tiles on Home Page</strong>
+                    </label>
+                    <div className="hint">Two side-by-side promotional cards highlighting featured product lines.</div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 12 }}>
+                    {/* Tile 1 */}
+                    <div style={{ padding: 14, background: 'var(--ac-surface-2)', borderRadius: 8 }}>
+                      <h4 style={{ margin: '0 0 10px', fontSize: '0.9rem' }}>Campaign Tile #1 (Left)</h4>
+                      <div className="field">
+                        <label>Badge</label>
+                        <input
+                          type="text"
+                          value={data.tile1_badge || ''}
+                          onChange={e => update('tile1_badge', e.target.value)}
+                          placeholder="LIMITED BATCH"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Title</label>
+                        <input
+                          type="text"
+                          value={data.tile1_title || ''}
+                          onChange={e => update('tile1_title', e.target.value)}
+                          placeholder="Whipped Shea Butters"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Subtitle</label>
+                        <input
+                          type="text"
+                          value={data.tile1_subtitle || ''}
+                          onChange={e => update('tile1_subtitle', e.target.value)}
+                          placeholder="Deep 48-hour moisture..."
+                        />
+                      </div>
+                      <div className="field-row">
+                        <div className="field">
+                          <label>Button text</label>
+                          <input
+                            type="text"
+                            value={data.tile1_cta_text || ''}
+                            onChange={e => update('tile1_cta_text', e.target.value)}
+                            placeholder="Shop Butters"
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Link</label>
+                          <input
+                            type="text"
+                            value={data.tile1_link || ''}
+                            onChange={e => update('tile1_link', e.target.value)}
+                            placeholder="/shop?category=Body+Butter"
+                          />
+                        </div>
+                      </div>
+                      <div className="field">
+                        <label>Image URL</label>
+                        <input
+                          type="url"
+                          value={data.tile1_image || ''}
+                          onChange={e => update('tile1_image', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Tile 2 */}
+                    <div style={{ padding: 14, background: 'var(--ac-surface-2)', borderRadius: 8 }}>
+                      <h4 style={{ margin: '0 0 10px', fontSize: '0.9rem' }}>Campaign Tile #2 (Right)</h4>
+                      <div className="field">
+                        <label>Badge</label>
+                        <input
+                          type="text"
+                          value={data.tile2_badge || ''}
+                          onChange={e => update('tile2_badge', e.target.value)}
+                          placeholder="HOT SELLER"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Title</label>
+                        <input
+                          type="text"
+                          value={data.tile2_title || ''}
+                          onChange={e => update('tile2_title', e.target.value)}
+                          placeholder="Botanical Radiance Oils"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Subtitle</label>
+                        <input
+                          type="text"
+                          value={data.tile2_subtitle || ''}
+                          onChange={e => update('tile2_subtitle', e.target.value)}
+                          placeholder="Fast-absorbing golden glow..."
+                        />
+                      </div>
+                      <div className="field-row">
+                        <div className="field">
+                          <label>Button text</label>
+                          <input
+                            type="text"
+                            value={data.tile2_cta_text || ''}
+                            onChange={e => update('tile2_cta_text', e.target.value)}
+                            placeholder="Explore Oils"
+                          />
+                        </div>
+                        <div className="field">
+                          <label>Link</label>
+                          <input
+                            type="text"
+                            value={data.tile2_link || ''}
+                            onChange={e => update('tile2_link', e.target.value)}
+                            placeholder="/shop?category=Body+Oil"
+                          />
+                        </div>
+                      </div>
+                      <div className="field">
+                        <label>Image URL</label>
+                        <input
+                          type="url"
+                          value={data.tile2_image || ''}
+                          onChange={e => update('tile2_image', e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Mid-Page Graphic Trust Banner */}
+                <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 20 }}>
+                  <div className="field">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={data.mid_banner_enabled !== false}
+                        onChange={e => update('mid_banner_enabled', e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      <strong>Show Mid-Page Graphic Campaign Banner</strong>
+                    </label>
+                    <div className="hint">Full-width high-contrast banner (like Jumia's "Beat the Heat" campaign) showcasing quality guarantees.</div>
+                  </div>
+
+                  <div className="field-row">
+                    <div className="field">
+                      <label>Badge pill</label>
+                      <input
+                        type="text"
+                        value={data.mid_banner_badge || ''}
+                        onChange={e => update('mid_banner_badge', e.target.value)}
+                        placeholder="PURE GHANAIAN BOTANICALS"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Image URL</label>
+                      <input
+                        type="url"
+                        value={data.mid_banner_image || ''}
+                        onChange={e => update('mid_banner_image', e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="field-row">
+                    <div className="field">
+                      <label>Title</label>
+                      <input
+                        type="text"
+                        value={data.mid_banner_title || ''}
+                        onChange={e => update('mid_banner_title', e.target.value)}
+                        placeholder="Handcrafted in Small Batches."
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Highlighted accent</label>
+                      <input
+                        type="text"
+                        value={data.mid_banner_highlight || ''}
+                        onChange={e => update('mid_banner_highlight', e.target.value)}
+                        placeholder="Zero Harsh Bleaching Agents."
+                      />
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label>Subtitle</label>
+                    <textarea
+                      rows={2}
+                      value={data.mid_banner_subtitle || ''}
+                      onChange={e => update('mid_banner_subtitle', e.target.value)}
+                      placeholder="Raw unrefined shea butter from Northern Ghana..."
+                    />
+                  </div>
+
+                  <div className="field-row">
+                    <div className="field">
+                      <label>Button text</label>
+                      <input
+                        type="text"
+                        value={data.mid_banner_cta_text || ''}
+                        onChange={e => update('mid_banner_cta_text', e.target.value)}
+                        placeholder="Learn Our Story"
+                      />
+                    </div>
+                    <div className="field">
+                      <label>Button link</label>
+                      <input
+                        type="text"
+                        value={data.mid_banner_cta_link || ''}
+                        onChange={e => update('mid_banner_cta_link', e.target.value)}
+                        placeholder="/#our-story"
+                      />
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
@@ -676,6 +1186,49 @@ export default function Storefront() {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          )}
+
+          {active === 'seo' && (
+            <div className="card">
+              <div className="card-header"><h2 className="card-title">SEO &amp; Regional Editorial Guide (Jumia Pattern)</h2></div>
+              <div className="card-body">
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={data.seo_editorial_enabled !== false}
+                      onChange={e => update('seo_editorial_enabled', e.target.checked)}
+                      style={{ width: 'auto' }}
+                    />
+                    <strong>Show SEO &amp; Regional Shopping Guide on Home Page</strong>
+                  </label>
+                  <div className="hint">
+                    Crawlable editorial block placed above the footer that helps Google rank your store for searches like "body cream in accra", "shea butter kumasi", and answers regional customer questions.
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label>Section Heading</label>
+                  <input
+                    type="text"
+                    value={data.seo_editorial_title || ''}
+                    onChange={e => update('seo_editorial_title', e.target.value)}
+                    placeholder="Handcrafted Luxury Skincare &amp; Organic Body Creams in Ghana"
+                  />
+                </div>
+
+                <div className="field">
+                  <label>Crawlable Editorial Copy</label>
+                  <textarea
+                    rows={6}
+                    value={data.seo_editorial_text || ''}
+                    onChange={e => update('seo_editorial_text', e.target.value)}
+                    placeholder="Describe your delivery across Accra, Kumasi, Takoradi, payment methods via Mobile Money, and raw ingredients..."
+                  />
+                  <div className="hint">Mention your shipping timelines, Accra pickup location, Paystack / MoMo security, and raw Northern Shea sources.</div>
+                </div>
               </div>
             </div>
           )}

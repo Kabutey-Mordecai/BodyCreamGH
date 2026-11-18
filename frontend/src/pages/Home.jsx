@@ -8,6 +8,10 @@ import TrustStrip from '../components/TrustStrip';
 import SearchBar from '../components/SearchBar';
 import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
 import Reveal from '../components/Reveal';
+import PromoPopup from '../components/PromoPopup';
+import CampaignTiles from '../components/CampaignTiles';
+import MidPageBanner from '../components/MidPageBanner';
+import HomeSeoBlock from '../components/HomeSeoBlock';
 import './Home.css';
 
 const RECENTLY_VIEWED_KEY = 'bodycream_recently_viewed';
@@ -195,6 +199,10 @@ export default function Home() {
 
   return (
     <div>
+      {/* ══════════════════════════════════════════
+          PROMOTIONAL POPUP MODAL (Admin controlled)
+          ══════════════════════════════════════════ */}
+      <PromoPopup />
 
       {/* ══════════════════════════════════════════
           HERO — full-viewport, high-priority LCP img
@@ -257,6 +265,11 @@ export default function Home() {
           </Reveal>
         </section>
       )}
+
+      {/* ══════════════════════════════════════════
+          DUAL CAMPAIGN SPLIT TILES (Jumia Style)
+          ══════════════════════════════════════════ */}
+      <CampaignTiles />
 
       {/* ══════════════════════════════════════════
           CATEGORIES — quick navigation grid
@@ -340,6 +353,11 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════
+          MID-PAGE GRAPHIC CAMPAIGN BANNER (Jumia Style)
+          ══════════════════════════════════════════ */}
+      <MidPageBanner />
+
+      {/* ══════════════════════════════════════════
           BRAND STORY — split image + text
           TO CUSTOMIZE: Swap the image URL and edit the story text
           ══════════════════════════════════════════ */}
@@ -420,6 +438,11 @@ export default function Home() {
           FREQUENTLY ASKED QUESTIONS (with FAQPage JSON-LD)
           ══════════════════════════════════════════ */}
       <HomeFaq />
+
+      {/* ══════════════════════════════════════════
+          SEO & REGIONAL EDITORIAL GUIDE (Jumia Style)
+          ══════════════════════════════════════════ */}
+      <HomeSeoBlock />
 
       {/* ══════════════════════════════════════════
           NEWSLETTER CTA
