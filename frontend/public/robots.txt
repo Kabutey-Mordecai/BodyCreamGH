@@ -9,3 +9,8 @@ Disallow: /login
 Disallow: /register
 Disallow: /forgot-password
 Disallow: /reset-password
+Disallow: /wishlist
+Disallow: /track
+Disallow: /unsubscribe
+
+Sitemap: https://bodycreamgh.com/sitemap.xml

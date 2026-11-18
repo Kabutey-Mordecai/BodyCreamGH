@@ -1,6 +1,7 @@
 'use strict';
 
 const VariantModel = require('../models/variant.model');
+const { bustCache } = require('./product.controller');
 const logger = require('../utils/logger');
 
 // GET /api/products/:id/variants
@@ -25,6 +26,7 @@ const createVariant = async (req, res) => {
     }
     const id = await VariantModel.create(req.params.id, req.body);
     const variant = await VariantModel.findById(id);
+    bustCache();
     res.status(201).json(variant);
   } catch (err) {
     logger.error('createVariant error', { err: err.message });
@@ -42,6 +44,7 @@ const updateVariant = async (req, res) => {
     await VariantModel.update(req.params.variantId, req.body);
     const variant = await VariantModel.findById(req.params.variantId);
     if (!variant) return res.status(404).json({ error: 'Variant not found' });
+    bustCache();
     res.json(variant);
   } catch (err) {
     logger.error('updateVariant error', { err: err.message });
@@ -53,6 +56,7 @@ const updateVariant = async (req, res) => {
 const deleteVariant = async (req, res) => {
   try {
     await VariantModel.delete(req.params.variantId);
+    bustCache();
     res.json({ message: 'Variant deactivated' });
   } catch (err) {
     logger.error('deleteVariant error', { err: err.message });

@@ -190,4 +190,4 @@ const toggleProductVisibility = async (req, res) => {
   }
 };
 
-module.exports = { getProducts, suggestProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility };
+module.exports = { getProducts, suggestProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility, bustCache };

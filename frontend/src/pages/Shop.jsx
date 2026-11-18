@@ -46,6 +46,25 @@ export default function Shop() {
   const inStock   = searchParams.get('in_stock')  || '';
   const LIMIT     = 12;
 
+  const [searchInput, setSearchInput] = useState(search);
+
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (searchInput !== search) {
+        const next = new URLSearchParams(searchParams);
+        if (searchInput.trim()) next.set('search', searchInput.trim());
+        else next.delete('search');
+        next.set('page', '1');
+        setSearchParams(next, { replace: true });
+      }
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [searchInput]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const shopSeo = useMemo(() => {
     const storeName = settings.store_name || 'BodyCream GH';
     let title = `Shop All Products — ${storeName}`;
@@ -103,6 +122,9 @@ export default function Shop() {
     else       next.delete(key);
     if (key !== 'page') next.set('page', '1');
     setSearchParams(next);
+    if (key === 'page') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const applyPriceFilter = () => {
@@ -237,14 +259,18 @@ export default function Shop() {
             <input
               type="search"
               placeholder="Search products…"
-              value={search}
-              onChange={e => setParam('search', e.target.value)}
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
               className="shop-search"
+              aria-label="Search products"
             />
-            {search && (
+            {searchInput && (
               <button
                 className="shop-search-clear"
-                onClick={() => setParam('search', '')}
+                onClick={() => {
+                  setSearchInput('');
+                  setParam('search', '');
+                }}
                 aria-label="Clear search"
               >✕</button>
             )}
@@ -256,6 +282,7 @@ export default function Shop() {
               value={sort}
               onChange={e => setParam('sort', e.target.value)}
               className="shop-sort"
+              aria-label="Sort products"
             >
               {SORT_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>

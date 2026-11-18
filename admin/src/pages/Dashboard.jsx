@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { adminAPI } from '../services/api';
 import StatCard from '../components/StatCard';
 import StatusBadge from '../components/StatusBadge';
@@ -9,6 +9,7 @@ const fmt    = (n) => `GHS ${Number(n || 0).toLocaleString('en-GH', { minimumFra
 const fmtInt = (n) => Number(n || 0).toLocaleString();
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [data, setData]         = useState(null);
   const [analytics, setAnalytics] = useState([]);
   const [top, setTop]           = useState([]);
@@ -89,7 +90,7 @@ export default function Dashboard() {
         <StatCard
           label="Avg. order value"
           value={fmt(data.avgOrderValue)}
-          sub="Total revenue ÷ total orders"
+          sub="Paid revenue ÷ paid orders"
           icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>}
         />
         <StatCard
@@ -161,6 +162,7 @@ export default function Dashboard() {
             { key: 'status',         label: 'Status',  render: r => <StatusBadge status={r.status} /> },
           ]}
           rows={data.recentOrders || []}
+          onRowClick={r => navigate(`/orders/${r.id}`)}
           emptyMessage="No orders yet."
         />
       </div>

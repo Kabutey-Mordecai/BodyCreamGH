@@ -7,7 +7,15 @@ export default function WhatsAppFloat() {
   const { pathname } = useLocation();
 
   if (whatsapp_float_enabled === false || whatsapp_float_enabled === 'false') return null;
-  if (pathname === '/checkout' || pathname === '/cart') return null;
+  if (
+    pathname === '/checkout' ||
+    pathname === '/cart' ||
+    pathname.startsWith('/payment') ||
+    pathname === '/login' ||
+    pathname === '/register'
+  ) {
+    return null;
+  }
 
   const digits = String(whatsapp_number || '').replace(/\D/g, '');
   if (!digits) return null;

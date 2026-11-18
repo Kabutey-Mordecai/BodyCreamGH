@@ -95,6 +95,13 @@ export default function Home() {
   const [nlState, setNlState]               = useState('idle'); // idle | loading | success | error
   const [nlError, setNlError]               = useState('');
 
+  const heroSrcSet = useMemo(() => {
+    const base = hero_image || DEFAULT_HERO_IMG;
+    if (!base || !base.includes('images.unsplash.com')) return undefined;
+    const clean = base.split('?')[0];
+    return `${clean}?auto=format&fit=crop&w=640&q=80 640w, ${clean}?auto=format&fit=crop&w=1024&q=80 1024w, ${clean}?auto=format&fit=crop&w=1600&q=85 1600w`;
+  }, [hero_image]);
+
   const clearRecentlyViewed = () => {
     try { localStorage.removeItem(RECENTLY_VIEWED_KEY); } catch { /* ignore */ }
     setRecentlyViewed([]);
@@ -195,11 +202,13 @@ export default function Home() {
       <section className="hero">
         <img
           src={hero_image || DEFAULT_HERO_IMG}
+          srcSet={heroSrcSet}
+          sizes="100vw"
           alt=""
           aria-hidden="true"
           className="hero-bg-img"
           fetchPriority="high"
-          decoding="async"
+          decoding="sync"
         />
         <div className="hero-overlay" />
         <div className="container hero-content">

@@ -43,9 +43,9 @@ const getDashboard = async (req, res) => {
   try {
     const [revenue, orders, customers, products, recentOrdersResult, todayRevenueResult, lowStockResult] = await Promise.all([
       pool.query(`SELECT COALESCE(SUM(total_amount), 0) AS total_revenue FROM orders WHERE payment_status = 'paid'`),
-      pool.query('SELECT COUNT(*) FROM orders'),
-      pool.query(`SELECT COUNT(*) FROM users WHERE role = 'customer'`),
-      pool.query('SELECT COUNT(*) FROM products'),
+      pool.query(`SELECT COUNT(*) AS total_orders, COUNT(*) FILTER (WHERE payment_status = 'paid') AS paid_orders FROM orders`),
+      pool.query(`SELECT COUNT(*) AS total_customers FROM users WHERE role = 'customer'`),
+      pool.query('SELECT COUNT(*) AS total_products FROM products'),
       pool.query(`
         SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status, o.created_at,
                COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name,
@@ -64,16 +64,18 @@ const getDashboard = async (req, res) => {
     ]);
 
     const totalRevenue = parseFloat(revenue.rows[0].total_revenue);
-    const totalOrders  = parseInt(orders.rows[0].count);
+    const totalOrders  = parseInt(orders.rows[0].total_orders, 10);
+    const paidOrders   = parseInt(orders.rows[0].paid_orders, 10);
 
     res.json({
       totalRevenue,
       totalOrders,
-      totalCustomers:  customers.rows[0].count,
-      totalProducts:   products.rows[0].count,
+      paidOrders,
+      totalCustomers:  parseInt(customers.rows[0].total_customers, 10),
+      totalProducts:   parseInt(products.rows[0].total_products, 10),
       todayRevenue:    parseFloat(todayRevenueResult.rows[0].today_revenue),
-      avgOrderValue:   totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0,
-      lowStockCount:   parseInt(lowStockResult.rows[0].low_stock_count),
+      avgOrderValue:   paidOrders > 0 ? Math.round((totalRevenue / paidOrders) * 100) / 100 : 0,
+      lowStockCount:   parseInt(lowStockResult.rows[0].low_stock_count, 10),
       recentOrders:    recentOrdersResult.rows,
     });
   } catch (error) {

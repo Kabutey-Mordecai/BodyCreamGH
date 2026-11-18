@@ -289,6 +289,15 @@ export default function OrderDetail() {
                   Cancel order
                 </button>
               )}
+              {canMarkPaid && (
+                <button
+                  className="btn btn-sm btn-accent"
+                  disabled={markPaidSaving}
+                  onClick={handleMarkPaid}
+                >
+                  {markPaidSaving ? 'Updating…' : '✓ Mark Paid (Cash/MoMo)'}
+                </button>
+              )}
               {canRefund && (
                 <button
                   className="btn btn-sm btn-accent"

@@ -138,19 +138,38 @@ app.use('/api/coupons',     couponRoutes);
 app.use('/api/newsletter',  newsletterRoutes);
 app.use('/api/promotions', promotionRoutes);
 
+function escapeXml(str) {
+  if (!str) return '';
+  return String(str).replace(/[<>&'"]/g, c => {
+    switch (c) {
+      case '<': return '&lt;';
+      case '>': return '&gt;';
+      case '&': return '&amp;';
+      case '\'': return '&apos;';
+      case '"': return '&quot;';
+      default: return c;
+    }
+  });
+}
+
 // ── Dynamic XML Sitemap (SEO) ────────────────────────────────────────────────
-app.get('/api/sitemap.xml', async (_req, res) => {
+app.get(['/api/sitemap.xml', '/sitemap.xml'], async (_req, res) => {
   try {
     const siteUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
-    const { rows } = await pool.query(
-      `SELECT id, updated_at FROM products WHERE is_active = TRUE ORDER BY updated_at DESC LIMIT 5000`
-    );
+    const [productsRes, categoriesRes] = await Promise.all([
+      pool.query(`SELECT id, updated_at FROM products WHERE is_active = TRUE ORDER BY updated_at DESC LIMIT 5000`),
+      pool.query(`SELECT DISTINCT category FROM products WHERE is_active = TRUE AND category IS NOT NULL`),
+    ]);
+
     const urls = [
-      `  <url><loc>${siteUrl}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`,
-      `  <url><loc>${siteUrl}/shop</loc><changefreq>daily</changefreq><priority>0.9</priority></url>`,
-      ...rows.map(r => {
+      `  <url><loc>${escapeXml(siteUrl)}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`,
+      `  <url><loc>${escapeXml(siteUrl)}/shop</loc><changefreq>daily</changefreq><priority>0.9</priority></url>`,
+      ...categoriesRes.rows.map(c =>
+        `  <url><loc>${escapeXml(siteUrl)}/shop?category=${escapeXml(encodeURIComponent(c.category))}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
+      ),
+      ...productsRes.rows.map(r => {
         const lastmod = r.updated_at ? new Date(r.updated_at).toISOString().slice(0, 10) : '';
-        return `  <url><loc>${siteUrl}/products/${r.id}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.8</priority></url>`;
+        return `  <url><loc>${escapeXml(siteUrl)}/products/${escapeXml(r.id)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.8</priority></url>`;
       }),
     ];
     const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;

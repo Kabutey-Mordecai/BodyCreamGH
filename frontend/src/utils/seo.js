@@ -22,19 +22,42 @@ function upsertCanonical(href) {
   el.setAttribute('href', href);
 }
 
-export function useSeo({ title, description, image, type = 'website', jsonLd = null } = {}) {
+function getCleanCanonical(customCanonical) {
+  if (customCanonical) return customCanonical;
+  if (typeof window === 'undefined') return '';
+  const { origin, pathname, search } = window.location;
+  if (pathname === '/shop') {
+    const params = new URLSearchParams(search);
+    const category = params.get('category');
+    return category ? `${origin}/shop?category=${encodeURIComponent(category)}` : `${origin}/shop`;
+  }
+  return `${origin}${pathname}`;
+}
+
+export function useSeo({ title, description, image, type = 'website', canonical = null, robots = null, jsonLd = null } = {}) {
   useEffect(() => {
     if (title) {
       document.title = title;
       upsertMeta('property', 'og:title', title);
+      upsertMeta('name', 'twitter:title', title);
     }
     if (description) {
       upsertMeta('name', 'description', description);
       upsertMeta('property', 'og:description', description);
+      upsertMeta('name', 'twitter:description', description);
     }
     if (type) upsertMeta('property', 'og:type', type);
-    if (image) upsertMeta('property', 'og:image', image);
-    upsertCanonical(window.location.href.split('#')[0]);
+    if (image) {
+      upsertMeta('property', 'og:image', image);
+      upsertMeta('name', 'twitter:image', image);
+    }
+    if (robots) {
+      upsertMeta('name', 'robots', robots);
+    }
+
+    const cleanCanonical = getCleanCanonical(canonical);
+    upsertCanonical(cleanCanonical);
+    upsertMeta('property', 'og:url', cleanCanonical);
 
     const existing = document.getElementById('bc-jsonld');
     if (existing) existing.remove();
@@ -51,5 +74,5 @@ export function useSeo({ title, description, image, type = 'website', jsonLd = n
       const tag = document.getElementById('bc-jsonld');
       if (tag) tag.remove();
     };
-  }, [title, description, image, type, jsonLd]);
+  }, [title, description, image, type, canonical, robots, jsonLd]);
 }

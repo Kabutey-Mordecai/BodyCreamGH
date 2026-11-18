@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { promotionsAPI } from '../services/api';
+import { promotionsAPI, productsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import Modal from '../components/Modal';
 import DataTable from '../components/DataTable';
@@ -79,6 +79,13 @@ export default function Promotions() {
 
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [productList, setProductList] = useState([]);
+
+  useEffect(() => {
+    productsAPI.getAdminAll({ limit: 300 })
+      .then(({ data }) => setProductList(data.products || data || []))
+      .catch(() => {});
+  }, []);
 
   const load = (p = page) => {
     setLoading(true);
@@ -373,15 +380,23 @@ export default function Promotions() {
 
         {form.applies_to === 'product' && (
           <div className="field">
-            <label>Product ID (UUID) *</label>
-            <input
-              type="text"
+            <label>Target Product *</label>
+            <select
               value={form.product_id}
               onChange={e => upd('product_id', e.target.value)}
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-              style={{ fontFamily: 'monospace', fontSize: '0.82rem' }}
-            />
-            <div className="hint">Copy the product UUID from the product editor URL.</div>
+            >
+              <option value="">— Select a product —</option>
+              {productList.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.sku || p.category || ('GHS ' + p.price)})
+                </option>
+              ))}
+            </select>
+            {form.product_id && !productList.some(p => p.id === form.product_id) && (
+              <div className="hint" style={{ marginTop: 4, fontFamily: 'monospace' }}>
+                Selected ID: {form.product_id}
+              </div>
+            )}
           </div>
         )}
 
