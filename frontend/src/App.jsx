@@ -54,6 +54,21 @@ function RouteFade({ children }) {
   return <div key={pathname} className="page-transition">{children}</div>;
 }
 
+function AdminRedirect() {
+  useEffect(() => {
+    window.location.href = 'http://localhost:5174';
+  }, []);
+  return (
+    <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+      <h2>Opening Admin Console…</h2>
+      <p style={{ marginTop: 12, color: 'var(--color-muted)' }}>
+        Redirecting to port 5174. If not redirected automatically,{' '}
+        <a href="http://localhost:5174" style={{ color: 'var(--color-accent-dark)', fontWeight: 600 }}>click here to enter Admin</a>.
+      </p>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -84,6 +99,10 @@ export default function App() {
               {/* Cart & checkout (guest + authenticated) */}
               <Route path="/cart"       element={<Cart />} />
               <Route path="/checkout"   element={<ErrorBoundary><Checkout /></ErrorBoundary>} />
+
+              {/* Admin Portal Redirect (port 5174 in dev) */}
+              <Route path="/admin"      element={<AdminRedirect />} />
+              <Route path="/admin/*"    element={<AdminRedirect />} />
 
               {/* Protected routes — redirect to /login if not authenticated */}
               <Route path="/account"    element={<ProtectedRoute><Account /></ProtectedRoute>} />

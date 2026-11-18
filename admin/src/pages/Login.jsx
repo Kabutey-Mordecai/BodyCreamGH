@@ -30,6 +30,19 @@ export default function Login() {
   const [otpLoading, setOtpLoading] = useState(false);
   const otpRef = useRef(null);
 
+  const handleDevBypass = () => {
+    const devUser = {
+      id: '00000000-0000-0000-0000-000000000001',
+      email: 'admin@bodycreamgh.com',
+      first_name: 'Store',
+      last_name: 'Admin',
+      role: 'admin',
+    };
+    localStorage.setItem('admin_token', 'dev_admin_active_token');
+    localStorage.setItem('admin_user', JSON.stringify(devUser));
+    window.location.href = from || '/';
+  };
+
   useEffect(() => {
     if (lockout <= 0) return;
     timerRef.current = setInterval(() => {
@@ -162,6 +175,22 @@ export default function Login() {
                 {loading ? 'Signing in…' : isLocked ? `Try again in ${formatCountdown(lockout)}` : 'Sign in'}
               </button>
             </form>
+
+            {import.meta.env.DEV && (
+              <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px dashed var(--ac-border, #e5e7eb)', textAlign: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-full"
+                  onClick={handleDevBypass}
+                  style={{ fontSize: '0.84rem', padding: '10px 14px' }}
+                >
+                  ⚡ One-Click Admin Sign In (Local Dev Mode)
+                </button>
+                <p className="muted text-xs" style={{ marginTop: 6, fontSize: '0.74rem' }}>
+                  Bypasses backend auth in development to configure Storefront, Campaigns &amp; Settings.
+                </p>
+              </div>
+            )}
           </>
         ) : (
           <>
