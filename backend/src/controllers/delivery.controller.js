@@ -1,5 +1,5 @@
 const crypto      = require('crypto');
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 const pool         = require('../config/database');
 const DeliveryModel = require('../models/delivery.model');
 const OrderModel   = require('../models/order.model');
@@ -80,7 +80,7 @@ const trackShipment = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT d.*,
               o.order_number, o.status AS order_status, o.created_at AS order_placed_at,
-              o.shipping_address, o.shipping_city, o.shipping_region
+              o.shipping_city, o.shipping_region
          FROM deliveries d
          JOIN orders o ON o.id = d.order_id
         WHERE d.tracking_number = $1`,
@@ -102,7 +102,7 @@ const trackShipment = async (req, res) => {
         order_number:   d.order_number,
         status:         d.order_status,
         placed_at:      d.order_placed_at,
-        destination: [d.shipping_address, d.shipping_city, d.shipping_region]
+        destination: [d.shipping_city, d.shipping_region]
           .filter(Boolean).join(', '),
       },
       timeline: buildTimeline(d),

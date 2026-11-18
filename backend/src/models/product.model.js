@@ -1,5 +1,5 @@
 const pool = require('../config/database');
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 
 // Scalar correlated subquery — returns the most generous currently-active
 // promotion for each product row as a JSON object, or NULL when none applies.

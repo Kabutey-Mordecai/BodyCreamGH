@@ -1,4 +1,4 @@
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 const pool = require('../config/database');
 const { isProcessed, markProcessed } = require('../utils/idempotency');
 const { assertTransition } = require('../utils/stateMachine');
@@ -7,7 +7,7 @@ const logger = require('../utils/logger');
 module.exports = async function register(boss) {
   await boss.createQueue('payment/payment.success');
   await boss.work('payment/payment.success', { teamSize: 5 }, async (job) => {
-    const { reference, orderId, amount } = job.data;
+    const { reference, orderId, amount, amountPesewas, currency } = job.data;
     const eventId = `payment_success_${reference}`;   // guards DB write
     const jobsId  = `payment_jobs_${reference}`;      // guards downstream sends
 
@@ -30,6 +30,12 @@ module.exports = async function register(boss) {
       const order = rows[0];
       if (!order) throw new Error(`Order not found: ${orderId}`);
 
+      const expectedPesewas = Math.round(parseFloat(order.total_amount) * 100);
+      const paidPesewas = Number.isFinite(Number(amountPesewas))
+        ? Number(amountPesewas)
+        : Math.round(Number(amount) * 100);
+      const paidCurrency = currency || 'GHS';
+
       if (order.payment_status === 'paid') {
         // DB already updated — process must have crashed after COMMIT but before
         // downstream jobs were sent. Fall through to re-enqueue them.
@@ -45,10 +51,36 @@ module.exports = async function register(boss) {
         await markProcessed(jobsId, 'payment.jobs');
         return;
 
+      } else if (paidCurrency !== 'GHS' || !Number.isFinite(paidPesewas) || paidPesewas < expectedPesewas) {
+        // Underpayment or wrong currency: do NOT mark paid or advance order status.
+        // Move payment_status to 'payment_review', log alert, and seal without throwing
+        // so pg-boss does not retry this permanent mismatch endlessly.
+        const reason = `Payment review required (ref ${reference}): expected ${expectedPesewas} GHS pesewas, got ${paidPesewas} ${paidCurrency}`;
+        await client.query(
+          `UPDATE orders SET payment_status = 'payment_review', updated_at = NOW() WHERE id = $1`,
+          [orderId]
+        );
+        await client.query(
+          `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+           VALUES ($1, $2, $3, $3, $4, NOW())`,
+          [uuid(), orderId, order.status, reason]
+        );
+        await markProcessed(eventId, 'payment.mismatch', client);
+        await markProcessed(jobsId, 'payment.jobs', client);
+        await client.query('COMMIT');
+        inTransaction = false;
+
+        logger.error('Payment worker: underpayment or currency mismatch — flagged for payment_review', {
+          orderId, reference, expectedPesewas, paidPesewas, currency: paidCurrency,
+        });
+        return;
+
       } else {
-        // Only advance to 'confirmed' if still 'pending'. If an admin already moved
-        // the order forward, just mark payment as paid without touching the status.
+        // Exact match or overpayment (accept overpayment and flag for review).
         const needsStatusAdvance = order.status === 'pending';
+        const isOverpaid         = paidPesewas > expectedPesewas;
+        const diffPesewas        = paidPesewas - expectedPesewas;
+
         if (needsStatusAdvance) {
           assertTransition(order.status, 'confirmed');
         }
@@ -70,6 +102,17 @@ module.exports = async function register(boss) {
             [uuid(), orderId, order.status]
           );
         }
+        if (isOverpaid) {
+          const note = `Overpayment flagged for review (ref ${reference}): paid ${paidPesewas} pesewas vs expected ${expectedPesewas} pesewas (+${(diffPesewas / 100).toFixed(2)} GHS)`;
+          await client.query(
+            `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+             VALUES ($1, $2, $3, $3, $4, NOW())`,
+            [uuid(), orderId, needsStatusAdvance ? 'confirmed' : order.status, note]
+          );
+          logger.warn('Payment worker: overpayment accepted and flagged for review', {
+            orderId, reference, expectedPesewas, paidPesewas, diffPesewas,
+          });
+        }
         await markProcessed(eventId, 'payment.success', client);
         await client.query('COMMIT');
         inTransaction = false;
@@ -80,7 +123,7 @@ module.exports = async function register(boss) {
         if (order.customer_id) {
           pool.query(
             `UPDATE customers SET total_spent = total_spent + $1, total_orders = total_orders + 1 WHERE user_id = $2`,
-            [amount, order.customer_id]
+            [paidPesewas / 100, order.customer_id]
           ).catch(err => logger.error('Failed to update customer totals', { err: err.message, orderId }));
         }
       }

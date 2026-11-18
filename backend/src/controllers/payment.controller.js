@@ -1,7 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 const pool = require('../config/database');
 const paystackAPI = require('../config/paystack');
 const OrderModel = require('../models/order.model');
@@ -62,8 +62,11 @@ const initializeGuestPayment = async (req, res) => {
     if (!order) return res.status(404).json({ error: 'Order not found' });
     if (order.payment_status === 'paid') return res.status(400).json({ error: 'Order already paid' });
 
-    // Verify ownership: the email must match what was recorded at order creation.
-    if (order.guest_email && order.guest_email.toLowerCase() !== email.toLowerCase()) {
+    // Only true guest orders (no customer_id and with a recorded guest_email) may use guest checkout payment.
+    if (order.customer_id !== null && order.customer_id !== undefined) {
+      return res.status(403).json({ error: 'Guest payment is not allowed for this order.' });
+    }
+    if (!order.guest_email || order.guest_email.toLowerCase() !== String(email).toLowerCase()) {
       return res.status(403).json({ error: 'Email does not match the order.' });
     }
 
@@ -105,12 +108,14 @@ const initializeGuestPayment = async (req, res) => {
 const verifyPayment = async (req, res) => {
   try {
     const { reference } = req.body;
-    if (!reference) return res.status(400).json({ error: 'Payment reference is required' });
+    if (!reference || typeof reference !== 'string') {
+      return res.status(400).json({ error: 'Payment reference is required' });
+    }
 
-    const response = await paystackAPI.get(`/transaction/verify/${reference}`);
+    const response = await paystackAPI.get(`/transaction/verify/${encodeURIComponent(reference)}`);
     const txData = response.data.data;
 
-    if (txData.status !== 'success') {
+    if (!txData || txData.status !== 'success') {
       await pool.query(
         `UPDATE payments SET status='failed', updated_at=NOW() WHERE paystack_reference=$1`,
         [reference]
@@ -118,39 +123,78 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ error: 'Payment failed or not completed' });
     }
 
-    // Resolve orderId — prefer metadata, fall back to payments table
+    // Resolve and cross-check orderId ownership between metadata and payments table
     let metadata = txData.metadata;
     if (typeof metadata === 'string') { try { metadata = JSON.parse(metadata); } catch { metadata = {}; } }
     metadata = (metadata && typeof metadata === 'object') ? metadata : {};
-    let orderId = metadata.orderId || metadata.order_id;
+    const metadataOrderId = metadata.orderId || metadata.order_id || null;
 
-    if (!orderId) {
-      const { rows } = await pool.query(
-        'SELECT order_id FROM payments WHERE paystack_reference = $1',
-        [reference]
-      );
-      orderId = rows[0]?.order_id;
+    const { rows: paymentRows } = await pool.query(
+      'SELECT order_id FROM payments WHERE paystack_reference = $1',
+      [reference]
+    );
+    const dbOrderId = paymentRows[0]?.order_id || null;
+
+    if (dbOrderId && metadataOrderId && String(dbOrderId) !== String(metadataOrderId)) {
+      logger.error('verifyPayment: payment reference order mismatch', {
+        reference, dbOrderId, metadataOrderId,
+      });
+      return res.status(400).json({ error: 'Payment reference does not match the order' });
     }
+
+    const orderId = dbOrderId || metadataOrderId;
 
     if (!orderId) {
       logger.error('verifyPayment: cannot resolve orderId', { reference });
       return res.status(400).json({ error: 'Cannot identify order for this payment reference' });
     }
 
-    // Synchronously mark the order paid so the admin sees the correct state
-    // immediately — no dependency on the worker polling interval.
+    const paidPesewas = Number(txData.amount);
+    const currency    = txData.currency;
+
+    // Synchronously validate amount/currency and mark the order paid so the admin
+    // sees the correct state immediately — no dependency on worker polling.
     const client = await pool.connect();
+    let mismatchError = null;
     try {
       await client.query('BEGIN');
 
       const { rows } = await client.query(
-        'SELECT id, status, payment_status FROM orders WHERE id = $1 FOR UPDATE',
+        'SELECT id, status, payment_status, total_amount FROM orders WHERE id = $1 FOR UPDATE',
         [orderId]
       );
       const order = rows[0];
 
-      if (order && order.payment_status !== 'paid' && order.status !== 'cancelled') {
+      if (!order) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Order not found' });
+      }
+
+      const expectedPesewas = Math.round(parseFloat(order.total_amount) * 100);
+
+      if (currency !== 'GHS' || !Number.isFinite(paidPesewas) || paidPesewas < expectedPesewas) {
+        const reason = `Payment verification mismatch (ref ${reference}): expected ${expectedPesewas} GHS pesewas, got ${paidPesewas} ${currency || 'UNKNOWN'}`;
+        if (order.payment_status !== 'paid' && order.status !== 'cancelled') {
+          await client.query(
+            `UPDATE orders SET payment_status = 'payment_review', updated_at = NOW() WHERE id = $1`,
+            [orderId]
+          );
+          await client.query(
+            `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+             VALUES ($1, $2, $3, $3, $4, NOW())`,
+            [uuid(), orderId, order.status, reason]
+          );
+        }
+        await client.query('COMMIT');
+        logger.error('verifyPayment: amount or currency mismatch', {
+          orderId, reference, expectedPesewas, paidPesewas, currency,
+        });
+        mismatchError = 'Payment amount or currency does not match the order';
+      } else if (order.payment_status !== 'paid' && order.status !== 'cancelled') {
         const needsAdvance = order.status === 'pending';
+        const isOverpaid   = paidPesewas > expectedPesewas;
+        const diffPesewas  = paidPesewas - expectedPesewas;
+
         await client.query(
           needsAdvance
             ? `UPDATE orders SET payment_status = 'paid', status = 'confirmed', updated_at = NOW() WHERE id = $1`
@@ -168,14 +212,31 @@ const verifyPayment = async (req, res) => {
             [uuid(), orderId, order.status]
           );
         }
+        if (isOverpaid) {
+          const note = `Overpayment flagged for review (ref ${reference}): paid ${paidPesewas} pesewas vs expected ${expectedPesewas} pesewas (+${(diffPesewas / 100).toFixed(2)} GHS)`;
+          await client.query(
+            `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+             VALUES ($1, $2, $3, $3, $4, NOW())`,
+            [uuid(), orderId, needsAdvance ? 'confirmed' : order.status, note]
+          );
+          logger.warn('verifyPayment: overpayment accepted and flagged for review', {
+            orderId, reference, expectedPesewas, paidPesewas, diffPesewas,
+          });
+        }
+        await client.query('COMMIT');
+      } else {
+        await client.query('COMMIT');
       }
-
-      await client.query('COMMIT');
     } catch (dbErr) {
       await client.query('ROLLBACK').catch(() => {});
       logger.error('verifyPayment: sync order update failed', { err: dbErr.message, orderId });
+      throw dbErr;
     } finally {
       client.release();
+    }
+
+    if (mismatchError) {
+      return res.status(400).json({ error: mismatchError });
     }
 
     // Enqueue for downstream work (shipment record, notification emails).
@@ -183,7 +244,7 @@ const verifyPayment = async (req, res) => {
     const { paymentQueue } = require('../queues');
     await paymentQueue.add(
       'payment.success',
-      { reference, orderId, amount: txData.amount / 100 },
+      { reference, orderId, amount: paidPesewas / 100, amountPesewas: paidPesewas, currency },
       { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
     );
 
@@ -312,14 +373,21 @@ async function processChargeSuccess(event) {
   if (typeof metadata === 'string') { try { metadata = JSON.parse(metadata); } catch { metadata = {}; } }
   metadata = (metadata && typeof metadata === 'object') ? metadata : {};
 
-  let orderId = metadata.orderId || metadata.order_id;
-  if (!orderId) {
-    const { rows } = await pool.query(
-      'SELECT order_id FROM payments WHERE paystack_reference = $1',
-      [txData.reference]
-    );
-    orderId = rows[0]?.order_id;
+  const metadataOrderId = metadata.orderId || metadata.order_id || null;
+  const { rows: paymentRows } = await pool.query(
+    'SELECT order_id FROM payments WHERE paystack_reference = $1',
+    [txData.reference]
+  );
+  const dbOrderId = paymentRows[0]?.order_id || null;
+
+  if (dbOrderId && metadataOrderId && String(dbOrderId) !== String(metadataOrderId)) {
+    logger.error('Webhook: payment reference order mismatch for charge.success', {
+      reference: txData.reference, dbOrderId, metadataOrderId,
+    });
+    return;
   }
+
+  const orderId = dbOrderId || metadataOrderId;
 
   if (!orderId) {
     // Log and throw — caller returns 500 so Paystack retries until orderId resolves.
@@ -328,6 +396,7 @@ async function processChargeSuccess(event) {
   }
 
   const eventId = `paystack_charge_success_${txData.reference}`;
+  const amountPesewas = Number(txData.amount);
 
   const client = await pool.connect();
   try {
@@ -346,7 +415,13 @@ async function processChargeSuccess(event) {
     const { paymentQueue } = require('../queues');
     await paymentQueue.add(
       'payment.success',
-      { reference: txData.reference, orderId, amount: txData.amount / 100 },
+      {
+        reference: txData.reference,
+        orderId,
+        amount: amountPesewas / 100,
+        amountPesewas,
+        currency: txData.currency,
+      },
       { attempts: 5, backoff: { type: 'exponential', delay: 3000 } }
     );
 
@@ -527,20 +602,37 @@ async function failPaystackRefundFromWebhook(event) {
 // Any processing failure returns 500 so Paystack retries. The 200 is only sent
 // after all durable DB and queue work has committed.
 const handleWebhook = async (req, res) => {
-  const signature = req.headers['x-paystack-signature'];
-  const hash = crypto
-    .createHmac('sha512', process.env.PAYSTACK_SECRET_KEY)
-    .update(req.rawBody)
-    .digest('hex');
-
-  if (hash !== signature) {
-    logger.warn('Webhook rejected: invalid signature');
-    return res.status(401).json({ error: 'Invalid signature' });
-  }
-
-  const event = req.body;
-
   try {
+    if (!Buffer.isBuffer(req.rawBody)) {
+      logger.warn('Webhook rejected: missing or non-JSON raw body');
+      return res.status(400).json({ error: 'Invalid webhook payload' });
+    }
+
+    const signature = req.headers['x-paystack-signature'];
+    const secretKey = process.env.PAYSTACK_SECRET_KEY;
+    if (!signature || typeof signature !== 'string' || !secretKey) {
+      logger.warn('Webhook rejected: missing signature or key');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const expectedHex = crypto
+      .createHmac('sha512', secretKey)
+      .update(req.rawBody)
+      .digest('hex');
+
+    const expectedBuf = Buffer.from(expectedHex, 'hex');
+    const providedBuf = /^[0-9a-f]+$/i.test(signature) ? Buffer.from(signature, 'hex') : null;
+
+    if (!providedBuf || providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(expectedBuf, providedBuf)) {
+      logger.warn('Webhook rejected: invalid signature');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
+    const event = req.body;
+    if (!event || typeof event !== 'object') {
+      return res.status(400).json({ error: 'Invalid webhook payload' });
+    }
+
     if (REFUND_SUCCESS_EVENTS.has(event.event)) {
       await completePaystackRefundFromWebhook(event);
     } else if (REFUND_FAILED_EVENTS.has(event.event)) {
@@ -560,7 +652,7 @@ const handleWebhook = async (req, res) => {
     res.status(200).send('OK');
   } catch (err) {
     // Return 500 so Paystack retries the webhook. Do not send 200 on error.
-    logger.error('Webhook processing failed', { err: err.message, event: event.event });
+    logger.error('Webhook processing failed', { err: err.message, event: req.body?.event });
     res.status(500).json({ error: 'Processing failed' });
   }
 };

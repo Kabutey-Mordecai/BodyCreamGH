@@ -35,6 +35,21 @@ const promotionRoutes    = require('./routes/promotions');
 
 const app = express();
 
+// ── Reverse-proxy hop count ──────────────────────────────────────────────────
+// Production runs behind 1 Nginx reverse proxy hop (deploy/nginx.*.conf).
+// Only numeric hop counts are accepted — never "true" (which allows XFF spoofing).
+function resolveTrustProxy() {
+  const raw = process.env.TRUST_PROXY;
+  if (raw !== undefined && raw !== '') {
+    if (/^\d+$/.test(String(raw).trim())) {
+      return parseInt(String(raw).trim(), 10);
+    }
+    logger.warn('Ignoring non-numeric TRUST_PROXY value; using safe default');
+  }
+  return process.env.NODE_ENV === 'production' ? 1 : 0;
+}
+app.set('trust proxy', resolveTrustProxy());
+
 // ── Security headers (helmet) ─────────────────────────────────────────────────
 // Mounted first so every response — including CORS rejections, rate-limit 429s,
 // and unhandled errors — carries the full set of security headers.
@@ -102,10 +117,10 @@ const { handleWebhook } = require('./controllers/payment.controller');
 app.post('/api/payments/webhook', handleWebhook);
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
-app.use('/api/auth/login',    makeRateLimiter(15 * 60 * 1000, 10,  'Too many login attempts'));
-app.use('/api/auth/register', makeRateLimiter(60 * 60 * 1000, 5,   'Too many registration attempts'));
-app.use('/api/payments',      makeRateLimiter(60 * 1000,       30,  'Too many payment requests'));
-app.use('/api',               makeRateLimiter(60 * 1000,       200, 'Rate limit exceeded'));
+// Auth endpoint limiters (login, register, verify-otp, refresh, logout, password reset)
+// are mounted directly inside routes/auth.js to avoid double-counting.
+app.use('/api/payments', makeRateLimiter(60 * 1000, 30,  'Too many payment requests'));
+app.use('/api',          makeRateLimiter(60 * 1000, 200, 'Rate limit exceeded'));
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth',       authRoutes);
@@ -156,7 +171,7 @@ async function bootstrapAdmin(db) {
   if (rows.length) return;
 
   const bcrypt = require('bcryptjs');
-  const { v4: uuid } = require('uuid');
+  const { randomUUID: uuid } = require('crypto');
   const hash = await bcrypt.hash(password, 12);
   await db.query(
     `INSERT INTO users (id, email, password_hash, first_name, last_name, role, created_at, updated_at)

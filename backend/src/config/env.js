@@ -6,6 +6,7 @@
 
 const REQUIRED = [
   'JWT_SECRET',
+  'OTP_HMAC_SECRET',
   'DB_PASSWORD',
   'PAYSTACK_SECRET_KEY',
   'ALLOWED_ORIGINS',
@@ -19,6 +20,7 @@ const KNOWN_WEAK_JWT_SECRETS = new Set([
   'secret',
   'your-secret',
   'CHANGE_ME_64_CHAR_HEX_STRING',
+  'CHANGE_ME_OTP_HMAC_SECRET',
 ]);
 
 function validateProductionEnv() {
@@ -35,6 +37,11 @@ function validateProductionEnv() {
   const jwt = process.env.JWT_SECRET || '';
   if (KNOWN_WEAK_JWT_SECRETS.has(jwt) || jwt.length < 32) {
     errors.push('JWT_SECRET must be at least 32 characters and must not be a default placeholder');
+  }
+
+  const otpSecret = process.env.OTP_HMAC_SECRET || '';
+  if (KNOWN_WEAK_JWT_SECRETS.has(otpSecret) || otpSecret.length < 32) {
+    errors.push('OTP_HMAC_SECRET must be at least 32 characters and must not be a default placeholder');
   }
 
   const dbPass = process.env.DB_PASSWORD || '';

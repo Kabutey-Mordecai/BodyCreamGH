@@ -1,4 +1,4 @@
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 const crypto = require('crypto');
 const pool = require('../config/database');
 const { isProcessed, markProcessed } = require('../utils/idempotency');

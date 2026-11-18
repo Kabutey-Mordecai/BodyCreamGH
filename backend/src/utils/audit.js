@@ -1,4 +1,4 @@
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 const pool         = require('../config/database');
 const logger       = require('./logger');
 

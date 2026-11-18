@@ -55,7 +55,7 @@ module.exports = async function register(boss) {
           pageChecked++;
 
           const { rows } = await pool.query(
-            `SELECT o.id, o.status, o.payment_status
+            `SELECT o.id, o.status, o.payment_status, o.total_amount
                FROM payments p JOIN orders o ON p.order_id = o.id
               WHERE p.paystack_reference = $1`,
             [tx.reference]
@@ -67,7 +67,7 @@ module.exports = async function register(boss) {
           }
 
           const order = rows[0];
-          if (order.payment_status !== 'paid') {
+          if (order.payment_status !== 'paid' && order.payment_status !== 'payment_review') {
             // Terminal orders (cancelled / refunded) cannot be marked paid.
             // The payment worker would skip them anyway once it seals the jobsId,
             // creating an infinite loop. Skip here instead.
@@ -81,6 +81,31 @@ module.exports = async function register(boss) {
               continue;
             }
 
+            const expectedPesewas = Math.round(parseFloat(order.total_amount) * 100);
+            const paidPesewas     = Number(tx.amount);
+            const txCurrency      = tx.currency || 'GHS';
+
+            if (txCurrency !== 'GHS' || !Number.isFinite(paidPesewas) || paidPesewas < expectedPesewas) {
+              const reason = `Reconciliation mismatch (ref ${tx.reference}): expected ${expectedPesewas} GHS pesewas, got ${paidPesewas} ${txCurrency}`;
+              await pool.query(
+                `UPDATE orders SET payment_status = 'payment_review', updated_at = NOW() WHERE id = $1`,
+                [order.id]
+              );
+              await pool.query(
+                `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+                 VALUES ($1, $2, $3, $3, $4, NOW())`,
+                [require('crypto').randomUUID(), order.id, order.status, reason]
+              );
+              logger.error('Reconciliation: amount or currency mismatch — flagged for payment_review', {
+                orderId: order.id,
+                ref: tx.reference,
+                expectedPesewas,
+                paidPesewas,
+                currency: txCurrency,
+              });
+              continue;
+            }
+
             logger.warn('Reconciliation: fixing missed payment', {
               orderId: order.id,
               ref: tx.reference,
@@ -89,7 +114,13 @@ module.exports = async function register(boss) {
             // payment.worker idempotency guards prevent double-processing
             await boss.send(
               'payment/payment.success',
-              { reference: tx.reference, orderId: order.id, amount: tx.amount / 100 },
+              {
+                reference: tx.reference,
+                orderId: order.id,
+                amount: paidPesewas / 100,
+                amountPesewas: paidPesewas,
+                currency: txCurrency,
+              },
               { retryLimit: 3, retryBackoff: true }
             );
             logger.info('Reconciliation: fix enqueued', { orderId: order.id, ref: tx.reference });

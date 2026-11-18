@@ -1,7 +1,7 @@
 'use strict';
 
 const pool = require('../config/database');
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 
 module.exports = {
   // Full variant structure for a product — used by admin editor and customer PDP.

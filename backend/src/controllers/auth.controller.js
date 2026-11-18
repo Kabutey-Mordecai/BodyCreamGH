@@ -3,7 +3,7 @@
 const bcrypt = require('bcryptjs');
 const jwt    = require('jsonwebtoken');
 const crypto = require('crypto');
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 const pool         = require('../config/database');
 const UserModel    = require('../models/user.model');
 const CustomerModel = require('../models/customer.model');
@@ -47,12 +47,37 @@ function hashRefreshToken(raw) {
   return crypto.createHash('sha256').update(raw).digest('hex');
 }
 
+function getOtpHmacSecret() {
+  if (process.env.OTP_HMAC_SECRET) return process.env.OTP_HMAC_SECRET;
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('OTP_HMAC_SECRET must be configured in production');
+  }
+  if (!process.env.JWT_SECRET) {
+    throw new Error('OTP_HMAC_SECRET (or JWT_SECRET in dev) must be set');
+  }
+  // Dev-only domain-separated fallback so local dev works without extra env setup
+  return crypto.createHash('sha256').update(`dev-otp-hmac:${process.env.JWT_SECRET}`).digest('hex');
+}
+
+function hashOtp(otp) {
+  return crypto.createHmac('sha256', getOtpHmacSecret()).update(String(otp)).digest('hex');
+}
+
+function verifyOtpHash(submittedOtp, storedHash) {
+  if (!storedHash || typeof storedHash !== 'string' || !/^[0-9a-f]{64}$/i.test(storedHash)) {
+    return false;
+  }
+  const submittedBuf = Buffer.from(hashOtp(submittedOtp), 'hex');
+  const storedBuf    = Buffer.from(storedHash, 'hex');
+  return submittedBuf.length === storedBuf.length && crypto.timingSafeEqual(submittedBuf, storedBuf);
+}
+
 async function issueTokenPair(user, req) {
   const jti = uuid();
   const accessToken = jwt.sign(
     { id: user.id, email: user.email, role: user.role, jti },
     process.env.JWT_SECRET,
-    { expiresIn: ACCESS_EXPIRE }
+    { algorithm: 'HS256', expiresIn: ACCESS_EXPIRE }
   );
 
   const rawRefreshToken = crypto.randomBytes(40).toString('hex');
@@ -86,18 +111,19 @@ const login = async (req, res) => {
 
     // Admin accounts require a second factor (Email OTP) before JWT is issued.
     if (user.role === 'admin') {
-      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      const otp = crypto.randomInt(100000, 1000000).toString();
+      const otpHash = hashOtp(otp);
       const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
       await pool.query(
         `UPDATE users SET otp_code = $1, otp_expires_at = $2, otp_attempts = 0 WHERE id = $3`,
-        [otp, otpExpiresAt, user.id]
+        [otpHash, otpExpiresAt, user.id]
       );
 
       const mfaToken = jwt.sign(
         { sub: user.id, purpose: 'mfa_challenge' },
         process.env.JWT_SECRET,
-        { expiresIn: '10m' }
+        { algorithm: 'HS256', expiresIn: '10m' }
       );
 
       sendOtpEmail(user.email, { firstName: user.first_name, otp })
@@ -132,7 +158,7 @@ const verifyOtp = async (req, res) => {
 
     let decoded;
     try {
-      decoded = jwt.verify(mfa_token, process.env.JWT_SECRET);
+      decoded = jwt.verify(mfa_token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     } catch {
       return res.status(401).json({ error: 'Invalid or expired MFA session. Please log in again.' });
     }
@@ -141,25 +167,40 @@ const verifyOtp = async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, email, role, first_name, otp_code, otp_expires_at, otp_attempts
+      `SELECT id, email, role, first_name, is_active, otp_code, otp_expires_at, otp_attempts
          FROM users WHERE id = $1`,
       [decoded.sub]
     );
     const user = rows[0];
-    if (!user || user.role !== 'admin') {
+    if (!user || user.role !== 'admin' || user.is_active === false) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    if (user.otp_attempts >= 5) {
+    if ((user.otp_attempts || 0) >= 5) {
+      await pool.query(
+        `UPDATE users SET otp_code = NULL, otp_expires_at = NULL WHERE id = $1`,
+        [user.id]
+      );
       return res.status(429).json({ error: 'Too many incorrect attempts. Please log in again to get a new code.' });
     }
 
-    if (!user.otp_expires_at || new Date(user.otp_expires_at) < new Date()) {
+    if (!user.otp_code || !user.otp_expires_at || new Date(user.otp_expires_at) < new Date()) {
       return res.status(401).json({ error: 'OTP has expired. Please log in again.' });
     }
 
-    if (user.otp_code !== otp_code) {
-      await pool.query('UPDATE users SET otp_attempts = otp_attempts + 1 WHERE id = $1', [user.id]);
+    if (!verifyOtpHash(String(otp_code), user.otp_code)) {
+      const { rows: attemptRows } = await pool.query(
+        `UPDATE users
+            SET otp_attempts = COALESCE(otp_attempts, 0) + 1,
+                otp_code = CASE WHEN COALESCE(otp_attempts, 0) + 1 >= 5 THEN NULL ELSE otp_code END,
+                otp_expires_at = CASE WHEN COALESCE(otp_attempts, 0) + 1 >= 5 THEN NULL ELSE otp_expires_at END
+          WHERE id = $1
+          RETURNING otp_attempts`,
+        [user.id]
+      );
+      if ((attemptRows[0]?.otp_attempts || 0) >= 5) {
+        return res.status(429).json({ error: 'Too many incorrect attempts. Please log in again to get a new code.' });
+      }
       return res.status(401).json({ error: 'Incorrect verification code.' });
     }
 
@@ -193,7 +234,7 @@ const refresh = async (req, res) => {
     const tokenHash = hashRefreshToken(refresh_token);
 
     const { rows } = await pool.query(
-      `SELECT rt.*, u.id AS uid, u.email, u.role
+      `SELECT rt.*, u.id AS uid, u.email, u.role, u.is_active
          FROM refresh_tokens rt
          JOIN users u ON u.id = rt.user_id
         WHERE rt.token_hash = $1 AND rt.revoked = false AND rt.expires_at > NOW()`,
@@ -206,8 +247,12 @@ const refresh = async (req, res) => {
 
     const record = rows[0];
 
-    // Rotate: revoke the old token and issue a brand-new pair.
+    // Rotate / revoke the old token immediately.
     await pool.query('UPDATE refresh_tokens SET revoked = true WHERE id = $1', [record.id]);
+
+    if (record.is_active === false) {
+      return res.status(401).json({ error: 'This account has been deactivated.' });
+    }
 
     const user = { id: record.uid, email: record.email, role: record.role };
     const { accessToken, refreshToken } = await issueTokenPair(user, req);
@@ -235,37 +280,51 @@ const getMe = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    // Decode (not verify) the access token so we can blacklist its jti even
-    // when it has already expired. jwt.decode never throws on expiry.
+    // Cryptographically verify the access token (allowing expired tokens so
+    // their jti/userId can still be processed safely). Never trust unverified JWTs
+    // or MFA challenge tokens.
     let userId = null;
     const token = req.headers.authorization?.split(' ')[1];
     if (token) {
-      const decoded = jwt.decode(token);
-      if (decoded?.jti && decoded?.exp) {
-        await pool.query(
-          `INSERT INTO token_blacklist (jti, expires_at)
-           VALUES ($1, to_timestamp($2))
-           ON CONFLICT (jti) DO NOTHING`,
-          [decoded.jti, decoded.exp]
-        );
+      try {
+        const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+          algorithms: ['HS256'],
+          ignoreExpiration: true,
+        });
+        if (decoded && decoded.purpose !== 'mfa_challenge' && decoded.id) {
+          if (decoded.jti && decoded.exp) {
+            await pool.query(
+              `INSERT INTO token_blacklist (jti, expires_at)
+               VALUES ($1, to_timestamp($2))
+               ON CONFLICT (jti) DO NOTHING`,
+              [decoded.jti, decoded.exp]
+            );
+          }
+          userId = decoded.id;
+        }
+      } catch {
+        // Forged or malformed token — ignore cleanly (no blacklist write, no userId).
       }
-      userId = decoded?.id || null;
     }
 
-    // Revoke the submitted refresh token by its hash.
-    const { refresh_token } = req.body;
-    if (refresh_token) {
+    // Revoke the submitted refresh token by its hash ONLY if it is still active.
+    const { refresh_token } = req.body || {};
+    if (refresh_token && typeof refresh_token === 'string') {
       const tokenHash = hashRefreshToken(refresh_token);
       const { rows } = await pool.query(
-        'UPDATE refresh_tokens SET revoked = true WHERE token_hash = $1 RETURNING user_id',
+        `UPDATE refresh_tokens
+            SET revoked = true
+          WHERE token_hash = $1
+            AND revoked = false
+            AND expires_at > NOW()
+          RETURNING user_id`,
         [tokenHash]
       );
-      // Fall back to the user_id from the refresh token row if the access
-      // token was missing or unparseable (e.g. already expired and absent).
       if (!userId && rows[0]?.user_id) userId = rows[0].user_id;
     }
 
-    // Revoke ALL refresh tokens for this user (full logout all devices) if requested.
+    // Revoke ALL refresh tokens for this user (full logout all devices) only when
+    // userId was proven via a verified access token or active refresh token.
     if (req.query.all === 'true' && userId) {
       await pool.query(
         'UPDATE refresh_tokens SET revoked = true WHERE user_id = $1',

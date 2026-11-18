@@ -1,4 +1,4 @@
-const { v4: uuid } = require('uuid');
+const { randomUUID: uuid } = require('crypto');
 const pool = require('../config/database');
 const OrderModel = require('../models/order.model');
 const InventoryModel = require('../models/inventory.model');
@@ -10,21 +10,42 @@ const { assertTransition } = require('../utils/stateMachine');
 const { createFullRefund } = require('../services/paystack.service');
 const logger = require('../utils/logger');
 
+function parseSettingNumber(value, fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+async function computeServerDeliveryFee(client, shippingRegion, subtotal) {
+  const { rows } = await client.query(
+    `SELECT key, value FROM site_settings
+      WHERE key = ANY($1::text[])`,
+    [['delivery_fee_flat', 'delivery_fee_accra', 'free_delivery_over']]
+  );
+  const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+
+  const feeFlat  = parseSettingNumber(map.delivery_fee_flat, 15);
+  const feeAccra = parseSettingNumber(map.delivery_fee_accra, 10);
+  const freeOver = parseSettingNumber(map.free_delivery_over, 200);
+
+  if (freeOver > 0 && subtotal >= freeOver) {
+    return 0;
+  }
+
+  const normalized = String(shippingRegion || '').trim().toLowerCase();
+  const isAccra = normalized === 'greater accra' || normalized === 'accra';
+  return isAccra ? feeAccra : feeFlat;
+}
+
 const createOrder = async (req, res) => {
   const client = await pool.connect();
   let transactionStarted = false;
 
   try {
     const { shipping_address, shipping_city, shipping_region, notes } = req.body;
-    let { delivery_fee = 0 } = req.body;
 
     if (!shipping_address || !shipping_city || !shipping_region) {
       return res.status(400).json({ error: 'Shipping address, city, and region are required' });
-    }
-
-    delivery_fee = parseFloat(delivery_fee);
-    if (isNaN(delivery_fee) || delivery_fee < 0) {
-      return res.status(400).json({ error: 'delivery_fee must be a non-negative number' });
     }
 
     // BEGIN before the cart fetch so the entire operation is one atomic unit
@@ -60,6 +81,9 @@ const createOrder = async (req, res) => {
 
     let subtotal = 0;
     cartResult.rows.forEach(item => { subtotal += parseFloat(item.price) * item.quantity; });
+
+    // Authoritative server-side delivery fee — client-supplied delivery_fee is ignored.
+    const delivery_fee = await computeServerDeliveryFee(client, shipping_region, subtotal);
     let total = subtotal + delivery_fee;
 
     // Apply coupon discount server-side using a locked read so concurrent checkouts
@@ -801,7 +825,6 @@ const createGuestOrder = async (req, res) => {
       shipping_address, shipping_city, shipping_region,
       notes, items,
     } = req.body;
-    let { delivery_fee = 0 } = req.body;
 
     if (!email || !first_name || !phone || !shipping_address || !shipping_city || !shipping_region) {
       return res.status(400).json({ error: 'email, first_name, phone, and full shipping address are required' });
@@ -809,9 +832,6 @@ const createGuestOrder = async (req, res) => {
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: 'Cart is empty' });
     }
-
-    delivery_fee = parseFloat(delivery_fee);
-    if (isNaN(delivery_fee) || delivery_fee < 0) delivery_fee = 0;
 
     await client.query('BEGIN');
     transactionStarted = true;
@@ -858,6 +878,9 @@ const createGuestOrder = async (req, res) => {
         : p.price;
       subtotal += parseFloat(effectivePrice) * item.quantity;
     });
+
+    // Authoritative server-side delivery fee — client-supplied delivery_fee is ignored.
+    const delivery_fee = await computeServerDeliveryFee(client, shipping_region, subtotal);
     let total = subtotal + delivery_fee;
 
     // Apply coupon discount server-side (locked — same as authenticated checkout)

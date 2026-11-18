@@ -21,6 +21,7 @@ const otpLimiter = makeRateLimiter(15 * 60 * 1000, 10, 'Too many verification at
 // at most 5 reset emails can be requested per hour, so 10 submissions is plenty.
 const resetPasswordLimiter   = makeRateLimiter(60 * 60 * 1000, 10, 'Too many password reset attempts. Please try again later.');
 const verifyResetTokenLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many token verification requests. Please try again later.');
+const logoutLimiter           = makeRateLimiter(15 * 60 * 1000, 30, 'Too many logout requests. Please try again later.');
 
 const {
   register,
@@ -41,7 +42,7 @@ router.post('/login',                     loginLimiter,           validateLogin,
 router.post('/verify-otp',                otpLimiter,             verifyOtp);
 router.post('/refresh',                   refreshLimiter,         refresh);
 router.get ('/me',                        verifyToken,            getMe);
-router.post('/logout',                    logout);
+router.post('/logout',                    logoutLimiter,          logout);
 router.post('/forgot-password',           forgotPasswordLimiter,  forgotPassword);
 router.get ('/verify-reset-token/:token', verifyResetTokenLimiter, verifyResetToken);
 router.post('/reset-password',            resetPasswordLimiter,   resetPassword);
