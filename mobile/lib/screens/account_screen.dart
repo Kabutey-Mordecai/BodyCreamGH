@@ -82,7 +82,9 @@ class AccountScreen extends StatelessWidget {
                   radius: 32,
                   backgroundColor: Theme.of(context).colorScheme.primary,
                   child: Text(
-                    user.firstName[0].toUpperCase(),
+                    user.firstName.isNotEmpty
+                        ? user.firstName[0].toUpperCase()
+                        : (user.email.isNotEmpty ? user.email[0].toUpperCase() : 'U'),
                     style: const TextStyle(fontSize: 28, color: Colors.white),
                   ),
                 ),

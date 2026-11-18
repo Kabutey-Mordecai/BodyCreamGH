@@ -157,6 +157,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final cart = context.read<CartProvider>();
     final isPickup = _fulfillmentMethod == 'pickup';
     try {
+      // Sync local cart to server so order.controller reads items successfully
+      await cart.syncToServer();
+
       final payload = cart.toOrderPayload(
         shippingAddress:
             isPickup ? 'Pickup: $_pickupLocation' : _addressCtrl.text.trim(),

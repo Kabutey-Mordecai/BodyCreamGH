@@ -96,7 +96,7 @@ GoRouter _buildRouter(BuildContext ctx) {
       GoRoute(
         path: '/product/:id',
         builder: (_, state) => ProductDetailScreen(
-          productId: int.parse(state.pathParameters['id']!),
+          productId: state.pathParameters['id']!,
         ),
       ),
       GoRoute(
@@ -109,7 +109,7 @@ GoRouter _buildRouter(BuildContext ctx) {
           final extra = state.extra as Map<String, dynamic>;
           return PaymentScreen(
             paymentUrl: extra['url'] as String,
-            orderId: extra['order_id'] as int,
+            orderId: (extra['order_id'] ?? '').toString(),
           );
         },
       ),
@@ -118,7 +118,7 @@ GoRouter _buildRouter(BuildContext ctx) {
         builder: (_, state) {
           final extra = state.extra as Map<String, dynamic>?;
           return OrderDetailScreen(
-            orderId: int.parse(state.pathParameters['id']!),
+            orderId: state.pathParameters['id']!,
             justPaid: extra?['justPaid'] as bool? ?? false,
           );
         },

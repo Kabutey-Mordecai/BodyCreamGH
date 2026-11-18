@@ -41,7 +41,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } on Exception catch (e) {
-      _error = e.toString().replaceFirst('ApiException(\\d+\\): ', '');
+      _error = e.toString().replaceFirst(RegExp(r'ApiException\(\d+\):\s*'), '');
       notifyListeners();
       return false;
     }
@@ -67,7 +67,7 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return true;
     } on Exception catch (e) {
-      _error = e.toString().replaceFirst('ApiException(\\d+\\): ', '');
+      _error = e.toString().replaceFirst(RegExp(r'ApiException\(\d+\):\s*'), '');
       notifyListeners();
       return false;
     }

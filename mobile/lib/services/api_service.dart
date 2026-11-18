@@ -93,8 +93,8 @@ class ApiService {
         return null;
       }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
-      final newAccess = data['access_token'] as String;
-      final newRefresh = data['refresh_token'] as String;
+      final newAccess = (data['token'] ?? data['access_token']) as String;
+      final newRefresh = (data['refresh_token'] ?? refresh) as String;
       await saveTokens(newAccess, newRefresh);
       return newAccess;
     } catch (_) {
@@ -138,8 +138,13 @@ class ApiService {
   Future<void> logout() async {
     try {
       final token = await getAccessToken();
+      final refresh = await getRefreshToken();
       if (token != null) {
-        await _client.post(_uri('/auth/logout'), headers: _headers(token: token));
+        await _client.post(
+          _uri('/auth/logout'),
+          headers: _headers(token: token),
+          body: jsonEncode({'refresh_token': refresh}),
+        );
       }
     } catch (_) {
       // Best-effort — always clear local tokens
@@ -170,9 +175,41 @@ class ApiService {
     return data as List<dynamic>;
   }
 
-  Future<Map<String, dynamic>> getProduct(int id) async {
+  Future<Map<String, dynamic>> getProduct(String id) async {
     final res = await _client.get(_uri('/products/$id'), headers: _headers());
-    return await _handleResponse(res) as Map<String, dynamic>;
+    final data = await _handleResponse(res);
+    if (data is Map && data.containsKey('product')) {
+      return data['product'] as Map<String, dynamic>;
+    }
+    return data as Map<String, dynamic>;
+  }
+
+  // ── Cart ──────────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getCart() async {
+    return await _authed((token) => _client.get(
+          _uri('/cart'),
+          headers: _headers(token: token),
+        )) as Map<String, dynamic>;
+  }
+
+  Future<void> addToCart(String productId, int quantity, {String? variantId}) async {
+    await _authed((token) => _client.post(
+          _uri('/cart/add'),
+          headers: _headers(token: token),
+          body: jsonEncode({
+            'product_id': productId,
+            'quantity': quantity,
+            if (variantId != null) 'variant_id': variantId,
+          }),
+        ));
+  }
+
+  Future<void> clearCart() async {
+    await _authed((token) => _client.delete(
+          _uri('/cart'),
+          headers: _headers(token: token),
+        ));
   }
 
   // ── Orders ────────────────────────────────────────────────────────────────
@@ -186,13 +223,17 @@ class ApiService {
   }
 
   Future<List<dynamic>> getMyOrders() async {
-    return await _authed((token) => _client.get(
-          _uri('/orders/my-orders'),
+    final data = await _authed((token) => _client.get(
+          _uri('/orders'),
           headers: _headers(token: token),
-        )) as List<dynamic>;
+        ));
+    if (data is Map && data.containsKey('orders')) {
+      return data['orders'] as List<dynamic>? ?? [];
+    }
+    return data as List<dynamic>? ?? [];
   }
 
-  Future<Map<String, dynamic>> getOrder(int id) async {
+  Future<Map<String, dynamic>> getOrder(String id) async {
     return await _authed((token) => _client.get(
           _uri('/orders/$id'),
           headers: _headers(token: token),
@@ -231,14 +272,14 @@ class ApiService {
 
   Future<Map<String, dynamic>> getProfile() async {
     return await _authed((token) => _client.get(
-          _uri('/auth/profile'),
+          _uri('/customers/profile'),
           headers: _headers(token: token),
         )) as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> updateProfile(Map<String, dynamic> data) async {
     return await _authed((token) => _client.put(
-          _uri('/auth/profile'),
+          _uri('/customers/profile'),
           headers: _headers(token: token),
           body: jsonEncode(data),
         )) as Map<String, dynamic>;

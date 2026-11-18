@@ -9,7 +9,7 @@ import '../services/api_service.dart';
 import '../widgets/cart_badge.dart';
 
 class ProductDetailScreen extends StatefulWidget {
-  final int productId;
+  final String productId;
   const ProductDetailScreen({super.key, required this.productId});
 
   @override

@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 async function getAdminEmail() {
   try {
     const { rows } = await pool.query(
-      `SELECT value FROM settings WHERE key = 'order_notification_email'`
+      `SELECT value FROM site_settings WHERE key = 'order_notification_email'`
     );
     const dbEmail = rows[0]?.value?.trim();
     if (dbEmail) return dbEmail;
@@ -32,7 +32,9 @@ module.exports = async function register(boss) {
   await boss.createQueue('notification/return-rejected');
 
   // ── Payment confirmed ─────────────────────────────────────────────────────
-  await boss.work('notification/payment-success', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/payment-success', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId, reference } = job.data;
     const eventId = `notification_payment_${reference}`;
 
@@ -83,7 +85,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Shipment created ──────────────────────────────────────────────────────
-  await boss.work('notification/shipment-created', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/shipment-created', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId, trackingNumber } = job.data;
     const eventId = `notification_shipment_${orderId}`;
 
@@ -127,7 +131,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Order delivered ───────────────────────────────────────────────────────
-  await boss.work('notification/order-delivered', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/order-delivered', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId } = job.data;
     const eventId = `notification_delivered_${orderId}`;
 
@@ -174,7 +180,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Order cancelled ───────────────────────────────────────────────────────
-  await boss.work('notification/order-cancelled', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/order-cancelled', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId } = job.data;
     const eventId = `notification_cancelled_${orderId}`;
 
@@ -214,7 +222,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Order refunded ────────────────────────────────────────────────────────
-  await boss.work('notification/order-refunded', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/order-refunded', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId } = job.data;
     const eventId = `notification_refunded_${orderId}`;
 
@@ -258,7 +268,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Cancel requested (customer → system) ─────────────────────────────────
-  await boss.work('notification/cancel-requested', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/cancel-requested', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId } = job.data;
     const eventId = `notification_cancel_requested_${orderId}`;
 
@@ -302,7 +314,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Cancel rejected (admin decision) ─────────────────────────────────────
-  await boss.work('notification/cancel-rejected', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/cancel-rejected', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId } = job.data;
     const eventId = `notification_cancel_rejected_${orderId}`;
 
@@ -342,7 +356,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Return requested (customer → system) ─────────────────────────────────
-  await boss.work('notification/return-requested', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/return-requested', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId } = job.data;
     const eventId = `notification_return_requested_${orderId}`;
 
@@ -386,7 +402,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Return rejected (admin decision) ─────────────────────────────────────
-  await boss.work('notification/return-rejected', { teamSize: 10 }, async (job) => {
+  await boss.work('notification/return-rejected', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId } = job.data;
     const eventId = `notification_return_rejected_${orderId}`;
 

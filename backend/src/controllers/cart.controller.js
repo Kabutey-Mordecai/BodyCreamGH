@@ -38,6 +38,10 @@ const addItem = async (req, res) => {
   try {
     const { product_id, quantity = 1, variant_id } = req.body;
     if (!product_id) return res.status(400).json({ error: 'product_id is required' });
+    const qty = parseInt(quantity, 10);
+    if (isNaN(qty) || qty < 1 || qty > 100) {
+      return res.status(400).json({ error: 'Quantity must be an integer between 1 and 100' });
+    }
 
     await client.query('BEGIN');
 
@@ -103,7 +107,7 @@ const addItem = async (req, res) => {
     );
 
     const currentQty  = existing.length ? existing[0].quantity : 0;
-    const newTotalQty = currentQty + quantity;
+    const newTotalQty = currentQty + qty;
 
     if (newTotalQty > stockToCheck) {
       await client.query('ROLLBACK');
@@ -119,7 +123,7 @@ const addItem = async (req, res) => {
       await client.query(
         `INSERT INTO cart_items (id, customer_id, product_id, quantity, variant_id, variant_label)
          VALUES ($1,$2,$3,$4,$5,$6)`,
-        [uuid(), req.user.id, product_id, quantity, variant_id || null, variantLabel]
+        [uuid(), req.user.id, product_id, qty, variant_id || null, variantLabel]
       );
     }
 
@@ -138,7 +142,10 @@ const updateItem = async (req, res) => {
   const client = await pool.connect();
   try {
     const { quantity } = req.body;
-    if (!quantity || quantity < 1) return res.status(400).json({ error: 'Quantity must be at least 1' });
+    const qty = parseInt(quantity, 10);
+    if (isNaN(qty) || qty < 1 || qty > 100) {
+      return res.status(400).json({ error: 'Quantity must be an integer between 1 and 100' });
+    }
 
     await client.query('BEGIN');
 
@@ -159,14 +166,14 @@ const updateItem = async (req, res) => {
       return res.status(404).json({ error: 'Cart item not found' });
     }
 
-    if (quantity > rows[0].stock_quantity) {
+    if (qty > rows[0].stock_quantity) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Insufficient stock' });
     }
 
     await client.query(
       'UPDATE cart_items SET quantity = $1 WHERE id = $2 AND customer_id = $3',
-      [quantity, req.params.cartItemId, req.user.id]
+      [qty, req.params.cartItemId, req.user.id]
     );
 
     await client.query('COMMIT');

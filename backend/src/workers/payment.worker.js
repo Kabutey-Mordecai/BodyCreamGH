@@ -6,7 +6,9 @@ const logger = require('../utils/logger');
 
 module.exports = async function register(boss) {
   await boss.createQueue('payment/payment.success');
-  await boss.work('payment/payment.success', { teamSize: 5 }, async (job) => {
+  await boss.work('payment/payment.success', { teamSize: 5 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { reference, orderId, amount, amountPesewas, currency } = job.data;
     const eventId = `payment_success_${reference}`;   // guards DB write
     const jobsId  = `payment_jobs_${reference}`;      // guards downstream sends

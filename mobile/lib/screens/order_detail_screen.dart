@@ -6,7 +6,7 @@ import '../services/api_service.dart';
 import '../widgets/status_chip.dart';
 
 class OrderDetailScreen extends StatefulWidget {
-  final int orderId;
+  final String orderId;
   final bool justPaid;
 
   const OrderDetailScreen({

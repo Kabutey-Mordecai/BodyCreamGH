@@ -7,7 +7,7 @@ import 'package:webview_flutter/webview_flutter.dart';
 // Paystack redirects to our callback URL on success/failure.
 class PaymentScreen extends StatefulWidget {
   final String paymentUrl;
-  final int orderId;
+  final String orderId;
 
   const PaymentScreen({
     super.key,

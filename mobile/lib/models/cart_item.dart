@@ -1,7 +1,7 @@
 import 'product.dart';
 
 class CartItem {
-  final int productId;
+  final String productId;
   final String name;
   final double price;
   final String? imageUrl;
@@ -29,11 +29,11 @@ class CartItem {
 
   factory CartItem.fromJson(Map<String, dynamic> json) {
     return CartItem(
-      productId: json['product_id'] as int,
-      name: json['name'] as String,
-      price: double.parse(json['price'].toString()),
+      productId: json['product_id'].toString(),
+      name: json['name'] as String? ?? '',
+      price: double.parse((json['price'] ?? 0).toString()),
       imageUrl: json['image_url'] as String?,
-      quantity: json['quantity'] as int? ?? 1,
+      quantity: int.tryParse(json['quantity']?.toString() ?? '1') ?? 1,
     );
   }
 

@@ -36,12 +36,15 @@ const {
 } = require('../controllers/auth.controller');
 
 const router = express.Router();
+const customerController = require('../controllers/customer.controller');
 
 router.post('/register',                  registerLimiter,        validateRegister, register);
 router.post('/login',                     loginLimiter,           validateLogin,    login);
 router.post('/verify-otp',                otpLimiter,             verifyOtp);
 router.post('/refresh',                   refreshLimiter,         refresh);
 router.get ('/me',                        verifyToken,            getMe);
+router.get ('/profile',                   verifyToken,            customerController.getProfile);
+router.put ('/profile',                   verifyToken,            customerController.updateProfile);
 router.post('/logout',                    logoutLimiter,          logout);
 router.post('/forgot-password',           forgotPasswordLimiter,  forgotPassword);
 router.get ('/verify-reset-token/:token', verifyResetTokenLimiter, verifyResetToken);

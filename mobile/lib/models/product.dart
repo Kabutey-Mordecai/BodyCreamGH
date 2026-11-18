@@ -1,5 +1,7 @@
+import '../config.dart';
+
 class Product {
-  final int id;
+  final String id;
   final String name;
   final String description;
   final double price;
@@ -24,18 +26,21 @@ class Product {
   bool get inStock => stockQuantity > 0;
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    final rawRating = json['avg_rating'] ?? json['average_rating'];
     return Product(
-      id: json['id'] as int,
-      name: json['name'] as String,
+      id: json['id'].toString(),
+      name: json['name'] as String? ?? '',
       description: json['description'] as String? ?? '',
-      price: double.parse(json['price'].toString()),
-      imageUrl: json['image_url'] as String?,
-      stockQuantity: json['stock_quantity'] as int? ?? 0,
-      category: json['category'] as String?,
-      averageRating: json['average_rating'] != null
-          ? double.parse(json['average_rating'].toString())
+      price: double.parse((json['price'] ?? 0).toString()),
+      imageUrl: json['image_url'] != null
+          ? AppConfig.resolveImageUrl(json['image_url'] as String)
           : null,
-      reviewCount: json['review_count'] as int? ?? 0,
+      stockQuantity: int.tryParse(json['stock_quantity']?.toString() ?? '0') ?? 0,
+      category: json['category'] as String?,
+      averageRating: rawRating != null
+          ? double.tryParse(rawRating.toString())
+          : null,
+      reviewCount: int.tryParse(json['review_count']?.toString() ?? '0') ?? 0,
     );
   }
 }

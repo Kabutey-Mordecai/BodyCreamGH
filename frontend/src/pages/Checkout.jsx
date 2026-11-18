@@ -65,7 +65,7 @@ export default function Checkout() {
     setValidating(true);
     setValidationFetchError('');
     cartAPI.validateGuest(
-      cart.map(i => ({ product_id: i.product_id, quantity: i.quantity }))
+      cart.map(i => ({ product_id: i.product_id, quantity: i.quantity, variant_id: i.variant_id || null }))
     )
       .then(({ data }) => setValidation(data))
       .catch(() => setValidationFetchError('Could not check item availability. Please try again.'))
@@ -609,7 +609,7 @@ export default function Checkout() {
             <ul className="checkout-items">
               {cart.map(item => {
                 const v = isGuest
-                  ? validation?.items?.find(vi => vi.product_id === item.product_id)
+                  ? validation?.items?.find(vi => vi.product_id === item.product_id && (vi.variant_id || null) === (item.variant_id || null))
                   : null;
                 const isUnavailable = Boolean(v && !v.available);
                 const displayPrice = parseFloat(v?.price ?? item.price);

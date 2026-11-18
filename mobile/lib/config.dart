@@ -9,7 +9,18 @@ class AppConfig {
     defaultValue: 'http://10.0.2.2:3000/api',
   );
 
-  static const String appName = 'Cosmetics GH';
+  static const String appName = 'BodyCream GH';
   static const String currency = 'GHS';
   static const String currencySymbol = '₵';
+
+  /// Resolves relative image paths (e.g. /uploads/products/...) against the server host.
+  static String resolveImageUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    final serverBase = baseUrl.endsWith('/api')
+        ? baseUrl.substring(0, baseUrl.length - 4)
+        : baseUrl;
+    final cleanPath = url.startsWith('/') ? url : '/$url';
+    return '$serverBase$cleanPath';
+  }
 }

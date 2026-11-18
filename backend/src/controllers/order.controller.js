@@ -124,7 +124,7 @@ const createOrder = async (req, res) => {
          JOIN products p ON ci.product_id = p.id
          LEFT JOIN product_variants pv ON ci.variant_id = pv.id
         WHERE ci.customer_id = $1
-        FOR UPDATE`,
+        FOR UPDATE OF ci, p`,
       [req.user.id]
     );
 
@@ -163,6 +163,10 @@ const createOrder = async (req, res) => {
         discountAmount    = cv.discountAmount;
         appliedCouponCode = cv.coupon.code;
         total             = Math.max(0, total - discountAmount);
+      } else {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(400).json({ error: cv.error || 'Invalid or expired coupon' });
       }
     }
 
@@ -214,9 +218,13 @@ const createOrder = async (req, res) => {
     transactionStarted = false;
 
     if (payment_method === 'pay_on_delivery') {
-      const { notificationQueue } = require('../queues');
+      const { notificationQueue, shipmentQueue } = require('../queues');
       notificationQueue.add('payment-success', { orderId, reference: `POD-${orderNumber}` })
         .catch(err => logger.error('Failed to enqueue POD confirmation notification', { err: err.message, orderId }));
+      if (fulfillment_method === 'delivery') {
+        shipmentQueue.add('create-shipment', { orderId })
+          .catch(err => logger.error('Failed to enqueue POD shipment creation', { err: err.message, orderId }));
+      }
     }
 
     res.status(201).json({
@@ -1016,6 +1024,10 @@ const createGuestOrder = async (req, res) => {
         discountAmount    = cv.discountAmount;
         appliedCouponCode = cv.coupon.code;
         total             = Math.max(0, total - discountAmount);
+      } else {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(400).json({ error: cv.error || 'Invalid or expired coupon' });
       }
     }
 
@@ -1072,9 +1084,13 @@ const createGuestOrder = async (req, res) => {
     transactionStarted = false;
 
     if (payment_method === 'pay_on_delivery') {
-      const { notificationQueue } = require('../queues');
+      const { notificationQueue, shipmentQueue } = require('../queues');
       notificationQueue.add('payment-success', { orderId, reference: `POD-${orderNumber}` })
         .catch(err => logger.error('Failed to enqueue guest POD confirmation notification', { err: err.message, orderId }));
+      if (fulfillment_method === 'delivery') {
+        shipmentQueue.add('create-shipment', { orderId })
+          .catch(err => logger.error('Failed to enqueue guest POD shipment creation', { err: err.message, orderId }));
+      }
     }
 
     res.status(201).json({

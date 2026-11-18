@@ -1,5 +1,5 @@
 class OrderItem {
-  final int productId;
+  final String productId;
   final String name;
   final int quantity;
   final double priceAtPurchase;
@@ -13,16 +13,16 @@ class OrderItem {
 
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     return OrderItem(
-      productId: json['product_id'] as int,
+      productId: (json['product_id'] ?? '').toString(),
       name: json['name'] as String? ?? json['product_name'] as String? ?? '',
-      quantity: json['quantity'] as int,
-      priceAtPurchase: double.parse(json['price_at_purchase'].toString()),
+      quantity: int.tryParse(json['quantity']?.toString() ?? '1') ?? 1,
+      priceAtPurchase: double.parse((json['price_at_purchase'] ?? json['price'] ?? 0).toString()),
     );
   }
 }
 
 class Order {
-  final int id;
+  final String id;
   final String orderNumber;
   final String status;
   final String paymentStatus;
@@ -45,16 +45,28 @@ class Order {
   });
 
   factory Order.fromJson(Map<String, dynamic> json) {
-    final rawItems = json['items'] as List<dynamic>? ?? [];
+    final orderMap = json.containsKey('order') && json['order'] is Map<String, dynamic>
+        ? json['order'] as Map<String, dynamic>
+        : json;
+    final rawItems = (json['items'] ?? orderMap['items']) as List<dynamic>? ?? [];
+
+    final addressParts = [
+      orderMap['delivery_address'] ?? orderMap['shipping_address'],
+      orderMap['shipping_city'],
+      orderMap['shipping_region'],
+    ].where((p) => p != null && p.toString().trim().isNotEmpty).join(', ');
+
     return Order(
-      id: json['id'] as int,
-      orderNumber: json['order_number'] as String,
-      status: json['status'] as String,
-      paymentStatus: json['payment_status'] as String,
-      totalAmount: double.parse(json['total_amount'].toString()),
-      deliveryAddress: json['delivery_address'] as String?,
-      deliveryStatus: json['delivery_status'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      id: (orderMap['id'] ?? '').toString(),
+      orderNumber: (orderMap['order_number'] ?? orderMap['orderNumber'] ?? '').toString(),
+      status: (orderMap['status'] ?? 'pending').toString(),
+      paymentStatus: (orderMap['payment_status'] ?? 'pending').toString(),
+      totalAmount: double.parse((orderMap['total_amount'] ?? orderMap['total'] ?? 0).toString()),
+      deliveryAddress: addressParts.isNotEmpty ? addressParts : null,
+      deliveryStatus: (orderMap['delivery_status'] ?? orderMap['shipping_status']) as String?,
+      createdAt: orderMap['created_at'] != null
+          ? DateTime.tryParse(orderMap['created_at'].toString()) ?? DateTime.now()
+          : DateTime.now(),
       items: rawItems.map((i) => OrderItem.fromJson(i as Map<String, dynamic>)).toList(),
     );
   }

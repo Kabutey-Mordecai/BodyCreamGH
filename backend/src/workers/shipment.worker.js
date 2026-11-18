@@ -77,7 +77,9 @@ module.exports = async function register(boss) {
   await boss.createQueue('shipment/advance-shipment');
 
   // ── Create shipment after payment ─────────────────────────────────────────
-  await boss.work('shipment/create-shipment', { teamSize: 5 }, async (job) => {
+  await boss.work('shipment/create-shipment', { teamSize: 5 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { orderId } = job.data;
     const eventId = `shipment_create_${orderId}`;   // guards DB write
     const jobsId  = `shipment_jobs_${orderId}`;     // guards downstream sends
@@ -96,10 +98,19 @@ module.exports = async function register(boss) {
       inTransaction = true;
 
       const { rows: orderRows } = await client.query(
-        'SELECT id, status FROM orders WHERE id = $1 FOR UPDATE', [orderId]
+        'SELECT id, status, fulfillment_method FROM orders WHERE id = $1 FOR UPDATE', [orderId]
       );
       const order = orderRows[0];
       if (!order) throw new Error(`Order not found: ${orderId}`);
+
+      if (order.fulfillment_method === 'pickup') {
+        await client.query('ROLLBACK');
+        inTransaction = false;
+        await markProcessed(eventId, 'shipment.skip_pickup');
+        await markProcessed(jobsId, 'shipment.jobs');
+        logger.info('Order is pickup, skipping courier delivery creation', { orderId });
+        return;
+      }
 
       const { rows: existing } = await client.query(
         'SELECT tracking_number FROM deliveries WHERE order_id = $1', [orderId]
@@ -167,7 +178,9 @@ module.exports = async function register(boss) {
   });
 
   // ── Advance shipment through courier lifecycle ────────────────────────────
-  await boss.work('shipment/advance-shipment', { teamSize: 5 }, async (job) => {
+  await boss.work('shipment/advance-shipment', { teamSize: 5 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { trackingNumber, orderId } = job.data;
     const courierService = require('../services/courier.service');
     const result = await courierService.advanceShipment(trackingNumber);

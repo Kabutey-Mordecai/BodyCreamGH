@@ -18,6 +18,8 @@ export default function PaymentCallback() {
   const [orderNum, setOrderNum] = useState('');
   const [message, setMessage]   = useState('');
   const { user } = useAuth();
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+  const isAuthed = Boolean(user || token);
   const { fetchCart, clearLocalCart } = useCart();
   const navigate = useNavigate();
 
@@ -46,14 +48,14 @@ export default function PaymentCallback() {
 
         // Sync cart state — server cart was already cleared when the order was created,
         // but the React state may be stale if the user navigated back without a full remount.
-        if (user) {
+        if (isAuthed) {
           await fetchCart();
         } else {
           await clearLocalCart();
         }
 
         // Auto-redirect authenticated users to their order after 3 s
-        if (user && data.orderId && !hasCancelledRefundState(data)) {
+        if (isAuthed && data.orderId && !hasCancelledRefundState(data)) {
           setTimeout(() => navigate(`/orders/${data.orderId}`), 3000);
         }
       })
@@ -147,8 +149,10 @@ export default function PaymentCallback() {
         </p>
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {user && orderId ? (
+          {isAuthed && orderId ? (
             <Link to={`/orders/${orderId}`} className="btn btn-accent">View Order</Link>
+          ) : orderNum ? (
+            <Link to={`/track?order_number=${encodeURIComponent(orderNum)}`} className="btn btn-accent">Track Order</Link>
           ) : (
             <Link to="/" className="btn btn-accent">Continue Shopping</Link>
           )}

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
+import '../services/api_service.dart';
 
 class CartProvider extends ChangeNotifier {
   final List<CartItem> _items = [];
@@ -46,9 +47,9 @@ class CartProvider extends ChangeNotifier {
 
   double get total => subtotal + deliveryFee;
 
-  bool contains(int productId) => _items.any((i) => i.productId == productId);
+  bool contains(String productId) => _items.any((i) => i.productId == productId);
 
-  int quantityOf(int productId) {
+  int quantityOf(String productId) {
     final idx = _items.indexWhere((i) => i.productId == productId);
     return idx == -1 ? 0 : _items[idx].quantity;
   }
@@ -63,12 +64,12 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void remove(int productId) {
+  void remove(String productId) {
     _items.removeWhere((i) => i.productId == productId);
     notifyListeners();
   }
 
-  void updateQuantity(int productId, int quantity) {
+  void updateQuantity(String productId, int quantity) {
     final idx = _items.indexWhere((i) => i.productId == productId);
     if (idx == -1) return;
     if (quantity <= 0) {
@@ -77,6 +78,19 @@ class CartProvider extends ChangeNotifier {
       _items[idx].quantity = quantity;
     }
     notifyListeners();
+  }
+
+  /// Syncs all in-memory cart items to the server-side cart before checkout.
+  Future<void> syncToServer() async {
+    final api = ApiService.instance;
+    try {
+      await api.clearCart();
+      for (final item in _items) {
+        await api.addToCart(item.productId, item.quantity);
+      }
+    } catch (_) {
+      // Best-effort sync
+    }
   }
 
   void clear() {

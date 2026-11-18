@@ -49,7 +49,7 @@ export function CartProvider({ children }) {
       const pending = readGuestCart();
       if (pending.length > 0) {
         Promise.allSettled(
-          pending.map(item => cartAPI.addItem(item.product_id, item.quantity))
+          pending.map(item => cartAPI.addItem(item.product_id, item.quantity, item.variant_id || null))
         ).then(results => {
           const failed = pending.filter((_, i) => results[i].status === 'rejected');
           if (failed.length) {
@@ -115,19 +115,19 @@ export function CartProvider({ children }) {
     });
   };
 
-  const guestUpdateItem = (productId, quantity) => {
+  const guestUpdateItem = (cartItemId, quantity) => {
     setGuestCart(prev => {
       const next = quantity <= 0
-        ? prev.filter(i => i.product_id !== productId)
-        : prev.map(i => i.product_id === productId ? { ...i, quantity } : i);
+        ? prev.filter(i => i.id !== cartItemId && i.product_id !== cartItemId)
+        : prev.map(i => (i.id === cartItemId || i.product_id === cartItemId) ? { ...i, quantity } : i);
       writeGuestCart(next);
       return next;
     });
   };
 
-  const guestRemoveItem = (productId) => {
+  const guestRemoveItem = (cartItemId) => {
     setGuestCart(prev => {
-      const next = prev.filter(i => i.product_id !== productId && i.id !== productId);
+      const next = prev.filter(i => i.id !== cartItemId && i.product_id !== cartItemId);
       writeGuestCart(next);
       return next;
     });

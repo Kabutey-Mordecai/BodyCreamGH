@@ -3,10 +3,13 @@ const { randomUUID: uuid } = require('crypto');
 
 module.exports = {
   adjustStock: async (productId, change, reason, notes = null, client = pool) => {
-    await client.query(
-      'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2',
+    const { rowCount } = await client.query(
+      'UPDATE products SET stock_quantity = stock_quantity + $1, updated_at=NOW() WHERE id=$2 AND stock_quantity + $1 >= 0',
       [change, productId]
     );
+    if (rowCount === 0) {
+      throw new Error(`Insufficient stock to adjust product ${productId} by ${change}`);
+    }
     await client.query(
       'INSERT INTO inventory_history (id, product_id, quantity_change, reason, notes) VALUES ($1,$2,$3,$4,$5)',
       [uuid(), productId, change, reason, notes]
