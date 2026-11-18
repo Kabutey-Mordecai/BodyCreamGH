@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════
    MID-PAGE CAMPAIGN & TRUST BANNER (Auto-Flip Story Carousel)
-   Multi-slide rotating banner with auto-flip, smooth transitions,
-   navigation arrows, and progress pill indicators.
+   Multi-slide rotating banner with slow 3D page-flip physics,
+   locked rock-solid dimensions (ZERO shrinking), navigation arrows,
+   and luxury editorial progress indicators.
    ═══════════════════════════════════════════════════════════════ */
 
 .mid-banner-section {
@@ -22,10 +23,12 @@
     0 20px 48px -12px rgba(0, 0, 0, 0.55),
     0 0 0 1px rgba(255, 255, 255, 0.05);
   display: grid;
-  grid-template-columns: 1.2fr 0.9fr;
-  align-items: center;
+  grid-template-columns: 1.25fr 0.95fr;
+  align-items: stretch;
   overflow: hidden;
-  min-height: 380px;
+  height: 420px;
+  min-height: 420px;
+  max-height: 420px;
   transform-style: preserve-3d;
 }
 
@@ -34,7 +37,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 56.5%;
+  left: 56.8%;
   width: 2px;
   background: linear-gradient(
     to bottom,
@@ -50,7 +53,7 @@
   z-index: 4;
 }
 
-/* Page Turn Light Sweep & Crease Shadow */
+/* Page Turn Light Sweep & Crease Shadow (Slow & Gentle: 1.2s) */
 .mid-banner-page-shadow {
   position: absolute;
   inset: 0;
@@ -63,10 +66,10 @@
     105deg,
     transparent 20%,
     rgba(255, 255, 255, 0.08) 45%,
-    rgba(0, 0, 0, 0.55) 58%,
+    rgba(0, 0, 0, 0.5) 58%,
     transparent 75%
   );
-  animation: pageSweepNext 0.55s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+  animation: pageSweepNext 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .mid-banner-page-shadow.sweep-prev {
@@ -74,36 +77,38 @@
     285deg,
     transparent 20%,
     rgba(255, 255, 255, 0.08) 45%,
-    rgba(0, 0, 0, 0.55) 58%,
+    rgba(0, 0, 0, 0.5) 58%,
     transparent 75%
   );
-  animation: pageSweepPrev 0.55s cubic-bezier(0.2, 0.9, 0.3, 1) forwards;
+  animation: pageSweepPrev 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
-/* 3D Page Turn Card Reactions */
+/* 3D Page Turn Card Reactions (Slow 1.2s, Zero Shrink) */
 .mid-banner-card.flip-next {
-  animation: pageTurnCardNext 0.55s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: pageTurnCardNext 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .mid-banner-card.flip-prev {
-  animation: pageTurnCardPrev 0.55s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: pageTurnCardPrev 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
-/* Content Column with 3D Page Unfold Animation */
+/* Content Column with 3D Page Unfold Animation (Zero Shrink) */
 .mid-banner-content {
-  padding: 48px 44px;
+  padding: 44px 44px 54px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   z-index: 2;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .flip-next .mid-banner-content {
-  animation: pageTurnContentNext 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: pageTurnContentNext 1.05s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .flip-prev .mid-banner-content {
-  animation: pageTurnContentPrev 0.5s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: pageTurnContentPrev 1.05s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .mid-banner-badge {
@@ -182,11 +187,11 @@
   box-shadow: 0 10px 24px -3px rgba(201, 165, 90, 0.6);
 }
 
-/* Visual Column with Smooth 3D Page Curl & Light Dynamics */
+/* Visual Column with Smooth 3D Page Curl (Zero Shrink, 1.2s slow physics) */
 .mid-banner-visual {
   position: relative;
   height: 100%;
-  min-height: 380px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -195,25 +200,20 @@
 }
 
 .flip-next .mid-banner-visual {
-  animation: pageTurnVisualNext 0.55s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: pageTurnVisualNext 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .flip-prev .mid-banner-visual {
-  animation: pageTurnVisualPrev 0.55s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  animation: pageTurnVisualPrev 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .mid-banner-img {
   width: 100%;
   height: 100%;
-  min-height: 380px;
   object-fit: cover;
-  transition: transform 0.6s ease;
-  mask-image: linear-gradient(to right, transparent 0%, black 22%);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 22%);
-}
-
-.mid-banner-card:hover .mid-banner-img {
-  transform: scale(1.04);
+  display: block;
+  mask-image: linear-gradient(to right, transparent 0%, black 20%);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, black 20%);
 }
 
 .mid-banner-shine {
@@ -335,16 +335,16 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   3D PAGE FLIP ANIMATIONS (Authentic Editorial Book-Turn Physics)
+   SLOW 3D PAGE FLIP ANIMATIONS (ZERO SHRINKING)
    ═══════════════════════════════════════════════════════════════ */
 
-/* Card Perspective Pulse */
+/* Card Perspective Shadow Pulse (Zero Scale) */
 @keyframes pageTurnCardNext {
   0% {
     box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.55);
   }
-  40% {
-    box-shadow: -16px 24px 54px -10px rgba(0, 0, 0, 0.75);
+  50% {
+    box-shadow: -12px 24px 50px -10px rgba(0, 0, 0, 0.7);
   }
   100% {
     box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.55);
@@ -355,78 +355,78 @@
   0% {
     box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.55);
   }
-  40% {
-    box-shadow: 16px 24px 54px -10px rgba(0, 0, 0, 0.75);
+  50% {
+    box-shadow: 12px 24px 50px -10px rgba(0, 0, 0, 0.7);
   }
   100% {
     box-shadow: 0 20px 48px -12px rgba(0, 0, 0, 0.55);
   }
 }
 
-/* Visual Column 3D Page Turn */
+/* Visual Column 3D Page Turn: Gentle, Slow & Zero Scale */
 @keyframes pageTurnVisualNext {
   0% {
-    opacity: 0.15;
-    transform: perspective(1400px) rotateY(45deg) scale(0.94);
-    filter: brightness(0.65) drop-shadow(-8px 0 12px rgba(0,0,0,0.5));
+    opacity: 0.25;
+    transform: perspective(1600px) rotateY(22deg);
+    filter: brightness(0.72) drop-shadow(-6px 0 10px rgba(0,0,0,0.45));
   }
-  50% {
-    filter: brightness(1.1);
+  55% {
+    filter: brightness(1.08);
   }
   100% {
     opacity: 1;
-    transform: perspective(1400px) rotateY(0deg) scale(1);
+    transform: perspective(1600px) rotateY(0deg);
     filter: brightness(1) drop-shadow(0 0 0 transparent);
   }
 }
 
 @keyframes pageTurnVisualPrev {
   0% {
-    opacity: 0.15;
-    transform: perspective(1400px) rotateY(-45deg) scale(0.94);
-    filter: brightness(0.65) drop-shadow(8px 0 12px rgba(0,0,0,0.5));
+    opacity: 0.25;
+    transform: perspective(1600px) rotateY(-22deg);
+    filter: brightness(0.72) drop-shadow(6px 0 10px rgba(0,0,0,0.45));
   }
-  50% {
-    filter: brightness(1.1);
+  55% {
+    filter: brightness(1.08);
   }
   100% {
     opacity: 1;
-    transform: perspective(1400px) rotateY(0deg) scale(1);
+    transform: perspective(1600px) rotateY(0deg);
     filter: brightness(1) drop-shadow(0 0 0 transparent);
   }
 }
 
-/* Editorial Content Unfold */
+/* Editorial Content Unfold: Gentle drift, Zero Scale */
 @keyframes pageTurnContentNext {
   0% {
     opacity: 0;
-    transform: translateX(18px) scale(0.98);
+    transform: translateX(12px);
   }
   100% {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateX(0);
   }
 }
 
 @keyframes pageTurnContentPrev {
   0% {
     opacity: 0;
-    transform: translateX(-18px) scale(0.98);
+    transform: translateX(-12px);
   }
   100% {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translateX(0);
   }
 }
 
-/* Page Light Sweep */
+/* Page Light Sweep (Slow 1.2s) */
 @keyframes pageSweepNext {
   0% {
     opacity: 0;
     transform: translateX(-70%);
   }
   30% {
-    opacity: 1;
+    opacity: 0.8;
   }
   100% {
     opacity: 0;
@@ -440,7 +440,7 @@
     transform: translateX(70%);
   }
   30% {
-    opacity: 1;
+    opacity: 0.8;
   }
   100% {
     opacity: 0;
@@ -457,23 +457,27 @@
 @media (max-width: 768px) {
   .mid-banner-card {
     grid-template-columns: 1fr;
+    height: auto;
     min-height: auto;
+    max-height: none;
     border-radius: 16px;
   }
 
   .mid-banner-content {
-    padding: 36px 24px 44px;
+    padding: 32px 20px 48px;
     order: 2;
+    height: auto;
   }
 
   .mid-banner-visual {
-    height: 220px;
-    min-height: 220px;
+    height: 230px;
+    min-height: 230px;
+    max-height: 230px;
     order: 1;
   }
 
   .mid-banner-img {
-    min-height: 220px;
+    min-height: 230px;
     mask-image: linear-gradient(to top, transparent 0%, black 25%);
     -webkit-mask-image: linear-gradient(to top, transparent 0%, black 25%);
   }
@@ -482,9 +486,14 @@
     left: 50%;
     transform: translateX(-50%);
     bottom: 14px;
+    gap: 8px;
   }
 
   .mid-banner-arrow {
-    display: none; /* Mobile touch swipe handles flipping seamlessly */
+    display: none;
+  }
+
+  .mid-banner-spine {
+    display: none;
   }
 }

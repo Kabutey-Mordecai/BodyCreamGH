@@ -6,6 +6,15 @@ import './MidPageBanner.css';
 
 const DEFAULT_SLIDES = [
   {
+    badge: 'PURE GHANAIAN BOTANICALS',
+    title: 'Handcrafted in Small Batches.',
+    highlight: 'Zero Harsh Bleaching Agents.',
+    subtitle: 'Raw unrefined shea butter from Northern Ghana cooperatives, blended with botanical oils for rich, natural skin nutrition.',
+    cta_text: 'Learn Our Story',
+    cta_link: '/#our-story',
+    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
+  },
+  {
     badge: 'CLINICALLY PROVEN HYDRATION',
     title: '48-Hour Deep Moisture Lock.',
     highlight: 'Melanin-Rich Formula.',
@@ -13,15 +22,6 @@ const DEFAULT_SLIDES = [
     cta_text: 'Shop Body Creams',
     cta_link: '/shop?category=Body+Cream',
     image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=700&q=80',
-  },
-  {
-    badge: 'PURE GHANAIAN BOTANICALS',
-    title: 'Handcrafted in Small Batches.',
-    highlight: 'Zero Harsh Bleaching Agents.',
-    subtitle: 'Raw unrefined shea butter from Northern Ghana cooperatives, blended with botanical oils for rich, natural skin nutrition.',
-    cta_text: 'Learn Our Story',
-    cta_link: '/#our-story',
-    image: 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80',
   },
   {
     badge: 'BESTSELLER RADIANCE',
@@ -108,7 +108,7 @@ export default function MidPageBanner() {
 
   const total = slides.length;
   const autoPlay = settings.mid_banner_autoplay !== false && settings.mid_banner_autoplay !== 'false';
-  const intervalSec = Math.max(3, Number(settings.mid_banner_interval_sec) || 5);
+  const intervalSec = Math.max(3, Number(settings.mid_banner_interval_sec) || 7);
 
   const nextSlide = useCallback(() => {
     setDirection('next');
