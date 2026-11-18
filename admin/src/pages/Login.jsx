@@ -32,13 +32,15 @@ export default function Login() {
 
   const handleDevBypass = () => {
     const devUser = {
-      id: '00000000-0000-0000-0000-000000000001',
+      id: 'a8fc4b52-5e9d-414c-8f55-b935dfc2b528',
       email: 'admin@bodycreamgh.com',
-      first_name: 'Store',
-      last_name: 'Admin',
+      first_name: 'Admin',
+      last_name: 'User',
       role: 'admin',
     };
-    localStorage.setItem('admin_token', 'dev_admin_active_token');
+    // Valid signed JWT for admin@bodycreamgh.com matching local backend JWT_SECRET
+    const devToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE4ZmM0YjUyLTVlOWQtNDE0Yy04ZjU1LWI5MzVkZmMyYjUyOCIsImVtYWlsIjoiYWRtaW5AYm9keWNyZWFtZ2guY29tIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzk1MDI0Mzk5LCJleHAiOjE4MjY1NjAzOTl9.QJLdUdevt2sp7wW7jDfHTSAnlOFcu2ozcO_i0WNOYLE';
+    localStorage.setItem('admin_token', devToken);
     localStorage.setItem('admin_user', JSON.stringify(devUser));
     window.location.href = from || '/';
   };
