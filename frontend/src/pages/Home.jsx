@@ -98,6 +98,12 @@ export default function Home() {
   const [nlEmail, setNlEmail]               = useState('');
   const [nlState, setNlState]               = useState('idle'); // idle | loading | success | error
   const [nlError, setNlError]               = useState('');
+  const [activeCategoryTab, setActiveCategoryTab] = useState('All');
+
+  const filteredFeatured = useMemo(() => {
+    if (activeCategoryTab === 'All') return featured;
+    return featured.filter(p => p.category && p.category.toLowerCase() === activeCategoryTab.toLowerCase());
+  }, [featured, activeCategoryTab]);
 
   const heroSrcSet = useMemo(() => {
     const base = hero_image || DEFAULT_HERO_IMG;
@@ -335,16 +341,47 @@ export default function Home() {
             <p className="page-subtitle">
               Our most-reordered creams — made for melanin-rich skin and Ghana's climate.
             </p>
+
+            {/* Jumia-inspired Category Filter Tabs */}
+            <div className="home-category-tabs" role="tablist" aria-label="Filter products by category">
+              <button
+                type="button"
+                className={`home-cat-tab ${activeCategoryTab === 'All' ? 'active' : ''}`}
+                onClick={() => setActiveCategoryTab('All')}
+                role="tab"
+                aria-selected={activeCategoryTab === 'All'}
+              >
+                All
+              </button>
+              {(categories || []).map(cat => (
+                <button
+                  key={cat.label}
+                  type="button"
+                  className={`home-cat-tab ${activeCategoryTab.toLowerCase() === cat.label.toLowerCase() ? 'active' : ''}`}
+                  onClick={() => setActiveCategoryTab(cat.label)}
+                  role="tab"
+                  aria-selected={activeCategoryTab.toLowerCase() === cat.label.toLowerCase()}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {loading ? (
             <div className="spinner" />
           ) : (
             <>
-              <ProductShelf products={featured} ariaLabel="Bestsellers" />
+              <ProductShelf
+                products={filteredFeatured.length > 0 ? filteredFeatured : featured}
+                ariaLabel={activeCategoryTab === 'All' ? 'Bestsellers' : `${activeCategoryTab} products`}
+              />
               <div className="view-all-wrap">
-                <Link to="/shop" className="btn btn-outline">
-                  View Full Collection
+                <Link
+                  to={activeCategoryTab === 'All' ? '/shop' : `/shop?category=${encodeURIComponent(activeCategoryTab)}`}
+                  className="btn btn-outline"
+                >
+                  View All {activeCategoryTab === 'All' ? 'Collection' : activeCategoryTab} →
                 </Link>
               </div>
             </>

@@ -17,8 +17,7 @@ pool.on('connect', () => {
 });
 
 pool.on('error', (err) => {
-  logger.error('Unexpected error on idle DB client', { err: err.message });
-  process.exit(-1);
+  logger.error('Unexpected error on idle DB client — pool will automatically discard and reconnect', { err: err.message });
 });
 
 module.exports = pool;

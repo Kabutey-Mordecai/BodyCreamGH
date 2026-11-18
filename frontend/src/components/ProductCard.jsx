@@ -278,6 +278,17 @@ export default function ProductCard({ product }) {
             GHS {parseFloat(product.price).toFixed(2)}
           </p>
         )}
+        {isLowStock && (
+          <div className="product-card-scarcity">
+            <div className="scarcity-bar-wrap" aria-hidden="true">
+              <div
+                className="scarcity-bar-fill"
+                style={{ width: `${Math.max(15, Math.min(100, (product.stock_quantity / threshold) * 100))}%` }}
+              />
+            </div>
+            <span className="scarcity-text">Only {product.stock_quantity} left in stock</span>
+          </div>
+        )}
       </div>
 
     </article>

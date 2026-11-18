@@ -162,6 +162,41 @@
   margin-bottom: 48px;
 }
 
+/* ── Interactive Category Quick Filter Tabs (Jumia Pattern) ── */
+.home-category-tabs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 24px;
+}
+
+.home-cat-tab {
+  padding: 8px 18px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.home-cat-tab:hover {
+  border-color: var(--color-accent);
+  color: var(--color-primary);
+  transform: translateY(-1px);
+}
+
+.home-cat-tab.active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(28, 20, 16, 0.2);
+}
+
 .view-all-wrap {
   text-align: center;
   margin-top: 40px;
