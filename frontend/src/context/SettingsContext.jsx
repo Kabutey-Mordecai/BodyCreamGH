@@ -66,6 +66,8 @@ const DEFAULTS = {
   mid_banner_enabled: true,
   mid_banner_autoplay: true,
   mid_banner_interval_sec: 7,
+  mid_banner_flip_speed_sec: 1.2,
+  mid_banner_height_px: 520,
   mid_banner_badge: 'PURE GHANAIAN BOTANICALS',
   mid_banner_title: 'Handcrafted in Small Batches.',
   mid_banner_highlight: 'Zero Harsh Bleaching Agents.',

@@ -109,6 +109,8 @@ export default function MidPageBanner() {
   const total = slides.length;
   const autoPlay = settings.mid_banner_autoplay !== false && settings.mid_banner_autoplay !== 'false';
   const intervalSec = Math.max(3, Number(settings.mid_banner_interval_sec) || 7);
+  const heightPx = Math.max(340, Math.min(800, Number(settings.mid_banner_height_px) || 520));
+  const flipSpeedSec = Math.max(0.3, Math.min(3.0, Number(settings.mid_banner_flip_speed_sec) || 1.2));
 
   const nextSlide = useCallback(() => {
     setDirection('next');
@@ -158,6 +160,10 @@ export default function MidPageBanner() {
           <div
             className={`mid-banner-card flip-${direction}`}
             key={`page-${current}`}
+            style={{
+              '--mid-banner-height': `${heightPx}px`,
+              '--mid-banner-flip-speed': `${flipSpeedSec}s`,
+            }}
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
             onTouchStart={handleTouchStart}

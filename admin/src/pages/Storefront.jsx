@@ -111,6 +111,8 @@ const DEFAULTS = {
   mid_banner_enabled: true,
   mid_banner_autoplay: true,
   mid_banner_interval_sec: 7,
+  mid_banner_flip_speed_sec: 1.2,
+  mid_banner_height_px: 520,
   mid_banner_badge: 'PURE GHANAIAN BOTANICALS',
   mid_banner_title: 'Handcrafted in Small Batches.',
   mid_banner_highlight: 'Zero Harsh Bleaching Agents.',
@@ -312,6 +314,30 @@ export default function Storefront() {
     });
     setDirty(true);
     setPreviewSlideIdx(prev => Math.min(prev, list.length - 1));
+  };
+
+  const moveMidSlide = (index, dir) => {
+    const target = index + dir;
+    if (target < 0 || target >= midBannerSlides.length) return;
+    const list = [...midBannerSlides];
+    const temp = list[index];
+    list[index] = list[target];
+    list[target] = temp;
+    setData(prev => {
+      const next = { ...prev, mid_banner_slides: list };
+      if (list[0]) {
+        next.mid_banner_badge = list[0].badge;
+        next.mid_banner_title = list[0].title;
+        next.mid_banner_highlight = list[0].highlight;
+        next.mid_banner_subtitle = list[0].subtitle;
+        next.mid_banner_cta_text = list[0].cta_text;
+        next.mid_banner_cta_link = list[0].cta_link;
+        next.mid_banner_image = list[0].image;
+      }
+      return next;
+    });
+    setDirty(true);
+    setPreviewSlideIdx(target);
   };
 
   const save = async () => {
@@ -812,9 +838,9 @@ export default function Storefront() {
                     <div className="hint">Full-width high-contrast banner &amp; auto-flipping product story carousel showcasing quality guarantees, botanical stories, and product collections.</div>
                   </div>
 
-                  {/* Autoplay & Interval Controls */}
-                  <div className="field-row" style={{ marginTop: 12, padding: 12, background: 'var(--ac-surface-2)', borderRadius: 8 }}>
-                    <div className="field" style={{ marginBottom: 0 }}>
+                  {/* Autoplay, Interval, Flip Speed & Height Controls */}
+                  <div style={{ marginTop: 14, padding: 16, background: 'var(--ac-surface-2)', borderRadius: 8 }}>
+                    <div className="field">
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
                         <input
                           type="checkbox"
@@ -822,20 +848,49 @@ export default function Storefront() {
                           onChange={e => update('mid_banner_autoplay', e.target.checked)}
                           style={{ width: 'auto' }}
                         />
-                        <span>Enable Automatic Slide Flipping (Auto-Play)</span>
+                        <strong>Enable Automatic Page Flipping (Auto-Play)</strong>
                       </label>
-                      <div className="hint">Slides smoothly transition automatically; pauses when user hovers or touches.</div>
+                      <div className="hint">Slides transition automatically like a digital lookbook; pauses gracefully when shoppers hover or touch.</div>
                     </div>
 
-                    <div className="field" style={{ marginBottom: 0 }}>
-                      <label>Flip Interval (seconds)</label>
-                      <input
-                        type="number"
-                        min="2"
-                        max="30"
-                        value={data.mid_banner_interval_sec || 5}
-                        onChange={e => update('mid_banner_interval_sec', Math.max(2, parseInt(e.target.value) || 5))}
-                      />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 12 }}>
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>Reading Time (seconds)</label>
+                        <input
+                          type="number"
+                          min="3"
+                          max="30"
+                          value={data.mid_banner_interval_sec || 7}
+                          onChange={e => update('mid_banner_interval_sec', Math.max(3, parseInt(e.target.value) || 7))}
+                        />
+                        <div className="hint">How long each story displays (default 7s).</div>
+                      </div>
+
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>Flip Animation Speed (seconds)</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          min="0.3"
+                          max="3.0"
+                          value={data.mid_banner_flip_speed_sec || 1.2}
+                          onChange={e => update('mid_banner_flip_speed_sec', Math.max(0.3, parseFloat(e.target.value) || 1.2))}
+                        />
+                        <div className="hint">Slow &amp; graceful turn (default 1.2s).</div>
+                      </div>
+
+                      <div className="field" style={{ marginBottom: 0 }}>
+                        <label>Banner Height (px)</label>
+                        <input
+                          type="number"
+                          step="10"
+                          min="380"
+                          max="700"
+                          value={data.mid_banner_height_px || 520}
+                          onChange={e => update('mid_banner_height_px', Math.max(380, parseInt(e.target.value) || 520))}
+                        />
+                        <div className="hint">Desktop height (520px = tall luxury spread).</div>
+                      </div>
                     </div>
                   </div>
 
@@ -892,6 +947,24 @@ export default function Storefront() {
                           <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>{slide.title || 'Untitled Slide'}</span>
                         </div>
                         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => moveMidSlide(idx, -1)}
+                            disabled={idx === 0}
+                            title="Move slide up in order"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            onClick={() => moveMidSlide(idx, 1)}
+                            disabled={idx === midBannerSlides.length - 1}
+                            title="Move slide down in order"
+                          >
+                            ↓
+                          </button>
                           <button
                             type="button"
                             className="btn btn-ghost btn-sm"

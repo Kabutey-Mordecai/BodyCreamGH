@@ -26,9 +26,9 @@
   grid-template-columns: 1.25fr 0.95fr;
   align-items: stretch;
   overflow: hidden;
-  height: 520px;
-  min-height: 520px;
-  max-height: 520px;
+  height: var(--mid-banner-height, 520px);
+  min-height: var(--mid-banner-height, 520px);
+  max-height: var(--mid-banner-height, 520px);
   transform-style: preserve-3d;
 }
 
@@ -53,7 +53,7 @@
   z-index: 4;
 }
 
-/* Page Turn Light Sweep & Crease Shadow (Slow & Gentle: 1.2s) */
+/* Page Turn Light Sweep & Crease Shadow (Slow & Gentle: dynamic duration) */
 .mid-banner-page-shadow {
   position: absolute;
   inset: 0;
@@ -69,7 +69,7 @@
     rgba(0, 0, 0, 0.5) 58%,
     transparent 75%
   );
-  animation: pageSweepNext 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+  animation: pageSweepNext var(--mid-banner-flip-speed, 1.2s) cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .mid-banner-page-shadow.sweep-prev {
@@ -80,16 +80,16 @@
     rgba(0, 0, 0, 0.5) 58%,
     transparent 75%
   );
-  animation: pageSweepPrev 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+  animation: pageSweepPrev var(--mid-banner-flip-speed, 1.2s) cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
-/* 3D Page Turn Card Reactions (Slow 1.2s, Zero Shrink) */
+/* 3D Page Turn Card Reactions (Dynamic duration, Zero Shrink) */
 .mid-banner-card.flip-next {
-  animation: pageTurnCardNext 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+  animation: pageTurnCardNext var(--mid-banner-flip-speed, 1.2s) cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .mid-banner-card.flip-prev {
-  animation: pageTurnCardPrev 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+  animation: pageTurnCardPrev var(--mid-banner-flip-speed, 1.2s) cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 /* Content Column with 3D Page Unfold Animation (Zero Shrink) */
@@ -104,11 +104,11 @@
 }
 
 .flip-next .mid-banner-content {
-  animation: pageTurnContentNext 1.05s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+  animation: pageTurnContentNext calc(var(--mid-banner-flip-speed, 1.2s) * 0.88) cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .flip-prev .mid-banner-content {
-  animation: pageTurnContentPrev 1.05s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+  animation: pageTurnContentPrev calc(var(--mid-banner-flip-speed, 1.2s) * 0.88) cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .mid-banner-badge {
@@ -200,11 +200,11 @@
 }
 
 .flip-next .mid-banner-visual {
-  animation: pageTurnVisualNext 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+  animation: pageTurnVisualNext var(--mid-banner-flip-speed, 1.2s) cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .flip-prev .mid-banner-visual {
-  animation: pageTurnVisualPrev 1.2s cubic-bezier(0.25, 1, 0.35, 1) forwards;
+  animation: pageTurnVisualPrev var(--mid-banner-flip-speed, 1.2s) cubic-bezier(0.25, 1, 0.35, 1) forwards;
 }
 
 .mid-banner-img {
