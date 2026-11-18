@@ -370,10 +370,10 @@ export default function Home() {
 
           {loading ? (
             <div className="spinner" />
-          ) : (
+          ) : filteredFeatured.length > 0 ? (
             <>
               <ProductShelf
-                products={filteredFeatured.length > 0 ? filteredFeatured : featured}
+                products={filteredFeatured}
                 ariaLabel={activeCategoryTab === 'All' ? 'Bestsellers' : `${activeCategoryTab} products`}
               />
               <div className="view-all-wrap">
@@ -385,6 +385,18 @@ export default function Home() {
                 </Link>
               </div>
             </>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '40px 16px', color: 'var(--color-muted)' }}>
+              <p style={{ fontSize: '1rem', marginBottom: '18px' }}>
+                No featured products in <strong>{activeCategoryTab}</strong> at the moment.
+              </p>
+              <Link
+                to={`/shop?category=${encodeURIComponent(activeCategoryTab)}`}
+                className="btn btn-outline"
+              >
+                Browse all {activeCategoryTab} in Shop →
+              </Link>
+            </div>
           )}
         </Reveal>
       </section>

@@ -1,14 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 import './PromoPopup.css';
 
 const SESSION_KEY = 'bodycream_promo_popup_dismissed';
 
+function isExternalUrl(url) {
+  return /^(https?:\/\/|mailto:|tel:|wa\.me)/i.test(url);
+}
+
 export default function PromoPopup() {
   const settings = useSettings();
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
+  const closeBtnRef = useRef(null);
+  const cardRef = useRef(null);
+  const previousActiveElement = useRef(null);
 
   const isEnabled = settings.promo_popup_enabled === true || settings.promo_popup_enabled === 'true';
 
@@ -26,23 +33,55 @@ export default function PromoPopup() {
 
     const delaySec = Number(settings.promo_popup_delay_sec) || 2;
     const timer = setTimeout(() => {
+      previousActiveElement.current = document.activeElement;
       setIsOpen(true);
     }, Math.max(500, delaySec * 1000));
 
     return () => clearTimeout(timer);
   }, [isEnabled, settings.promo_popup_delay_sec]);
 
-  // Handle escape key
+  // Focus close button on open
   useEffect(() => {
-    if (!isOpen) return;
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') closePopup();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    if (isOpen && closeBtnRef.current) {
+      closeBtnRef.current.focus();
+    }
   }, [isOpen]);
 
+  // Handle escape key & tab focus trap
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closePopup();
+        return;
+      }
+
+      if (e.key === 'Tab' && cardRef.current) {
+        const focusable = cardRef.current.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isClosing]);
+
   const closePopup = () => {
+    if (isClosing) return;
     setIsClosing(true);
     try {
       sessionStorage.setItem(SESSION_KEY, '1');
@@ -52,6 +91,9 @@ export default function PromoPopup() {
     setTimeout(() => {
       setIsOpen(false);
       setIsClosing(false);
+      if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
+        previousActiveElement.current.focus();
+      }
     }, 280);
   };
 
@@ -76,9 +118,13 @@ export default function PromoPopup() {
       aria-modal="true"
       aria-label="Promotional offer"
     >
-      <div className={`promo-popup-card ${isClosing ? 'is-closing' : ''}`}>
+      <div
+        ref={cardRef}
+        className={`promo-popup-card ${isClosing ? 'is-closing' : ''}`}
+      >
         {/* Dismiss Button */}
         <button
+          ref={closeBtnRef}
           type="button"
           className="promo-popup-close"
           onClick={closePopup}
@@ -106,13 +152,25 @@ export default function PromoPopup() {
           {subtext && <p className="promo-popup-subtext">{subtext}</p>}
 
           <div className="promo-popup-actions">
-            <Link
-              to={ctaLink}
-              className="btn btn-accent promo-popup-cta"
-              onClick={closePopup}
-            >
-              {ctaText} →
-            </Link>
+            {isExternalUrl(ctaLink) ? (
+              <a
+                href={ctaLink}
+                className="btn btn-accent promo-popup-cta"
+                onClick={closePopup}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {ctaText} →
+              </a>
+            ) : (
+              <Link
+                to={ctaLink}
+                className="btn btn-accent promo-popup-cta"
+                onClick={closePopup}
+              >
+                {ctaText} →
+              </Link>
+            )}
           </div>
         </div>
 

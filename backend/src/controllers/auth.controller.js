@@ -13,13 +13,11 @@ const logger = require('../utils/logger');
 // ── Register ──────────────────────────────────────────────────────────────────
 
 const register = async (req, res) => {
-  const client = await pool.connect();
   try {
     const { email, password, first_name, last_name, phone } = req.body;
 
     const existing = await UserModel.findByEmail(email);
     if (existing) {
-      client.release();
       return res.status(400).json({ error: 'Email already registered' });
     }
 
@@ -27,26 +25,31 @@ const register = async (req, res) => {
     const userId = uuid();
     const customerId = uuid();
 
-    await client.query('BEGIN');
-    await client.query(
-      'INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [userId, email, passwordHash, first_name, last_name, phone, 'customer']
-    );
-    await client.query(
-      'INSERT INTO customers (id, user_id, phone) VALUES ($1, $2, $3)',
-      [customerId, userId, phone]
-    );
-    await client.query('COMMIT');
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [userId, email, passwordHash, first_name, last_name, phone, 'customer']
+      );
+      await client.query(
+        'INSERT INTO customers (id, user_id, phone) VALUES ($1, $2, $3)',
+        [customerId, userId, phone]
+      );
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     sendWelcomeEmail(email, first_name).catch(err => logger.error('sendWelcomeEmail error', { err: err.message }));
 
     res.status(201).json({ message: 'Account created successfully', userId });
   } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
     logger.error('Register error', { err: error.message });
     res.status(500).json({ error: 'Registration failed' });
-  } finally {
-    client.release();
   }
 };
 

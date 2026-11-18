@@ -97,12 +97,13 @@ const addItem = async (req, res) => {
       stockToCheck = productRows[0].stock_quantity;
     }
 
-    // Check existing cart quantity for this exact product + variant combination
+    // Check existing cart quantity for this exact product + variant combination (with row lock)
     const { rows: existing } = await client.query(
       `SELECT id, quantity FROM cart_items
         WHERE customer_id = $1
           AND product_id  = $2
-          AND (variant_id = $3 OR (variant_id IS NULL AND $3::uuid IS NULL))`,
+          AND (variant_id = $3 OR (variant_id IS NULL AND $3::uuid IS NULL))
+        FOR UPDATE`,
       [req.user.id, product_id, variant_id || null]
     );
 

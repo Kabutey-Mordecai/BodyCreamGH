@@ -3,6 +3,25 @@ import { useSettings } from '../context/SettingsContext';
 import Reveal from './Reveal';
 import './CampaignTiles.css';
 
+function isExternalUrl(url) {
+  return /^(https?:\/\/|mailto:|tel:|wa\.me)/i.test(url);
+}
+
+function TileLink({ to, children, className }) {
+  if (isExternalUrl(to)) {
+    return (
+      <a href={to} className={className} target="_blank" rel="noopener noreferrer">
+        {children}
+      </a>
+    );
+  }
+  return (
+    <Link to={to} className={className}>
+      {children}
+    </Link>
+  );
+}
+
 export default function CampaignTiles() {
   const settings = useSettings();
 
@@ -33,7 +52,7 @@ export default function CampaignTiles() {
         <div className="campaign-tiles-grid">
           {/* Tile 1 */}
           <Reveal direction="left" className="campaign-tile-card">
-            <Link to={tile1.link} className="campaign-tile-inner">
+            <TileLink to={tile1.link} className="campaign-tile-inner">
               <img
                 src={tile1.image}
                 alt={tile1.title}
@@ -49,12 +68,12 @@ export default function CampaignTiles() {
                   {tile1.cta} <span className="arrow">→</span>
                 </span>
               </div>
-            </Link>
+            </TileLink>
           </Reveal>
 
           {/* Tile 2 */}
           <Reveal direction="right" delay={80} className="campaign-tile-card">
-            <Link to={tile2.link} className="campaign-tile-inner">
+            <TileLink to={tile2.link} className="campaign-tile-inner">
               <img
                 src={tile2.image}
                 alt={tile2.title}
@@ -70,7 +89,7 @@ export default function CampaignTiles() {
                   {tile2.cta} <span className="arrow">→</span>
                 </span>
               </div>
-            </Link>
+            </TileLink>
           </Reveal>
         </div>
       </div>
