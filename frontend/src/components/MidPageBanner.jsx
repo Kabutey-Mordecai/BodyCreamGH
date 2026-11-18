@@ -6,15 +6,6 @@ import './MidPageBanner.css';
 
 const DEFAULT_SLIDES = [
   {
-    badge: 'PURE GHANAIAN BOTANICALS',
-    title: 'Handcrafted in Small Batches.',
-    highlight: 'Zero Harsh Bleaching Agents.',
-    subtitle: 'Raw unrefined shea butter from Northern Ghana cooperatives, blended with botanical oils for rich, natural skin nutrition.',
-    cta_text: 'Learn Our Story',
-    cta_link: '/#our-story',
-    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
-  },
-  {
     badge: 'CLINICALLY PROVEN HYDRATION',
     title: '48-Hour Deep Moisture Lock.',
     highlight: 'Melanin-Rich Formula.',
@@ -24,6 +15,15 @@ const DEFAULT_SLIDES = [
     image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=700&q=80',
   },
   {
+    badge: 'PURE GHANAIAN BOTANICALS',
+    title: 'Handcrafted in Small Batches.',
+    highlight: 'Zero Harsh Bleaching Agents.',
+    subtitle: 'Raw unrefined shea butter from Northern Ghana cooperatives, blended with botanical oils for rich, natural skin nutrition.',
+    cta_text: 'Learn Our Story',
+    cta_link: '/#our-story',
+    image: 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80',
+  },
+  {
     badge: 'BESTSELLER RADIANCE',
     title: 'Rose Gold Botanical Glow.',
     highlight: 'Non-Greasy Velvet Finish.',
@@ -31,6 +31,15 @@ const DEFAULT_SLIDES = [
     cta_text: 'Discover Glow Oils',
     cta_link: '/shop?category=Body+Oil',
     image: 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    badge: 'WEEKEND LUXURY RITUAL',
+    title: 'Botanical Exfoliating Polish.',
+    highlight: 'Silky Smooth Finish.',
+    subtitle: 'Natural Ghanaian cane sugar crystals and raw shea butter to gently buff away dry skin and reveal radiant softness.',
+    cta_text: 'Shop Body Scrubs',
+    cta_link: '/shop?category=Body+Scrub',
+    image: 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=700&q=80',
   },
 ];
 
@@ -62,6 +71,7 @@ function SlideCta({ to, text }) {
 export default function MidPageBanner() {
   const settings = useSettings();
   const [current, setCurrent] = useState(0);
+  const [direction, setDirection] = useState('next');
   const [isPaused, setIsPaused] = useState(false);
   const touchStartX = useRef(0);
   const touchEndX = useRef(0);
@@ -79,16 +89,17 @@ export default function MidPageBanner() {
     if (settings.mid_banner_title || settings.mid_banner_highlight) {
       slides = [
         {
-          badge: settings.mid_banner_badge || 'PURE GHANAIAN BOTANICALS',
-          title: settings.mid_banner_title || 'Handcrafted in Small Batches.',
-          highlight: settings.mid_banner_highlight || 'Zero Harsh Bleaching Agents.',
-          subtitle: settings.mid_banner_subtitle || 'Raw unrefined shea butter from Northern Ghana cooperatives.',
-          cta_text: settings.mid_banner_cta_text || 'Learn Our Story',
-          cta_link: settings.mid_banner_cta_link || '/#our-story',
+          badge: settings.mid_banner_badge || DEFAULT_SLIDES[0].badge,
+          title: settings.mid_banner_title || DEFAULT_SLIDES[0].title,
+          highlight: settings.mid_banner_highlight || DEFAULT_SLIDES[0].highlight,
+          subtitle: settings.mid_banner_subtitle || DEFAULT_SLIDES[0].subtitle,
+          cta_text: settings.mid_banner_cta_text || DEFAULT_SLIDES[0].cta_text,
+          cta_link: settings.mid_banner_cta_link || DEFAULT_SLIDES[0].cta_link,
           image: settings.mid_banner_image || DEFAULT_SLIDES[0].image,
         },
         DEFAULT_SLIDES[1],
         DEFAULT_SLIDES[2],
+        DEFAULT_SLIDES[3],
       ];
     } else {
       slides = DEFAULT_SLIDES;
@@ -100,14 +111,21 @@ export default function MidPageBanner() {
   const intervalSec = Math.max(3, Number(settings.mid_banner_interval_sec) || 5);
 
   const nextSlide = useCallback(() => {
+    setDirection('next');
     setCurrent(prev => (prev + 1) % total);
   }, [total]);
 
   const prevSlide = useCallback(() => {
+    setDirection('prev');
     setCurrent(prev => (prev - 1 + total) % total);
   }, [total]);
 
-  // Auto-play timer
+  const goToSlide = (idx) => {
+    setDirection(idx >= current ? 'next' : 'prev');
+    setCurrent(idx);
+  };
+
+  // Auto-play timer for seamless page-flip automation
   useEffect(() => {
     if (!autoPlay || total <= 1 || isPaused) return;
     const timer = setInterval(nextSlide, intervalSec * 1000);
@@ -126,8 +144,8 @@ export default function MidPageBanner() {
   const handleTouchEnd = () => {
     const diff = touchStartX.current - touchEndX.current;
     if (Math.abs(diff) > 40) {
-      if (diff > 0) nextSlide(); // Swipe left -> next
-      else prevSlide();          // Swipe right -> prev
+      if (diff > 0) nextSlide(); // Swipe left -> next page
+      else prevSlide();          // Swipe right -> prev page
     }
   };
 
@@ -138,15 +156,20 @@ export default function MidPageBanner() {
       <div className="container">
         <Reveal className="mid-banner-card-wrapper">
           <div
-            className="mid-banner-card"
+            className={`mid-banner-card flip-${direction}`}
+            key={`page-${current}`}
             onMouseEnter={() => setIsPaused(true)}
             onMouseLeave={() => setIsPaused(false)}
             onTouchStart={handleTouchStart}
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
           >
+            {/* 3D Center Book Spine Crease & Sheen Sweep */}
+            <div className="mid-banner-spine" />
+            <div className={`mid-banner-page-shadow sweep-${direction}`} />
+
             {/* Slide Content Column */}
-            <div className="mid-banner-content" key={`content-${current}`}>
+            <div className="mid-banner-content">
               {slide.badge && (
                 <span className="mid-banner-badge">
                   <span className="dot" /> {slide.badge}
@@ -167,8 +190,8 @@ export default function MidPageBanner() {
               </div>
             </div>
 
-            {/* Slide Visual / Image Column */}
-            <div className="mid-banner-visual" key={`visual-${current}`}>
+            {/* Slide Visual / Image Column with 3D Page Turn */}
+            <div className="mid-banner-visual">
               <img
                 src={slide.image}
                 alt={slide.title || 'Product Story'}
@@ -185,7 +208,7 @@ export default function MidPageBanner() {
                   type="button"
                   className="mid-banner-arrow mid-banner-arrow-prev"
                   onClick={prevSlide}
-                  aria-label="Previous story slide"
+                  aria-label="Previous story page"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="15 18 9 12 15 6" />
@@ -195,7 +218,7 @@ export default function MidPageBanner() {
                   type="button"
                   className="mid-banner-arrow mid-banner-arrow-next"
                   onClick={nextSlide}
-                  aria-label="Next story slide"
+                  aria-label="Next story page"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="9 18 15 12 9 6" />
@@ -204,24 +227,32 @@ export default function MidPageBanner() {
               </>
             )}
 
-            {/* Bottom Progress Bar & Dot Navigation */}
+            {/* Bottom Progress Bar, Editorial Page Indicator & Navigation */}
             {total > 1 && (
-              <div className="mid-banner-nav" role="tablist" aria-label="Story slides navigation">
-                {slides.map((_, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    className={`mid-banner-dot ${idx === current ? 'active' : ''}`}
-                    onClick={() => setCurrent(idx)}
-                    role="tab"
-                    aria-selected={idx === current}
-                    aria-label={`Go to slide ${idx + 1}`}
-                  >
-                    <span className="dot-fill" style={{
-                      animationDuration: idx === current && !isPaused ? `${intervalSec}s` : '0s'
-                    }} />
-                  </button>
-                ))}
+              <div className="mid-banner-nav" role="tablist" aria-label="Story pages navigation">
+                <span className="mid-banner-page-pill">
+                  PAGE {current + 1} OF {total}
+                </span>
+                <div className="mid-banner-dots">
+                  {slides.map((_, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      className={`mid-banner-dot ${idx === current ? 'active' : ''}`}
+                      onClick={() => goToSlide(idx)}
+                      role="tab"
+                      aria-selected={idx === current}
+                      aria-label={`Go to page ${idx + 1}`}
+                    >
+                      <span
+                        className="dot-fill"
+                        style={{
+                          animationDuration: idx === current && !isPaused ? `${intervalSec}s` : '0s',
+                        }}
+                      />
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
