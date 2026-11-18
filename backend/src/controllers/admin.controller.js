@@ -4,6 +4,12 @@ const { randomUUID: uuidv4 } = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool   = require('../config/database');
 const logger = require('../utils/logger');
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (e) {
+  logger.warn('Sharp module not available, falling back to raw image storage');
+}
 
 // ── Image upload constants ────────────────────────────────────────────────────
 const MAX_IMAGES_PER_PRODUCT = 8;
@@ -225,23 +231,42 @@ const uploadProductImages = async (req, res) => {
       });
     }
 
-    // Count check passed — write buffers to disk
+    // Count check passed — optimize with Sharp and write buffers to disk
     const insertRows = [];
     for (let i = 0; i < req.files.length; i++) {
-      const file     = req.files[i];
-      const ext      = MIME_EXT_MAP[file.mimetype];
-      const filename = `${uuidv4()}${ext}`;
+      const file = req.files[i];
+
+      let outputBuffer = file.buffer;
+      let finalMime    = file.mimetype;
+      let finalExt     = MIME_EXT_MAP[file.mimetype] || '.jpg';
+      let finalSize    = file.size;
+
+      if (sharp && file.mimetype !== 'image/svg+xml') {
+        try {
+          outputBuffer = await sharp(file.buffer)
+            .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 85 })
+            .toBuffer();
+          finalMime = 'image/webp';
+          finalExt  = '.webp';
+          finalSize = outputBuffer.length;
+        } catch (sharpErr) {
+          logger.warn('Sharp image processing error, using original buffer', { err: sharpErr.message });
+        }
+      }
+
+      const filename = `${uuidv4()}${finalExt}`;
       const url      = `/uploads/products/${filename}`;
 
-      await fs.promises.writeFile(path.join(UPLOAD_DIR, filename), file.buffer);
+      await fs.promises.writeFile(path.join(UPLOAD_DIR, filename), outputBuffer);
       writtenFiles.push(filename);
 
       insertRows.push({
         filename,
         url,
         original_name: file.originalname,
-        mime_type:     file.mimetype,
-        size_bytes:    file.size,
+        mime_type:     finalMime,
+        size_bytes:    finalSize,
         sort_order:    existingCount + i,
         is_primary:    existingCount === 0 && i === 0,
       });
