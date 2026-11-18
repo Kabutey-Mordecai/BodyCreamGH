@@ -8,7 +8,7 @@ const {
 const {
   createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders,
   getRequestCounts, getRequests, exportOrders,
-  updateOrderStatus, cancelOrder, refundOrder, getOrderStatusLog, getReviewStatus,
+  updateOrderStatus, cancelOrder, refundOrder, markOrderPaid, getOrderStatusLog, getReviewStatus,
   requestCancel, requestReturn,
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,
@@ -29,10 +29,11 @@ router.get('/admin/requests',        verifyToken, requireAdmin, getRequests);
 router.get('/admin/export',          verifyToken, requireAdmin, exportOrders);
 router.get('/:orderId', verifyToken, getOrderById);
 
-// Admin-only fulfilment actions (unchanged)
-router.post('/:orderId/cancel',  verifyToken, requireAdmin, validateCancelOrder,  cancelOrder);
-router.post('/:orderId/refund',  verifyToken, requireAdmin, validateRefundOrder,  refundOrder);
-router.patch('/:orderId/status', verifyToken, requireAdmin, validateOrderStatus,  updateOrderStatus);
+// Admin-only fulfilment actions
+router.post('/:orderId/cancel',    verifyToken, requireAdmin, validateCancelOrder,  cancelOrder);
+router.post('/:orderId/refund',    verifyToken, requireAdmin, validateRefundOrder,  refundOrder);
+router.post('/:orderId/mark-paid', verifyToken, requireAdmin, markOrderPaid);
+router.patch('/:orderId/status',   verifyToken, requireAdmin, validateOrderStatus,  updateOrderStatus);
 
 // Customer request routes (authenticated, no requireAdmin)
 router.post('/:orderId/request-cancel', verifyToken, validateRequestCancel, requestCancel);

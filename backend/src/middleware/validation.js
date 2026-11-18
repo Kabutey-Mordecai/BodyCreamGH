@@ -28,29 +28,59 @@ const loginSchema = Joi.object({
 });
 
 const createOrderSchema = Joi.object({
-  shipping_address: Joi.string().trim().min(3).max(500).required(),
-  shipping_city:    Joi.string().trim().min(1).max(100).required(),
-  shipping_region:  Joi.string().trim().min(1).max(100).required(),
+  fulfillment_method: Joi.string().valid('delivery', 'pickup').default('delivery'),
+  payment_method:     Joi.string().valid('paystack', 'pay_on_delivery').default('paystack'),
+  shipping_address: Joi.when('fulfillment_method', {
+    is: 'pickup',
+    then: Joi.string().trim().max(500).optional().allow('', null),
+    otherwise: Joi.string().trim().min(3).max(500).required(),
+  }),
+  shipping_city: Joi.when('fulfillment_method', {
+    is: 'pickup',
+    then: Joi.string().trim().max(100).optional().allow('', null),
+    otherwise: Joi.string().trim().min(1).max(100).required(),
+  }),
+  shipping_region: Joi.when('fulfillment_method', {
+    is: 'pickup',
+    then: Joi.string().trim().max(100).optional().allow('', null),
+    otherwise: Joi.string().trim().min(1).max(100).required(),
+  }),
   delivery_fee:     Joi.number().min(0).default(0),
   coupon_code:      Joi.string().trim().max(50).optional().allow('', null),
   notes:            Joi.string().trim().max(1000).optional().allow('', null),
 });
 
 const createGuestOrderSchema = Joi.object({
+  fulfillment_method: Joi.string().valid('delivery', 'pickup').default('delivery'),
+  payment_method:     Joi.string().valid('paystack', 'pay_on_delivery').default('paystack'),
   email:            Joi.string().email().max(254).required(),
   first_name:       Joi.string().trim().min(1).max(100).required(),
   last_name:        Joi.string().trim().max(100).optional().allow('', null),
   phone:            Joi.string().trim().min(5).max(30).required(),
-  shipping_address: Joi.string().trim().min(3).max(500).required(),
-  shipping_city:    Joi.string().trim().min(1).max(100).required(),
-  shipping_region:  Joi.string().trim().min(1).max(100).required(),
+  shipping_address: Joi.when('fulfillment_method', {
+    is: 'pickup',
+    then: Joi.string().trim().max(500).optional().allow('', null),
+    otherwise: Joi.string().trim().min(3).max(500).required(),
+  }),
+  shipping_city: Joi.when('fulfillment_method', {
+    is: 'pickup',
+    then: Joi.string().trim().max(100).optional().allow('', null),
+    otherwise: Joi.string().trim().min(1).max(100).required(),
+  }),
+  shipping_region: Joi.when('fulfillment_method', {
+    is: 'pickup',
+    then: Joi.string().trim().max(100).optional().allow('', null),
+    otherwise: Joi.string().trim().min(1).max(100).required(),
+  }),
   delivery_fee:     Joi.number().min(0).default(0),
   coupon_code:      Joi.string().trim().max(50).optional().allow('', null),
   notes:            Joi.string().trim().max(1000).optional().allow('', null),
   items: Joi.array().items(
     Joi.object({
-      product_id: Joi.string().uuid().required(),
-      quantity:   Joi.number().integer().min(1).required(),
+      product_id:    Joi.string().uuid().required(),
+      quantity:      Joi.number().integer().min(1).required(),
+      variant_id:    Joi.string().uuid().optional().allow(null),
+      variant_label: Joi.string().trim().max(200).optional().allow('', null),
     })
   ).min(1).required(),
 });

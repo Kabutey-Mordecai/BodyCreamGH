@@ -17,8 +17,21 @@ const GHANA_REGIONS = [
 export default function Checkout() {
   const { cart, cartTotal, clearLocalCart, isGuest } = useCart();
   const { user } = useAuth();
-  const { delivery_fee_flat, delivery_fee_accra, free_delivery_over } = useSettings();
+  const {
+    delivery_fee_flat,
+    delivery_fee_accra,
+    free_delivery_over,
+    pickup_enabled,
+    pickup_location,
+    pickup_hours,
+    pay_on_delivery_enabled,
+    pay_on_delivery_accra_only,
+  } = useSettings();
   const navigate = useNavigate();
+
+  const [fulfillmentMethod, setFulfillmentMethod] = useState('delivery');
+  const [paymentMethod, setPaymentMethod]         = useState('paystack');
+  const [podConfirmation, setPodConfirmation]     = useState(null);
 
   const [form, setForm] = useState({
     // Guest-only fields
@@ -59,6 +72,25 @@ export default function Checkout() {
       .finally(() => setValidating(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const pickupEnabled = pickup_enabled !== false && pickup_enabled !== 'false';
+  const podEnabled    = pay_on_delivery_enabled === true || pay_on_delivery_enabled === 'true';
+  const podAccraOnly  = pay_on_delivery_accra_only !== false && pay_on_delivery_accra_only !== 'false';
+
+  const isAccra   = form.region === 'Greater Accra';
+  const podEligible = podEnabled && (!podAccraOnly || fulfillmentMethod === 'pickup' || isAccra);
+
+  useEffect(() => {
+    if (!pickupEnabled && fulfillmentMethod === 'pickup') {
+      setFulfillmentMethod('delivery');
+    }
+  }, [pickupEnabled, fulfillmentMethod]);
+
+  useEffect(() => {
+    if (!podEligible && paymentMethod === 'pay_on_delivery') {
+      setPaymentMethod('paystack');
+    }
+  }, [podEligible, paymentMethod]);
+
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
@@ -78,44 +110,72 @@ export default function Checkout() {
     setLoading(true);
 
     try {
-      let orderId, email;
+      const isPickup = fulfillmentMethod === 'pickup';
+      const shippingAddress = isPickup
+        ? `Pickup: ${pickup_location || 'East Legon, Accra'}`
+        : form.delivery_address;
+      const shippingCity   = isPickup ? 'Accra' : form.city;
+      const shippingRegion = isPickup ? 'Greater Accra' : form.region;
 
       if (isGuest) {
         // Guest checkout — send items array directly
         const { data: order } = await ordersAPI.createGuest({
-          email:            form.email,
-          first_name:       form.first_name,
-          last_name:        form.last_name,
-          phone:            form.phone,
-          shipping_address: form.delivery_address,
-          shipping_city:    form.city,
-          shipping_region:  form.region,
-          notes:            form.notes,
-          delivery_fee:     deliveryFee,
-          coupon_code:      coupon?.code || undefined,
-          items: cart.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
+          email:              form.email,
+          first_name:         form.first_name,
+          last_name:          form.last_name,
+          phone:              form.phone,
+          fulfillment_method: fulfillmentMethod,
+          payment_method:     paymentMethod,
+          shipping_address:   shippingAddress,
+          shipping_city:      shippingCity,
+          shipping_region:    shippingRegion,
+          notes:              form.notes,
+          delivery_fee:       deliveryFee,
+          coupon_code:        coupon?.code || undefined,
+          items: cart.map(i => ({
+            product_id: i.product_id,
+            quantity:   i.quantity,
+            ...(i.variant_id ? { variant_id: i.variant_id, variant_label: i.variant_label } : {}),
+          })),
         });
-        orderId = order.orderId;
-        email   = order.email;
 
-        const { data: payment } = await paymentsAPI.initializeGuest(orderId, email);
+        if (paymentMethod === 'pay_on_delivery') {
+          await clearLocalCart();
+          setPodConfirmation({
+            orderId:            order.orderId,
+            orderNumber:        order.orderNumber,
+            total:              order.total,
+            fulfillment_method: fulfillmentMethod,
+            email:              form.email,
+          });
+          return;
+        }
+
+        const { data: payment } = await paymentsAPI.initializeGuest(order.orderId, order.email);
         await clearLocalCart();
         window.location.href = payment.authorization_url;
       } else {
         // Authenticated checkout — cart is on the server
         const { data: order } = await ordersAPI.create({
-          shipping_address: form.delivery_address,
-          shipping_city:    form.city,
-          shipping_region:  form.region,
+          fulfillment_method: fulfillmentMethod,
+          payment_method:     paymentMethod,
+          shipping_address:   shippingAddress,
+          shipping_city:      shippingCity,
+          shipping_region:    shippingRegion,
           notes: form.phone
             ? `Phone: ${form.phone}${form.notes ? '\n' + form.notes : ''}`
             : form.notes,
           delivery_fee: deliveryFee,
           coupon_code:  coupon?.code || undefined,
         });
-        orderId = order.orderId;
 
-        const { data: payment } = await paymentsAPI.initialize(orderId);
+        if (paymentMethod === 'pay_on_delivery') {
+          await clearLocalCart();
+          navigate(`/orders/${order.orderId}`);
+          return;
+        }
+
+        const { data: payment } = await paymentsAPI.initialize(order.orderId);
         await clearLocalCart();
         window.location.href = payment.authorization_url;
       }
@@ -126,13 +186,14 @@ export default function Checkout() {
     }
   };
 
-  const isAccra   = form.region === 'Greater Accra';
   const feeFlat   = Number(delivery_fee_flat)  || 15;
   const feeAccra  = Number(delivery_fee_accra) || 10;
   const freeOver  = Number(free_delivery_over) || 0;
-  const deliveryFee = (freeOver > 0 && cartTotal >= freeOver)
+  const deliveryFee = fulfillmentMethod === 'pickup'
     ? 0
-    : isAccra ? feeAccra : feeFlat;
+    : (freeOver > 0 && cartTotal >= freeOver)
+      ? 0
+      : isAccra ? feeAccra : feeFlat;
   const subtotalPlusDelivery = cartTotal + deliveryFee;
   const discountAmount = coupon?.discountAmount || 0;
   const orderTotal = Math.max(0, subtotalPlusDelivery - discountAmount);
@@ -162,6 +223,37 @@ export default function Checkout() {
       setCouponLoading(false);
     }
   };
+
+  if (podConfirmation) {
+    return (
+      <div className="page-section">
+        <div className="container" style={{ maxWidth: 560, textAlign: 'center', padding: '60px 16px' }}>
+          <div className="checkout-section" style={{ alignItems: 'center', textAlign: 'center' }}>
+            <span className="section-label">Order Confirmed</span>
+            <h1 className="page-title" style={{ marginBottom: 4 }}>Thank you!</h1>
+            <p style={{ color: 'var(--color-muted)', margin: 0 }}>
+              Order <strong>{podConfirmation.orderNumber}</strong> has been confirmed.
+            </p>
+            <p style={{ fontSize: '0.92rem', margin: '8px 0 0' }}>
+              Total due on {podConfirmation.fulfillment_method === 'pickup' ? 'pickup' : 'delivery'}:{' '}
+              <strong>GHS {Number(podConfirmation.total || 0).toFixed(2)}</strong> (Cash or Mobile Money).
+            </p>
+            {podConfirmation.fulfillment_method === 'pickup' && (
+              <div className="checkout-pickup-box" style={{ width: '100%', textAlign: 'left' }}>
+                <strong>Pickup Station</strong>
+                <p>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</p>
+                {pickup_hours && <p className="checkout-pickup-hours">Hours: {pickup_hours}</p>}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
+              <Link to="/track-order" className="btn btn-accent">Track Your Order</Link>
+              <Link to="/shop" className="btn btn-outline">Continue Shopping</Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (cart.length === 0) {
     return (
@@ -252,53 +344,99 @@ export default function Checkout() {
             )}
 
             <div className="checkout-section">
-              <h2>Delivery Details</h2>
+              <h2>Delivery Method</h2>
               <div className="gold-divider" style={{ margin: '0 0 24px' }} />
 
               {error && <div className="alert alert-error">{error}</div>}
 
-              <div className="form-group">
-                <label htmlFor="delivery_address">Street address</label>
-                <input
-                  id="delivery_address"
-                  name="delivery_address"
-                  type="text"
-                  value={form.delivery_address}
-                  onChange={handleChange}
-                  required
-                  placeholder="e.g. 12 Oxford Street"
-                />
-              </div>
+              {pickupEnabled && (
+                <div className="checkout-method-grid" role="radiogroup" aria-label="Fulfillment method">
+                  <label className={`checkout-method-card${fulfillmentMethod === 'delivery' ? ' is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="fulfillment_method"
+                      value="delivery"
+                      checked={fulfillmentMethod === 'delivery'}
+                      onChange={() => setFulfillmentMethod('delivery')}
+                    />
+                    <div>
+                      <strong>Doorstep Delivery</strong>
+                      <span>
+                        Accra: GHS {feeAccra.toFixed(2)} · Nationwide: GHS {feeFlat.toFixed(2)}
+                        {freeOver > 0 ? ` (Free over GHS ${freeOver})` : ''}
+                      </span>
+                    </div>
+                  </label>
+                  <label className={`checkout-method-card${fulfillmentMethod === 'pickup' ? ' is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="fulfillment_method"
+                      value="pickup"
+                      checked={fulfillmentMethod === 'pickup'}
+                      onChange={() => setFulfillmentMethod('pickup')}
+                    />
+                    <div>
+                      <strong>Pickup Station — Free</strong>
+                      <span>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</span>
+                    </div>
+                  </label>
+                </div>
+              )}
 
-              <div className="checkout-row">
-                <div className="form-group">
-                  <label htmlFor="city">City</label>
-                  <input
-                    id="city"
-                    name="city"
-                    type="text"
-                    value={form.city}
-                    onChange={handleChange}
-                    required
-                    placeholder="e.g. Accra"
-                  />
+              {fulfillmentMethod === 'pickup' ? (
+                <div className="checkout-pickup-box">
+                  <strong>Pickup Location</strong>
+                  <p>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</p>
+                  {pickup_hours && (
+                    <p className="checkout-pickup-hours">Pickup hours: {pickup_hours}</p>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label htmlFor="region">Region</label>
-                  <select
-                    id="region"
-                    name="region"
-                    value={form.region}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="" disabled>Select a region</option>
-                    {GHANA_REGIONS.map(r => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="delivery_address">Street address</label>
+                    <input
+                      id="delivery_address"
+                      name="delivery_address"
+                      type="text"
+                      value={form.delivery_address}
+                      onChange={handleChange}
+                      required
+                      placeholder="e.g. 12 Oxford Street"
+                    />
+                  </div>
+
+                  <div className="checkout-row">
+                    <div className="form-group">
+                      <label htmlFor="city">City</label>
+                      <input
+                        id="city"
+                        name="city"
+                        type="text"
+                        value={form.city}
+                        onChange={handleChange}
+                        required
+                        placeholder="e.g. Accra"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="region">Region</label>
+                      <select
+                        id="region"
+                        name="region"
+                        value={form.region}
+                        onChange={handleChange}
+                        required
+                      >
+                        <option value="" disabled>Select a region</option>
+                        {GHANA_REGIONS.map(r => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="form-group">
                 <label htmlFor="phone">Phone number</label>
@@ -321,8 +459,51 @@ export default function Checkout() {
                   value={form.notes}
                   onChange={handleChange}
                   rows={3}
-                  placeholder="Any special instructions for delivery?"
+                  placeholder={fulfillmentMethod === 'pickup' ? 'Preferred pickup time or notes?' : 'Any special instructions for delivery?'}
                 />
+              </div>
+            </div>
+
+            {/* ── Payment method ──────────────────────── */}
+            <div className="checkout-section">
+              <h2>Payment Method</h2>
+              <div className="gold-divider" style={{ margin: '0 0 16px' }} />
+
+              <div className="checkout-method-grid" role="radiogroup" aria-label="Payment method">
+                <label className={`checkout-method-card${paymentMethod === 'paystack' ? ' is-selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="payment_method"
+                    value="paystack"
+                    checked={paymentMethod === 'paystack'}
+                    onChange={() => setPaymentMethod('paystack')}
+                  />
+                  <div>
+                    <strong>Pay Online (Paystack)</strong>
+                    <span>MTN MoMo, Telecel Cash, Cards &amp; Bank Transfer</span>
+                  </div>
+                </label>
+
+                {podEnabled && (
+                  <label className={`checkout-method-card${paymentMethod === 'pay_on_delivery' ? ' is-selected' : ''}${!podEligible ? ' is-disabled' : ''}`}>
+                    <input
+                      type="radio"
+                      name="payment_method"
+                      value="pay_on_delivery"
+                      checked={paymentMethod === 'pay_on_delivery'}
+                      disabled={!podEligible}
+                      onChange={() => setPaymentMethod('pay_on_delivery')}
+                    />
+                    <div>
+                      <strong>{fulfillmentMethod === 'pickup' ? 'Pay on Pickup' : 'Pay on Delivery'}</strong>
+                      <span>
+                        {podEligible
+                          ? 'Pay with Cash or Mobile Money when your order arrives'
+                          : 'Available for Greater Accra deliveries or Store Pickup only'}
+                      </span>
+                    </div>
+                  </label>
+                )}
               </div>
             </div>
 
@@ -388,14 +569,17 @@ export default function Checkout() {
                 ? 'Checking availability…'
                 : loading
                 ? 'Processing…'
+                : paymentMethod === 'pay_on_delivery'
+                ? `Place Order — GHS ${validatedOrderTotal.toFixed(2)} (${fulfillmentMethod === 'pickup' ? 'Pay on Pickup' : 'Pay on Delivery'})`
                 : `Pay GHS ${validatedOrderTotal.toFixed(2)} with Paystack`}
             </button>
 
             <div className="checkout-note">
               <span className="checkout-lock">🔒</span>
               <span>
-                You'll be redirected to Paystack's secure payment page.
-                Cards, mobile money, and bank transfers are accepted.
+                {paymentMethod === 'pay_on_delivery'
+                  ? 'Your order will be confirmed immediately. Pay in cash or Mobile Money upon receipt.'
+                  : "You'll be redirected to Paystack's secure payment page. Cards, mobile money, and bank transfers are accepted."}
               </span>
             </div>
           </form>
@@ -462,10 +646,12 @@ export default function Checkout() {
                 <span>GHS {validatedSubtotal.toFixed(2)}</span>
               </div>
               <div className="summary-row">
-                <span>Delivery</span>
-                <span>{form.region
-                  ? (deliveryFee === 0 ? 'Free' : `GHS ${deliveryFee.toFixed(2)}`)
-                  : 'Select region'}
+                <span>{fulfillmentMethod === 'pickup' ? 'Pickup Station' : 'Delivery'}</span>
+                <span>{fulfillmentMethod === 'pickup'
+                  ? 'Free'
+                  : form.region
+                    ? (deliveryFee === 0 ? 'Free' : `GHS ${deliveryFee.toFixed(2)}`)
+                    : 'Select region'}
                 </span>
               </div>
               {coupon && (

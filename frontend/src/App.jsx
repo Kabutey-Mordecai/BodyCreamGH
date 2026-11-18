@@ -1,8 +1,10 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
+import Home from './pages/Home';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -10,56 +12,70 @@ function ScrollToTop() {
   return null;
 }
 
-import Home            from './pages/Home';
-import Shop            from './pages/Shop';
-import ProductPage     from './pages/ProductPage';
-import Cart            from './pages/Cart';
-import Checkout        from './pages/Checkout';
-import Login           from './pages/Login';
-import Register        from './pages/Register';
-import ForgotPassword  from './pages/ForgotPassword';
-import ResetPassword   from './pages/ResetPassword';
-import PaymentCallback from './pages/PaymentCallback';
-import Account         from './pages/Account';
-import Orders          from './pages/Orders';
-import OrderDetail     from './pages/OrderDetail';
-import Wishlist        from './pages/Wishlist';
-import Unsubscribe     from './pages/Unsubscribe';
-import TrackOrder      from './pages/TrackOrder';
+function PageFallback() {
+  return (
+    <div className="container" style={{ padding: '64px 24px', textAlign: 'center', color: 'var(--color-muted)' }}>
+      Loading…
+    </div>
+  );
+}
+
+// Route-level code splitting keeps the initial storefront JS lean on mobile networks.
+const Shop            = lazy(() => import('./pages/Shop'));
+const ProductPage     = lazy(() => import('./pages/ProductPage'));
+const Cart            = lazy(() => import('./pages/Cart'));
+const Checkout        = lazy(() => import('./pages/Checkout'));
+const Login           = lazy(() => import('./pages/Login'));
+const Register        = lazy(() => import('./pages/Register'));
+const ForgotPassword  = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword   = lazy(() => import('./pages/ResetPassword'));
+const PaymentCallback = lazy(() => import('./pages/PaymentCallback'));
+const Account         = lazy(() => import('./pages/Account'));
+const Orders          = lazy(() => import('./pages/Orders'));
+const OrderDetail     = lazy(() => import('./pages/OrderDetail'));
+const Wishlist        = lazy(() => import('./pages/Wishlist'));
+const Unsubscribe     = lazy(() => import('./pages/Unsubscribe'));
+const TrackOrder      = lazy(() => import('./pages/TrackOrder'));
 
 export default function App() {
   return (
-    <div className="app">
-      <ScrollToTop />
-      <Navigation />
+    <ErrorBoundary>
+      <div className="app">
+        <ScrollToTop />
+        <Navigation />
 
-      <main className="main-content">
-        <Routes>
-          {/* Public routes — anyone can visit these */}
-          <Route path="/"                    element={<Home />} />
-          <Route path="/shop"                element={<Shop />} />
-          <Route path="/products/:id"        element={<ProductPage />} />
-          <Route path="/login"               element={<Login />} />
-          <Route path="/register"            element={<Register />} />
-          <Route path="/forgot-password"     element={<ForgotPassword />} />
-          <Route path="/reset-password"      element={<ResetPassword />} />
-          <Route path="/unsubscribe"         element={<Unsubscribe />} />
-          <Route path="/track"               element={<TrackOrder />} />
+        <main className="main-content">
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              {/* Public routes — anyone can visit these */}
+              <Route path="/"                    element={<Home />} />
+              <Route path="/shop"                element={<Shop />} />
+              <Route path="/products/:id"        element={<ProductPage />} />
+              <Route path="/login"               element={<Login />} />
+              <Route path="/register"            element={<Register />} />
+              <Route path="/forgot-password"     element={<ForgotPassword />} />
+              <Route path="/reset-password"      element={<ResetPassword />} />
+              <Route path="/unsubscribe"         element={<Unsubscribe />} />
+              <Route path="/track"               element={<TrackOrder />} />
 
-          {/* Payment callback — visited after Paystack redirects back */}
-          <Route path="/payment/callback"    element={<PaymentCallback />} />
+              {/* Payment callback — visited after Paystack redirects back */}
+              <Route path="/payment/callback"    element={<ErrorBoundary><PaymentCallback /></ErrorBoundary>} />
 
-          {/* Protected routes — redirect to /login if not authenticated */}
-          <Route path="/cart"       element={<Cart />} />
-          <Route path="/checkout"   element={<Checkout />} />
-          <Route path="/account"    element={<ProtectedRoute><Account /></ProtectedRoute>} />
-          <Route path="/orders"     element={<ProtectedRoute><Orders /></ProtectedRoute>} />
-          <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
-          <Route path="/wishlist"   element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
-        </Routes>
-      </main>
+              {/* Cart & checkout (guest + authenticated) */}
+              <Route path="/cart"       element={<Cart />} />
+              <Route path="/checkout"   element={<ErrorBoundary><Checkout /></ErrorBoundary>} />
 
-      <Footer />
-    </div>
+              {/* Protected routes — redirect to /login if not authenticated */}
+              <Route path="/account"    element={<ProtectedRoute><Account /></ProtectedRoute>} />
+              <Route path="/orders"     element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+              <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
+              <Route path="/wishlist"   element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
+            </Routes>
+          </Suspense>
+        </main>
+
+        <Footer />
+      </div>
+    </ErrorBoundary>
   );
 }

@@ -27,12 +27,17 @@ const DEFAULTS = {
   free_delivery_over:   200,
   delivery_estimate_accra:      '1–2 business days',
   delivery_estimate_nationwide: '3–5 business days',
+  pickup_enabled:               true,
+  pickup_location:              'East Legon, Accra (Call upon arrival)',
+  pickup_hours:                 'Mon–Sat, 9:00 AM – 6:00 PM',
 
   low_stock_threshold: 5,
 
-  paystack_public_key:  '',
-  whatsapp_number:      '',
-  order_notification_email: '',
+  paystack_public_key:          '',
+  pay_on_delivery_enabled:      false,
+  pay_on_delivery_accra_only:   true,
+  whatsapp_number:              '',
+  order_notification_email:     '',
 };
 
 const LOCAL_KEY = 'admin_settings_draft';
@@ -170,7 +175,7 @@ export default function Settings() {
                 />
               </div>
             </div>
-            <div className="field" style={{ marginBottom: 0 }}>
+            <div className="field">
               <label>Low stock threshold (units)</label>
               <input
                 type="number"
@@ -179,6 +184,41 @@ export default function Settings() {
                 onChange={e => update('low_stock_threshold', Number(e.target.value) || 5)}
               />
               <div className="hint">Products at or below this quantity show a "low stock" warning to customers.</div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 14, marginTop: 14 }}>
+              <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  id="pickup_enabled"
+                  type="checkbox"
+                  checked={Boolean(data.pickup_enabled)}
+                  onChange={e => update('pickup_enabled', e.target.checked)}
+                  style={{ width: 'auto' }}
+                />
+                <label htmlFor="pickup_enabled" style={{ margin: 0, cursor: 'pointer' }}>
+                  Enable Store Pickup Station (GHS 0.00 fee)
+                </label>
+              </div>
+              <div className="field-row">
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Pickup station address</label>
+                  <input
+                    type="text"
+                    value={data.pickup_location}
+                    onChange={e => update('pickup_location', e.target.value)}
+                    placeholder="East Legon, Accra (Call upon arrival)"
+                  />
+                </div>
+                <div className="field" style={{ marginBottom: 0 }}>
+                  <label>Pickup hours</label>
+                  <input
+                    type="text"
+                    value={data.pickup_hours}
+                    onChange={e => update('pickup_hours', e.target.value)}
+                    placeholder="Mon–Sat, 9:00 AM – 6:00 PM"
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -199,6 +239,33 @@ export default function Settings() {
                 Used by the storefront for card/MoMo payments. Find it in your{' '}
                 <a href="https://dashboard.paystack.com/#/settings/developers" target="_blank" rel="noreferrer">Paystack dashboard</a>.
                 {' '}The secret key lives only on the backend in <code>.env</code>.
+              </div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 14, marginTop: 14 }}>
+              <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  id="pay_on_delivery_enabled"
+                  type="checkbox"
+                  checked={Boolean(data.pay_on_delivery_enabled)}
+                  onChange={e => update('pay_on_delivery_enabled', e.target.checked)}
+                  style={{ width: 'auto' }}
+                />
+                <label htmlFor="pay_on_delivery_enabled" style={{ margin: 0, cursor: 'pointer' }}>
+                  Enable Pay on Delivery / Pay on Pickup (Cash or MoMo on arrival)
+                </label>
+              </div>
+              <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 0 }}>
+                <input
+                  id="pay_on_delivery_accra_only"
+                  type="checkbox"
+                  checked={Boolean(data.pay_on_delivery_accra_only)}
+                  onChange={e => update('pay_on_delivery_accra_only', e.target.checked)}
+                  style={{ width: 'auto' }}
+                />
+                <label htmlFor="pay_on_delivery_accra_only" style={{ margin: 0, cursor: 'pointer' }}>
+                  Restrict Pay on Delivery to Greater Accra &amp; Store Pickup only
+                </label>
               </div>
             </div>
           </div>

@@ -8,6 +8,7 @@ import { useWishlist } from '../context/WishlistContext';
 import { useSettings } from '../context/SettingsContext';
 import StarRating from '../components/StarRating';
 import ProductCard from '../components/ProductCard';
+import { useSeo } from '../utils/seo';
 import './ProductPage.css';
 
 // TO CUSTOMIZE: Placeholder shown when the product has no image
@@ -253,6 +254,61 @@ export default function ProductPage() {
       v.option_values.every(ov => selectedOptions[ov.option_type_id] === ov.option_value_id)
     ) || null;
   }, [variantData, selectedOptions, product?.has_variants]);
+
+  const seoConfig = useMemo(() => {
+    if (!product) {
+      return {
+        title: `${settings.store_name || 'BodyCream GH'}`,
+        description: settings.hero_subtitle || 'Handcrafted luxury skincare from Ghana.',
+      };
+    }
+    const storeName = settings.store_name || 'BodyCream GH';
+    const priceNum = selectedVariant ? parseFloat(selectedVariant.price) : parseFloat(product.price);
+    const stockNum = selectedVariant ? selectedVariant.stock_quantity : product.stock_quantity;
+    const primaryImg = (product.images || []).find(i => i.is_primary)?.url || product.image_url || '';
+    const resolvedImg = resolveImageUrl(primaryImg);
+    const absImage = resolvedImg && resolvedImg.startsWith('http')
+      ? resolvedImg
+      : resolvedImg
+        ? `${window.location.origin}${resolvedImg.startsWith('/') ? '' : '/'}${resolvedImg}`
+        : undefined;
+    const desc = (product.description || `${product.name} — handcrafted in Ghana by ${storeName}.`).slice(0, 160);
+    const reviewCount = parseInt(product.review_count || reviewMeta.summary?.review_count || 0, 10);
+    const avgRating = parseFloat(product.avg_rating || reviewMeta.summary?.avg_rating || 0);
+
+    const jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: product.name,
+      description: desc,
+      ...(absImage ? { image: [absImage] } : {}),
+      brand: { '@type': 'Brand', name: storeName },
+      offers: {
+        '@type': 'Offer',
+        priceCurrency: 'GHS',
+        price: Number.isFinite(priceNum) ? priceNum.toFixed(2) : '0.00',
+        availability: stockNum > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+        url: window.location.href.split('#')[0],
+      },
+      ...(reviewCount > 0 && avgRating > 0 ? {
+        aggregateRating: {
+          '@type': 'AggregateRating',
+          ratingValue: avgRating.toFixed(1),
+          reviewCount,
+        },
+      } : {}),
+    };
+
+    return {
+      title: `${product.name} — ${storeName}`,
+      description: desc,
+      image: absImage,
+      type: 'product',
+      jsonLd,
+    };
+  }, [product, selectedVariant, settings.store_name, settings.hero_subtitle, reviewMeta.summary]);
+
+  useSeo(seoConfig);
 
   const handleAddToCart = async () => {
     if (product.has_variants && !selectedVariant) {
@@ -644,6 +700,29 @@ export default function ProductPage() {
               </svg>
               {isSaved ? 'Saved to Wishlist' : 'Add to Wishlist'}
             </button>
+
+            {/* WhatsApp-to-Order CTA — shown when store whatsapp_number is configured */}
+            {(() => {
+              const rawDigits = String(settings.whatsapp_number || '').replace(/\D/g, '');
+              const waNumber = rawDigits.length === 10 && rawDigits.startsWith('0')
+                ? `233${rawDigits.slice(1)}`
+                : rawDigits;
+              if (!waNumber) return null;
+              const variantText = selectedVariant
+                ? ` (${selectedVariant.option_values.map(ov => ov.value).join(' / ')})`
+                : '';
+              const waMsg = `Hi ${settings.store_name || 'BodyCream GH'}, I'd like to order ${qty}x ${product.name}${variantText} (GHS ${effectivePrice.toFixed(2)}). ${window.location.href}`;
+              return (
+                <a
+                  href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waMsg)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-full pdp-whatsapp-btn"
+                >
+                  Order via WhatsApp
+                </a>
+              );
+            })()}
 
             {/* Trust row under the CTA */}
             <div className="product-trust-row">

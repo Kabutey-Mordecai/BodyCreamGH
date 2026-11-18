@@ -16,25 +16,68 @@ function parseSettingNumber(value, fallback) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-async function computeServerDeliveryFee(client, shippingRegion, subtotal) {
+function parseSettingBool(value, fallback) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const lower = value.trim().toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+  }
+  return fallback;
+}
+
+function isAccraRegion(region) {
+  const normalized = String(region || '').trim().toLowerCase();
+  return normalized === 'greater accra' || normalized === 'accra';
+}
+
+async function getCheckoutSettings(client) {
   const { rows } = await client.query(
     `SELECT key, value FROM site_settings
       WHERE key = ANY($1::text[])`,
-    [['delivery_fee_flat', 'delivery_fee_accra', 'free_delivery_over']]
+    [[
+      'delivery_fee_flat',
+      'delivery_fee_accra',
+      'free_delivery_over',
+      'pickup_enabled',
+      'pickup_location',
+      'pay_on_delivery_enabled',
+      'pay_on_delivery_accra_only',
+    ]]
   );
   const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
+  return {
+    feeFlat:        parseSettingNumber(map.delivery_fee_flat, 15),
+    feeAccra:       parseSettingNumber(map.delivery_fee_accra, 10),
+    freeOver:       parseSettingNumber(map.free_delivery_over, 200),
+    pickupEnabled:  parseSettingBool(map.pickup_enabled, true),
+    pickupLocation: typeof map.pickup_location === 'string' && map.pickup_location.trim()
+      ? map.pickup_location.trim()
+      : 'East Legon, Accra (Call upon arrival)',
+    podEnabled:     parseSettingBool(map.pay_on_delivery_enabled, false),
+    podAccraOnly:   parseSettingBool(map.pay_on_delivery_accra_only, true),
+  };
+}
 
-  const feeFlat  = parseSettingNumber(map.delivery_fee_flat, 15);
-  const feeAccra = parseSettingNumber(map.delivery_fee_accra, 10);
-  const freeOver = parseSettingNumber(map.free_delivery_over, 200);
+function computeDeliveryFeeFromSettings(cfg, fulfillmentMethod, shippingRegion, subtotal) {
+  if (fulfillmentMethod === 'pickup') return 0;
+  if (cfg.freeOver > 0 && subtotal >= cfg.freeOver) return 0;
+  return isAccraRegion(shippingRegion) ? cfg.feeAccra : cfg.feeFlat;
+}
 
-  if (freeOver > 0 && subtotal >= freeOver) {
-    return 0;
+function validateFulfillmentAndPayment(cfg, fulfillmentMethod, paymentMethod, shippingRegion) {
+  if (fulfillmentMethod === 'pickup' && !cfg.pickupEnabled) {
+    return 'Store pickup is currently unavailable';
   }
-
-  const normalized = String(shippingRegion || '').trim().toLowerCase();
-  const isAccra = normalized === 'greater accra' || normalized === 'accra';
-  return isAccra ? feeAccra : feeFlat;
+  if (paymentMethod === 'pay_on_delivery') {
+    if (!cfg.podEnabled) {
+      return 'Pay on Delivery is currently unavailable';
+    }
+    if (cfg.podAccraOnly && fulfillmentMethod === 'delivery' && !isAccraRegion(shippingRegion)) {
+      return 'Pay on Delivery is only available for Greater Accra deliveries or store pickup';
+    }
+  }
+  return null;
 }
 
 const createOrder = async (req, res) => {
@@ -42,15 +85,34 @@ const createOrder = async (req, res) => {
   let transactionStarted = false;
 
   try {
-    const { shipping_address, shipping_city, shipping_region, notes } = req.body;
+    const fulfillment_method = req.body.fulfillment_method === 'pickup' ? 'pickup' : 'delivery';
+    const payment_method = req.body.payment_method === 'pay_on_delivery' ? 'pay_on_delivery' : 'paystack';
+    const { notes } = req.body;
+    let { shipping_address, shipping_city, shipping_region } = req.body;
 
-    if (!shipping_address || !shipping_city || !shipping_region) {
+    if (fulfillment_method === 'delivery' && (!shipping_address || !shipping_city || !shipping_region)) {
       return res.status(400).json({ error: 'Shipping address, city, and region are required' });
     }
 
     // BEGIN before the cart fetch so the entire operation is one atomic unit
     await client.query('BEGIN');
     transactionStarted = true;
+
+    const checkoutCfg = await getCheckoutSettings(client);
+    const optionError = validateFulfillmentAndPayment(
+      checkoutCfg, fulfillment_method, payment_method, shipping_region
+    );
+    if (optionError) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({ error: optionError });
+    }
+
+    if (fulfillment_method === 'pickup') {
+      shipping_address = shipping_address?.trim() || `Pickup: ${checkoutCfg.pickupLocation}`;
+      shipping_city    = shipping_city?.trim()    || 'Accra';
+      shipping_region  = shipping_region?.trim()  || 'Greater Accra';
+    }
 
     // Lock cart rows — include variant price/stock when variant_id is present
     const cartResult = await client.query(
@@ -68,6 +130,7 @@ const createOrder = async (req, res) => {
 
     if (cartResult.rows.length === 0) {
       await client.query('ROLLBACK');
+      transactionStarted = false;
       return res.status(400).json({ error: 'Cart is empty' });
     }
 
@@ -75,6 +138,7 @@ const createOrder = async (req, res) => {
     for (const item of cartResult.rows) {
       if (item.stock_quantity < item.quantity) {
         await client.query('ROLLBACK');
+        transactionStarted = false;
         return res.status(400).json({ error: 'Insufficient stock for one or more items' });
       }
     }
@@ -83,7 +147,9 @@ const createOrder = async (req, res) => {
     cartResult.rows.forEach(item => { subtotal += parseFloat(item.price) * item.quantity; });
 
     // Authoritative server-side delivery fee — client-supplied delivery_fee is ignored.
-    const delivery_fee = await computeServerDeliveryFee(client, shipping_region, subtotal);
+    const delivery_fee = computeDeliveryFeeFromSettings(
+      checkoutCfg, fulfillment_method, shipping_region, subtotal
+    );
     let total = subtotal + delivery_fee;
 
     // Apply coupon discount server-side using a locked read so concurrent checkouts
@@ -102,15 +168,30 @@ const createOrder = async (req, res) => {
 
     const orderId = uuid();
     const orderNumber = `ORD-${Date.now()}`;
+    const initialStatus = payment_method === 'pay_on_delivery' ? 'confirmed' : 'pending';
 
     await client.query(
       `INSERT INTO orders
          (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
-          shipping_region, delivery_fee, coupon_code, discount_amount, notes, status, payment_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending','unpaid')`,
+          shipping_region, delivery_fee, coupon_code, discount_amount, notes,
+          fulfillment_method, payment_method, status, payment_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'unpaid')`,
       [orderId, req.user.id, orderNumber, total, shipping_address, shipping_city,
-       shipping_region, delivery_fee, appliedCouponCode, discountAmount, notes]
+       shipping_region, delivery_fee, appliedCouponCode, discountAmount, notes,
+       fulfillment_method, payment_method, initialStatus]
     );
+
+    if (payment_method === 'pay_on_delivery') {
+      await logStatusChange(
+        orderId,
+        'pending',
+        'confirmed',
+        fulfillment_method === 'pickup'
+          ? 'Order confirmed (Pay on Pickup)'
+          : 'Order confirmed (Pay on Delivery)',
+        client
+      );
+    }
 
     for (const item of cartResult.rows) {
       await client.query(
@@ -130,8 +211,25 @@ const createOrder = async (req, res) => {
 
     await client.query('DELETE FROM cart_items WHERE customer_id=$1', [req.user.id]);
     await client.query('COMMIT');
+    transactionStarted = false;
 
-    res.status(201).json({ orderId, orderNumber, total, discountAmount, couponCode: appliedCouponCode });
+    if (payment_method === 'pay_on_delivery') {
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('payment-success', { orderId, reference: `POD-${orderNumber}` })
+        .catch(err => logger.error('Failed to enqueue POD confirmation notification', { err: err.message, orderId }));
+    }
+
+    res.status(201).json({
+      orderId,
+      orderNumber,
+      total,
+      deliveryFee: delivery_fee,
+      discountAmount,
+      couponCode: appliedCouponCode,
+      fulfillment_method,
+      payment_method,
+      status: initialStatus,
+    });
   } catch (error) {
     // Only ROLLBACK if we actually opened a transaction
     if (transactionStarted) {
@@ -151,7 +249,8 @@ const getOrders = async (req, res) => {
     const offset = (page - 1) * limit;
 
     const { rows } = await pool.query(
-      `SELECT id, order_number, total_amount, status, payment_status, refund_status, created_at,
+      `SELECT id, order_number, total_amount, status, payment_status, refund_status,
+              fulfillment_method, payment_method, created_at,
               cancel_requested, cancel_request_rejected,
               return_requested, return_request_rejected
          FROM orders
@@ -216,7 +315,7 @@ const getAllOrders = async (req, res) => {
     const [dataResult, countResult] = await Promise.all([
       pool.query(`
         SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status,
-               o.refund_status, o.created_at,
+               o.refund_status, o.fulfillment_method, o.payment_method, o.created_at,
                o.cancel_requested, o.cancel_request_rejected,
                o.return_requested, o.return_request_rejected,
                COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name,
@@ -820,13 +919,18 @@ const createGuestOrder = async (req, res) => {
   let transactionStarted = false;
 
   try {
+    const fulfillment_method = req.body.fulfillment_method === 'pickup' ? 'pickup' : 'delivery';
+    const payment_method = req.body.payment_method === 'pay_on_delivery' ? 'pay_on_delivery' : 'paystack';
     const {
       email, first_name, last_name, phone,
-      shipping_address, shipping_city, shipping_region,
       notes, items,
     } = req.body;
+    let { shipping_address, shipping_city, shipping_region } = req.body;
 
-    if (!email || !first_name || !phone || !shipping_address || !shipping_city || !shipping_region) {
+    if (!email || !first_name || !phone) {
+      return res.status(400).json({ error: 'email, first_name, and phone are required' });
+    }
+    if (fulfillment_method === 'delivery' && (!shipping_address || !shipping_city || !shipping_region)) {
       return res.status(400).json({ error: 'email, first_name, phone, and full shipping address are required' });
     }
     if (!Array.isArray(items) || items.length === 0) {
@@ -835,6 +939,22 @@ const createGuestOrder = async (req, res) => {
 
     await client.query('BEGIN');
     transactionStarted = true;
+
+    const checkoutCfg = await getCheckoutSettings(client);
+    const optionError = validateFulfillmentAndPayment(
+      checkoutCfg, fulfillment_method, payment_method, shipping_region
+    );
+    if (optionError) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({ error: optionError });
+    }
+
+    if (fulfillment_method === 'pickup') {
+      shipping_address = shipping_address?.trim() || `Pickup: ${checkoutCfg.pickupLocation}`;
+      shipping_city    = shipping_city?.trim()    || 'Accra';
+      shipping_region  = shipping_region?.trim()  || 'Greater Accra';
+    }
 
     // Fetch and lock products
     const productIds = [...new Set(items.map(i => i.product_id))];
@@ -859,6 +979,7 @@ const createGuestOrder = async (req, res) => {
       const p = productMap[item.product_id];
       if (!p) {
         await client.query('ROLLBACK');
+        transactionStarted = false;
         return res.status(400).json({ error: `Product not found: ${item.product_id}` });
       }
       const effectiveStock = item.variant_id && variantMap[item.variant_id]
@@ -866,6 +987,7 @@ const createGuestOrder = async (req, res) => {
         : p.stock_quantity;
       if (effectiveStock < item.quantity) {
         await client.query('ROLLBACK');
+        transactionStarted = false;
         return res.status(400).json({ error: 'Insufficient stock for one or more items' });
       }
     }
@@ -880,7 +1002,9 @@ const createGuestOrder = async (req, res) => {
     });
 
     // Authoritative server-side delivery fee — client-supplied delivery_fee is ignored.
-    const delivery_fee = await computeServerDeliveryFee(client, shipping_region, subtotal);
+    const delivery_fee = computeDeliveryFeeFromSettings(
+      checkoutCfg, fulfillment_method, shipping_region, subtotal
+    );
     let total = subtotal + delivery_fee;
 
     // Apply coupon discount server-side (locked — same as authenticated checkout)
@@ -897,17 +1021,32 @@ const createGuestOrder = async (req, res) => {
 
     const orderId = uuid();
     const orderNumber = `ORD-${Date.now()}`;
+    const initialStatus = payment_method === 'pay_on_delivery' ? 'confirmed' : 'pending';
     const guestNotes = `Phone: ${phone}${notes ? '\n' + notes : ''}`;
     const fullNotes = `Guest: ${first_name} ${last_name || ''} <${email}>\n${guestNotes}`;
 
     await client.query(
       `INSERT INTO orders
          (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
-          shipping_region, delivery_fee, coupon_code, discount_amount, notes, guest_email, status, payment_status)
-       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'pending','unpaid')`,
+          shipping_region, delivery_fee, coupon_code, discount_amount, notes, guest_email,
+          fulfillment_method, payment_method, status, payment_status)
+       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'unpaid')`,
       [orderId, orderNumber, total, shipping_address, shipping_city,
-       shipping_region, delivery_fee, appliedCouponCode, discountAmount, fullNotes, email]
+       shipping_region, delivery_fee, appliedCouponCode, discountAmount, fullNotes, email,
+       fulfillment_method, payment_method, initialStatus]
     );
+
+    if (payment_method === 'pay_on_delivery') {
+      await logStatusChange(
+        orderId,
+        'pending',
+        'confirmed',
+        fulfillment_method === 'pickup'
+          ? 'Order confirmed (Pay on Pickup)'
+          : 'Order confirmed (Pay on Delivery)',
+        client
+      );
+    }
 
     for (const item of items) {
       const p = productMap[item.product_id];
@@ -930,8 +1069,26 @@ const createGuestOrder = async (req, res) => {
     }
 
     await client.query('COMMIT');
+    transactionStarted = false;
 
-    res.status(201).json({ orderId, orderNumber, total, discountAmount, couponCode: appliedCouponCode, email });
+    if (payment_method === 'pay_on_delivery') {
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('payment-success', { orderId, reference: `POD-${orderNumber}` })
+        .catch(err => logger.error('Failed to enqueue guest POD confirmation notification', { err: err.message, orderId }));
+    }
+
+    res.status(201).json({
+      orderId,
+      orderNumber,
+      total,
+      deliveryFee: delivery_fee,
+      discountAmount,
+      couponCode: appliedCouponCode,
+      email,
+      fulfillment_method,
+      payment_method,
+      status: initialStatus,
+    });
   } catch (error) {
     if (transactionStarted) await client.query('ROLLBACK').catch(() => {});
     logger.error('Error creating guest order', { err: error.message });
@@ -1241,10 +1398,84 @@ const trackOrder = async (req, res) => {
   }
 };
 
+// ── Admin: mark Pay-on-Delivery order as paid (Cash / MoMo collected) ─────────
+const markOrderPaid = async (req, res) => {
+  const client = await pool.connect();
+  let transactionStarted = false;
+
+  try {
+    await client.query('BEGIN');
+    transactionStarted = true;
+
+    const { rows } = await client.query(
+      `SELECT id, order_number, status, payment_status, payment_method, customer_id, total_amount
+         FROM orders
+        WHERE id = $1
+        FOR UPDATE`,
+      [req.params.orderId]
+    );
+    const order = rows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (order.payment_status === 'paid') {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(409).json({ error: 'Order is already marked as paid' });
+    }
+    if (['cancelled', 'refunded'].includes(order.status)) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({ error: `Cannot mark "${order.status}" order as paid` });
+    }
+    if (order.payment_method !== 'pay_on_delivery') {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({ error: 'Only Pay on Delivery orders can be manually marked paid' });
+    }
+
+    const nextStatus = order.status === 'pending' ? 'confirmed' : order.status;
+    const note = (req.body?.note && String(req.body.note).trim().slice(0, 500))
+      || 'Cash/MoMo collected on delivery (marked paid by admin)';
+
+    const { rows: updatedRows } = await client.query(
+      `UPDATE orders
+          SET payment_status = 'paid',
+              status = $1,
+              updated_at = NOW()
+        WHERE id = $2
+        RETURNING *`,
+      [nextStatus, order.id]
+    );
+
+    await logStatusChange(order.id, order.status, nextStatus, note, client);
+    await client.query('COMMIT');
+    transactionStarted = false;
+
+    if (order.customer_id) {
+      pool.query(
+        `UPDATE customers SET total_spent = total_spent + $1, total_orders = total_orders + 1 WHERE user_id = $2`,
+        [parseFloat(order.total_amount) || 0, order.customer_id]
+      ).catch(err => logger.error('Failed to update customer totals on POD markPaid', { err: err.message, orderId: order.id }));
+    }
+
+    logger.info('POD order marked paid by admin', { orderId: order.id, adminId: req.user?.id });
+    res.json({ message: 'Order marked as paid', order: updatedRows[0] });
+  } catch (err) {
+    if (transactionStarted) await client.query('ROLLBACK').catch(() => {});
+    logger.error('markOrderPaid error', { err: err.message, orderId: req.params.orderId });
+    res.status(500).json({ error: 'Failed to mark order as paid' });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders,
   getRequestCounts, getRequests, exportOrders,
-  updateOrderStatus, cancelOrder, refundOrder, getOrderStatusLog, getReviewStatus,
+  updateOrderStatus, cancelOrder, refundOrder, markOrderPaid, getOrderStatusLog, getReviewStatus,
   requestCancel, requestReturn,
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,

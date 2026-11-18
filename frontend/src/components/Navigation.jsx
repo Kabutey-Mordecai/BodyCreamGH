@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext';
 import { useSettings } from '../context/SettingsContext';
 import { useWishlist } from '../context/WishlistContext';
 import AnnouncementBar from './AnnouncementBar';
+import SearchBar from './SearchBar';
 import './Navigation.css';
 
 // Resolve relative /uploads/... logo URLs against the backend origin (same
@@ -25,7 +26,6 @@ export default function Navigation() {
   const { savedIds }      = useWishlist() || { savedIds: new Set() };
   const navigate          = useNavigate();
   const [menuOpen, setMenuOpen]   = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [barVisible, setBarVisible] = useState(
     () => !sessionStorage.getItem('bar_dismissed')
   );
@@ -36,15 +36,6 @@ export default function Navigation() {
   };
 
   const closeMenu = () => setMenuOpen(false);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    const q = searchQuery.trim();
-    if (!q) return;
-    navigate(`/shop?search=${encodeURIComponent(q)}`);
-    setSearchQuery('');
-    closeMenu();
-  };
 
   const handleBarVisibility = useCallback((visible) => {
     setBarVisible(visible);
@@ -85,21 +76,7 @@ export default function Navigation() {
           </Link>
 
           {/* Search bar — desktop (hidden on mobile via CSS) */}
-          <form className="nav-search" onSubmit={handleSearch}>
-            <svg className="nav-search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            <input
-              type="search"
-              placeholder="Search products…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="nav-search-input"
-              aria-label="Search products"
-            />
-            <button type="submit" className="nav-search-btn">Search</button>
-          </form>
+          <SearchBar variant="nav" placeholder="Search products…" onNavigate={closeMenu} />
 
           {/* Hamburger — mobile only */}
           <button
@@ -114,21 +91,7 @@ export default function Navigation() {
           <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
             {/* Mobile search — appears at top of hamburger dropdown */}
             <li className="nav-search-mobile-wrap">
-              <form className="nav-search nav-search--mobile" onSubmit={handleSearch}>
-                <svg className="nav-search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-                <input
-                  type="search"
-                  placeholder="Search products…"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="nav-search-input"
-                  aria-label="Search products"
-                />
-                <button type="submit" className="nav-search-btn">Search</button>
-              </form>
+              <SearchBar variant="mobile" placeholder="Search products…" onNavigate={closeMenu} />
             </li>
 
             <li><NavLink to="/"     end onClick={closeMenu}>Home</NavLink></li>

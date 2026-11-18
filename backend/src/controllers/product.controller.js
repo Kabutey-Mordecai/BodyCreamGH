@@ -1,24 +1,41 @@
 const NodeCache = require('node-cache');
+const pool = require('../config/database');
 const ProductModel = require('../models/product.model');
 const logger = require('../utils/logger');
 
-// In-memory cache with 5-minute TTL. Works on any server, zero infrastructure.
-// For multi-server deployments, swap this for pg-boss-powered invalidation or a shared cache.
-const cache = new NodeCache({ stdTTL: 300, checkperiod: 60 });
+// Bounded in-memory caches (maxKeys prevents arbitrary query-param memory exhaustion).
+const cache = new NodeCache({ stdTTL: 300, checkperiod: 60, maxKeys: 500 });
+const suggestCache = new NodeCache({ stdTTL: 60, checkperiod: 60, maxKeys: 300 });
+
+const ALLOWED_PRODUCT_QUERY_KEYS = [
+  'category', 'search', 'sort', 'limit', 'offset', 'page', 'min_price', 'max_price', 'in_stock',
+];
+
+function buildCanonicalProductKey(query = {}) {
+  const normalized = {};
+  for (const key of ALLOWED_PRODUCT_QUERY_KEYS) {
+    if (query[key] !== undefined && query[key] !== '') {
+      normalized[key] = String(query[key]).slice(0, 120);
+    }
+  }
+  return `products:${JSON.stringify(normalized)}`;
+}
 
 function bustCache() {
   const keys = cache.keys().filter(k => k.startsWith('products:'));
   if (keys.length) cache.del(keys);
+  suggestCache.flushAll();
 }
 
 const getProducts = async (req, res) => {
   try {
-    const cacheKey = `products:${JSON.stringify(req.query)}`;
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+    const cacheKey = buildCanonicalProductKey(req.query);
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
 
     const products = await ProductModel.findAll(req.query);
-    cache.set(cacheKey, products);
+    try { cache.set(cacheKey, products); } catch { /* ignore when at maxKeys */ }
     res.json(products);
   } catch (error) {
     logger.error('Error fetching products', { err: error.message });
@@ -26,8 +43,60 @@ const getProducts = async (req, res) => {
   }
 };
 
+const suggestProducts = async (req, res) => {
+  try {
+    const raw = String(req.query.q || '').trim().slice(0, 60);
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+    if (raw.length < 2) {
+      return res.json({ products: [], categories: [] });
+    }
+
+    const key = `suggest:${raw.toLowerCase()}`;
+    const cached = suggestCache.get(key);
+    if (cached) return res.json(cached);
+
+    const pattern = `%${raw}%`;
+    const [prodRes, catRes] = await Promise.all([
+      pool.query(
+        `SELECT p.id, p.name, p.price, p.category,
+                COALESCE(
+                  (SELECT url FROM product_images WHERE product_id = p.id ORDER BY is_primary DESC, sort_order ASC LIMIT 1),
+                  p.image_url
+                ) AS image_url
+           FROM products p
+          WHERE p.is_active = TRUE
+            AND (p.name ILIKE $1 OR p.category ILIKE $1)
+          ORDER BY CASE WHEN p.name ILIKE $2 THEN 0 ELSE 1 END, p.created_at DESC
+          LIMIT 6`,
+        [pattern, `${raw}%`]
+      ),
+      pool.query(
+        `SELECT DISTINCT category
+           FROM products
+          WHERE is_active = TRUE
+            AND category IS NOT NULL
+            AND category ILIKE $1
+          ORDER BY category ASC
+          LIMIT 4`,
+        [pattern]
+      ),
+    ]);
+
+    const payload = {
+      products: prodRes.rows,
+      categories: catRes.rows.map(r => r.category),
+    };
+    try { suggestCache.set(key, payload); } catch { /* at capacity */ }
+    res.json(payload);
+  } catch (error) {
+    logger.error('Error fetching search suggestions', { err: error.message });
+    res.status(500).json({ error: 'Failed to fetch suggestions' });
+  }
+};
+
 const getProductById = async (req, res) => {
   try {
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     const product = await ProductModel.findById(req.params.id);
     if (!product) return res.status(404).json({ error: 'Product not found' });
     res.json(product);
@@ -38,12 +107,13 @@ const getProductById = async (req, res) => {
 
 const getRelatedProducts = async (req, res) => {
   try {
+    res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
     const { id } = req.params;
     const cacheKey = `products:related:${id}`;
     const cached = cache.get(cacheKey);
     if (cached) return res.json(cached);
     const related = await ProductModel.findRelated(id);
-    cache.set(cacheKey, related);
+    try { cache.set(cacheKey, related); } catch { /* ignore when at maxKeys */ }
     res.json(related);
   } catch (error) {
     logger.error('Error fetching related products', { err: error.message });
@@ -120,4 +190,4 @@ const toggleProductVisibility = async (req, res) => {
   }
 };
 
-module.exports = { getProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility };
+module.exports = { getProducts, suggestProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility };

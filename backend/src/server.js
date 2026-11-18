@@ -138,6 +138,47 @@ app.use('/api/coupons',     couponRoutes);
 app.use('/api/newsletter',  newsletterRoutes);
 app.use('/api/promotions', promotionRoutes);
 
+// ── Dynamic XML Sitemap (SEO) ────────────────────────────────────────────────
+app.get('/api/sitemap.xml', async (_req, res) => {
+  try {
+    const siteUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const { rows } = await pool.query(
+      `SELECT id, updated_at FROM products WHERE is_active = TRUE ORDER BY updated_at DESC LIMIT 5000`
+    );
+    const urls = [
+      `  <url><loc>${siteUrl}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`,
+      `  <url><loc>${siteUrl}/shop</loc><changefreq>daily</changefreq><priority>0.9</priority></url>`,
+      ...rows.map(r => {
+        const lastmod = r.updated_at ? new Date(r.updated_at).toISOString().slice(0, 10) : '';
+        return `  <url><loc>${siteUrl}/products/${r.id}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.8</priority></url>`;
+      }),
+    ];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
+    res.set('Content-Type', 'application/xml; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=3600');
+    res.send(xml);
+  } catch (err) {
+    logger.error('Sitemap generation failed', { err: err.message });
+    res.status(500).send('Failed to generate sitemap');
+  }
+});
+
+// ── Lightweight Frontend Error Telemetry ─────────────────────────────────────
+const telemetryLimiter = makeRateLimiter(60 * 1000, 15, 'Too many telemetry reports');
+app.post('/api/telemetry/client-error', telemetryLimiter, (req, res) => {
+  const { source, message, route } = req.body || {};
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'message is required' });
+  }
+  const safeSource = ['storefront', 'admin'].includes(source) ? source : 'unknown';
+  logger.warn('Client runtime error reported', {
+    source: safeSource,
+    route: typeof route === 'string' ? route.slice(0, 200) : 'unknown',
+    message: message.slice(0, 500),
+  });
+  res.status(204).end();
+});
+
 app.get('/api/health', async (_req, res) => {
   let dbStatus = 'ok';
   try {

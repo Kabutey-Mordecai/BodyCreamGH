@@ -1,7 +1,7 @@
 const express = require('express');
 const { verifyToken, optionalToken, requireAdmin } = require('../middleware/auth');
 const { validateProduct } = require('../middleware/validation');
-const { getProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility } = require('../controllers/product.controller');
+const { getProducts, suggestProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility } = require('../controllers/product.controller');
 const { getReviews, canReview, createReview, markHelpful, deleteReview } = require('../controllers/review.controller');
 const {
   getVariants, createVariant, updateVariant, deleteVariant,
@@ -11,6 +11,7 @@ const {
 const router = express.Router();
 
 router.get('/admin', verifyToken, requireAdmin, getAdminProducts);
+router.get('/suggest', suggestProducts);
 router.get('/', getProducts);
 router.get('/:id/related', getRelatedProducts);
 router.get('/:id', getProductById);

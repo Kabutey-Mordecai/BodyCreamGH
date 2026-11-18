@@ -1,6 +1,8 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { productsAPI } from '../services/api';
+import { useSettings } from '../context/SettingsContext';
+import { useSeo } from '../utils/seo';
 import ProductCard from '../components/ProductCard';
 import TrustStrip from '../components/TrustStrip';
 import './Shop.css';
@@ -24,6 +26,7 @@ const SORT_OPTIONS = [
 
 export default function Shop() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const settings = useSettings();
 
   const [products, setProducts] = useState([]);
   const [total, setTotal]       = useState(0);
@@ -42,6 +45,22 @@ export default function Shop() {
   const maxPrice  = searchParams.get('max_price') || '';
   const inStock   = searchParams.get('in_stock')  || '';
   const LIMIT     = 12;
+
+  const shopSeo = useMemo(() => {
+    const storeName = settings.store_name || 'BodyCream GH';
+    let title = `Shop All Products — ${storeName}`;
+    let description = `Browse handcrafted body creams, body butters, oils, and scrubs made in Ghana by ${storeName}.`;
+    if (search) {
+      title = `Search "${search}" — ${storeName}`;
+      description = `Search results for ${search} at ${storeName}.`;
+    } else if (category) {
+      title = `${category} — ${storeName}`;
+      description = `Shop handcrafted ${category.toLowerCase()} products made in Ghana by ${storeName}.`;
+    }
+    return { title, description };
+  }, [category, search, settings.store_name]);
+
+  useSeo(shopSeo);
 
   // Keep price inputs in sync when URL changes (e.g. browser back)
   useEffect(() => {

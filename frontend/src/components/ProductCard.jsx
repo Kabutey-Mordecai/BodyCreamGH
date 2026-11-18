@@ -114,7 +114,7 @@ export default function ProductCard({ product }) {
   };
 
   return (
-    <Link to={`/products/${product.id}`} className="product-card">
+    <article className="product-card">
 
       {/* ── Image ───────────────────────────── */}
       <div className="product-card-img-wrap">
@@ -122,15 +122,17 @@ export default function ProductCard({ product }) {
           src={resolveImageUrl(product.image_url) || PLACEHOLDER_IMG}
           alt={product.name}
           loading="lazy"
+          decoding="async"
         />
 
         {/* Wishlist heart */}
         <button
+          type="button"
           className={`product-card-wishlist ${isSaved ? 'product-card-wishlist--saved' : ''}`}
           onClick={handleWishlist}
           aria-label={isSaved ? 'Remove from wishlist' : 'Save to wishlist'}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
             <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
           </svg>
         </button>
@@ -147,7 +149,7 @@ export default function ProductCard({ product }) {
           {isOutOfStock && <span className="badge-pill badge-oos">Sold out</span>}
         </div>
 
-        {/* Hover overlay */}
+        {/* Hover / touch overlay */}
         <div className="product-card-overlay">
           {isOutOfStock ? (
             <span className="overlay-sold-out">Out of Stock</span>
@@ -155,13 +157,13 @@ export default function ProductCard({ product }) {
             <Link
               to={`/products/${product.id}`}
               className="btn overlay-atc-btn"
-              onClick={e => e.stopPropagation()}
             >
               Select options →
             </Link>
           ) : cartItem ? (
             <div className="overlay-qty-stepper">
               <button
+                type="button"
                 className="overlay-qty-btn"
                 onClick={handleDecrease}
                 disabled={adding}
@@ -169,6 +171,7 @@ export default function ProductCard({ product }) {
               >−</button>
               <span className="overlay-qty-count">{cartQty}</span>
               <button
+                type="button"
                 className="overlay-qty-btn"
                 onClick={handleAddToCart}
                 disabled={adding || cartQty >= product.stock_quantity}
@@ -177,6 +180,7 @@ export default function ProductCard({ product }) {
             </div>
           ) : (
             <button
+              type="button"
               className={`btn overlay-atc-btn ${added ? 'overlay-atc-btn--added' : addError ? 'overlay-atc-btn--error' : ''}`}
               onClick={handleAddToCart}
               disabled={adding}
@@ -187,7 +191,6 @@ export default function ProductCard({ product }) {
           <Link
             to={`/products/${product.id}`}
             className="overlay-view-link"
-            onClick={e => e.stopPropagation()}
           >
             View details →
           </Link>
@@ -199,7 +202,11 @@ export default function ProductCard({ product }) {
         {product.category && (
           <span className="product-card-category">{product.category}</span>
         )}
-        <h3 className="product-card-name">{product.name}</h3>
+        <h3 className="product-card-name">
+          <Link to={`/products/${product.id}`} className="product-card-link">
+            {product.name}
+          </Link>
+        </h3>
         {product.review_count > 0 && (
           <div className="product-card-rating">
             <StarRating value={parseFloat(product.avg_rating)} size="sm" />
@@ -231,6 +238,6 @@ export default function ProductCard({ product }) {
         )}
       </div>
 
-    </Link>
+    </article>
   );
 }

@@ -34,6 +34,13 @@
 }
 .announcement-msg.fade-out { opacity: 0; }
 .announcement-msg.fade-in  { opacity: 1; }
+.announcement-wa-link {
+  color: var(--color-accent, #c9a55a);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.announcement-wa-link:hover { color: #fff; }
 
 /* Dot indicators */
 .announcement-dots {

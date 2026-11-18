@@ -46,6 +46,7 @@ export default function OrderDetail() {
   const [refundSaving, setRefundSaving] = useState(false);
 
   const [requestActionSaving, setRequestActionSaving] = useState(false);
+  const [markPaidSaving, setMarkPaidSaving] = useState(false);
 
   // Delivery form state
   const [deliveryForm, setDeliveryForm] = useState({
@@ -179,6 +180,19 @@ export default function OrderDetail() {
     }
   };
 
+  const handleMarkPaid = async () => {
+    setMarkPaidSaving(true);
+    try {
+      await ordersAPI.markPaid(id);
+      toast.success('Order marked as paid (Cash/MoMo collected)');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to mark order as paid');
+    } finally {
+      setMarkPaidSaving(false);
+    }
+  };
+
   if (loading) return <div className="spinner" />;
   if (!order) {
     return (
@@ -195,6 +209,9 @@ export default function OrderDetail() {
   const canRefund = order.payment_status === 'paid' &&
     REFUNDABLE_STATUSES.includes(order.status) &&
     !['pending', 'success'].includes(order.refund_status);
+  const canMarkPaid = order.payment_method === 'pay_on_delivery' &&
+    order.payment_status !== 'paid' &&
+    !['cancelled', 'refunded'].includes(order.status);
   const refundInfo = refundLabel(order);
   const subtotal = (order.items || []).reduce((s, it) => s + Number(it.subtotal || (it.price_at_purchase * it.quantity) || 0), 0);
 
@@ -444,7 +461,12 @@ export default function OrderDetail() {
           </div>
 
           <div className="card">
-            <div className="card-header"><h2 className="card-title">Shipping</h2></div>
+            <div className="card-header">
+              <h2 className="card-title">{order.fulfillment_method === 'pickup' ? 'Pickup Station' : 'Shipping'}</h2>
+              {order.fulfillment_method === 'pickup' && (
+                <span className="badge badge-neutral">Pickup</span>
+              )}
+            </div>
             <div className="card-body">
               <div style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
                 {order.shipping_address && <div>{order.shipping_address}</div>}
@@ -459,6 +481,10 @@ export default function OrderDetail() {
           <div className="card">
             <div className="card-header"><h2 className="card-title">Payment</h2></div>
             <div className="card-body">
+              <div style={{ fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span className="muted">Method</span>
+                <span>{order.payment_method === 'pay_on_delivery' ? 'Pay on Delivery' : 'Paystack'}</span>
+              </div>
               <div style={{ fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span className="muted">Status</span><StatusBadge status={order.payment_status} />
               </div>
@@ -467,6 +493,16 @@ export default function OrderDetail() {
                   <div className="muted text-xs">Reference</div>
                   <div className="mono" style={{ wordBreak: 'break-all' }}>{order.payment_reference}</div>
                 </div>
+              )}
+              {canMarkPaid && (
+                <button
+                  className="btn btn-accent btn-sm"
+                  style={{ width: '100%', marginTop: 12 }}
+                  onClick={handleMarkPaid}
+                  disabled={markPaidSaving}
+                >
+                  {markPaidSaving ? 'Updating…' : 'Mark Paid (Cash/MoMo Collected)'}
+                </button>
               )}
             </div>
           </div>

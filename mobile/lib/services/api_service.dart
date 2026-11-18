@@ -199,13 +199,20 @@ class ApiService {
         )) as Map<String, dynamic>;
   }
 
+  // ── Settings ──────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getSettings() async {
+    final res = await _client.get(_uri('/settings'), headers: _headers());
+    return await _handleResponse(res) as Map<String, dynamic>;
+  }
+
   // ── Payments ──────────────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> initializePayment(int orderId) async {
+  Future<Map<String, dynamic>> initializePayment(dynamic orderId) async {
     return await _authed((token) => _client.post(
           _uri('/payments/initialize'),
           headers: _headers(token: token),
-          body: jsonEncode({'order_id': orderId}),
+          body: jsonEncode({'orderId': orderId.toString()}),
         )) as Map<String, dynamic>;
   }
 

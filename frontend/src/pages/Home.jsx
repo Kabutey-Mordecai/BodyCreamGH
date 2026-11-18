@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { productsAPI, newsletterAPI } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
+import { useSeo } from '../utils/seo';
 import ProductCard from '../components/ProductCard';
 import TrustStrip from '../components/TrustStrip';
+import SearchBar from '../components/SearchBar';
 import './Home.css';
 
 // Sale resets each time the page loads — ends at 11:59 PM today
@@ -23,6 +25,38 @@ function getTimeLeft(endTime) {
   };
 }
 
+// Isolated timer component so the 1-second tick does NOT re-render the full Home page.
+function FlashSaleTimer() {
+  const [timeLeft, setTimeLeft] = useState(() => getTimeLeft(SALE_END_TIME));
+  useEffect(() => {
+    const id = setInterval(() => setTimeLeft(getTimeLeft(SALE_END_TIME)), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return (
+    <div className="flash-sale-timer">
+      <span className="timer-label">Ends in</span>
+      <div className="countdown">
+        <div className="countdown-block">
+          <span className="countdown-value">{String(timeLeft.hours).padStart(2, '0')}</span>
+          <span className="countdown-label">HRS</span>
+        </div>
+        <span className="countdown-sep">:</span>
+        <div className="countdown-block">
+          <span className="countdown-value">{String(timeLeft.minutes).padStart(2, '0')}</span>
+          <span className="countdown-label">MIN</span>
+        </div>
+        <span className="countdown-sep">:</span>
+        <div className="countdown-block">
+          <span className="countdown-value">{String(timeLeft.seconds).padStart(2, '0')}</span>
+          <span className="countdown-label">SEC</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const DEFAULT_HERO_IMG = 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1600&q=85';
+
 const GALLERY = [
   'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=400&h=400&q=80',
   'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=400&h=400&q=80',
@@ -32,19 +66,44 @@ const GALLERY = [
 ];
 
 export default function Home() {
-  const navigate = useNavigate();
   const {
-    hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image,
-    categories, testimonials, trust_items,
+    store_name, hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image,
+    categories, testimonials,
   } = useSettings();
-  const [heroSearch, setHeroSearch]         = useState('');
   const [featured, setFeatured]             = useState([]);
   const [loading, setLoading]               = useState(true);
   const [saleProducts, setSaleProducts]     = useState([]);
-  const [timeLeft, setTimeLeft]             = useState(() => getTimeLeft(SALE_END_TIME));
   const [nlEmail, setNlEmail]               = useState('');
   const [nlState, setNlState]               = useState('idle'); // idle | loading | success | error
   const [nlError, setNlError]               = useState('');
+
+  const homeJsonLd = useMemo(() => ({
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        name: store_name || 'BodyCream GH',
+        url: window.location.origin,
+      },
+      {
+        '@type': 'WebSite',
+        name: store_name || 'BodyCream GH',
+        url: window.location.origin,
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${window.location.origin}/shop?search={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      },
+    ],
+  }), [store_name]);
+
+  useSeo({
+    title: `${store_name || 'BodyCream GH'} — Luxury Handcrafted Skincare in Ghana`,
+    description: hero_subtitle || 'Shop handcrafted body creams, butters, oils, and scrubs in Ghana.',
+    image: hero_image || DEFAULT_HERO_IMG,
+    jsonLd: homeJsonLd,
+  });
 
   useEffect(() => {
     productsAPI.getAll({ limit: 4 })
@@ -75,50 +134,31 @@ export default function Home() {
     }
   };
 
-  const handleHeroSearch = (e) => {
-    e.preventDefault();
-    const q = heroSearch.trim();
-    if (q) navigate(`/shop?search=${encodeURIComponent(q)}`);
-    else   navigate('/shop');
-  };
-
-  // Live countdown — ticks every second
-  useEffect(() => {
-    const id = setInterval(() => setTimeLeft(getTimeLeft(SALE_END_TIME)), 1000);
-    return () => clearInterval(id);
-  }, []);
-
   return (
     <div>
 
       {/* ══════════════════════════════════════════
-          HERO — full-viewport, image background
+          HERO — full-viewport, high-priority LCP img
           ══════════════════════════════════════════ */}
-      <section
-        className="hero"
-        style={hero_image ? { backgroundImage: `url(${hero_image})` } : undefined}
-      >
+      <section className="hero">
+        <img
+          src={hero_image || DEFAULT_HERO_IMG}
+          alt=""
+          aria-hidden="true"
+          className="hero-bg-img"
+          fetchPriority="high"
+          decoding="async"
+        />
         <div className="hero-overlay" />
         <div className="container hero-content">
           <span className="hero-label">{hero_label}</span>
           <h1>{hero_headline}</h1>
           <p>{hero_subtitle}</p>
 
-          <form className="hero-search" onSubmit={handleHeroSearch}>
-            <svg className="hero-search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.6"/>
-              <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
-            </svg>
-            <input
-              type="search"
-              placeholder="Search for body creams, oils, scrubs…"
-              value={heroSearch}
-              onChange={e => setHeroSearch(e.target.value)}
-              className="hero-search-input"
-              aria-label="Search products"
-            />
-            <button type="submit" className="hero-search-btn">Search</button>
-          </form>
+          <SearchBar
+            variant="hero"
+            placeholder="Search for body creams, oils, scrubs…"
+          />
 
           <div className="hero-actions">
             <Link to={hero_cta_link || '/shop'} className="btn btn-accent hero-cta">
@@ -147,25 +187,7 @@ export default function Home() {
                 <span className="flash-badge">Flash Sale</span>
                 <h2>Today's Deals</h2>
               </div>
-              <div className="flash-sale-timer">
-                <span className="timer-label">Ends in</span>
-                <div className="countdown">
-                  <div className="countdown-block">
-                    <span className="countdown-value">{String(timeLeft.hours).padStart(2, '0')}</span>
-                    <span className="countdown-label">HRS</span>
-                  </div>
-                  <span className="countdown-sep">:</span>
-                  <div className="countdown-block">
-                    <span className="countdown-value">{String(timeLeft.minutes).padStart(2, '0')}</span>
-                    <span className="countdown-label">MIN</span>
-                  </div>
-                  <span className="countdown-sep">:</span>
-                  <div className="countdown-block">
-                    <span className="countdown-value">{String(timeLeft.seconds).padStart(2, '0')}</span>
-                    <span className="countdown-label">SEC</span>
-                  </div>
-                </div>
-              </div>
+              <FlashSaleTimer />
             </div>
             <div className="products-grid">
               {saleProducts.map(p => <ProductCard key={p.id} product={p} />)}

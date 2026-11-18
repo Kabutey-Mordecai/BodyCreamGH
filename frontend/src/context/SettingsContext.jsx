@@ -11,6 +11,11 @@ const DEFAULTS = {
   free_delivery_over: 200,
   delivery_fee_accra: 10,
   delivery_fee_flat: 15,
+  pickup_enabled: true,
+  pickup_location: 'East Legon, Accra (Call upon arrival)',
+  pickup_hours: 'Mon–Sat, 9:00 AM – 6:00 PM',
+  pay_on_delivery_enabled: false,
+  pay_on_delivery_accra_only: true,
 
   announcement_enabled: true,
   announcement_text: 'Free delivery on orders over GHS 200 · Shop now',
