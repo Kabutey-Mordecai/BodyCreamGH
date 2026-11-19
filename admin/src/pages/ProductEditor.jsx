@@ -42,8 +42,10 @@ export default function ProductEditor() {
 
   const [form,              setForm]              = useState(EMPTY);
   const [initialImages,     setInitialImages]     = useState([]);
+  const [stagedFiles,       setStagedFiles]       = useState([]);
   const [loading,           setLoading]           = useState(!isNew);
   const [saving,            setSaving]            = useState(false);
+  const [uploadingText,     setUploadingText]     = useState('');
   const [error,             setError]             = useState('');
   const [summaryErrors,     setSummaryErrors]     = useState([]);
   const [fieldErrors,       setFieldErrors]       = useState({});
@@ -90,10 +92,13 @@ export default function ProductEditor() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving) return; // Prevent double submit
+
     setError('');
     setSummaryErrors([]);
     setFieldErrors({});
     setSaving(true);
+    setUploadingText('');
 
     // Build the payload with numeric casts — the backend validator expects numbers.
     const payload = {
@@ -109,9 +114,26 @@ export default function ProductEditor() {
 
     try {
       if (isNew) {
+        if (stagedFiles.length > 0) {
+          setUploadingText('Creating product and uploading images...');
+        }
         const { data } = await productsAPI.create(payload);
-        toast.success('Product created');
-        navigate(`/products/${data.id || data.product?.id}`);
+        const newId = data.id || data.product?.id;
+
+        if (stagedFiles.length > 0) {
+          try {
+            await productsAPI.uploadProductImages(newId, stagedFiles);
+            toast.success('Product created with images');
+            navigate(`/products/${newId}`);
+          } catch (uploadErr) {
+            const reason = uploadErr.response?.data?.error || uploadErr.message || 'Server error';
+            toast.warning(`Product created, but image upload failed: ${reason}. Re-upload in the gallery.`);
+            navigate(`/products/${newId}`);
+          }
+        } else {
+          toast.success('Product created');
+          navigate(`/products/${newId}`);
+        }
       } else {
         await productsAPI.update(id, payload);
         toast.success('Saved');
@@ -141,6 +163,7 @@ export default function ProductEditor() {
       }
     } finally {
       setSaving(false);
+      setUploadingText('');
     }
   };
 
@@ -156,7 +179,7 @@ export default function ProductEditor() {
         <div className="page-actions">
           <Link to="/products" className="btn btn-outline">Cancel</Link>
           <button type="submit" className="btn btn-accent" disabled={saving}>
-            {saving ? 'Saving…' : isNew ? 'Create product' : 'Save changes'}
+            {saving ? (uploadingText || (isNew ? 'Creating product…' : 'Saving…')) : isNew ? 'Create product' : 'Save changes'}
           </button>
         </div>
       </div>
@@ -421,6 +444,8 @@ export default function ProductEditor() {
               <ProductImageGallery
                 productId={isNew ? null : id}
                 initialImages={initialImages}
+                stagedFiles={stagedFiles}
+                onStagedChange={setStagedFiles}
               />
             </div>
           </div>
