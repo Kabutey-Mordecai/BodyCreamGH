@@ -17,16 +17,14 @@ export default function PromoPopup() {
   const isEnabled = settings.promo_popup_enabled === true || settings.promo_popup_enabled === 'true';
 
   useEffect(() => {
-    if (!isEnabled) return;
-
-    // Check if dismissed in this session
+    // Clear any previous dismissal flag so refreshing or revisiting always displays the promo
     try {
-      if (sessionStorage.getItem(SESSION_KEY) === '1') {
-        return;
-      }
+      sessionStorage.removeItem(SESSION_KEY);
     } catch {
-      // Ignore storage errors in restricted contexts
+      // Ignore
     }
+
+    if (!isEnabled) return;
 
     const delaySec = Number(settings.promo_popup_delay_sec) || 2;
     const timer = setTimeout(() => {
@@ -43,11 +41,6 @@ export default function PromoPopup() {
     }
     if (isClosing) return;
     setIsClosing(true);
-    try {
-      sessionStorage.setItem(SESSION_KEY, '1');
-    } catch {
-      // Ignore
-    }
     setTimeout(() => {
       setIsOpen(false);
       setIsClosing(false);
