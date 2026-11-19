@@ -112,7 +112,7 @@ const DEFAULTS = {
   mid_banner_autoplay: true,
   mid_banner_interval_sec: 7,
   mid_banner_flip_speed_sec: 1.4,
-  mid_banner_height_px: 340,
+  mid_banner_height_px: 420,
   mid_banner_badge: 'PURE GHANAIAN BOTANICALS',
   mid_banner_title: 'Handcrafted in Small Batches.',
   mid_banner_highlight: 'Zero Harsh Bleaching Agents.',
@@ -895,18 +895,34 @@ export default function Storefront() {
                           type="number"
                           step="10"
                           min="260"
-                          max="650"
-                          value={data.mid_banner_height_px ?? 340}
-                          onChange={e => update('mid_banner_height_px', Math.max(260, parseInt(e.target.value) || 340))}
+                          max="700"
+                          value={data.mid_banner_height_px ?? 420}
+                          onChange={e => update('mid_banner_height_px', Math.max(260, parseInt(e.target.value) || 420))}
                         />
-                        <div className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                        <div className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                            onClick={() => update('mid_banner_height_px', 420)}
+                          >
+                            420px (Perfect Fit - Recommended)
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                            onClick={() => update('mid_banner_height_px', 460)}
+                          >
+                            460px (Extra Height)
+                          </button>
                           <button
                             type="button"
                             className="btn btn-outline btn-xs"
                             style={{ fontSize: '0.68rem', padding: '1px 6px' }}
                             onClick={() => update('mid_banner_height_px', 340)}
                           >
-                            340px (Sleek Banner)
+                            340px (Slim)
                           </button>
                           <button
                             type="button"
@@ -914,7 +930,7 @@ export default function Storefront() {
                             style={{ fontSize: '0.68rem', padding: '1px 6px' }}
                             onClick={() => update('mid_banner_height_px', 520)}
                           >
-                            520px (Tall Spread)
+                            520px (Tall)
                           </button>
                         </div>
                       </div>
@@ -1032,6 +1048,31 @@ export default function Storefront() {
                             onChange={e => updateMidSlide(idx, 'image', e.target.value)}
                             placeholder="https://images.unsplash.com/..."
                           />
+                        </div>
+                      </div>
+
+                      <div className="field-row">
+                        <div className="field">
+                          <label>Photo Fit / Framing</label>
+                          <select
+                            value={slide.image_fit || 'cover'}
+                            onChange={e => updateMidSlide(idx, 'image_fit', e.target.value)}
+                          >
+                            <option value="cover">Fill &amp; Bleed (Cover — fills entire half page)</option>
+                            <option value="contain">Fit Entire Product (Contain — zero cropping, fits photos of any height)</option>
+                          </select>
+                          <div className="hint">Choose "Contain" for tall bottles or packaging so the whole product fits perfectly.</div>
+                        </div>
+                        <div className="field">
+                          <label>Photo Vertical Focus</label>
+                          <select
+                            value={slide.image_position || 'center'}
+                            onChange={e => updateMidSlide(idx, 'image_position', e.target.value)}
+                          >
+                            <option value="center">Center (Default)</option>
+                            <option value="top">Top (Keep bottle cap / pump visible)</option>
+                            <option value="bottom">Bottom (Keep label / base visible)</option>
+                          </select>
                         </div>
                       </div>
 

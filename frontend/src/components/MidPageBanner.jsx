@@ -82,8 +82,8 @@ export default function MidPageBanner() {
   const total = slides.length;
   const autoPlay = settings.mid_banner_autoplay !== false && settings.mid_banner_autoplay !== 'false';
   const intervalSec = Math.max(3, Number(settings.mid_banner_interval_sec) || 7);
-  // Default 340px height for the sleek, elegant wide banner matching the user's second image
-  const heightPx = Math.max(240, Math.min(800, Number(settings.mid_banner_height_px) || 340));
+  // Default 420px height so photos of any height fit comfortably without tight cropping
+  const heightPx = Math.max(260, Math.min(800, Number(settings.mid_banner_height_px) || 420));
   // Default 1.4s flip speed for a slow, gentle, realistic page curl transition
   const flipSpeedMs = Math.max(400, Math.min(3000, Math.round((Number(settings.mid_banner_flip_speed_sec) || 1.4) * 1000)));
 
@@ -116,15 +116,20 @@ export default function MidPageBanner() {
 
     const clonedPages = Array.from(templatePages).map((el) => el.cloneNode(true));
 
+    // Dynamically calculate page width based on actual container width so the 2-page spread
+    // fills 100% of the card without any side gap / pillarboxing
+    const containerWidth = bookMountRef.current.clientWidth || 1152;
+    const computedPageWidth = Math.max(320, Math.round(containerWidth / 2));
+
     try {
       const pageFlip = new PageFlip(innerWrapper, {
-        width: 550,
+        width: computedPageWidth,
         height: heightPx,
         size: 'stretch',
-        minWidth: 320,
-        maxWidth: 720,
+        minWidth: 280,
+        maxWidth: 1000,
         minHeight: 240,
-        maxHeight: 750,
+        maxHeight: 850,
         maxShadowOpacity: 0.55,
         showCover: false,
         mobileScrollSupport: true,
@@ -268,10 +273,21 @@ export default function MidPageBanner() {
                   <div className="book-page page-right" data-density="soft">
                     <div className="book-page-inner">
                       <div className="mid-banner-visual">
+                        {slide.image_fit === 'contain' && (
+                          <div
+                            className="mid-banner-visual-ambient"
+                            style={{ backgroundImage: `url(${slide.image})` }}
+                            aria-hidden="true"
+                          />
+                        )}
                         <img
                           src={slide.image}
                           alt={slide.title || 'Product Story'}
-                          className="mid-banner-img"
+                          className={`mid-banner-img ${slide.image_fit === 'contain' ? 'fit-contain' : ''}`}
+                          style={{
+                            objectFit: slide.image_fit || 'cover',
+                            objectPosition: slide.image_position || 'center',
+                          }}
                           loading="eager"
                         />
                         <div className="mid-banner-spine-shadow" />
