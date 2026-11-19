@@ -1,15 +1,25 @@
 /* ── Shop Page Container ────────────────────────── */
+.shop-page {
+  padding-top: 32px;
+}
+
 .shop-page .container {
-  max-width: 1560px;
-  width: 96%;
+  max-width: 1680px;
+  width: 100%;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 28px;
+}
+
+@media (min-width: 1400px) {
+  .shop-page .container {
+    padding: 0 32px;
+  }
 }
 
 /* ── Editorial header ────────────────────────── */
 .shop-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 28px;
 }
 .shop-header .page-subtitle {
   max-width: 540px;
@@ -19,8 +29,8 @@
 /* ══ TWO-COLUMN SHOP LAYOUT ══════════════════════════════════════════════════ */
 .shop-layout {
   display: grid;
-  grid-template-columns: 270px 1fr;
-  gap: 32px;
+  grid-template-columns: 260px 1fr;
+  gap: 28px;
   align-items: start;
 }
 
@@ -298,51 +308,55 @@
   margin-bottom: 22px;
 }
 
-/* Standalone Luxury Search Bar */
+/* Standalone Luxury Search Bar (Matching Navbar high-end pill) */
 .shop-search-form {
   display: flex;
   align-items: center;
   flex: 1;
-  max-width: 640px;
+  max-width: 580px;
+  height: 44px;
   background: var(--color-surface, #ffffff);
   border: 1.5px solid var(--color-border);
-  border-radius: 999px;
-  padding: 4px 6px 4px 18px;
+  border-radius: 9999px;
+  overflow: hidden;
+  box-sizing: border-box;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .shop-search-form:focus-within {
   border-color: var(--color-accent, #c9a55a);
-  box-shadow: 0 0 0 3px rgba(201, 165, 90, 0.18), 0 4px 16px rgba(0, 0, 0, 0.06);
-}
-
-.shop-search-input-wrapper {
-  display: flex;
-  align-items: center;
-  flex: 1;
-  position: relative;
-  min-width: 0;
+  box-shadow: 0 0 0 3px rgba(201, 165, 90, 0.18), 0 4px 16px rgba(0, 0, 0, 0.05);
 }
 
 .shop-search-icon {
-  width: 18px;
-  height: 18px;
+  width: 17px;
+  height: 17px;
   color: var(--color-muted);
-  margin-right: 12px;
+  margin-left: 16px;
+  margin-right: 2px;
   flex-shrink: 0;
 }
 
-.shop-search-input {
+.shop-search-input,
+input.shop-search-input,
+input.shop-search-input:focus,
+input.shop-search-input:focus-visible {
+  flex: 1;
   width: 100%;
-  border: none;
-  background: transparent;
+  height: 100% !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
   font-family: var(--font-body);
   font-size: 0.92rem;
   color: var(--color-primary);
-  padding: 9px 0;
-  outline: none;
+  padding: 0 12px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
 }
+
 .shop-search-input::placeholder {
   color: var(--color-muted);
   font-size: 0.88rem;
@@ -354,34 +368,36 @@
   color: var(--color-muted);
   font-size: 0.82rem;
   cursor: pointer;
-  padding: 4px 8px;
+  padding: 4px 10px;
   line-height: 1;
   transition: color 0.15s;
+  flex-shrink: 0;
 }
 .shop-search-clear-btn:hover {
   color: var(--color-primary);
 }
 
 .shop-search-submit-btn {
-  background: var(--color-primary, #1e1b18);
+  background: var(--color-accent, #c9a55a);
   color: #ffffff;
   border: none;
-  border-radius: 999px;
-  padding: 9px 20px;
+  border-radius: 0;
+  height: 100%;
+  padding: 0 24px;
   font-family: var(--font-body);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.2s ease;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.18s ease;
 }
 .shop-search-submit-btn:hover {
   background: var(--color-accent-dark, #8b6b23);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(201, 165, 90, 0.35);
 }
 
 /* Standalone Modern Sort Pill */

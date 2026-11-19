@@ -352,33 +352,31 @@ export default function Shop() {
                   setParam('search', searchInput.trim()); 
                 }}
               >
-                <div className="shop-search-input-wrapper">
-                  <svg className="shop-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                  <input
-                    type="search"
-                    placeholder="Search body creams, oils, scrubs, butters…"
-                    value={searchInput}
-                    onChange={e => setSearchInput(e.target.value)}
-                    className="shop-search-input"
-                    aria-label="Search products"
-                  />
-                  {searchInput && (
-                    <button
-                      type="button"
-                      className="shop-search-clear-btn"
-                      onClick={() => {
-                        setSearchInput('');
-                        setParam('search', '');
-                      }}
-                      aria-label="Clear search"
-                    >✕</button>
-                  )}
-                </div>
+                <svg className="shop-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+                <input
+                  type="search"
+                  placeholder="Search products by name, collection, ingredients…"
+                  value={searchInput}
+                  onChange={e => setSearchInput(e.target.value)}
+                  className="shop-search-input"
+                  aria-label="Search products"
+                />
+                {searchInput && (
+                  <button
+                    type="button"
+                    className="shop-search-clear-btn"
+                    onClick={() => {
+                      setSearchInput('');
+                      setParam('search', '');
+                    }}
+                    aria-label="Clear search"
+                  >✕</button>
+                )}
                 <button type="submit" className="shop-search-submit-btn">
-                  <span>Search</span>
+                  Search
                 </button>
               </form>
 
