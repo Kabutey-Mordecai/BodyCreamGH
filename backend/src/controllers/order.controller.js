@@ -1023,7 +1023,7 @@ const createGuestOrder = async (req, res) => {
     let variantMap = {};
     if (variantIds.length > 0) {
       const { rows: variants } = await client.query(
-        `SELECT id, price, stock_quantity, is_active FROM product_variants WHERE id = ANY($1) FOR UPDATE`,
+        `SELECT id, product_id, price, stock_quantity, is_active FROM product_variants WHERE id = ANY($1) FOR UPDATE`,
         [variantIds]
       );
       variantMap = Object.fromEntries(variants.map(v => [v.id, v]));
@@ -1036,6 +1036,21 @@ const createGuestOrder = async (req, res) => {
         transactionStarted = false;
         return res.status(400).json({ error: `Product not found: ${item.product_id}` });
       }
+
+      if (item.variant_id) {
+        const v = variantMap[item.variant_id];
+        if (!v || v.product_id !== item.product_id) {
+          await client.query('ROLLBACK');
+          transactionStarted = false;
+          return res.status(400).json({ error: `Selected variant does not belong to product ${item.product_id}` });
+        }
+        if (!v.is_active) {
+          await client.query('ROLLBACK');
+          transactionStarted = false;
+          return res.status(400).json({ error: 'Selected variant is not available' });
+        }
+      }
+
       const effectiveStock = item.variant_id && variantMap[item.variant_id]
         ? variantMap[item.variant_id].stock_quantity
         : p.stock_quantity;

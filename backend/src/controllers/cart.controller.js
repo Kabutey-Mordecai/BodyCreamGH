@@ -257,7 +257,7 @@ const validateGuestCart = async (req, res) => {
     let variantMap = {};
     if (variantIds.length > 0) {
       const { rows: variants } = await pool.query(
-        `SELECT id, price, stock_quantity FROM product_variants WHERE id = ANY($1)`,
+        `SELECT id, product_id, price, stock_quantity, is_active FROM product_variants WHERE id = ANY($1)`,
         [variantIds]
       );
       variantMap = Object.fromEntries(variants.map(v => [v.id, v]));
@@ -269,6 +269,14 @@ const validateGuestCart = async (req, res) => {
       if (!p) {
         valid = false;
         return { product_id: item.product_id, quantity: item.quantity, available: false, error: 'Product no longer available' };
+      }
+
+      if (item.variant_id) {
+        const v = variantMap[item.variant_id];
+        if (!v || v.product_id !== item.product_id || !v.is_active) {
+          valid = false;
+          return { product_id: item.product_id, variant_id: item.variant_id, quantity: item.quantity, available: false, error: 'Selected variant is not available' };
+        }
       }
 
       const effectiveStock = item.variant_id && variantMap[item.variant_id]
