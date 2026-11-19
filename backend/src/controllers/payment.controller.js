@@ -8,27 +8,60 @@ const OrderModel = require('../models/order.model');
 const { logStatusChange } = require('../utils/audit');
 const logger = require('../utils/logger');
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PAYSTACK_REF_RE = /^[A-Za-z0-9_.=-]{6,100}$/;
+
+const NON_FINAL_TX_STATUSES = new Set(['abandoned', 'ongoing', 'pending', 'processing', 'queued']);
+const FAILED_TX_STATUSES = new Set(['failed', 'reversed']);
+const TERMINAL_ORDER_STATUSES = new Set(['cancelled', 'refunded']);
+const ELIGIBLE_INIT_ORDER_STATUSES = new Set(['pending', 'confirmed']);
+const PAYABLE_STATUSES = new Set(['unpaid', 'pending']);
+
 const REFUND_SUCCESS_EVENTS = new Set(['refund.processed']);
 const REFUND_FAILED_EVENTS = new Set(['refund.failed']);
 const REFUND_STATUS_EVENTS = new Set([
   'refund.pending',
   'refund.processing',
-  'refund.needs-attention',
+]);
+const DISPUTE_EVENTS = new Set([
+  'charge.dispute.create',
+  'charge.dispute.remind',
+  'charge.dispute.resolve',
 ]);
 
 // ── Initialize payment (authenticated user) ───────────────────────────────────
 const initializePayment = async (req, res) => {
   try {
     const { orderId } = req.body;
+    if (typeof orderId !== 'string' || !UUID_RE.test(orderId)) {
+      return res.status(400).json({ error: 'Invalid orderId' });
+    }
 
     const order = await OrderModel.findById(orderId, req.user.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.payment_status === 'paid') return res.status(400).json({ error: 'Order already paid' });
+    if (order.payment_method && order.payment_method !== 'paystack') {
+      return res.status(400).json({ error: 'This order is not configured for Paystack payment' });
+    }
+    if (!ELIGIBLE_INIT_ORDER_STATUSES.has(order.status)) {
+      return res.status(400).json({ error: `Cannot initialize payment for order with status "${order.status}"` });
+    }
+    if (order.payment_status === 'paid') {
+      return res.status(400).json({ error: 'Order already paid' });
+    }
+    if (!PAYABLE_STATUSES.has(order.payment_status)) {
+      return res.status(400).json({ error: `Cannot initialize payment when payment status is "${order.payment_status}"` });
+    }
 
-    const callbackUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/callback`;
+    const amountPesewas = Math.round(parseFloat(order.total_amount) * 100);
+    if (!Number.isFinite(amountPesewas) || amountPesewas <= 0) {
+      return res.status(400).json({ error: 'Order total must be greater than zero for Paystack payment' });
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
+    const callbackUrl = `${frontendUrl}/payment/callback`;
     const response = await paystackAPI.post('/transaction/initialize', {
       email:        req.user.email,
-      amount:       Math.round(parseFloat(order.total_amount) * 100), // pesewas
+      amount:       amountPesewas, // pesewas
       currency:     'GHS',
       callback_url: callbackUrl,
       metadata:     { orderId, userId: req.user.id },
@@ -47,7 +80,7 @@ const initializePayment = async (req, res) => {
       reference:         response.data.data.reference,
     });
   } catch (error) {
-    logger.error('Paystack init error', { err: error.response?.data || error.message });
+    logger.error('Paystack init error', { err: error.response?.data?.message || error.message });
     res.status(500).json({ error: 'Failed to initialize payment' });
   }
 };
@@ -56,24 +89,51 @@ const initializePayment = async (req, res) => {
 const initializeGuestPayment = async (req, res) => {
   try {
     const { orderId, email } = req.body;
-    if (!orderId || !email) return res.status(400).json({ error: 'orderId and email are required' });
+    if (
+      typeof orderId !== 'string' ||
+      !UUID_RE.test(orderId) ||
+      typeof email !== 'string' ||
+      !email.trim()
+    ) {
+      return res.status(400).json({ error: 'Valid orderId and email are required' });
+    }
 
     const order = await OrderModel.findById(orderId);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.payment_status === 'paid') return res.status(400).json({ error: 'Order already paid' });
 
-    // Only true guest orders (no customer_id and with a recorded guest_email) may use guest checkout payment.
-    if (order.customer_id !== null && order.customer_id !== undefined) {
-      return res.status(403).json({ error: 'Guest payment is not allowed for this order.' });
-    }
-    if (!order.guest_email || order.guest_email.toLowerCase() !== String(email).toLowerCase()) {
-      return res.status(403).json({ error: 'Email does not match the order.' });
+    // Return a single generic 404 across missing, non-guest, and email-mismatch
+    // cases so this endpoint cannot be used as an order existence/ownership oracle.
+    if (
+      !order ||
+      (order.customer_id !== null && order.customer_id !== undefined) ||
+      !order.guest_email ||
+      order.guest_email.toLowerCase() !== email.trim().toLowerCase()
+    ) {
+      return res.status(404).json({ error: 'Order not found' });
     }
 
-    const callbackUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/callback`;
+    if (order.payment_method && order.payment_method !== 'paystack') {
+      return res.status(400).json({ error: 'This order is not configured for Paystack payment' });
+    }
+    if (!ELIGIBLE_INIT_ORDER_STATUSES.has(order.status)) {
+      return res.status(400).json({ error: `Cannot initialize payment for order with status "${order.status}"` });
+    }
+    if (order.payment_status === 'paid') {
+      return res.status(400).json({ error: 'Order already paid' });
+    }
+    if (!PAYABLE_STATUSES.has(order.payment_status)) {
+      return res.status(400).json({ error: `Cannot initialize payment when payment status is "${order.payment_status}"` });
+    }
+
+    const amountPesewas = Math.round(parseFloat(order.total_amount) * 100);
+    if (!Number.isFinite(amountPesewas) || amountPesewas <= 0) {
+      return res.status(400).json({ error: 'Order total must be greater than zero for Paystack payment' });
+    }
+
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
+    const callbackUrl = `${frontendUrl}/payment/callback`;
     const response = await paystackAPI.post('/transaction/initialize', {
-      email,
-      amount:       Math.round(parseFloat(order.total_amount) * 100),
+      email:        order.guest_email,
+      amount:       amountPesewas,
       currency:     'GHS',
       callback_url: callbackUrl,
       metadata:     { orderId, guest: true },
@@ -83,7 +143,7 @@ const initializeGuestPayment = async (req, res) => {
       `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method)
        VALUES ($1,$2,$3,'pending',$4,$5,'paystack')
        ON CONFLICT (paystack_reference) DO NOTHING`,
-      [uuid(), orderId, order.total_amount, response.data.data.reference, email]
+      [uuid(), orderId, order.total_amount, response.data.data.reference, order.guest_email]
     );
 
     res.json({
@@ -92,7 +152,7 @@ const initializeGuestPayment = async (req, res) => {
       reference:         response.data.data.reference,
     });
   } catch (error) {
-    logger.error('Paystack guest init error', { err: error.response?.data || error.message });
+    logger.error('Paystack guest init error', { err: error.response?.data?.message || error.message });
     res.status(500).json({ error: 'Failed to initialize payment' });
   }
 };
@@ -100,67 +160,95 @@ const initializeGuestPayment = async (req, res) => {
 // ── Verify payment (frontend callback) ───────────────────────────────────────
 // Called by the frontend after Paystack redirects back.
 //
-// Updates the order synchronously (pending → confirmed, payment_status → paid)
-// so the admin sees the correct state immediately. Then enqueues the
-// payment.success job for downstream work (shipment, notification emails).
-// The worker's "already paid" branch handles the duplicate safely — it skips
-// the DB write and only re-enqueues downstream jobs if they weren't sent yet.
+// Requires a locally initiated `payments` row — never authorizes from client-
+// controlled metadata alone. Non-final Paystack states return 202 {status:'pending'}
+// without overwriting `payments.status`. Only real failures mark pending rows failed.
 const verifyPayment = async (req, res) => {
   try {
     const { reference } = req.body;
-    if (!reference || typeof reference !== 'string') {
-      return res.status(400).json({ error: 'Payment reference is required' });
+    if (!reference || typeof reference !== 'string' || !PAYSTACK_REF_RE.test(reference)) {
+      return res.status(400).json({ error: 'Invalid payment reference' });
     }
 
-    const response = await paystackAPI.get(`/transaction/verify/${encodeURIComponent(reference)}`);
-    const txData = response.data.data;
+    const { rows: paymentRows } = await pool.query(
+      'SELECT order_id, status FROM payments WHERE paystack_reference = $1',
+      [reference]
+    );
+    const orderId = paymentRows[0]?.order_id || null;
 
-    if (!txData || txData.status !== 'success') {
+    if (!orderId) {
+      logger.warn('verifyPayment: unknown payment reference (no payments row)', { reference });
+      return res.status(400).json({ error: 'Unknown payment reference' });
+    }
+
+    let response;
+    try {
+      response = await paystackAPI.get(`/transaction/verify/${encodeURIComponent(reference)}`);
+    } catch (apiErr) {
+      if (apiErr.response?.status === 404) {
+        return res.status(400).json({ error: 'Payment reference not found' });
+      }
+      throw apiErr;
+    }
+
+    const txData = response.data?.data;
+    if (!response.data?.status || !txData) {
+      return res.status(400).json({ error: 'Payment verification failed' });
+    }
+    if (txData.reference !== reference) {
+      logger.error('verifyPayment: response reference mismatch', {
+        requested: reference, returned: txData.reference,
+      });
+      return res.status(400).json({ error: 'Payment reference mismatch' });
+    }
+
+    if (NON_FINAL_TX_STATUSES.has(txData.status)) {
+      return res.status(202).json({ status: 'pending' });
+    }
+
+    if (FAILED_TX_STATUSES.has(txData.status)) {
       await pool.query(
-        `UPDATE payments SET status='failed', updated_at=NOW() WHERE paystack_reference=$1`,
+        `UPDATE payments SET status='failed', updated_at=NOW() WHERE paystack_reference=$1 AND status='pending'`,
         [reference]
       );
-      return res.status(400).json({ error: 'Payment failed or not completed' });
+      return res.status(400).json({ error: 'Payment failed or was reversed' });
     }
 
-    // Resolve and cross-check orderId ownership between metadata and payments table
+    if (txData.status !== 'success') {
+      return res.status(400).json({ error: 'Payment not completed' });
+    }
+
+    // Defense-in-depth cross-check when metadata carries an orderId
     let metadata = txData.metadata;
     if (typeof metadata === 'string') { try { metadata = JSON.parse(metadata); } catch { metadata = {}; } }
     metadata = (metadata && typeof metadata === 'object') ? metadata : {};
     const metadataOrderId = metadata.orderId || metadata.order_id || null;
 
-    const { rows: paymentRows } = await pool.query(
-      'SELECT order_id FROM payments WHERE paystack_reference = $1',
-      [reference]
-    );
-    const dbOrderId = paymentRows[0]?.order_id || null;
-
-    if (dbOrderId && metadataOrderId && String(dbOrderId) !== String(metadataOrderId)) {
+    if (metadataOrderId && String(orderId) !== String(metadataOrderId)) {
       logger.error('verifyPayment: payment reference order mismatch', {
-        reference, dbOrderId, metadataOrderId,
+        reference, orderId, metadataOrderId,
       });
       return res.status(400).json({ error: 'Payment reference does not match the order' });
     }
 
-    const orderId = dbOrderId || metadataOrderId;
-
-    if (!orderId) {
-      logger.error('verifyPayment: cannot resolve orderId', { reference });
-      return res.status(400).json({ error: 'Cannot identify order for this payment reference' });
-    }
-
     const paidPesewas = Number(txData.amount);
+    const paidAmount  = Number.isFinite(paidPesewas) ? paidPesewas / 100 : 0;
     const currency    = txData.currency;
 
-    // Synchronously validate amount/currency and mark the order paid so the admin
-    // sees the correct state immediately — no dependency on worker polling.
+    // Synchronously validate amount/currency and update state under a row lock.
     const client = await pool.connect();
     let mismatchError = null;
+    let lockedOrder = null;
+    let responseStatus = 'success';
+    let enqueuePaymentSuccess = false;
+    let postCommitAlert = null;
+
     try {
       await client.query('BEGIN');
 
       const { rows } = await client.query(
-        'SELECT id, status, payment_status, total_amount FROM orders WHERE id = $1 FOR UPDATE',
+        `SELECT id, status, payment_status, payment_reference, total_amount, customer_id, order_number, refund_status
+           FROM orders WHERE id = $1 FOR UPDATE`,
         [orderId]
       );
       const order = rows[0];
@@ -169,63 +257,157 @@ const verifyPayment = async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(404).json({ error: 'Order not found' });
       }
+      lockedOrder = order;
 
       const expectedPesewas = Math.round(parseFloat(order.total_amount) * 100);
 
-      if (currency !== 'GHS' || !Number.isFinite(paidPesewas) || paidPesewas < expectedPesewas) {
-        const reason = `Payment verification mismatch (ref ${reference}): expected ${expectedPesewas} GHS pesewas, got ${paidPesewas} ${currency || 'UNKNOWN'}`;
-        if (order.payment_status !== 'paid' && order.status !== 'cancelled') {
-          await client.query(
-            `UPDATE orders SET payment_status = 'payment_review', updated_at = NOW() WHERE id = $1`,
-            [orderId]
-          );
-          await client.query(
-            `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
-             VALUES ($1, $2, $3, $3, $4, NOW())`,
-            [uuid(), orderId, order.status, reason]
-          );
+      const { rows: lockedPayRows } = await client.query(
+        `SELECT status FROM payments WHERE paystack_reference = $1 FOR UPDATE`,
+        [reference]
+      );
+      const currentPaymentStatus = lockedPayRows[0]?.status;
+
+      if (['refunded', 'needs_review', 'duplicate'].includes(currentPaymentStatus)) {
+        await client.query('COMMIT');
+        responseStatus = 'attention';
+      } else if (currentPaymentStatus === 'success') {
+        await client.query('COMMIT');
+        if (
+          TERMINAL_ORDER_STATUSES.has(order.status) ||
+          ['payment_review', 'refunded'].includes(order.payment_status)
+        ) {
+          responseStatus = 'attention';
+        } else {
+          responseStatus = 'success';
+          enqueuePaymentSuccess = true;
         }
+      } else if (TERMINAL_ORDER_STATUSES.has(order.status)) {
+        const note = `Paystack payment received for ${order.status} order (ref ${reference}, GHS ${paidAmount.toFixed(2)}) — flagged for payment_review.`;
+        await client.query(
+          `UPDATE orders SET payment_status = 'payment_review', updated_at = NOW() WHERE id = $1`,
+          [orderId]
+        );
+        await client.query(
+          `UPDATE payments SET status = 'needs_review', amount = $2, updated_at = NOW()
+            WHERE paystack_reference = $1 AND status = 'pending'`,
+          [reference, paidAmount]
+        );
+        await logStatusChange(orderId, order.status, order.status, note, client);
+        await client.query('COMMIT');
+
+        logger.error('verifyPayment: payment received on terminal order — flagged for payment_review', {
+          orderId, orderStatus: order.status, reference, paidAmount,
+        });
+        postCommitAlert = {
+          orderId,
+          alertKey: `terminal_payment_${reference}`,
+          title: `Payment received on ${order.status} order`,
+          detail: note,
+        };
+        responseStatus = 'attention';
+      } else if (order.payment_status === 'paid') {
+        const { rows: existingRows } = await client.query(
+          `SELECT paystack_reference FROM payments WHERE order_id = $1 AND status = 'success' LIMIT 1`,
+          [orderId]
+        );
+        const winningRef = existingRows[0]?.paystack_reference || order.payment_reference;
+
+        if (winningRef && winningRef !== reference) {
+          const note = `Duplicate Paystack payment detected (ref ${reference}, GHS ${paidAmount.toFixed(2)}) — order already paid via ${winningRef}. Admin refund required.`;
+          await client.query(
+            `UPDATE payments SET status = 'duplicate', amount = $2, updated_at = NOW()
+              WHERE paystack_reference = $1 AND status != 'duplicate'`,
+            [reference, paidAmount]
+          );
+          await logStatusChange(orderId, order.status, order.status, note, client);
+          await client.query('COMMIT');
+
+          logger.error('verifyPayment: duplicate payment detected', {
+            orderId, reference, winningRef, paidAmount,
+          });
+          postCommitAlert = {
+            orderId,
+            alertKey: `duplicate_payment_${reference}`,
+            title: 'Duplicate payment detected',
+            detail: note,
+          };
+          responseStatus = 'attention';
+        } else {
+          await client.query('COMMIT');
+          responseStatus = 'success';
+          enqueuePaymentSuccess = true;
+        }
+      } else if (['payment_review', 'refunded'].includes(order.payment_status)) {
+        const note = `Paystack payment received for order already in payment_status="${order.payment_status}" (ref ${reference}, GHS ${paidAmount.toFixed(2)}) — flagged for payment_review.`;
+        await client.query(
+          `UPDATE payments SET status = 'needs_review', amount = $2, updated_at = NOW()
+            WHERE paystack_reference = $1 AND status = 'pending'`,
+          [reference, paidAmount]
+        );
+        await logStatusChange(orderId, order.status, order.status, note, client);
+        await client.query('COMMIT');
+
+        logger.error('verifyPayment: payment received on payment_review/refunded order', {
+          orderId, paymentStatus: order.payment_status, reference, paidAmount,
+        });
+        postCommitAlert = {
+          orderId,
+          alertKey: `review_order_payment_${reference}`,
+          title: `Payment received on ${order.payment_status} order`,
+          detail: note,
+        };
+        responseStatus = 'attention';
+      } else if (currency !== 'GHS' || !Number.isFinite(paidPesewas) || paidPesewas < expectedPesewas) {
+        const reason = `Payment verification mismatch (ref ${reference}): expected ${expectedPesewas} GHS pesewas, got ${paidPesewas} ${currency || 'UNKNOWN'}`;
+        await client.query(
+          `UPDATE orders SET payment_status = 'payment_review', updated_at = NOW() WHERE id = $1`,
+          [orderId]
+        );
+        await client.query(
+          `UPDATE payments SET status = 'needs_review', amount = $2, updated_at = NOW()
+            WHERE paystack_reference = $1 AND status = 'pending'`,
+          [reference, paidAmount]
+        );
+        await logStatusChange(orderId, order.status, order.status, reason, client);
         await client.query('COMMIT');
         logger.error('verifyPayment: amount or currency mismatch', {
           orderId, reference, expectedPesewas, paidPesewas, currency,
         });
         mismatchError = 'Payment amount or currency does not match the order';
-      } else if (order.payment_status !== 'paid' && order.status !== 'cancelled') {
+      } else {
         const needsAdvance = order.status === 'pending';
         const isOverpaid   = paidPesewas > expectedPesewas;
         const diffPesewas  = paidPesewas - expectedPesewas;
 
         await client.query(
           needsAdvance
-            ? `UPDATE orders SET payment_status = 'paid', status = 'confirmed', updated_at = NOW() WHERE id = $1`
-            : `UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = $1`,
-          [orderId]
+            ? `UPDATE orders SET payment_status = 'paid', status = 'confirmed', payment_reference = COALESCE(payment_reference, $2), updated_at = NOW() WHERE id = $1`
+            : `UPDATE orders SET payment_status = 'paid', payment_reference = COALESCE(payment_reference, $2), updated_at = NOW() WHERE id = $1`,
+          [orderId, reference]
         );
         await client.query(
-          `UPDATE payments SET status = 'success', updated_at = NOW() WHERE paystack_reference = $1`,
-          [reference]
+          `UPDATE payments SET status = 'success', amount = $2, updated_at = NOW() WHERE paystack_reference = $1`,
+          [reference, paidAmount]
         );
         if (needsAdvance) {
-          await client.query(
-            `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
-             VALUES ($1, $2, $3, 'confirmed', 'Payment confirmed via Paystack', NOW())`,
-            [uuid(), orderId, order.status]
-          );
+          await logStatusChange(orderId, order.status, 'confirmed', 'Payment confirmed via Paystack', client);
         }
         if (isOverpaid) {
           const note = `Overpayment flagged for review (ref ${reference}): paid ${paidPesewas} pesewas vs expected ${expectedPesewas} pesewas (+${(diffPesewas / 100).toFixed(2)} GHS)`;
-          await client.query(
-            `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
-             VALUES ($1, $2, $3, $3, $4, NOW())`,
-            [uuid(), orderId, needsAdvance ? 'confirmed' : order.status, note]
-          );
+          await logStatusChange(orderId, needsAdvance ? 'confirmed' : order.status, needsAdvance ? 'confirmed' : order.status, note, client);
           logger.warn('verifyPayment: overpayment accepted and flagged for review', {
             orderId, reference, expectedPesewas, paidPesewas, diffPesewas,
           });
         }
+        if (order.customer_id) {
+          await client.query(
+            `UPDATE customers SET total_spent = COALESCE(total_spent, 0) + $1, total_orders = COALESCE(total_orders, 0) + 1 WHERE user_id = $2`,
+            [paidAmount, order.customer_id]
+          );
+        }
         await client.query('COMMIT');
-      } else {
-        await client.query('COMMIT');
+        responseStatus = 'success';
+        enqueuePaymentSuccess = true;
       }
     } catch (dbErr) {
       await client.query('ROLLBACK').catch(() => {});
@@ -239,22 +421,39 @@ const verifyPayment = async (req, res) => {
       return res.status(400).json({ error: mismatchError });
     }
 
-    // Enqueue for downstream work (shipment record, notification emails).
-    // Worker's "already paid" branch handles the duplicate gracefully.
-    const { paymentQueue } = require('../queues');
-    await paymentQueue.add(
-      'payment.success',
-      { reference, orderId, amount: paidPesewas / 100, amountPesewas: paidPesewas, currency },
-      { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+    if (postCommitAlert) {
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('admin-payment-alert', postCommitAlert)
+        .catch(err => logger.error('Failed to enqueue admin payment alert', { err: err.message, orderId }));
+    }
+
+    if (enqueuePaymentSuccess) {
+      // Enqueue for downstream work (shipment record, notification emails).
+      // Worker's "already paid" branch handles duplicates safely.
+      const { paymentQueue } = require('../queues');
+      await paymentQueue.add(
+        'payment.success',
+        { reference, orderId, amount: paidAmount, amountPesewas: paidPesewas, currency },
+        { attempts: 3, backoff: { type: 'exponential', delay: 2000 } }
+      );
+      logger.info('Payment verified and order confirmed', { reference, orderId });
+    }
+
+    const isAuthorizedOwner = Boolean(
+      req.user &&
+      (req.user.role === 'admin' ||
+        (lockedOrder?.customer_id && String(lockedOrder.customer_id) === String(req.user.id)))
     );
 
-    logger.info('Payment verified and order confirmed', { reference, orderId });
+    if (!isAuthorizedOwner) {
+      return res.json({ status: responseStatus });
+    }
 
     // Read order AFTER the synchronous update so the response reflects the
-    // current state (confirmed/paid) rather than the pre-update state.
+    // current state (confirmed/paid/payment_review) for the verified owner/admin.
     const order = await OrderModel.findById(orderId);
     res.json({
-      status:        'success',
+      status:        responseStatus,
       orderId,
       orderNumber:   order?.order_number  || null,
       order_status:  order?.status        || null,
@@ -262,7 +461,10 @@ const verifyPayment = async (req, res) => {
     });
 
   } catch (error) {
-    logger.error('Payment verification error', { err: error.response?.data || error.message });
+    logger.error('Payment verification error', {
+      status: error.response?.status,
+      err: error.response?.data?.message || error.message,
+    });
     res.status(500).json({ error: 'Failed to verify payment' });
   }
 };
@@ -380,20 +582,21 @@ async function processChargeSuccess(event) {
   );
   const dbOrderId = paymentRows[0]?.order_id || null;
 
-  if (dbOrderId && metadataOrderId && String(dbOrderId) !== String(metadataOrderId)) {
+  if (!dbOrderId) {
+    logger.warn('Webhook: ignoring charge.success for unknown reference (no payments row)', {
+      reference: txData.reference,
+    });
+    return;
+  }
+
+  if (metadataOrderId && String(dbOrderId) !== String(metadataOrderId)) {
     logger.error('Webhook: payment reference order mismatch for charge.success', {
       reference: txData.reference, dbOrderId, metadataOrderId,
     });
     return;
   }
 
-  const orderId = dbOrderId || metadataOrderId;
-
-  if (!orderId) {
-    // Log and throw — caller returns 500 so Paystack retries until orderId resolves.
-    logger.error('Webhook: cannot resolve orderId for charge.success', { reference: txData.reference });
-    throw new Error(`Cannot resolve orderId for reference ${txData.reference}`);
-  }
+  const orderId = dbOrderId;
 
   const eventId = `paystack_charge_success_${txData.reference}`;
   const amountPesewas = Number(txData.amount);
@@ -473,17 +676,42 @@ async function completePaystackRefundFromWebhook(event) {
       return;
     }
 
-    // Only advance from 'pending'.
-    if (order.refund_status !== 'pending') {
-      await client.query('COMMIT');
-      logger.warn('Paystack refund success ignored for non-pending order', {
-        eventId, orderId: order.id, refundStatus: order.refund_status,
-      });
-      return;
-    }
-
     const providerId = getRefundProviderId(event.data);
     const refundReference = getRefundReference(event.data);
+
+    // If the refund was not initiated from the app ('pending' / 'needs_attention'),
+    // flag payment_review and alert admin instead of dropping the event.
+    if (!['pending', 'needs_attention'].includes(order.refund_status)) {
+      const note = `External Paystack refund processed (ref ${refundReference || providerId || 'n/a'}) while refund_status="${order.refund_status}" — flagged for payment_review.`;
+      const refundNotes = [order.refund_notes, note].filter(Boolean).join('\n');
+
+      await client.query(
+        `UPDATE orders
+            SET payment_status = 'payment_review',
+                refund_provider_id = COALESCE(refund_provider_id, $1),
+                refund_reference = COALESCE(refund_reference, $2),
+                refund_notes = $3,
+                updated_at = NOW()
+          WHERE id = $4`,
+        [providerId ? String(providerId) : null, refundReference, refundNotes, order.id]
+      );
+
+      await logStatusChange(order.id, order.status, order.status, note, client);
+      await client.query('COMMIT');
+
+      logger.warn('External Paystack refund processed — flagged for payment_review', {
+        eventId, orderId: order.id, previousRefundStatus: order.refund_status,
+      });
+
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('admin-payment-alert', {
+        orderId: order.id,
+        alertKey: eventId,
+        title: 'External Paystack refund processed',
+        detail: note,
+      }).catch(err => logger.error('Failed to enqueue external refund alert', { err: err.message, orderId: order.id }));
+      return;
+    }
 
     await client.query(
       `UPDATE orders
@@ -496,6 +724,15 @@ async function completePaystackRefundFromWebhook(event) {
               updated_at = NOW()
         WHERE id = $3`,
       [providerId ? String(providerId) : null, refundReference, order.id]
+    );
+
+    await client.query(
+      `UPDATE payments
+          SET status = 'refunded',
+              updated_at = NOW()
+        WHERE order_id = $1
+          AND status IN ('success', 'needs_review')`,
+      [order.id]
     );
 
     await logStatusChange(
@@ -558,8 +795,8 @@ async function failPaystackRefundFromWebhook(event) {
       return;
     }
 
-    // Only set 'failed' from 'pending'.
-    if (order.refund_status !== 'pending') {
+    // Only set 'failed' from 'pending' or 'needs_attention'.
+    if (!['pending', 'needs_attention'].includes(order.refund_status)) {
       await client.query('COMMIT');
       logger.warn('Paystack refund failure ignored for non-pending order', {
         eventId, orderId: order.id, refundStatus: order.refund_status,
@@ -589,6 +826,164 @@ async function failPaystackRefundFromWebhook(event) {
     logger.warn('Paystack refund marked failed', {
       eventId, orderId: order.id, detail: failureDetail,
     });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ── refund.needs-attention ─────────────────────────────────────────────────────
+async function handleRefundNeedsAttentionFromWebhook(event) {
+  const eventId = getRefundEventId(event);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const claimed = await claimEvent(client, eventId, event.event);
+    if (!claimed) {
+      await client.query('COMMIT');
+      logger.info('Duplicate Paystack refund.needs-attention webhook skipped', { eventId });
+      return;
+    }
+
+    const order = await findRefundOrderForUpdate(client, event.data || {});
+    if (!order) {
+      await client.query('COMMIT');
+      logger.warn('Paystack refund.needs-attention webhook could not be matched to an order', {
+        refundProviderId: getRefundProviderId(event.data),
+        refundReference: getRefundReference(event.data),
+        transactionReference: getTransactionReference(event.data),
+      });
+      return;
+    }
+
+    if (order.refund_status === 'success') {
+      await client.query('COMMIT');
+      logger.info('Paystack refund.needs-attention ignored — refund already succeeded', {
+        eventId, orderId: order.id,
+      });
+      return;
+    }
+
+    const providerId = getRefundProviderId(event.data);
+    const refundReference = getRefundReference(event.data);
+    const detail = getRefundFailureDetail(event.data);
+    const note = `Paystack refund needs attention — customer account details required (${detail})`;
+    const refundNotes = [order.refund_notes, note].filter(Boolean).join('\n');
+
+    await client.query(
+      `UPDATE orders
+          SET refund_status = 'needs_attention',
+              refund_method = COALESCE(refund_method, 'paystack'),
+              refund_provider_id = COALESCE(refund_provider_id, $1),
+              refund_reference = COALESCE(refund_reference, $2),
+              refund_notes = $3,
+              updated_at = NOW()
+        WHERE id = $4`,
+      [providerId ? String(providerId) : null, refundReference, refundNotes, order.id]
+    );
+
+    await logStatusChange(
+      order.id,
+      order.status,
+      order.status,
+      'Paystack refund needs attention — customer account details required',
+      client
+    );
+
+    await client.query('COMMIT');
+    logger.warn('Paystack refund marked needs_attention', {
+      eventId, orderId: order.id, providerId, detail,
+    });
+
+    const { notificationQueue } = require('../queues');
+    notificationQueue.add('admin-payment-alert', {
+      orderId: order.id,
+      alertKey: eventId,
+      title: 'Paystack refund needs attention',
+      detail: note,
+    }).catch(err => logger.error('Failed to enqueue refund needs-attention alert', { err: err.message, orderId: order.id }));
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+// ── charge.dispute.* ───────────────────────────────────────────────────────────
+async function handleDisputeWebhook(event) {
+  const data = event.data || {};
+  const disputeKey = data.id || data.transaction?.reference || data.transaction_reference || 'unknown';
+  const eventId = `paystack_${event.event}_${disputeKey}_${data.status || 'na'}`;
+  const txRef = getTransactionReference(data);
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const claimed = await claimEvent(client, eventId, event.event);
+    if (!claimed) {
+      await client.query('COMMIT');
+      logger.info('Duplicate Paystack dispute webhook skipped', { eventId, event: event.event });
+      return;
+    }
+
+    let order = null;
+    if (txRef) {
+      const { rows } = await client.query(
+        `SELECT o.*
+           FROM orders o
+          WHERE o.payment_reference = $1
+             OR EXISTS (
+                  SELECT 1 FROM payments p
+                   WHERE p.order_id = o.id
+                     AND p.paystack_reference = $1
+                )
+          ORDER BY o.updated_at DESC
+          LIMIT 1
+          FOR UPDATE OF o`,
+        [txRef]
+      );
+      order = rows[0] || null;
+    }
+
+    if (!order) {
+      await client.query('COMMIT');
+      logger.warn('Paystack dispute webhook could not be matched to an order', {
+        event: event.event, disputeId: data.id, transactionReference: txRef,
+      });
+      return;
+    }
+
+    const reason = data.category || data.reason || data.status || 'dispute update';
+    const note = `Paystack dispute event ${event.event} (dispute ${data.id || 'n/a'}, status ${data.status || 'n/a'}): ${reason}`;
+
+    await client.query(
+      `UPDATE orders
+          SET payment_status = CASE WHEN payment_status = 'refunded' THEN 'refunded' ELSE 'payment_review' END,
+              updated_at = NOW()
+        WHERE id = $1`,
+      [order.id]
+    );
+
+    await logStatusChange(order.id, order.status, order.status, note, client);
+    await client.query('COMMIT');
+
+    logger.warn('Paystack dispute flagged order for payment_review', {
+      eventId, event: event.event, orderId: order.id, disputeId: data.id,
+    });
+
+    const { notificationQueue } = require('../queues');
+    notificationQueue.add('admin-payment-alert', {
+      orderId: order.id,
+      alertKey: eventId,
+      title: `Paystack ${event.event}`,
+      detail: note,
+    }).catch(err => logger.error('Failed to enqueue dispute alert', { err: err.message, orderId: order.id }));
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;
@@ -637,6 +1032,8 @@ const handleWebhook = async (req, res) => {
       await completePaystackRefundFromWebhook(event);
     } else if (REFUND_FAILED_EVENTS.has(event.event)) {
       await failPaystackRefundFromWebhook(event);
+    } else if (event.event === 'refund.needs-attention') {
+      await handleRefundNeedsAttentionFromWebhook(event);
     } else if (REFUND_STATUS_EVENTS.has(event.event)) {
       // Informational only — no durable state change needed.
       logger.info('Paystack refund status webhook received', {
@@ -644,6 +1041,8 @@ const handleWebhook = async (req, res) => {
         refundReference: getRefundReference(event.data),
         transactionReference: getTransactionReference(event.data),
       });
+    } else if (DISPUTE_EVENTS.has(event.event)) {
+      await handleDisputeWebhook(event);
     } else if (event.event === 'charge.success') {
       await processChargeSuccess(event);
     }

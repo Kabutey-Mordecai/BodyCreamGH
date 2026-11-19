@@ -7,7 +7,7 @@ const ReviewModel = require('../models/review.model');
 const CouponModel = require('../models/coupon.model');
 const { logStatusChange } = require('../utils/audit');
 const { assertTransition } = require('../utils/stateMachine');
-const { createFullRefund } = require('../services/paystack.service');
+const { createFullRefund, fetchRefundsByTransaction } = require('../services/paystack.service');
 const logger = require('../utils/logger');
 
 function parseSettingNumber(value, fallback) {
@@ -172,6 +172,14 @@ const createOrder = async (req, res) => {
       }
     }
 
+    if (payment_method !== 'pay_on_delivery' && (!Number.isFinite(total) || Math.round(total * 100) <= 0)) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({
+        error: 'Order total must be greater than zero for online payment. Please adjust your cart or coupon.',
+      });
+    }
+
     const orderId = uuid();
     const orderNumber = `ORD-${Date.now()}`;
     const initialStatus = payment_method === 'pay_on_delivery' ? 'confirmed' : 'pending';
@@ -303,7 +311,7 @@ const getAllOrders = async (req, res) => {
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
     const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const offset = (page - 1) * limit;
-    const { status, search } = req.query;
+    const { status, search, fulfillment_method, payment_status } = req.query;
 
     const params = [];
     const clauses = [];
@@ -311,6 +319,14 @@ const getAllOrders = async (req, res) => {
     if (status) {
       params.push(status);
       clauses.push(`o.status = $${params.length}`);
+    }
+    if (fulfillment_method) {
+      params.push(fulfillment_method);
+      clauses.push(`o.fulfillment_method = $${params.length}`);
+    }
+    if (payment_status) {
+      params.push(payment_status);
+      clauses.push(`o.payment_status = $${params.length}`);
     }
     if (search) {
       params.push(`%${search}%`);
@@ -336,10 +352,12 @@ const getAllOrders = async (req, res) => {
                o.refund_status, o.fulfillment_method, o.payment_method, o.created_at,
                o.cancel_requested, o.cancel_request_rejected,
                o.return_requested, o.return_request_rejected,
+               o.customer_id,
                COALESCE(u.first_name || ' ' || u.last_name, u.first_name, NULLIF(TRIM(COALESCE(o.guest_first_name, '') || ' ' || COALESCE(o.guest_last_name, '')), ''), o.guest_email, 'Guest') AS customer_name,
                COALESCE(u.email, o.guest_email) AS customer_email,
                COALESCE(u.phone, o.guest_phone) AS customer_phone,
-               (o.customer_id IS NULL) AS is_guest
+               (o.customer_id IS NULL) AS is_guest,
+               (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id) AS item_count
           FROM orders o
           LEFT JOIN users u ON o.customer_id = u.id
           ${where}
@@ -404,12 +422,25 @@ const getRequests = async (req, res) => {
 
     const { rows } = await pool.query(`
       SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status,
+             o.fulfillment_method, o.payment_method, o.customer_id,
              o.cancel_reason, o.cancel_requested_at,
              o.return_reason, o.return_requested_at,
              COALESCE(u.email, o.guest_email) AS customer_email,
              COALESCE(u.phone, o.guest_phone) AS customer_phone,
              (o.customer_id IS NULL) AS is_guest,
-             COALESCE(u.first_name || ' ' || u.last_name, u.first_name, NULLIF(TRIM(COALESCE(o.guest_first_name, '') || ' ' || COALESCE(o.guest_last_name, '')), ''), o.guest_email, 'Guest') AS customer_name
+             COALESCE(u.first_name || ' ' || u.last_name, u.first_name, NULLIF(TRIM(COALESCE(o.guest_first_name, '') || ' ' || COALESCE(o.guest_last_name, '')), ''), o.guest_email, 'Guest') AS customer_name,
+             (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id) AS item_count,
+             (
+               SELECT json_agg(json_build_object(
+                 'name', p.name,
+                 'quantity', oi.quantity,
+                 'variant_label', oi.variant_label,
+                 'image_url', p.image_url
+               ))
+               FROM order_items oi
+               JOIN products p ON oi.product_id = p.id
+               WHERE oi.order_id = o.id
+             ) AS items
         FROM orders o
         LEFT JOIN users u ON o.customer_id = u.id
         ${where}
@@ -423,13 +454,21 @@ const getRequests = async (req, res) => {
 
 const exportOrders = async (req, res) => {
   try {
-    const { status, search, from, to } = req.query;
+    const { status, search, from, to, fulfillment_method, payment_status } = req.query;
     const params = [];
     const clauses = [];
 
     if (status) {
       params.push(status);
       clauses.push(`o.status = $${params.length}`);
+    }
+    if (fulfillment_method) {
+      params.push(fulfillment_method);
+      clauses.push(`o.fulfillment_method = $${params.length}`);
+    }
+    if (payment_status) {
+      params.push(payment_status);
+      clauses.push(`o.payment_status = $${params.length}`);
     }
     if (search) {
       params.push(`%${search}%`);
@@ -447,7 +486,7 @@ const exportOrders = async (req, res) => {
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
 
     const { rows } = await pool.query(`
-      SELECT o.order_number, o.total_amount, o.status, o.payment_status, o.created_at,
+      SELECT o.order_number, o.total_amount, o.status, o.payment_status, o.fulfillment_method, o.created_at,
              COALESCE(u.first_name || ' ' || u.last_name, u.first_name, NULLIF(TRIM(COALESCE(o.guest_first_name, '') || ' ' || COALESCE(o.guest_last_name, '')), ''), o.guest_email, 'Guest') AS customer_name,
              COALESCE(u.email, o.guest_email, '') AS customer_email,
              COALESCE(u.phone, o.guest_phone, '') AS customer_phone,
@@ -458,7 +497,7 @@ const exportOrders = async (req, res) => {
        ORDER BY o.created_at DESC
     `, params);
 
-    const headers = ['Order Number', 'Customer Name', 'Customer Email', 'Total (GHS)', 'Status', 'Payment Status', 'Created At'];
+    const headers = ['Order Number', 'Customer Name', 'Customer Email', 'Total (GHS)', 'Status', 'Payment Status', 'Fulfillment Method', 'Created At'];
     const csvRows = rows.map(r => [
       r.order_number,
       r.customer_name,
@@ -466,6 +505,7 @@ const exportOrders = async (req, res) => {
       parseFloat(r.total_amount).toFixed(2),
       r.status,
       r.payment_status,
+      r.fulfillment_method || 'delivery',
       new Date(r.created_at).toISOString(),
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
 
@@ -651,11 +691,14 @@ function getRefundEligibilityError(order) {
   if (order.refund_status === 'pending') {
     return { status: 409, message: 'Refund already pending' };
   }
+  if (order.refund_status === 'needs_attention') {
+    return { status: 409, message: 'Refund already active and awaiting customer account details' };
+  }
   if (order.refund_status === 'success') {
     return { status: 409, message: 'Order already refunded' };
   }
-  if (order.payment_status !== 'paid') {
-    return { status: 400, message: 'Only paid orders can be refunded' };
+  if (!['paid', 'payment_review'].includes(order.payment_status)) {
+    return { status: 400, message: 'Only paid or payment_review orders can be refunded' };
   }
   if (!['cancelled', 'delivered'].includes(order.status)) {
     return { status: 400, message: `Cannot refund order with status "${order.status}"` };
@@ -663,36 +706,42 @@ function getRefundEligibilityError(order) {
   return null;
 }
 
-async function findPaystackTransactionReference(client, order) {
+async function findPaystackTransaction(client, order) {
   const { rows } = await client.query(
-    `SELECT COALESCE(
-              NULLIF($2, ''),
-              (
-                SELECT p.paystack_reference
-                  FROM payments p
-                 WHERE p.order_id = $1
-                   AND p.payment_method = 'paystack'
-                   AND p.status = 'success'
-                 ORDER BY p.updated_at DESC, p.created_at DESC
-                 LIMIT 1
-              ),
-              (
-                SELECT p.paystack_reference
-                  FROM payments p
-                 WHERE p.order_id = $1
-                   AND p.payment_method = 'paystack'
-                 ORDER BY p.updated_at DESC, p.created_at DESC
-                 LIMIT 1
-              )
-            ) AS reference`,
-    [order.id, order.payment_reference || null]
+    `SELECT p.paystack_reference AS reference, p.amount
+       FROM payments p
+      WHERE p.order_id = $1
+        AND p.payment_method = 'paystack'
+      ORDER BY
+        CASE
+          WHEN p.status = 'success' THEN 1
+          WHEN p.status = 'needs_review' THEN 2
+          ELSE 3
+        END,
+        p.updated_at DESC,
+        p.created_at DESC
+      LIMIT 1`,
+    [order.id]
   );
 
-  return rows[0]?.reference || null;
+  if (rows[0]?.reference) {
+    return {
+      reference: rows[0].reference,
+      amount: rows[0].amount != null ? parseFloat(rows[0].amount) : null,
+    };
+  }
+  if (order.payment_reference) {
+    return {
+      reference: order.payment_reference,
+      amount: order.total_amount != null ? parseFloat(order.total_amount) : null,
+    };
+  }
+  return null;
 }
 
 const refundOrder = async (req, res) => {
   const { method, reference, notes } = req.body;
+  const adminId = req.user?.id || 'unknown';
 
   if (method === 'manual') {
     const client = await pool.connect();
@@ -703,7 +752,7 @@ const refundOrder = async (req, res) => {
       transactionStarted = true;
 
       const { rows } = await client.query(
-        `SELECT id, status, payment_status, refund_status, total_amount
+        `SELECT id, status, payment_status, refund_status, total_amount, payment_reference
            FROM orders
           WHERE id = $1
           FOR UPDATE`,
@@ -724,28 +773,43 @@ const refundOrder = async (req, res) => {
         return res.status(eligibilityError.status).json({ error: eligibilityError.message });
       }
 
+      const matchedTx = await findPaystackTransaction(client, order);
+      const orderTotal = parseFloat(order.total_amount);
+      const paidAmount = matchedTx?.amount != null && Number.isFinite(matchedTx.amount) && matchedTx.amount > 0 ? matchedTx.amount : orderTotal;
+      const refundAmount = Math.round(paidAmount * 100) / 100;
+
       const { rows: updatedRows } = await client.query(
         `UPDATE orders
             SET refund_status = 'success',
                 refund_requested_at = NOW(),
                 refunded_at = NOW(),
                 refund_method = 'manual',
-                refund_amount = total_amount,
-                refund_reference = $1,
-                refund_notes = $2,
+                refund_amount = $1,
+                refund_reference = $2,
+                refund_notes = $3,
                 payment_status = 'refunded',
                 status = 'refunded',
                 updated_at = NOW()
-          WHERE id = $3
+          WHERE id = $4
           RETURNING *`,
-        [reference, notes || null, order.id]
+        [refundAmount, reference, notes || null, order.id]
       );
 
+      await client.query(
+        `UPDATE payments
+            SET status = 'refunded',
+                updated_at = NOW()
+          WHERE order_id = $1
+            AND status IN ('success', 'needs_review')`,
+        [order.id]
+      );
+
+      const auditNote = `Manual refund confirmed by admin ${adminId} (ref: ${reference})${notes ? ` — ${notes}` : ''}`;
       await logStatusChange(
         order.id,
         order.status,
         'refunded',
-        notes || `Manual refund confirmed: ${reference}`,
+        auditNote,
         client
       );
 
@@ -756,7 +820,14 @@ const refundOrder = async (req, res) => {
       notificationQueue.add('order-refunded', { orderId: order.id })
         .catch(err => logger.error('Failed to enqueue refund notification', { err: err.message, orderId: order.id }));
 
-      logger.info('Manual refund completed', { orderId: order.id, from: order.status, to: 'refunded' });
+      logger.info('Manual refund completed', {
+        orderId: order.id,
+        adminId,
+        reference,
+        refundAmount,
+        from: order.status,
+        to: 'refunded',
+      });
       return res.json({ message: 'Order refunded', order: updatedRows[0] });
     } catch (error) {
       if (transactionStarted) {
@@ -771,6 +842,7 @@ const refundOrder = async (req, res) => {
 
   let reservedOrder = null;
   let transactionReference = null;
+  let refundAmount = null;
 
   const reserveClient = await pool.connect();
   let reserveTransactionStarted = false;
@@ -800,23 +872,28 @@ const refundOrder = async (req, res) => {
       return res.status(eligibilityError.status).json({ error: eligibilityError.message });
     }
 
-    transactionReference = await findPaystackTransactionReference(reserveClient, order);
+    const matchedTx = await findPaystackTransaction(reserveClient, order);
+    transactionReference = matchedTx?.reference || null;
     if (!transactionReference) {
       await reserveClient.query('ROLLBACK');
       reserveTransactionStarted = false;
       return res.status(400).json({ error: 'Cannot find original Paystack payment reference for this order' });
     }
 
+    const orderTotal = parseFloat(order.total_amount);
+    const paidAmount = matchedTx?.amount != null && Number.isFinite(matchedTx.amount) && matchedTx.amount > 0 ? matchedTx.amount : orderTotal;
+    refundAmount = Math.round(paidAmount * 100) / 100;
+
     const { rows: reservedRows } = await reserveClient.query(
       `UPDATE orders
           SET refund_status = 'pending',
               refund_method = 'paystack',
-              refund_amount = total_amount,
-              refund_notes = $1,
+              refund_amount = $1,
+              refund_notes = $2,
               updated_at = NOW()
-        WHERE id = $2
+        WHERE id = $3
         RETURNING *`,
-      [notes || null, order.id]
+      [refundAmount, notes || null, order.id]
     );
 
     await reserveClient.query('COMMIT');
@@ -833,68 +910,139 @@ const refundOrder = async (req, res) => {
   }
 
   let refundData;
+  let recoveredAfterTimeout = false;
   try {
     refundData = await createFullRefund({
       transactionReference,
-      amount: reservedOrder.total_amount,
+      amount: refundAmount,
       notes,
+      currency: 'GHS',
     });
   } catch (error) {
-    const failureDetail = error.response?.data?.message || error.response?.data?.error || error.message;
-    const failClient = await pool.connect();
-    let failTransactionStarted = false;
-
-    try {
-      await failClient.query('BEGIN');
-      failTransactionStarted = true;
-
-      const failedNotes = [notes, `Paystack refund request failed: ${failureDetail}`]
-        .filter(Boolean)
-        .join('\n');
-
-      const { rows: failedRows } = await failClient.query(
-        `UPDATE orders
-            SET refund_status = 'failed',
-                refund_method = 'paystack',
-                refund_amount = total_amount,
-                refund_notes = $1,
-                updated_at = NOW()
-          WHERE id = $2
-            AND refund_status = 'pending'
-          RETURNING *`,
-        [failedNotes, reservedOrder.id]
-      );
-
-      await failClient.query('COMMIT');
-      failTransactionStarted = false;
-
-      logger.error('Paystack refund request failed', {
-        orderId: reservedOrder.id,
-        err: failureDetail,
-      });
-
-      const statusCode = error.response?.status >= 400 && error.response?.status < 500 ? 400 : 502;
-      return res.status(statusCode).json({
-        error: 'Paystack refund request failed',
-        detail: failureDetail,
-        order: failedRows[0] || null,
-      });
-    } catch (updateError) {
-      if (failTransactionStarted) {
-        await failClient.query('ROLLBACK').catch(() => {});
+    const isAmbiguous = !error.response || error.response.status >= 500 || error.code === 'ECONNABORTED';
+    let foundActiveRefund = null;
+    let lookupFailed = false;
+    if (isAmbiguous) {
+      try {
+        const existingList = await fetchRefundsByTransaction(transactionReference);
+        if (Array.isArray(existingList)) {
+          foundActiveRefund = existingList.find(r =>
+            r && ['pending', 'processing', 'processed', 'needs-attention'].includes(String(r.status || '').toLowerCase())
+          ) || null;
+        }
+      } catch (lookupErr) {
+        lookupFailed = true;
+        logger.warn('Paystack refund ambiguity lookup failed', {
+          orderId: reservedOrder.id,
+          err: lookupErr.message,
+        });
       }
-      logger.error('Failed to mark Paystack refund failed', {
-        err: updateError.message,
+    }
+
+    if (foundActiveRefund) {
+      logger.warn('Paystack refund timed out/errored, but active refund was found on Paystack', {
         orderId: reservedOrder.id,
+        transactionReference,
+        refundId: foundActiveRefund.id,
+        status: foundActiveRefund.status,
       });
-      return res.status(500).json({ error: 'Failed to update failed refund status' });
-    } finally {
-      failClient.release();
+      refundData = foundActiveRefund;
+      recoveredAfterTimeout = true;
+    } else {
+      const failureDetail = error.response?.data?.message || error.response?.data?.error || error.message;
+      const stayPending = isAmbiguous && (lookupFailed || !error.response || error.code === 'ECONNABORTED');
+      const failClient = await pool.connect();
+      let failTransactionStarted = false;
+
+      try {
+        await failClient.query('BEGIN');
+        failTransactionStarted = true;
+
+        if (stayPending) {
+          const pendingNotes = [
+            notes,
+            `Paystack refund request timed out or status unconfirmed — left pending for reconciliation (${failureDetail})`,
+          ]
+            .filter(Boolean)
+            .join('\n');
+
+          const { rows: pendingRows } = await failClient.query(
+            `UPDATE orders
+                SET refund_requested_at = COALESCE(refund_requested_at, NOW()),
+                    refund_notes = $1,
+                    updated_at = NOW()
+              WHERE id = $2
+                AND refund_status = 'pending'
+              RETURNING *`,
+            [pendingNotes, reservedOrder.id]
+          );
+
+          await failClient.query('COMMIT');
+          failTransactionStarted = false;
+
+          logger.warn('Paystack refund request status unconfirmed; kept pending for reconciliation', {
+            orderId: reservedOrder.id,
+            transactionReference,
+            err: failureDetail,
+            lookupFailed,
+          });
+
+          return res.status(202).json({
+            message: 'Refund request status unconfirmed; left pending for automatic Paystack verification',
+            detail: failureDetail,
+            order: pendingRows[0] || reservedOrder,
+          });
+        }
+
+        const failedNotes = [notes, `Paystack refund request failed: ${failureDetail}`]
+          .filter(Boolean)
+          .join('\n');
+
+        const { rows: failedRows } = await failClient.query(
+          `UPDATE orders
+              SET refund_status = 'failed',
+                  refund_method = 'paystack',
+                  refund_amount = $1,
+                  refund_notes = $2,
+                  updated_at = NOW()
+            WHERE id = $3
+              AND refund_status = 'pending'
+            RETURNING *`,
+          [refundAmount, failedNotes, reservedOrder.id]
+        );
+
+        await failClient.query('COMMIT');
+        failTransactionStarted = false;
+
+        logger.error('Paystack refund request failed', {
+          orderId: reservedOrder.id,
+          err: failureDetail,
+        });
+
+        const statusCode = error.response?.status >= 400 && error.response?.status < 500 ? 400 : 502;
+        return res.status(statusCode).json({
+          error: 'Paystack refund request failed',
+          detail: failureDetail,
+          order: failedRows[0] || null,
+        });
+      } catch (updateError) {
+        if (failTransactionStarted) {
+          await failClient.query('ROLLBACK').catch(() => {});
+        }
+        logger.error('Failed to mark Paystack refund failed', {
+          err: updateError.message,
+          orderId: reservedOrder.id,
+        });
+        return res.status(500).json({ error: 'Failed to update failed refund status' });
+      } finally {
+        failClient.release();
+      }
     }
   }
 
   const providerId = refundData.id || refundData.refund_id || null;
   const providerReference = refundData.reference || reference || null;
+  const psStatus = String(refundData.status || '').toLowerCase();
   const completeClient = await pool.connect();
   let completeTransactionStarted = false;
 
@@ -902,33 +1050,138 @@ const refundOrder = async (req, res) => {
     await completeClient.query('BEGIN');
     completeTransactionStarted = true;
 
-    const { rows: updatedRows } = await completeClient.query(
-      `UPDATE orders
-          SET refund_status = 'pending',
-              refund_requested_at = NOW(),
-              refund_method = 'paystack',
-              refund_amount = total_amount,
-              refund_provider_id = $1,
-              refund_reference = $2,
-              refund_notes = $3,
-              refunded_at = NULL,
-              updated_at = NOW()
-        WHERE id = $4
-          AND refund_status = 'pending'
-        RETURNING *`,
-      [providerId, providerReference, notes || null, reservedOrder.id]
-    );
+    let updatedRows = [];
+    let auditAlert = null;
+    let sendRefundEmail = false;
+    let responseMessage = recoveredAfterTimeout
+      ? 'Refund requested (verified after timeout)'
+      : 'Refund requested';
+
+    if (psStatus === 'processed') {
+      const resProcessed = await completeClient.query(
+        `UPDATE orders
+            SET refund_status = 'success',
+                status = 'refunded',
+                payment_status = 'refunded',
+                refunded_at = NOW(),
+                refund_requested_at = COALESCE(refund_requested_at, NOW()),
+                refund_method = 'paystack',
+                refund_amount = $1,
+                refund_provider_id = $2,
+                refund_reference = $3,
+                refund_notes = $4,
+                updated_at = NOW()
+          WHERE id = $5
+            AND refund_status = 'pending'
+          RETURNING *`,
+        [refundAmount, providerId ? String(providerId) : null, providerReference, notes || null, reservedOrder.id]
+      );
+      updatedRows = resProcessed.rows;
+
+      if (resProcessed.rowCount > 0) {
+        await completeClient.query(
+          `UPDATE payments
+              SET status = 'refunded',
+                  updated_at = NOW()
+            WHERE order_id = $1
+              AND status IN ('success', 'needs_review')`,
+          [reservedOrder.id]
+        );
+        await logStatusChange(
+          reservedOrder.id,
+          reservedOrder.status,
+          'refunded',
+          'Paystack refund processed',
+          completeClient
+        );
+        sendRefundEmail = true;
+      }
+      responseMessage = 'Order refunded';
+    } else if (psStatus === 'needs-attention') {
+      const detail = refundData.reason || refundData.message || refundData.gateway_response || 'needs-attention';
+      const attentionNote = `Paystack refund needs attention — customer account details required (${detail})`;
+      const attentionNotes = [notes, attentionNote].filter(Boolean).join('\n');
+
+      const resAttn = await completeClient.query(
+        `UPDATE orders
+            SET refund_status = 'needs_attention',
+                refund_requested_at = COALESCE(refund_requested_at, NOW()),
+                refund_method = 'paystack',
+                refund_amount = $1,
+                refund_provider_id = $2,
+                refund_reference = $3,
+                refund_notes = $4,
+                updated_at = NOW()
+          WHERE id = $5
+            AND refund_status = 'pending'
+          RETURNING *`,
+        [refundAmount, providerId ? String(providerId) : null, providerReference, attentionNotes, reservedOrder.id]
+      );
+      updatedRows = resAttn.rows;
+
+      if (resAttn.rowCount > 0) {
+        await logStatusChange(
+          reservedOrder.id,
+          reservedOrder.status,
+          reservedOrder.status,
+          'Paystack refund needs attention — customer account details required',
+          completeClient
+        );
+        auditAlert = {
+          orderId: reservedOrder.id,
+          alertKey: `refund_needs_attention_${providerId || reservedOrder.id}`,
+          title: 'Paystack refund needs attention',
+          detail: attentionNote,
+        };
+      }
+      responseMessage = 'Refund requires customer account details (needs attention)';
+    } else {
+      const resPending = await completeClient.query(
+        `UPDATE orders
+            SET refund_status = 'pending',
+                refund_requested_at = NOW(),
+                refund_method = 'paystack',
+                refund_amount = $1,
+                refund_provider_id = $2,
+                refund_reference = $3,
+                refund_notes = $4,
+                refunded_at = NULL,
+                updated_at = NOW()
+          WHERE id = $5
+            AND refund_status = 'pending'
+          RETURNING *`,
+        [refundAmount, providerId ? String(providerId) : null, providerReference, notes || null, reservedOrder.id]
+      );
+      updatedRows = resPending.rows;
+    }
 
     await completeClient.query('COMMIT');
     completeTransactionStarted = false;
 
+    if (sendRefundEmail) {
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('order-refunded', { orderId: reservedOrder.id })
+        .catch(err => logger.error('Failed to enqueue refund notification', { err: err.message, orderId: reservedOrder.id }));
+    }
+    if (auditAlert) {
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('admin-payment-alert', auditAlert)
+        .catch(err => logger.error('Failed to enqueue refund needs-attention alert', { err: err.message, orderId: reservedOrder.id }));
+    }
+
     logger.info('Paystack refund requested', {
       orderId: reservedOrder.id,
+      refundAmount,
       refundProviderId: providerId,
       refundReference: providerReference,
+      paystackStatus: psStatus || 'pending',
+      recoveredAfterTimeout,
     });
 
-    return res.json({ message: 'Refund requested', order: updatedRows[0] || reservedOrder });
+    return res.json({
+      message: responseMessage,
+      order: updatedRows[0] || reservedOrder,
+    });
   } catch (error) {
     if (completeTransactionStarted) {
       await completeClient.query('ROLLBACK').catch(() => {});
@@ -1090,6 +1343,14 @@ const createGuestOrder = async (req, res) => {
         transactionStarted = false;
         return res.status(400).json({ error: cv.error || 'Invalid or expired coupon' });
       }
+    }
+
+    if (payment_method !== 'pay_on_delivery' && (!Number.isFinite(total) || Math.round(total * 100) <= 0)) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({
+        error: 'Order total must be greater than zero for online payment. Please adjust your cart or coupon.',
+      });
     }
 
     const orderId = uuid();
@@ -1295,22 +1556,27 @@ const approveCancelRequest = async (req, res) => {
 // ── Admin: reject cancel request ──────────────────────────────────────────────
 const rejectCancelRequest = async (req, res) => {
   const { orderId } = req.params;
+  const reason = (req.body?.reason || req.body?.note || '').trim();
 
   try {
+    const noteClause = reason ? `, notes = CASE WHEN notes IS NULL OR notes = '' THEN $2 ELSE notes || E'\n' || $2 END` : '';
+    const params = reason ? [orderId, `[Cancellation Rejected]: ${reason}`] : [orderId];
+
     const result = await pool.query(
       `UPDATE orders
           SET cancel_request_rejected = true,
               updated_at = NOW()
+              ${noteClause}
         WHERE id = $1 AND cancel_requested = true
         RETURNING id`,
-      [orderId]
+      params
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Order not found or no cancel request pending' });
     }
 
     const { notificationQueue } = require('../queues');
-    notificationQueue.add('cancel-rejected', { orderId })
+    notificationQueue.add('cancel-rejected', { orderId, reason })
       .catch(err => logger.error('Failed to enqueue cancel-rejected notification', { err: err.message, orderId }));
 
     res.json({ message: 'Cancellation request rejected' });
@@ -1358,22 +1624,27 @@ const approveReturnRequest = async (req, res) => {
 // ── Admin: reject return request ──────────────────────────────────────────────
 const rejectReturnRequest = async (req, res) => {
   const { orderId } = req.params;
+  const reason = (req.body?.reason || req.body?.note || '').trim();
 
   try {
+    const noteClause = reason ? `, notes = CASE WHEN notes IS NULL OR notes = '' THEN $2 ELSE notes || E'\n' || $2 END` : '';
+    const params = reason ? [orderId, `[Return Rejected]: ${reason}`] : [orderId];
+
     const result = await pool.query(
       `UPDATE orders
           SET return_request_rejected = true,
               updated_at = NOW()
+              ${noteClause}
         WHERE id = $1 AND return_requested = true
         RETURNING id`,
-      [orderId]
+      params
     );
     if (result.rowCount === 0) {
       return res.status(404).json({ error: 'Order not found or no return request pending' });
     }
 
     const { notificationQueue } = require('../queues');
-    notificationQueue.add('return-rejected', { orderId })
+    notificationQueue.add('return-rejected', { orderId, reason })
       .catch(err => logger.error('Failed to enqueue return-rejected notification', { err: err.message, orderId }));
 
     res.json({ message: 'Return request rejected' });
@@ -1535,7 +1806,7 @@ const markOrderPaid = async (req, res) => {
 
     if (order.customer_id) {
       pool.query(
-        `UPDATE customers SET total_spent = total_spent + $1, total_orders = total_orders + 1 WHERE user_id = $2`,
+        `UPDATE customers SET total_spent = COALESCE(total_spent, 0) + $1, total_orders = COALESCE(total_orders, 0) + 1 WHERE user_id = $2`,
         [parseFloat(order.total_amount) || 0, order.customer_id]
       ).catch(err => logger.error('Failed to update customer totals on POD markPaid', { err: err.message, orderId: order.id }));
     }

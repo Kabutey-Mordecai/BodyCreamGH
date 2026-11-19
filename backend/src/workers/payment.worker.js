@@ -26,7 +26,7 @@ module.exports = async function register(boss) {
       inTransaction = true;
 
       const { rows } = await client.query(
-        'SELECT id, status, payment_status, customer_id, total_amount FROM orders WHERE id = $1 FOR UPDATE',
+        'SELECT id, order_number, status, payment_status, payment_reference, customer_id, total_amount FROM orders WHERE id = $1 FOR UPDATE',
         [orderId]
       );
       const order = rows[0];
@@ -36,21 +36,146 @@ module.exports = async function register(boss) {
       const paidPesewas = Number.isFinite(Number(amountPesewas))
         ? Number(amountPesewas)
         : Math.round(Number(amount) * 100);
+      const paidAmount   = Number.isFinite(paidPesewas) ? paidPesewas / 100 : 0;
       const paidCurrency = currency || 'GHS';
 
-      if (order.payment_status === 'paid') {
-        // DB already updated — process must have crashed after COMMIT but before
-        // downstream jobs were sent. Fall through to re-enqueue them.
+      const { rows: payRows } = await client.query(
+        `SELECT status FROM payments WHERE paystack_reference = $1 FOR UPDATE`,
+        [reference]
+      );
+      const currentPayStatus = payRows[0]?.status;
+
+      if (['refunded', 'needs_review', 'duplicate'].includes(currentPayStatus)) {
+        await markProcessed(eventId, 'payment.handled_skip', client);
+        await markProcessed(jobsId, 'payment.jobs', client);
+        await client.query('COMMIT');
+        inTransaction = false;
+        return;
+
+      } else if (currentPayStatus === 'success') {
+        if (['cancelled', 'refunded'].includes(order.status) || ['payment_review', 'refunded'].includes(order.payment_status)) {
+          await markProcessed(eventId, 'payment.terminal_review', client);
+          await markProcessed(jobsId, 'payment.jobs', client);
+          await client.query('COMMIT');
+          inTransaction = false;
+          return;
+        }
+        // Same reference replay — DB already updated, fall through to ensure downstream jobs were sent.
+        await client.query('ROLLBACK');
+        inTransaction = false;
+        logger.info('Order payment already confirmed; re-attempting downstream jobs', { orderId, reference });
+
+      } else if (['cancelled', 'refunded'].includes(order.status)) {
+        const note = `Paystack payment received for ${order.status} order (ref ${reference}, GHS ${paidAmount.toFixed(2)}) — flagged for payment_review.`;
+        await client.query(
+          `UPDATE orders SET payment_status = 'payment_review', updated_at = NOW() WHERE id = $1`,
+          [orderId]
+        );
+        await client.query(
+          `UPDATE payments SET status = 'needs_review', amount = $2, updated_at = NOW()
+            WHERE paystack_reference = $1 AND status = 'pending'`,
+          [reference, paidAmount]
+        );
+        await client.query(
+          `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+           VALUES ($1, $2, $3, $3, $4, NOW())`,
+          [uuid(), orderId, order.status, note]
+        );
+        await markProcessed(eventId, 'payment.terminal_review', client);
+        await markProcessed(jobsId, 'payment.jobs', client);
+        await client.query('COMMIT');
+        inTransaction = false;
+
+        logger.error('Payment received for terminal order — flagged for payment_review', {
+          orderId, orderStatus: order.status, reference, paidAmount,
+        });
+        await boss.send(
+          'notification/admin-payment-alert',
+          {
+            orderId,
+            alertKey: `terminal_payment_${reference}`,
+            title: `Payment received on ${order.status} order`,
+            detail: note,
+          },
+          { retryLimit: 3 }
+        );
+        return;
+
+      } else if (order.payment_status === 'paid') {
+        const { rows: existingRows } = await client.query(
+          `SELECT paystack_reference FROM payments WHERE order_id = $1 AND status = 'success' LIMIT 1`,
+          [orderId]
+        );
+        const winningRef = existingRows[0]?.paystack_reference || order.payment_reference;
+
+        if (winningRef && winningRef !== reference) {
+          const note = `Duplicate Paystack payment detected (ref ${reference}, GHS ${paidAmount.toFixed(2)}) — order already paid via ${winningRef}. Admin refund required.`;
+          await client.query(
+            `UPDATE payments SET status = 'duplicate', amount = $2, updated_at = NOW()
+              WHERE paystack_reference = $1 AND status != 'duplicate'`,
+            [reference, paidAmount]
+          );
+          await client.query(
+            `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+             VALUES ($1, $2, $3, $3, $4, NOW())`,
+            [uuid(), orderId, order.status, note]
+          );
+          await markProcessed(eventId, 'payment.duplicate', client);
+          await markProcessed(jobsId, 'payment.jobs', client);
+          await client.query('COMMIT');
+          inTransaction = false;
+
+          logger.error('Payment worker: duplicate payment detected', {
+            orderId, reference, winningRef, paidAmount,
+          });
+          await boss.send(
+            'notification/admin-payment-alert',
+            {
+              orderId,
+              alertKey: `duplicate_payment_${reference}`,
+              title: 'Duplicate payment detected',
+              detail: note,
+            },
+            { retryLimit: 3 }
+          );
+          return;
+        }
+
+        // Same reference replay — DB already updated, fall through to ensure downstream jobs were sent.
         await client.query('ROLLBACK');
         inTransaction = false;
         logger.info('Order already paid; re-attempting downstream jobs', { orderId, reference });
 
-      } else if (order.status === 'cancelled') {
-        await client.query('ROLLBACK');
+      } else if (['payment_review', 'refunded'].includes(order.payment_status)) {
+        const note = `Paystack payment received for order already in payment_status="${order.payment_status}" (ref ${reference}, GHS ${paidAmount.toFixed(2)}) — flagged for payment_review.`;
+        await client.query(
+          `UPDATE payments SET status = 'needs_review', amount = $2, updated_at = NOW()
+            WHERE paystack_reference = $1 AND status = 'pending'`,
+          [reference, paidAmount]
+        );
+        await client.query(
+          `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+           VALUES ($1, $2, $3, $3, $4, NOW())`,
+          [uuid(), orderId, order.status, note]
+        );
+        await markProcessed(eventId, 'payment.review_conflict', client);
+        await markProcessed(jobsId, 'payment.jobs', client);
+        await client.query('COMMIT');
         inTransaction = false;
-        logger.warn('Payment received for cancelled order', { orderId, reference });
-        // Seal so we never retry this terminal case again.
-        await markProcessed(jobsId, 'payment.jobs');
+
+        logger.error('Payment worker: payment received on payment_review/refunded order', {
+          orderId, paymentStatus: order.payment_status, reference, paidAmount,
+        });
+        await boss.send(
+          'notification/admin-payment-alert',
+          {
+            orderId,
+            alertKey: `review_order_payment_${reference}`,
+            title: `Payment received on ${order.payment_status} order`,
+            detail: note,
+          },
+          { retryLimit: 3 }
+        );
         return;
 
       } else if (paidCurrency !== 'GHS' || !Number.isFinite(paidPesewas) || paidPesewas < expectedPesewas) {
@@ -61,6 +186,11 @@ module.exports = async function register(boss) {
         await client.query(
           `UPDATE orders SET payment_status = 'payment_review', updated_at = NOW() WHERE id = $1`,
           [orderId]
+        );
+        await client.query(
+          `UPDATE payments SET status = 'needs_review', amount = $2, updated_at = NOW()
+            WHERE paystack_reference = $1 AND status = 'pending'`,
+          [reference, paidAmount]
         );
         await client.query(
           `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
@@ -89,13 +219,13 @@ module.exports = async function register(boss) {
 
         await client.query(
           needsStatusAdvance
-            ? `UPDATE orders SET payment_status = 'paid', status = 'confirmed', updated_at = NOW() WHERE id = $1`
-            : `UPDATE orders SET payment_status = 'paid', updated_at = NOW() WHERE id = $1`,
-          [orderId]
+            ? `UPDATE orders SET payment_status = 'paid', status = 'confirmed', payment_reference = COALESCE(payment_reference, $2), updated_at = NOW() WHERE id = $1`
+            : `UPDATE orders SET payment_status = 'paid', payment_reference = COALESCE(payment_reference, $2), updated_at = NOW() WHERE id = $1`,
+          [orderId, reference]
         );
         await client.query(
-          `UPDATE payments SET status = 'success', updated_at = NOW() WHERE paystack_reference = $1`,
-          [reference]
+          `UPDATE payments SET status = 'success', amount = $2, updated_at = NOW() WHERE paystack_reference = $1`,
+          [reference, paidAmount]
         );
         if (needsStatusAdvance) {
           await client.query(
@@ -115,19 +245,17 @@ module.exports = async function register(boss) {
             orderId, reference, expectedPesewas, paidPesewas, diffPesewas,
           });
         }
+        if (order.customer_id) {
+          await client.query(
+            `UPDATE customers SET total_spent = COALESCE(total_spent, 0) + $1, total_orders = COALESCE(total_orders, 0) + 1 WHERE user_id = $2`,
+            [paidAmount, order.customer_id]
+          );
+        }
         await markProcessed(eventId, 'payment.success', client);
         await client.query('COMMIT');
         inTransaction = false;
 
         logger.info('Payment confirmed', { orderId, reference });
-
-        // Non-critical: update customer totals outside the transaction.
-        if (order.customer_id) {
-          pool.query(
-            `UPDATE customers SET total_spent = total_spent + $1, total_orders = total_orders + 1 WHERE user_id = $2`,
-            [paidPesewas / 100, order.customer_id]
-          ).catch(err => logger.error('Failed to update customer totals', { err: err.message, orderId }));
-        }
       }
 
       // Enqueue downstream jobs. Both receiving workers are idempotent, so
