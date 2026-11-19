@@ -143,11 +143,130 @@ const validateRefundOrder     = validate(refundOrderSchema);
 const validateRequestCancel   = validate(requestCancelSchema);
 const validateRequestReturn   = validate(requestReturnSchema);
 
-// Legacy — kept for backward compat with product routes
+// Product validation for both POST /products and PUT /products/:id
 const validateProduct = (req, res, next) => {
-  const { name, price } = req.body;
-  if (!name || !price) return res.status(400).json({ error: 'Product name and price are required' });
-  if (isNaN(price) || price <= 0) return res.status(400).json({ error: 'Price must be a positive number' });
+  const errors = [];
+  const body = req.body || {};
+  const isUpdate = req.method === 'PUT' || req.method === 'PATCH';
+
+  // 1. name: trim, non-empty, max 200 chars
+  if (!isUpdate || body.name !== undefined) {
+    if (body.name === undefined || body.name === null || typeof body.name !== 'string' || body.name.trim() === '') {
+      errors.push({ field: 'name', message: 'Product name is required and cannot be empty.' });
+    } else {
+      const trimmedName = body.name.trim();
+      if (trimmedName.length > 200) {
+        errors.push({ field: 'name', message: 'Product name must not exceed 200 characters.' });
+      } else {
+        req.body.name = trimmedName;
+      }
+    }
+  }
+
+  // 2. price: numeric, > 0
+  if (!isUpdate || body.price !== undefined) {
+    if (body.price === undefined || body.price === null || body.price === '' || isNaN(body.price) || Number(body.price) <= 0) {
+      errors.push({ field: 'price', message: 'Price must be a positive number.' });
+    } else {
+      req.body.price = Number(body.price);
+    }
+  }
+
+  // 3. cost: if provided and not null/"", must be numeric and >= 0. Empty -> null (create only defaults to null)
+  if (body.cost !== undefined) {
+    if (body.cost === null || body.cost === '') {
+      req.body.cost = null;
+    } else {
+      const costNum = Number(body.cost);
+      if (isNaN(costNum) || costNum < 0) {
+        errors.push({ field: 'cost', message: 'Cost must be a numeric value greater than or equal to 0.' });
+      } else {
+        req.body.cost = costNum;
+      }
+    }
+  } else if (!isUpdate) {
+    req.body.cost = null;
+  }
+
+  // 4. stock_quantity: if provided, must be an integer >= 0 (create only defaults to 0)
+  if (body.stock_quantity !== undefined) {
+    if (body.stock_quantity === null || body.stock_quantity === '') {
+      req.body.stock_quantity = 0;
+    } else {
+      const sqNum = Number(body.stock_quantity);
+      if (isNaN(sqNum) || !Number.isInteger(sqNum) || sqNum < 0) {
+        errors.push({ field: 'stock_quantity', message: 'Stock quantity must be an integer greater than or equal to 0.' });
+      } else {
+        req.body.stock_quantity = sqNum;
+      }
+    }
+  } else if (!isUpdate) {
+    req.body.stock_quantity = 0;
+  }
+
+  // 5. compare_at_price: if provided and > 0, must be numeric and > price. Empty/0 -> null
+  if (body.compare_at_price !== undefined) {
+    if (body.compare_at_price === null || body.compare_at_price === '' || Number(body.compare_at_price) === 0) {
+      req.body.compare_at_price = null;
+    } else {
+      const capNum = Number(body.compare_at_price);
+      if (isNaN(capNum)) {
+        errors.push({ field: 'compare_at_price', message: 'Compare at price must be a valid number.' });
+      } else if (capNum < 0) {
+        errors.push({ field: 'compare_at_price', message: 'Compare at price must be greater than 0.' });
+      } else if (req.body.price !== undefined && capNum <= req.body.price) {
+        errors.push({ field: 'compare_at_price', message: 'Compare at price must be greater than the selling price.' });
+      } else {
+        req.body.compare_at_price = capNum;
+      }
+    }
+  } else if (!isUpdate) {
+    req.body.compare_at_price = null;
+  }
+
+  // 6. sku: trim; empty string -> null
+  if (body.sku !== undefined) {
+    if (body.sku === null) {
+      req.body.sku = null;
+    } else {
+      const trimmedSku = String(body.sku).trim();
+      req.body.sku = trimmedSku === '' ? null : trimmedSku;
+    }
+  } else if (!isUpdate) {
+    req.body.sku = null;
+  }
+
+  // 7. category: trim; normalize to Title Case per word ("body cream" -> "Body Cream", "SPF Sunscreen" stays); empty -> null
+  if (body.category !== undefined) {
+    if (body.category === null) {
+      req.body.category = null;
+    } else {
+      const trimmedCat = String(body.category).trim();
+      if (trimmedCat === '') {
+        req.body.category = null;
+      } else {
+        req.body.category = trimmedCat
+          .split(/\s+/)
+          .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+          .join(' ');
+      }
+    }
+  } else if (!isUpdate) {
+    req.body.category = null;
+  }
+
+  // 8. is_active: coerce to boolean if provided
+  if (body.is_active !== undefined) {
+    req.body.is_active = (body.is_active === true || body.is_active === 'true' || body.is_active === 1 || body.is_active === '1');
+  }
+
+  if (errors.length > 0) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      errors,
+    });
+  }
+
   next();
 };
 

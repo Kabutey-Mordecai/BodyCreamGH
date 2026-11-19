@@ -126,6 +126,13 @@ const createProduct = async (req, res) => {
     bustCache();
     res.status(201).json({ id, message: 'Product created' });
   } catch (error) {
+    if (error.code === '23505' && error.constraint === 'products_sku_key') {
+      const skuVal = req.body.sku || '';
+      return res.status(409).json({
+        error: `The SKU '${skuVal}' is already assigned to another product. Please enter a unique SKU.`,
+        errors: [{ field: 'sku', message: `The SKU '${skuVal}' is already assigned to another product. Please enter a unique SKU.` }],
+      });
+    }
     logger.error('Error creating product', { err: error.message });
     res.status(500).json({ error: 'Failed to create product' });
   }
@@ -135,10 +142,49 @@ const updateProduct = async (req, res) => {
   try {
     const product = await ProductModel.findById(req.params.id);
     if (!product) return res.status(404).json({ error: 'Product not found' });
-    await ProductModel.update(req.params.id, req.body);
+
+    // Validate compare_at_price against effective selling price
+    const effectivePrice = req.body.price !== undefined ? req.body.price : Number(product.price);
+    const effectiveCompareAt = req.body.compare_at_price !== undefined
+      ? req.body.compare_at_price
+      : (product.compare_at_price != null ? Number(product.compare_at_price) : null);
+
+    if (effectiveCompareAt !== null && effectiveCompareAt > 0 && effectiveCompareAt <= effectivePrice) {
+      return res.status(400).json({
+        error: 'Validation failed',
+        errors: [{ field: 'compare_at_price', message: 'Compare at price must be greater than the selling price.' }],
+      });
+    }
+
+    // Merge existing values for omitted fields in partial update
+    const updatePayload = {
+      name:               req.body.name !== undefined ? req.body.name : product.name,
+      price:              req.body.price !== undefined ? req.body.price : product.price,
+      cost:               req.body.cost !== undefined ? req.body.cost : product.cost,
+      compare_at_price:   req.body.compare_at_price !== undefined ? req.body.compare_at_price : product.compare_at_price,
+      stock_quantity:     req.body.stock_quantity !== undefined ? req.body.stock_quantity : product.stock_quantity,
+      category:           req.body.category !== undefined ? req.body.category : product.category,
+      brand:              req.body.brand !== undefined ? req.body.brand : product.brand,
+      description:        req.body.description !== undefined ? req.body.description : product.description,
+      image_url:          req.body.image_url !== undefined ? req.body.image_url : product.image_url,
+      ingredients:        req.body.ingredients !== undefined ? req.body.ingredients : product.ingredients,
+      usage_instructions: req.body.usage_instructions !== undefined ? req.body.usage_instructions : product.usage_instructions,
+      is_active:          req.body.is_active !== undefined ? req.body.is_active : product.is_active,
+      sku:                req.body.sku !== undefined ? req.body.sku : product.sku,
+    };
+
+    await ProductModel.update(req.params.id, updatePayload);
     bustCache();
     res.json({ message: 'Product updated' });
   } catch (error) {
+    if (error.code === '23505' && error.constraint === 'products_sku_key') {
+      const skuVal = req.body.sku || '';
+      return res.status(409).json({
+        error: `The SKU '${skuVal}' is already assigned to another product. Please enter a unique SKU.`,
+        errors: [{ field: 'sku', message: `The SKU '${skuVal}' is already assigned to another product. Please enter a unique SKU.` }],
+      });
+    }
+    logger.error('Error updating product', { err: error.message });
     res.status(500).json({ error: 'Failed to update product' });
   }
 };
