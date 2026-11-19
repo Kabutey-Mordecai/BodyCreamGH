@@ -22,9 +22,9 @@
     0 24px 60px -12px rgba(0, 0, 0, 0.65),
     0 0 0 1px rgba(255, 255, 255, 0.05);
   overflow: hidden;
-  height: var(--mid-banner-height, 420px);
-  min-height: var(--mid-banner-height, 420px);
-  max-height: var(--mid-banner-height, 420px);
+  height: var(--mid-banner-height, 620px);
+  min-height: var(--mid-banner-height, 620px);
+  max-height: var(--mid-banner-height, 620px);
   user-select: none;
 }
 

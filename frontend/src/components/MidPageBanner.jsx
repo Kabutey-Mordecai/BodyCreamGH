@@ -82,8 +82,8 @@ export default function MidPageBanner() {
   const total = slides.length;
   const autoPlay = settings.mid_banner_autoplay !== false && settings.mid_banner_autoplay !== 'false';
   const intervalSec = Math.max(3, Number(settings.mid_banner_interval_sec) || 7);
-  // Default 420px height so photos of any height fit comfortably without tight cropping
-  const heightPx = Math.max(260, Math.min(800, Number(settings.mid_banner_height_px) || 420));
+  // Default 620px height so photos of any height fit comfortably without tight cropping
+  const heightPx = Math.max(260, Math.min(900, Number(settings.mid_banner_height_px) || 620));
   // Default 1.4s flip speed for a slow, gentle, realistic page curl transition
   const flipSpeedMs = Math.max(400, Math.min(3000, Math.round((Number(settings.mid_banner_flip_speed_sec) || 1.4) * 1000)));
 
@@ -129,7 +129,7 @@ export default function MidPageBanner() {
         minWidth: 280,
         maxWidth: 1000,
         minHeight: 240,
-        maxHeight: 850,
+        maxHeight: 950,
         maxShadowOpacity: 0.55,
         showCover: false,
         mobileScrollSupport: true,

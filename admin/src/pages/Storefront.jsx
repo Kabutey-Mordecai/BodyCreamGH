@@ -112,7 +112,7 @@ const DEFAULTS = {
   mid_banner_autoplay: true,
   mid_banner_interval_sec: 7,
   mid_banner_flip_speed_sec: 1.4,
-  mid_banner_height_px: 420,
+  mid_banner_height_px: 620,
   mid_banner_badge: 'PURE GHANAIAN BOTANICALS',
   mid_banner_title: 'Handcrafted in Small Batches.',
   mid_banner_highlight: 'Zero Harsh Bleaching Agents.',
@@ -895,34 +895,18 @@ export default function Storefront() {
                           type="number"
                           step="10"
                           min="260"
-                          max="700"
-                          value={data.mid_banner_height_px ?? 420}
-                          onChange={e => update('mid_banner_height_px', Math.max(260, parseInt(e.target.value) || 420))}
+                          max="900"
+                          value={data.mid_banner_height_px ?? 620}
+                          onChange={e => update('mid_banner_height_px', Math.max(260, parseInt(e.target.value) || 620))}
                         />
                         <div className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
                           <button
                             type="button"
                             className="btn btn-outline btn-xs"
                             style={{ fontSize: '0.68rem', padding: '1px 6px' }}
-                            onClick={() => update('mid_banner_height_px', 420)}
+                            onClick={() => update('mid_banner_height_px', 620)}
                           >
-                            420px (Perfect Fit - Recommended)
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-xs"
-                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
-                            onClick={() => update('mid_banner_height_px', 460)}
-                          >
-                            460px (Extra Height)
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-xs"
-                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
-                            onClick={() => update('mid_banner_height_px', 340)}
-                          >
-                            340px (Slim)
+                            620px (Default - Recommended)
                           </button>
                           <button
                             type="button"
@@ -931,6 +915,22 @@ export default function Storefront() {
                             onClick={() => update('mid_banner_height_px', 520)}
                           >
                             520px (Tall)
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                            onClick={() => update('mid_banner_height_px', 420)}
+                          >
+                            420px (Medium)
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                            onClick={() => update('mid_banner_height_px', 340)}
+                          >
+                            340px (Slim)
                           </button>
                         </div>
                       </div>
