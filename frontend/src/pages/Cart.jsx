@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './Cart.css';
 
 export default function Cart() {
@@ -110,7 +111,7 @@ function CartItem({ item, onUpdate, onRemove }) {
   };
 
   // TO CUSTOMIZE: Placeholder image for cart items without an image_url
-  const imgSrc = item.image_url || 'https://placehold.co/200x200?text=?';
+  const imgSrc = resolveImageUrl(item.image_url) || 'https://placehold.co/200x200?text=?';
 
   return (
     <div className="cart-item">

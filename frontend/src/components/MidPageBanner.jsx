@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { PageFlip } from 'page-flip';
 import { useSettings } from '../context/SettingsContext';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import Reveal from './Reveal';
 import './MidPageBanner.css';
 
@@ -276,12 +277,12 @@ export default function MidPageBanner() {
                         {slide.image_fit === 'contain' && (
                           <div
                             className="mid-banner-visual-ambient"
-                            style={{ backgroundImage: `url(${slide.image})` }}
+                            style={{ backgroundImage: `url(${resolveImageUrl(slide.image)})` }}
                             aria-hidden="true"
                           />
                         )}
                         <img
-                          src={slide.image}
+                          src={resolveImageUrl(slide.image)}
                           alt={slide.title || 'Product Story'}
                           className={`mid-banner-img ${slide.image_fit === 'contain' ? 'fit-contain' : ''}`}
                           style={{

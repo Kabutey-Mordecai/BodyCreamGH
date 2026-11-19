@@ -1,10 +1,10 @@
 const express = require('express');
-const { verifyToken, requireAdmin }    = require('../middleware/auth');
-const { uploadMiddleware }             = require('../middleware/uploadFilter');
+const { verifyToken, requireAdmin }                    = require('../middleware/auth');
+const { uploadMiddleware, uploadSingleMediaMiddleware } = require('../middleware/uploadFilter');
 const {
   getDashboard, getAnalytics, getFinancials, getTopProducts, getInventoryOverview, getAllCustomers,
   getAdminAccounts, createAdminAccount, deactivateAdminAccount, activateAdminAccount,
-  uploadProductImages, deleteProductImage, reorderProductImages, setPrimaryProductImage,
+  uploadProductImages, uploadGenericMedia, deleteProductImage, reorderProductImages, setPrimaryProductImage,
 } = require('../controllers/admin.controller');
 const {
   getAllReviews, getReviewCounts, approveReview, rejectReview, deleteReview,
@@ -40,9 +40,12 @@ router.post('/accounts',                      verifyToken, requireAdmin, createA
 router.patch('/accounts/:id/deactivate',      verifyToken, requireAdmin, deactivateAdminAccount);
 router.patch('/accounts/:id/activate',        verifyToken, requireAdmin, activateAdminAccount);
 
-// ── Product image routes ──────────────────────────────────────────────────────
-// Auth runs before multer so unauthenticated requests are rejected without
-// reading file data into memory.
+// ── Product & General media image routes ──────────────────────────────────────
+router.post(
+  '/media/upload',
+  verifyToken, requireAdmin, uploadSingleMediaMiddleware,
+  uploadGenericMedia
+);
 router.post(
   '/products/:id/images',
   verifyToken, requireAdmin, uploadMiddleware,

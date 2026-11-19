@@ -5,18 +5,10 @@ import { useAuth } from '../context/AuthContext';
 import { useWishlist } from '../context/WishlistContext';
 import { useSettings } from '../context/SettingsContext';
 import StarRating from './StarRating';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './ProductCard.css';
 
 const PLACEHOLDER_IMG = 'https://placehold.co/400x400?text=No+Image';
-
-const _apiUrl = import.meta.env.VITE_API_URL || '';
-function resolveImageUrl(url) {
-  if (!url || url.startsWith('http') || url.startsWith('data:')) return url;
-  if (_apiUrl.startsWith('http')) {
-    try { return `${new URL(_apiUrl).origin}${url}`; } catch { /* fall through */ }
-  }
-  return url;
-}
 
 const isNewProduct = (createdAt) => {
   if (!createdAt) return false;

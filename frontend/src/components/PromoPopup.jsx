@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './PromoPopup.css';
 
 const SESSION_KEY = 'bodycream_promo_popup_dismissed';
@@ -76,7 +77,7 @@ export default function PromoPopup() {
       {/* Visual / Image side */}
       <div className="promo-floating-visual">
         <img
-          src={image}
+          src={resolveImageUrl(image)}
           alt={title}
           className="promo-floating-img"
           loading="eager"

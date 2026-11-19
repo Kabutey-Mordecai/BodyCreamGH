@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { settingsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import ImageInput from '../components/ImageInput';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'http://localhost:5173';
 
@@ -572,16 +574,12 @@ export default function Storefront() {
                   </div>
                 </div>
 
-                <div className="field">
-                  <label>Featured promotion image URL</label>
-                  <input
-                    type="url"
-                    value={data.promo_popup_image || ''}
-                    onChange={e => update('promo_popup_image', e.target.value)}
-                    placeholder="https://..."
-                  />
-                  <div className="hint">Paste any image URL or leave blank for default collection photography.</div>
-                </div>
+                <ImageInput
+                  label="Featured promotion image"
+                  value={data.promo_popup_image || ''}
+                  onChange={url => update('promo_popup_image', url)}
+                  hint="Upload a promotion banner or paste an image link. Leave blank for default collection photography."
+                />
 
                 {/* Live Preview of Promotional Popup */}
                 <div style={{ marginTop: 24 }}>
@@ -655,7 +653,7 @@ export default function Storefront() {
 
                     <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', minHeight: 120 }}>
                       <img
-                        src={data.promo_popup_image || 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=600&q=80'}
+                        src={resolveImageUrl(data.promo_popup_image) || 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=600&q=80'}
                         alt="Preview"
                         style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       />
@@ -759,14 +757,11 @@ export default function Storefront() {
                           />
                         </div>
                       </div>
-                      <div className="field">
-                        <label>Image URL</label>
-                        <input
-                          type="url"
-                          value={data.tile1_image || ''}
-                          onChange={e => update('tile1_image', e.target.value)}
-                        />
-                      </div>
+                      <ImageInput
+                        label="Campaign Tile #1 Image"
+                        value={data.tile1_image || ''}
+                        onChange={url => update('tile1_image', url)}
+                      />
                     </div>
 
                     {/* Tile 2 */}
@@ -819,14 +814,11 @@ export default function Storefront() {
                           />
                         </div>
                       </div>
-                      <div className="field">
-                        <label>Image URL</label>
-                        <input
-                          type="url"
-                          value={data.tile2_image || ''}
-                          onChange={e => update('tile2_image', e.target.value)}
-                        />
-                      </div>
+                      <ImageInput
+                        label="Campaign Tile #2 Image"
+                        value={data.tile2_image || ''}
+                        onChange={url => update('tile2_image', url)}
+                      />
                     </div>
                   </div>
                 </div>
@@ -1038,26 +1030,22 @@ export default function Storefront() {
                         </div>
                       </div>
 
-                      <div className="field-row">
-                        <div className="field">
-                          <label>Badge pill text</label>
-                          <input
-                            type="text"
-                            value={slide.badge || ''}
-                            onChange={e => updateMidSlide(idx, 'badge', e.target.value)}
-                            placeholder="PURE GHANAIAN BOTANICALS"
-                          />
-                        </div>
-                        <div className="field">
-                          <label>Product / Story Image URL</label>
-                          <input
-                            type="url"
-                            value={slide.image || ''}
-                            onChange={e => updateMidSlide(idx, 'image', e.target.value)}
-                            placeholder="https://images.unsplash.com/..."
-                          />
-                        </div>
+                      <div className="field">
+                        <label>Badge pill text</label>
+                        <input
+                          type="text"
+                          value={slide.badge || ''}
+                          onChange={e => updateMidSlide(idx, 'badge', e.target.value)}
+                          placeholder="PURE GHANAIAN BOTANICALS"
+                        />
                       </div>
+
+                      <ImageInput
+                        label="Product / Story Image"
+                        value={slide.image || ''}
+                        onChange={url => updateMidSlide(idx, 'image', url)}
+                        hint="Upload a slide photo or paste an image link."
+                      />
 
                       <div className="field-row">
                         <div className="field">
@@ -1222,7 +1210,7 @@ export default function Storefront() {
 
                           <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', height: 140 }}>
                             <img
-                              src={cur.image}
+                              src={resolveImageUrl(cur.image)}
                               alt={cur.title}
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
@@ -1449,17 +1437,15 @@ export default function Storefront() {
                   </div>
                 </div>
 
-                <div className="field">
-                  <label>Background image URL</label>
-                  <input
-                    type="url"
-                    value={data.hero_image}
-                    onChange={e => update('hero_image', e.target.value)}
-                  />
-                </div>
+                <ImageInput
+                  label="Hero banner image"
+                  value={data.hero_image || ''}
+                  onChange={url => update('hero_image', url)}
+                  hint="Upload a wide high-resolution hero photo (16:9 or banner) or paste an image link."
+                />
 
                 <div className="sf-preview hero-preview" style={{
-                  backgroundImage: data.hero_image ? `url(${data.hero_image})` : 'none',
+                  backgroundImage: data.hero_image ? `url(${resolveImageUrl(data.hero_image)})` : 'none',
                   backgroundSize: 'cover', backgroundPosition: 'center',
                   minHeight: 260, borderRadius: 10, overflow: 'hidden',
                   position: 'relative', color: '#fff',
@@ -1498,31 +1484,31 @@ export default function Storefront() {
                   These categories power both the homepage Category Cards grid and the horizontal Category Quick-Bar below the header.
                 </div>
                 {(data.categories || []).map((cat, i) => (
-                  <div key={i} className="sf-row" style={{ display: 'grid', gridTemplateColumns: '80px 1fr 1fr auto', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-                    <div style={{
-                      width: 68, height: 80, borderRadius: 6, overflow: 'hidden',
-                      backgroundImage: cat.image ? `url(${cat.image})` : 'none',
-                      backgroundSize: 'cover', backgroundPosition: 'center',
-                      background: cat.image ? undefined : 'var(--ac-bg)',
-                      border: '1px solid var(--ac-border)',
-                    }} />
-                    <input
-                      type="text"
-                      value={cat.label}
-                      onChange={e => updateArray('categories', i, 'label', e.target.value)}
-                      placeholder="Category name"
-                    />
-                    <input
-                      type="url"
+                  <div key={i} className="sf-row" style={{ padding: '14px 16px', background: 'var(--ac-surface-2)', borderRadius: 'var(--ac-radius)', marginBottom: 14, border: '1px solid var(--ac-border)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                      <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Category #{i + 1}: {cat.label || 'Untitled'}</span>
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        style={{ color: 'var(--ac-danger)' }}
+                        onClick={() => removeFromArray('categories', i)}
+                      >Remove category</button>
+                    </div>
+                    <div className="field" style={{ marginBottom: 12 }}>
+                      <label>Category name</label>
+                      <input
+                        type="text"
+                        value={cat.label}
+                        onChange={e => updateArray('categories', i, 'label', e.target.value)}
+                        placeholder="e.g. Body Butter"
+                      />
+                    </div>
+                    <ImageInput
+                      label="Category image"
                       value={cat.image}
-                      onChange={e => updateArray('categories', i, 'image', e.target.value)}
-                      placeholder="Image URL"
+                      onChange={url => updateArray('categories', i, 'image', url)}
+                      hint="Upload category photography or paste an image link."
                     />
-                    <button
-                      className="btn btn-ghost btn-sm"
-                      style={{ color: 'var(--ac-danger)' }}
-                      onClick={() => removeFromArray('categories', i)}
-                    >Remove</button>
                   </div>
                 ))}
                 {(data.categories || []).length === 0 && (

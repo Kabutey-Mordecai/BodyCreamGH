@@ -9,6 +9,7 @@ import { useSettings } from '../context/SettingsContext';
 import StarRating from '../components/StarRating';
 import ProductCard from '../components/ProductCard';
 import { useSeo } from '../utils/seo';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './ProductPage.css';
 
 // TO CUSTOMIZE: Placeholder shown when the product has no image
@@ -50,17 +51,6 @@ function loadRecentlyViewed(excludeId) {
   try {
     return JSON.parse(localStorage.getItem(RECENTLY_VIEWED_KEY) || '[]').filter(p => p.id !== excludeId);
   } catch { return []; }
-}
-
-// Resolve /uploads/... relative paths to the backend origin using VITE_API_URL.
-// Legacy absolute URLs are returned unchanged.
-const _apiUrl = import.meta.env.VITE_API_URL || '';
-function resolveImageUrl(url) {
-  if (!url || url.startsWith('http')) return url;
-  if (_apiUrl.startsWith('http')) {
-    try { return `${new URL(_apiUrl).origin}${url}`; } catch { /* fall through */ }
-  }
-  return url;
 }
 
 export default function ProductPage() {
@@ -527,7 +517,7 @@ export default function ProductPage() {
               title={product.image_url ? 'Click to enlarge' : undefined}
             >
               <img
-                src={product.image_url || PLACEHOLDER_IMG}
+                src={resolveImageUrl(product.image_url) || PLACEHOLDER_IMG}
                 alt={product.name}
               />
               {product.image_url && <div className="pdp-zoom-hint" aria-hidden="true">&#128269;</div>}
@@ -976,7 +966,7 @@ export default function ProductPage() {
               className="pdp-lb-img"
               src={
                 lbIdx === -1
-                  ? (product.image_url || PLACEHOLDER_IMG)
+                  ? (resolveImageUrl(product.image_url) || PLACEHOLDER_IMG)
                   : resolveImageUrl(galleryImages[lbIdx]?.url)
               }
               alt={product.name}

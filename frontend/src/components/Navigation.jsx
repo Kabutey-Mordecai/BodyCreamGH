@@ -6,18 +6,8 @@ import { useSettings } from '../context/SettingsContext';
 import { useWishlist } from '../context/WishlistContext';
 import AnnouncementBar from './AnnouncementBar';
 import SearchBar from './SearchBar';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './Navigation.css';
-
-// Resolve relative /uploads/... logo URLs against the backend origin (same
-// approach used by ProductPage / ProductImageGallery).
-const _apiUrl = import.meta.env.VITE_API_URL || '';
-function resolveLogoUrl(url) {
-  if (!url || url.startsWith('http') || url.startsWith('data:')) return url;
-  if (_apiUrl.startsWith('http')) {
-    try { return `${new URL(_apiUrl).origin}${url}`; } catch { /* fall through */ }
-  }
-  return url;
-}
 
 export default function Navigation() {
   const { user, logout }            = useAuth();
@@ -68,7 +58,7 @@ export default function Navigation() {
           >
             {logo_url ? (
               <img
-                src={resolveLogoUrl(logo_url)}
+                src={resolveImageUrl(logo_url)}
                 alt={store_name}
                 className="nav-logo-img"
                 onError={e => {

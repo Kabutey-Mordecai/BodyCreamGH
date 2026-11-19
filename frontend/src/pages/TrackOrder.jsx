@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { trackingAPI } from '../services/api';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
 
@@ -232,7 +233,7 @@ export default function TrackOrder() {
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       {item.image_url && (
                         <img
-                          src={item.image_url}
+                          src={resolveImageUrl(item.image_url)}
                           alt={item.name}
                           style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}
                           onError={e => { e.currentTarget.style.display = 'none'; }}

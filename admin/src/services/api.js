@@ -94,6 +94,11 @@ export const adminAPI = {
   createAdminAccount:     (data)   => api.post('/admin/accounts', data),
   deactivateAdminAccount: (id)     => api.patch(`/admin/accounts/${id}/deactivate`),
   activateAdminAccount:   (id)     => api.patch(`/admin/accounts/${id}/activate`),
+  uploadMedia: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/media/upload', formData);
+  },
 };
 
 // ── Products ──────────────────────────────────────────────────────────
@@ -131,9 +136,9 @@ export const ordersAPI = {
   markPaid:            (id, note)          => api.post(`/orders/${id}/mark-paid`, { note }),
   getStatusLog:        (id)                => api.get(`/orders/${id}/log`),
   approveCancelRequest:(id)                => api.post(`/orders/${id}/approve-cancel`),
-  rejectCancelRequest: (id)                => api.post(`/orders/${id}/reject-cancel`),
+  rejectCancelRequest: (id, data)          => api.post(`/orders/${id}/reject-cancel`, data),
   approveReturnRequest:(id)                => api.post(`/orders/${id}/approve-return`),
-  rejectReturnRequest: (id)                => api.post(`/orders/${id}/reject-return`),
+  rejectReturnRequest: (id, data)          => api.post(`/orders/${id}/reject-return`, data),
 };
 
 // ── Inventory ─────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import Reveal from './Reveal';
 import './CampaignTiles.css';
 
@@ -54,7 +55,7 @@ export default function CampaignTiles() {
           <Reveal direction="left" className="campaign-tile-card">
             <TileLink to={tile1.link} className="campaign-tile-inner">
               <img
-                src={tile1.image}
+                src={resolveImageUrl(tile1.image)}
                 alt={tile1.title}
                 className="campaign-tile-bg"
                 loading="lazy"
@@ -75,7 +76,7 @@ export default function CampaignTiles() {
           <Reveal direction="right" delay={80} className="campaign-tile-card">
             <TileLink to={tile2.link} className="campaign-tile-inner">
               <img
-                src={tile2.image}
+                src={resolveImageUrl(tile2.image)}
                 alt={tile2.title}
                 className="campaign-tile-bg"
                 loading="lazy"

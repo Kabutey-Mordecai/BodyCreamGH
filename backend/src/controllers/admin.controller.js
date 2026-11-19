@@ -15,6 +15,9 @@ try {
 // ── Image upload constants ────────────────────────────────────────────────────
 const MAX_IMAGES_PER_PRODUCT = 8;
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'products');
+const MEDIA_DIR  = path.join(__dirname, '..', '..', 'uploads', 'media');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(MEDIA_DIR,  { recursive: true });
 
 const MIME_EXT_MAP = {
   'image/jpeg': '.jpg',
@@ -475,6 +478,53 @@ const setPrimaryProductImage = async (req, res) => {
   }
 };
 
+// ── Generic Media Upload (Banners, Logos, Promo Popups, Features) ────────────
+
+const uploadGenericMedia = async (req, res) => {
+  try {
+    const file = req.file || (req.files && req.files[0]);
+    if (!file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    let outputBuffer = file.buffer;
+    let finalMime    = file.mimetype;
+    let finalExt     = MIME_EXT_MAP[file.mimetype] || '.jpg';
+    let finalSize    = file.size;
+
+    if (sharp && file.mimetype !== 'image/svg+xml') {
+      try {
+        outputBuffer = await sharp(file.buffer)
+          .resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 85 })
+          .toBuffer();
+        finalMime = 'image/webp';
+        finalExt  = '.webp';
+        finalSize = outputBuffer.length;
+      } catch (sharpErr) {
+        logger.warn('Sharp image processing error, using original buffer', { err: sharpErr.message });
+      }
+    }
+
+    const filename = `${uuidv4()}${finalExt}`;
+    await fs.promises.writeFile(path.join(MEDIA_DIR, filename), outputBuffer);
+
+    const url = `/uploads/media/${filename}`;
+    res.status(201).json({
+      url,
+      filename,
+      size_bytes:    finalSize,
+      mime_type:     finalMime,
+      original_name: file.originalname,
+      message:       'Media uploaded successfully',
+    });
+
+  } catch (err) {
+    logger.error('uploadGenericMedia error', { err: err.message });
+    res.status(500).json({ error: 'Failed to upload media file' });
+  }
+};
+
 // ── Financials ────────────────────────────────────────────────────────────────
 
 const getFinancials = async (req, res) => {
@@ -614,6 +664,7 @@ module.exports = {
   deactivateAdminAccount,
   activateAdminAccount,
   uploadProductImages,
+  uploadGenericMedia,
   deleteProductImage,
   reorderProductImages,
   setPrimaryProductImage,

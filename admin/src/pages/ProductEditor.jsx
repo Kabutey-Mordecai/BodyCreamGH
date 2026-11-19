@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { productsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import ProductImageGallery from '../components/ProductImageGallery';
+import ImageInput from '../components/ImageInput';
 import VariantManager from '../components/VariantManager';
 
 // Slug-ish auto-SKU — "Shea Butter Cream 200g" → "SHE-BUT-CRE-200"
@@ -34,8 +35,10 @@ export default function ProductEditor() {
 
   const [form,          setForm]          = useState(EMPTY);
   const [initialImages, setInitialImages] = useState([]);
+  const [stagedFiles,   setStagedFiles]   = useState([]);
   const [loading,       setLoading]       = useState(!isNew);
   const [saving,        setSaving]        = useState(false);
+  const [uploadingText, setUploadingText] = useState('');
   const [error,         setError]         = useState('');
 
   useEffect(() => {
@@ -53,8 +56,10 @@ export default function ProductEditor() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving) return; // Prevent double submit
     setError('');
     setSaving(true);
+    setUploadingText('');
 
     // Build the payload with numeric casts — the backend validator expects numbers.
     const payload = {
@@ -67,9 +72,26 @@ export default function ProductEditor() {
 
     try {
       if (isNew) {
+        if (stagedFiles.length > 0) {
+          setUploadingText('Creating product and uploading images...');
+        }
         const { data } = await productsAPI.create(payload);
-        toast.success('Product created');
-        navigate(`/products/${data.id || data.product?.id}`);
+        const newId = data.id || data.product?.id;
+
+        if (stagedFiles.length > 0) {
+          try {
+            await productsAPI.uploadProductImages(newId, stagedFiles);
+            toast.success('Product created with images');
+            navigate(`/products/${newId}`);
+          } catch (uploadErr) {
+            const reason = uploadErr.response?.data?.error || uploadErr.message || 'Server error';
+            toast.warning(`Product created, but image upload failed: ${reason}. Re-upload in the gallery.`);
+            navigate(`/products/${newId}`);
+          }
+        } else {
+          toast.success('Product created');
+          navigate(`/products/${newId}`);
+        }
       } else {
         await productsAPI.update(id, payload);
         toast.success('Saved');
@@ -78,6 +100,7 @@ export default function ProductEditor() {
       setError(err.response?.data?.error || 'Save failed. Please check the fields.');
     } finally {
       setSaving(false);
+      setUploadingText('');
     }
   };
 
@@ -93,7 +116,7 @@ export default function ProductEditor() {
         <div className="page-actions">
           <Link to="/products" className="btn btn-outline">Cancel</Link>
           <button type="submit" className="btn btn-accent" disabled={saving}>
-            {saving ? 'Saving…' : isNew ? 'Create product' : 'Save changes'}
+            {saving ? (uploadingText || (isNew ? 'Creating product…' : 'Saving…')) : isNew ? 'Create product' : 'Save changes'}
           </button>
         </div>
       </div>
@@ -272,31 +295,29 @@ export default function ProductEditor() {
               <ProductImageGallery
                 productId={isNew ? null : id}
                 initialImages={initialImages}
+                stagedFiles={stagedFiles}
+                onStagedChange={setStagedFiles}
               />
             </div>
           </div>
 
-          <div className="card" style={{ opacity: 0.7 }}>
+          <div className="card" style={{ opacity: 0.9 }}>
             <div className="card-header">
-              <h2 className="card-title" style={{ fontSize: '0.82rem', color: 'var(--ac-muted, #888)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Legacy fallback — not the main image system
+              <h2 className="card-title" style={{ fontSize: '0.82rem', color: 'var(--ac-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Legacy fallback image
               </h2>
             </div>
             <div className="card-body">
               <div className="hint" style={{ marginBottom: 12 }}>
                 Upload product photos using the <strong>Images</strong> gallery above.
-                This URL is only used as a last-resort fallback when the gallery has no images.
-                It is hidden from customers as soon as any gallery image exists.
+                This image is only used as a last-resort fallback when the gallery has no images.
               </div>
-              <div className="field" style={{ marginBottom: 0 }}>
-                <label style={{ color: 'var(--ac-muted, #888)' }}>Legacy fallback image URL</label>
-                <input
-                  type="url"
-                  value={form.image_url}
-                  onChange={e => update('image_url', e.target.value)}
-                  placeholder="https://…"
-                />
-              </div>
+              <ImageInput
+                label="Fallback image"
+                value={form.image_url}
+                onChange={url => update('image_url', url)}
+                hint="Direct upload or image link used if the product has no gallery images."
+              />
             </div>
           </div>
 

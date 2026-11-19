@@ -475,6 +475,7 @@ textarea { resize: vertical; min-height: 80px; }
 }
 .toast-success { background: var(--ac-success); }
 .toast-error   { background: var(--ac-danger); }
+.toast-warning { background: var(--ac-warning); }
 .toast-info    { background: var(--ac-info); }
 @keyframes toastIn {
   from { opacity: 0; transform: translateX(20px); }

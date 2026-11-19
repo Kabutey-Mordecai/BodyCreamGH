@@ -13,6 +13,7 @@ import PromoPopup from '../components/PromoPopup';
 import CampaignTiles from '../components/CampaignTiles';
 import MidPageBanner from '../components/MidPageBanner';
 import HomeSeoBlock from '../components/HomeSeoBlock';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './Home.css';
 
 const RECENTLY_VIEWED_KEY = 'bodycream_recently_viewed';
@@ -241,7 +242,7 @@ export default function Home() {
           ══════════════════════════════════════════ */}
       <section className="hero">
         <img
-          src={hero_image || DEFAULT_HERO_IMG}
+          src={resolveImageUrl(hero_image || DEFAULT_HERO_IMG)}
           srcSet={heroSrcSet}
           sizes="100vw"
           alt=""
@@ -320,7 +321,7 @@ export default function Home() {
                   to={`/shop?category=${encodeURIComponent(cat.label)}`}
                   className="cat-card"
                 >
-                  <img src={cat.image} alt={cat.label} loading="lazy" />
+                  <img src={resolveImageUrl(cat.image)} alt={cat.label} loading="lazy" />
                   <div className="cat-card-overlay" />
                   <span className="cat-card-label">{cat.label}</span>
                 </Link>

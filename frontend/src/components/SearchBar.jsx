@@ -1,19 +1,11 @@
 import { useState, useEffect, useRef, useId } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { productsAPI } from '../services/api';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './SearchBar.css';
 
 const RECENT_KEY = 'bc_recent_searches';
 const MAX_RECENT = 5;
-
-const _apiUrl = import.meta.env.VITE_API_URL || '';
-function resolveThumb(url) {
-  if (!url || url.startsWith('http') || url.startsWith('data:')) return url;
-  if (_apiUrl.startsWith('http')) {
-    try { return `${new URL(_apiUrl).origin}${url}`; } catch { /* fall through */ }
-  }
-  return url;
-}
 
 function loadRecent() {
   try {
@@ -234,7 +226,7 @@ export default function SearchBar({
                 >
                   {p.image_url && (
                     <img
-                      src={resolveThumb(p.image_url)}
+                      src={resolveImageUrl(p.image_url)}
                       alt=""
                       className="searchbar-thumb"
                       loading="lazy"

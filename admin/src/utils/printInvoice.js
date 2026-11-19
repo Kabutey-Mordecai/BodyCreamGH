@@ -32,12 +32,16 @@ export function printInvoice(rawOrder, store = {}) {
     (s, it) => s + Number(it.subtotal || (it.price_at_purchase * it.quantity) || 0), 0
   );
   const deliveryFee  = Number(order.delivery_fee  || 0);
-  const total        = Number(order.total_amount  || subtotal + deliveryFee);
+  const discountAmount = Number(order.discount_amount || 0);
+  const total        = Number(order.total_amount || (subtotal - discountAmount + deliveryFee));
   const isPaid       = ['paid', 'completed'].includes(order.payment_status);
 
   const itemRows = items.map(it => `
     <tr>
-      <td>${it.product_name || it.name || '—'}</td>
+      <td>
+        <div style="font-weight: 600;">${it.product_name || it.name || '—'}</div>
+        ${it.variant_label ? `<div style="font-size: 11px; color: #7a6e68; margin-top: 2px;">${it.variant_label}</div>` : ''}
+      </td>
       <td class="center">${it.quantity}</td>
       <td class="right">${fmt(it.price_at_purchase || it.price)}</td>
       <td class="right">${fmt(it.subtotal || (it.price_at_purchase * it.quantity))}</td>
@@ -264,13 +268,18 @@ export function printInvoice(rawOrder, store = {}) {
       </p>
     </div>
     <div class="party">
-      <div class="party-label">Deliver To</div>
+      <div class="party-label">${order.fulfillment_method === 'pickup' ? 'Pickup Station' : 'Deliver To'}</div>
       <p>
-        ${order.shipping_address || ''}
-        ${(order.shipping_city || order.shipping_region)
-          ? `<br/>${[order.shipping_city, order.shipping_region].filter(Boolean).join(', ')}`
-          : ''}
-        ${!order.shipping_address && !order.shipping_city ? '—' : ''}
+        ${order.fulfillment_method === 'pickup'
+          ? `<strong>East Legon Station</strong><br/>Accra, Ghana<br/><span class="muted">Call upon arrival · Station Pickup</span>`
+          : `
+            ${order.shipping_address || ''}
+            ${(order.shipping_city || order.shipping_region)
+              ? `<br/>${[order.shipping_city, order.shipping_region].filter(Boolean).join(', ')}`
+              : ''}
+            ${!order.shipping_address && !order.shipping_city ? '—' : ''}
+          `
+        }
       </p>
     </div>
   </div>
@@ -297,6 +306,11 @@ export function printInvoice(rawOrder, store = {}) {
         <span class="label">Subtotal</span>
         <span>${fmt(subtotal)}</span>
       </div>
+      ${discountAmount > 0 ? `
+      <div class="totals-row" style="color: #10b981;">
+        <span class="label" style="color: #10b981;">Discount${order.coupon_code ? ` (${order.coupon_code})` : ''}</span>
+        <span>-${fmt(discountAmount)}</span>
+      </div>` : ''}
       <div class="totals-row">
         <span class="label">Delivery fee</span>
         <span>${deliveryFee === 0 ? 'Free' : fmt(deliveryFee)}</span>
