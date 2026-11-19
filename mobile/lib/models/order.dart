@@ -60,7 +60,7 @@ class Order {
       id: (orderMap['id'] ?? '').toString(),
       orderNumber: (orderMap['order_number'] ?? orderMap['orderNumber'] ?? '').toString(),
       status: (orderMap['status'] ?? 'pending').toString(),
-      paymentStatus: (orderMap['payment_status'] ?? 'pending').toString(),
+      paymentStatus: (orderMap['payment_status'] ?? 'unpaid').toString(),
       totalAmount: double.parse((orderMap['total_amount'] ?? orderMap['total'] ?? 0).toString()),
       deliveryAddress: addressParts.isNotEmpty ? addressParts : null,
       deliveryStatus: (orderMap['delivery_status'] ?? orderMap['shipping_status']) as String?,
