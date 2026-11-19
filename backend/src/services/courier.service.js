@@ -1,6 +1,7 @@
-const pool       = require('../config/database');
-const notify     = require('./notification.service');
-const logger     = require('../utils/logger');
+const pool           = require('../config/database');
+const notify         = require('./notification.service');
+const logger         = require('../utils/logger');
+const { logStatusChange } = require('../utils/audit');
 
 // Ordered shipment lifecycle understood by this mock courier
 const SHIPMENT_FLOW = ['pending', 'in_transit', 'out_for_delivery', 'delivered'];
@@ -42,6 +43,31 @@ async function advanceShipment(trackingNumber) {
   );
 
   notify.shipmentUpdated({ trackingNumber, from: shipment.status, to: next });
+
+  if (next === 'delivered') {
+    try {
+      const { rows: orderRows } = await pool.query(
+        'SELECT status, order_number FROM orders WHERE id = $1',
+        [shipment.order_id]
+      );
+      if (orderRows.length) {
+        const { status: orderFrom, order_number: orderNumber } = orderRows[0];
+        await pool.query(
+          `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1`,
+          [shipment.order_id]
+        );
+        await logStatusChange(shipment.order_id, orderFrom, 'delivered', `Courier delivered. Tracking: ${trackingNumber}`);
+        notify.shipmentDelivered({ trackingNumber, orderNumber });
+        notify.orderStatusChanged({ orderNumber, from: orderFrom, to: 'delivered' });
+      }
+    } catch (err) {
+      logger.error('advanceShipment: failed to sync order status to delivered', {
+        err: err.message,
+        orderId: shipment.order_id,
+        trackingNumber,
+      });
+    }
+  }
 
   return { from: shipment.status, to: next, trackingNumber, orderId: shipment.order_id };
 }
