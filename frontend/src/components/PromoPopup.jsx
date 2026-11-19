@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 import './PromoPopup.css';
@@ -13,9 +13,6 @@ export default function PromoPopup() {
   const settings = useSettings();
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-  const closeBtnRef = useRef(null);
-  const cardRef = useRef(null);
-  const previousActiveElement = useRef(null);
 
   const isEnabled = settings.promo_popup_enabled === true || settings.promo_popup_enabled === 'true';
 
@@ -33,54 +30,17 @@ export default function PromoPopup() {
 
     const delaySec = Number(settings.promo_popup_delay_sec) || 2;
     const timer = setTimeout(() => {
-      previousActiveElement.current = document.activeElement;
       setIsOpen(true);
-    }, Math.max(500, delaySec * 1000));
+    }, Math.max(300, delaySec * 1000));
 
     return () => clearTimeout(timer);
   }, [isEnabled, settings.promo_popup_delay_sec]);
 
-  // Focus close button on open
-  useEffect(() => {
-    if (isOpen && closeBtnRef.current) {
-      closeBtnRef.current.focus();
+  const closePopup = (e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
     }
-  }, [isOpen]);
-
-  // Handle escape key & tab focus trap
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closePopup();
-        return;
-      }
-
-      if (e.key === 'Tab' && cardRef.current) {
-        const focusable = cardRef.current.querySelectorAll(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault();
-          last.focus();
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault();
-          first.focus();
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isClosing]);
-
-  const closePopup = () => {
     if (isClosing) return;
     setIsClosing(true);
     try {
@@ -91,104 +51,85 @@ export default function PromoPopup() {
     setTimeout(() => {
       setIsOpen(false);
       setIsClosing(false);
-      if (previousActiveElement.current && typeof previousActiveElement.current.focus === 'function') {
-        previousActiveElement.current.focus();
-      }
-    }, 280);
+    }, 250);
   };
 
   if (!isEnabled || !isOpen) return null;
 
   const badge = settings.promo_popup_badge || '● BRAND DAY · TODAY ONLY';
-  const title = settings.promo_popup_title || 'Pure Shea Radiance.';
-  const highlight = settings.promo_popup_highlight || 'Slashed Prices';
-  const discount = settings.promo_popup_discount || 'UP TO 50% OFF';
-  const subtext = settings.promo_popup_subtext || 'Limited quantity · Handcrafted in Ghana · T&Cs apply';
+  const title = settings.promo_popup_title || 'Power Your Daily Routine';
+  const highlight = settings.promo_popup_highlight || '';
+  const discount = settings.promo_popup_discount || 'UP TO 40% OFF';
+  const subtext = settings.promo_popup_subtext || 'Limited quantity · T&Cs apply';
   const image = settings.promo_popup_image || 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=600&q=80';
-  const ctaText = settings.promo_popup_cta_text || 'Claim Your Glow';
   const ctaLink = settings.promo_popup_cta_link || '/shop';
 
-  return (
-    <div
-      className={`promo-popup-backdrop ${isClosing ? 'is-closing' : ''}`}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) closePopup();
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Promotional offer"
-    >
-      <div
-        ref={cardRef}
-        className={`promo-popup-card ${isClosing ? 'is-closing' : ''}`}
-      >
-        {/* Dismiss Button */}
-        <button
-          ref={closeBtnRef}
-          type="button"
-          className="promo-popup-close"
-          onClick={closePopup}
-          aria-label="Close promotional popup"
-        >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <line x1="2" y1="2" x2="12" y2="12" />
-            <line x1="12" y1="2" x2="2" y2="12" />
-          </svg>
-        </button>
+  const cardContent = (
+    <div className="promo-floating-card-inner">
+      {/* Text side */}
+      <div className="promo-floating-body">
+        {badge && (
+          <span className="promo-floating-badge">{badge}</span>
+        )}
 
-        {/* Content Side */}
-        <div className="promo-popup-body">
-          {badge && (
-            <div className="promo-popup-badge-wrap">
-              <span className="promo-popup-badge">{badge}</span>
-            </div>
-          )}
+        <h3 className="promo-floating-title">
+          {title}{' '}
+          {highlight && <span className="promo-floating-highlight">{highlight}</span>}
+        </h3>
 
-          <h2 className="promo-popup-headline">
-            {title}{' '}
-            {highlight && <span className="promo-popup-highlight">{highlight}</span>}
-          </h2>
+        {subtext && <p className="promo-floating-subtext">{subtext}</p>}
+      </div>
 
-          {subtext && <p className="promo-popup-subtext">{subtext}</p>}
-
-          <div className="promo-popup-actions">
-            {isExternalUrl(ctaLink) ? (
-              <a
-                href={ctaLink}
-                className="btn btn-accent promo-popup-cta"
-                onClick={closePopup}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                {ctaText} →
-              </a>
-            ) : (
-              <Link
-                to={ctaLink}
-                className="btn btn-accent promo-popup-cta"
-                onClick={closePopup}
-              >
-                {ctaText} →
-              </Link>
-            )}
+      {/* Visual / Image side */}
+      <div className="promo-floating-visual">
+        <img
+          src={image}
+          alt={title}
+          className="promo-floating-img"
+          loading="eager"
+        />
+        {discount && (
+          <div className="promo-floating-discount-badge" aria-label={discount}>
+            <span className="discount-tag">{discount}</span>
           </div>
-        </div>
-
-        {/* Visual / Image Side */}
-        <div className="promo-popup-visual">
-          <img
-            src={image}
-            alt="Featured promotional offer"
-            className="promo-popup-img"
-            loading="eager"
-          />
-          {discount && (
-            <div className="promo-popup-discount-badge" aria-label={discount}>
-              <span className="discount-tag">{discount}</span>
-            </div>
-          )}
-        </div>
+        )}
       </div>
     </div>
+  );
+
+  return (
+    <aside
+      className={`promo-floating-widget ${isClosing ? 'is-closing' : ''}`}
+      aria-label="Promotional offer"
+    >
+      {/* Circular white close button */}
+      <button
+        type="button"
+        className="promo-floating-close"
+        onClick={closePopup}
+        aria-label="Close promotion"
+      >
+        <svg width="11" height="11" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <line x1="2" y1="2" x2="12" y2="12" />
+          <line x1="12" y1="2" x2="2" y2="12" />
+        </svg>
+      </button>
+
+      {/* Clickable Card navigating to offer */}
+      {isExternalUrl(ctaLink) ? (
+        <a
+          href={ctaLink}
+          className="promo-floating-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {cardContent}
+        </a>
+      ) : (
+        <Link to={ctaLink} className="promo-floating-link">
+          {cardContent}
+        </Link>
+      )}
+    </aside>
   );
 }
