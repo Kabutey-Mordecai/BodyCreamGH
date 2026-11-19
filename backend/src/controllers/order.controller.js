@@ -492,6 +492,31 @@ const updateOrderStatus = async (req, res) => {
     await OrderModel.updateStatus(req.params.orderId, status);
     await logStatusChange(req.params.orderId, fromStatus, status, note || 'Manual update by admin');
     logger.info('Order status updated', { orderId: req.params.orderId, from: fromStatus, to: status });
+
+    // When an order is delivered, actively send a review request asking the buyer for a review of what they bought
+    if (status === 'delivered') {
+      (async () => {
+        try {
+          const orderData = await OrderModel.findById(req.params.orderId);
+          const orderItems = await OrderModel.getItems(req.params.orderId);
+          const customerEmail = orderData?.email || orderData?.guest_email;
+          if (customerEmail && orderItems.length > 0) {
+            const emailService = require('../services/email.service');
+            await emailService.sendReviewRequest(customerEmail, {
+              customerName: orderData.first_name || 'Valued Customer',
+              orderNumber:  orderData.order_number,
+              orderId:      orderData.id,
+              items:        orderItems,
+              frontendUrl:  process.env.FRONTEND_URL || 'http://localhost:5173',
+            });
+            logger.info('Review request email dispatched for delivered order', { orderId: req.params.orderId, email: customerEmail });
+          }
+        } catch (mailErr) {
+          logger.error('Failed to dispatch review request email', { err: mailErr.message, orderId: req.params.orderId });
+        }
+      })();
+    }
+
     res.json({ message: 'Order status updated' });
   } catch (error) {
     if (error.status === 400) return res.status(400).json({ error: error.message });

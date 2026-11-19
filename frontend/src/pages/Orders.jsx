@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ordersAPI } from '../services/api';
+import { ordersAPI, reviewsAPI } from '../services/api';
 import './Orders.css';
 
 function getDateLabel(dateStr) {
@@ -41,12 +41,13 @@ function refundHint(order) {
 }
 
 export default function Orders() {
-  const [orders, setOrders]         = useState([]);
-  const [pagination, setPagination] = useState(null);
-  const [page, setPage]             = useState(1);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
-  const [retryCount, setRetryCount] = useState(0);
+  const [orders, setOrders]                 = useState([]);
+  const [pendingPrompts, setPendingPrompts] = useState([]);
+  const [pagination, setPagination]         = useState(null);
+  const [page, setPage]                     = useState(1);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState('');
+  const [retryCount, setRetryCount]         = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -59,6 +60,10 @@ export default function Orders() {
       })
       .catch(() => setError('Failed to load orders. Please check your connection.'))
       .finally(() => setLoading(false));
+
+    reviewsAPI.getPendingPrompts()
+      .then(({ data }) => setPendingPrompts(data.prompts || []))
+      .catch(() => setPendingPrompts([]));
   }, [page, retryCount]);
 
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
@@ -79,6 +84,28 @@ export default function Orders() {
                 : `You've placed ${orders.length} order${orders.length === 1 ? '' : 's'} with us.`}
           </p>
         </div>
+
+        {/* ── Pending review prompt banner for delivered orders ── */}
+        {pendingPrompts.length > 0 && (
+          <div className="orders-review-prompt-banner card">
+            <div className="orders-review-prompt-icon">⭐</div>
+            <div className="orders-review-prompt-body">
+              <strong>Your opinion matters!</strong>
+              <p>
+                You recently received <strong>{pendingPrompts[0].product_name}</strong>
+                {pendingPrompts.length > 1 ? ` and ${pendingPrompts.length - 1} other item${pendingPrompts.length > 2 ? 's' : ''}` : ''}.
+                Please share your honest review to help fellow shoppers!
+              </p>
+            </div>
+            <Link
+              to={`/orders/${pendingPrompts[0].order_id}?product=${pendingPrompts[0].product_id}&review=1`}
+              className="btn btn-accent btn-sm"
+              style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              Review Items →
+            </Link>
+          </div>
+        )}
 
         {error && (
           <div className="alert alert-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
@@ -143,6 +170,11 @@ export default function Orders() {
                           <span className={`badge badge-${order.status}`}>
                             {order.status}
                           </span>
+                          {order.status === 'delivered' && (
+                            <span className="badge badge-review-cta" style={{ background: 'var(--color-accent)', color: '#fff', fontWeight: 600 }}>
+                              ⭐ Review
+                            </span>
+                          )}
                           {hint && (
                             <span className={`badge ${
                               hint === 'Refunded' || order.refund_status === 'success'

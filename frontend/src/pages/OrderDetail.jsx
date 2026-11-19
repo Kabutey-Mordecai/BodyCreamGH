@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { ordersAPI, deliveriesAPI, reviewsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -53,6 +53,7 @@ function getRefundMessage(order) {
 
 export default function OrderDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const { showToast } = useToast();
 
@@ -131,6 +132,20 @@ export default function OrderDetail() {
       .catch(() => setError('Could not load order details. Please try again.'))
       .finally(() => setLoading(false));
   }, [id, retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-scroll to review prompt if arrived via review link (e.g. from post-delivery email)
+  useEffect(() => {
+    if (!loading && order?.status === 'delivered' && (searchParams.get('review') === '1' || window.location.hash === '#reviews')) {
+      const timer = setTimeout(() => {
+        const targetProd = searchParams.get('product');
+        const targetEl = targetProd
+          ? document.getElementById(`review-card-${targetProd}`) || document.querySelector('.od-review-section')
+          : document.querySelector('.od-review-section');
+        if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, order, searchParams]);
 
   const updateReviewForm = (productId, field, value) =>
     setReviewForms(prev => ({
@@ -680,9 +695,25 @@ export default function OrderDetail() {
                 const form = reviewForms[pid] || { rating: 0, title: '', body: '' };
 
                 return (
-                  <div key={pid || i} className={`od-review-card ${done ? 'od-review-card--done' : ''}`}>
-                    <div className="od-review-product">
-                      <span className="od-review-product-name">{item.name || item.product_name}</span>
+                  <div
+                    key={pid || i}
+                    id={`review-card-${pid}`}
+                    className={`od-review-card ${done ? 'od-review-card--done' : ''}`}
+                    style={searchParams.get('product') === String(pid) ? { border: '2px solid var(--color-accent)', boxShadow: '0 0 0 3px rgba(201,165,90,0.15)' } : {}}
+                  >
+                    <div className="od-review-product" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {item.image_url && (
+                          <img src={item.image_url} alt={item.name} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+                        )}
+                        <div>
+                          <span className="od-review-product-name">{item.name || item.product_name}</span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--color-muted)', display: 'block' }}>GHS {parseFloat(item.price_at_purchase || item.price || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <span className="verified-badge-pill" style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-accent-dark)', background: 'var(--color-accent-light)', padding: '3px 8px', borderRadius: 999 }}>
+                        ✓ Verified Purchase
+                      </span>
                     </div>
 
                     {done ? (

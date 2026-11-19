@@ -132,30 +132,46 @@ const sendPasswordResetEmail = async (to, resetUrl) => {
   });
 };
 
-const sendReviewRequest = async (to, { customerName, orderNumber, items = [], frontendUrl }) => {
+const sendReviewRequest = async (to, { customerName, orderNumber, orderId, items = [], frontendUrl }) => {
   if (!isConfigured() || !to) return;
 
-  const url = frontendUrl || process.env.FRONTEND_URL || 'http://localhost:5173';
+  const url = (frontendUrl || process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const targetUrl = orderId ? `${url}/orders/${orderId}?review=1` : `${url}/orders`;
   const itemList = items
-    .map(i => `<li style="margin-bottom:8px"><strong>${i.name}</strong></li>`)
+    .map(i => `
+      <li style="margin-bottom:12px;list-style:none;padding:12px 16px;background:#faf7f4;border-radius:6px;border:1px solid #ede5db;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <strong style="color:#1c1410;font-size:15px;display:block;">${i.name || i.product_name}</strong>
+          <span style="color:#7a6e68;font-size:12px;">Verified Purchase</span>
+        </div>
+        <a href="${url}/orders/${orderId || ''}?product=${i.product_id || i.id}&review=1" style="color:#a8863d;font-weight:600;font-size:13px;text-decoration:none;padding:6px 12px;background:#fff;border:1px solid #c9a55a;border-radius:4px;white-space:nowrap;">
+          Review Item →
+        </a>
+      </li>
+    `)
     .join('');
 
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: `BodyCream GH <${process.env.SMTP_USER}>`,
     to,
-    subject: `Your order ${orderNumber} has arrived — how did we do?`,
+    subject: `Your order #${orderNumber} has arrived — how did we do?`,
     html: `
-      <div style="font-family:sans-serif;max-width:560px;margin:0 auto">
-        <h2 style="font-size:22px">Your order has been delivered! 🎉</h2>
-        ${customerName ? `<p>Hi ${customerName},</p>` : ''}
-        <p>We hope you're loving your new products. It would mean a lot if you shared your thoughts:</p>
-        <ul style="padding-left:20px">${itemList}</ul>
-        <p style="margin-top:24px">
-          <a href="${url}/orders" style="background:#c9a55a;color:#fff;padding:12px 28px;border-radius:4px;text-decoration:none;font-weight:600;display:inline-block">
-            Leave a Review
-          </a>
+      <div style="font-family:'Inter',system-ui,-apple-system,sans-serif;max-width:580px;margin:0 auto;color:#1c1410;padding:24px 16px;">
+        <h2 style="font-family:Georgia,serif;font-size:24px;color:#1c1410;margin-bottom:8px;">Your order has been delivered! 🎉</h2>
+        ${customerName ? `<p style="font-size:15px;color:#7a6e68;">Hi ${customerName},</p>` : ''}
+        <p style="font-size:15px;line-height:1.6;color:#332924;">
+          We hope you are loving your handcrafted skincare! As a verified buyer, your honest feedback helps other shoppers and helps our cooperatives continuously refine our batches.
         </p>
-        <p style="margin-top:20px;color:#888;font-size:12px">Order: ${orderNumber}</p>
+        <p style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:#a8863d;margin-top:24px;margin-bottom:12px;">
+          Review the products you received:
+        </p>
+        <ul style="padding:0;margin:0;">${itemList}</ul>
+        <div style="margin-top:32px;text-align:center;">
+          <a href="${targetUrl}" style="background:#c9a55a;color:#ffffff;padding:14px 32px;border-radius:9999px;text-decoration:none;font-weight:700;font-size:14px;letter-spacing:0.05em;display:inline-block;">
+            Review Your Order
+          </a>
+        </div>
+        <p style="margin-top:28px;color:#a89f91;font-size:12px;text-align:center;">Order #${orderNumber} · Handcrafted with love in Ghana</p>
       </div>
     `,
   });

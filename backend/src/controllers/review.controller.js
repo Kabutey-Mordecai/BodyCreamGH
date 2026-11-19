@@ -43,6 +43,27 @@ const canReview = async (req, res) => {
   }
 };
 
+// GET /api/reviews/featured
+const getFeaturedReviews = async (req, res) => {
+  try {
+    const limit = Math.min(20, parseInt(req.query.limit) || 8);
+    const reviews = await ReviewModel.getFeaturedReviews(limit);
+    res.json({ reviews });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load featured reviews' });
+  }
+};
+
+// GET /api/reviews/pending-prompts  (requireAuth)
+const getPendingReviewPrompts = async (req, res) => {
+  try {
+    const prompts = await ReviewModel.getPendingReviewPrompts(req.user.id);
+    res.json({ prompts });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load pending review prompts' });
+  }
+};
+
 // POST /api/products/:productId/reviews  (requireAuth)
 const createReview = async (req, res) => {
   try {
@@ -63,6 +84,10 @@ const createReview = async (req, res) => {
       return res.status(403).json({ error: 'You can only review products from delivered orders' });
     }
 
+    const pool = require('../config/database');
+    const settingRes = await pool.query("SELECT value FROM site_settings WHERE key = 'reviews_auto_approve'");
+    const autoApprove = settingRes.rows[0]?.value === true || settingRes.rows[0]?.value === 'true';
+
     await ReviewModel.create({
       product_id: productId,
       user_id:    req.user.id,
@@ -70,9 +95,14 @@ const createReview = async (req, res) => {
       rating:     parseInt(rating),
       title,
       body,
+      autoApprove,
     });
 
-    res.status(201).json({ success: true, message: 'Review submitted for approval' });
+    res.status(201).json({
+      success: true,
+      auto_approved: autoApprove,
+      message: autoApprove ? 'Review published!' : 'Review submitted for approval'
+    });
   } catch (err) {
     console.error('[review] createReview error:', err);
     res.status(500).json({ error: 'Failed to submit review' });
@@ -158,5 +188,6 @@ const deleteReview = async (req, res) => {
 
 module.exports = {
   getReviews, canReview, createReview, markHelpful,
+  getFeaturedReviews, getPendingReviewPrompts,
   getAllReviews, getReviewCounts, approveReview, rejectReview, deleteReview,
 };

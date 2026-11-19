@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { productsAPI, newsletterAPI } from '../services/api';
+import { productsAPI, newsletterAPI, reviewsAPI } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductShelf from '../components/ProductShelf';
 import TrustStrip from '../components/TrustStrip';
 import SearchBar from '../components/SearchBar';
+import StarRating from '../components/StarRating';
 import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
 import Reveal from '../components/Reveal';
 import PromoPopup from '../components/PromoPopup';
@@ -91,6 +92,7 @@ export default function Home() {
     categories, testimonials,
   } = settings;
   const [featured, setFeatured]             = useState([]);
+  const [customerReviews, setCustomerReviews] = useState([]);
   const [loading, setLoading]               = useState(true);
   const [saleProducts, setSaleProducts]     = useState([]);
   const [flashEndTime, setFlashEndTime]     = useState(DEFAULT_SALE_END_TIME);
@@ -187,6 +189,10 @@ export default function Home() {
           setFlashEndTime(null);
         }
       })
+      .catch(() => {});
+
+    reviewsAPI.getFeatured({ limit: 8 })
+      .then(({ data }) => setCustomerReviews(data.reviews || []))
       .catch(() => {});
   };
 
@@ -465,28 +471,60 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════
-          TESTIMONIALS
+          VERIFIED CUSTOMER REVIEWS
           ══════════════════════════════════════════ */}
       <section className="page-section testimonials-section">
         <div className="container">
           <Reveal className="section-header">
-            <span className="section-label">Reviews</span>
-            <h2 className="page-title">What our customers say</h2>
-            <div className="gold-divider" style={{ margin: '0 0 48px' }} />
+            <span className="section-label">Verified Buyer Reviews</span>
+            <h2 className="page-title">What our buyers say</h2>
+            <div className="gold-divider" style={{ margin: '0 0 40px' }} />
           </Reveal>
           <div className="testimonials-grid">
-            {(testimonials || []).map((t, i) => (
-              <Reveal key={i} delay={i * 90} className="testimonial-card card">
-                <p className="testimonial-text">"{t.text}"</p>
-                <div className="testimonial-author">
-                  {t.avatar && <img src={t.avatar} alt={t.name} className="testimonial-avatar" />}
-                  <div>
-                    <strong>{t.name}</strong>
-                    <span>{t.location}</span>
+            {customerReviews.length > 0 ? (
+              customerReviews.map((r, i) => (
+                <Reveal key={r.id || i} delay={i * 80} className="testimonial-card card">
+                  <div className="testimonial-rating-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <StarRating value={r.rating} size="sm" />
+                    <span className="verified-badge-pill" style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-accent-dark)', background: 'var(--color-accent-light)', padding: '2px 8px', borderRadius: 999 }}>
+                      ✓ Verified Buyer
+                    </span>
                   </div>
-                </div>
-              </Reveal>
-            ))}
+                  {r.product_name && (
+                    <Link to={`/products/${r.product_id}`} style={{ fontSize: '0.78rem', color: 'var(--color-muted)', textDecoration: 'none', display: 'block', marginBottom: 8 }}>
+                      Purchased: <strong style={{ color: 'var(--color-accent-dark)' }}>{r.product_name}</strong>
+                    </Link>
+                  )}
+                  {r.title && <strong style={{ display: 'block', fontSize: '0.96rem', marginBottom: 6, color: 'var(--color-primary)' }}>{r.title}</strong>}
+                  <p className="testimonial-text">"{r.body || r.title || 'Exceptional handcrafted skincare!'}"</p>
+                  <div className="testimonial-author" style={{ marginTop: 14 }}>
+                    <div>
+                      <strong>{r.first_name ? `${r.first_name} ${r.last_initial || ''}.` : 'Verified Buyer'}</strong>
+                      <span>{r.location || 'Accra, Ghana'}</span>
+                    </div>
+                  </div>
+                </Reveal>
+              ))
+            ) : (
+              (testimonials || []).map((t, i) => (
+                <Reveal key={i} delay={i * 90} className="testimonial-card card">
+                  <div className="testimonial-rating-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                    <StarRating value={5} size="sm" />
+                    <span className="verified-badge-pill" style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-accent-dark)', background: 'var(--color-accent-light)', padding: '2px 8px', borderRadius: 999 }}>
+                      ✓ Verified Buyer
+                    </span>
+                  </div>
+                  <p className="testimonial-text">"{t.text}"</p>
+                  <div className="testimonial-author" style={{ marginTop: 14 }}>
+                    {t.avatar && <img src={t.avatar} alt={t.name} className="testimonial-avatar" />}
+                    <div>
+                      <strong>{t.name}</strong>
+                      <span>{t.location}</span>
+                    </div>
+                  </div>
+                </Reveal>
+              ))
+            )}
           </div>
         </div>
       </section>

@@ -67,9 +67,10 @@ const ReviewModel = {
       `SELECT o.id
        FROM order_items oi
        JOIN orders o ON oi.order_id = o.id
-       WHERE o.customer_id = $1
+       WHERE (o.customer_id = $1 OR (o.guest_email IS NOT NULL AND LOWER(o.guest_email) = (SELECT LOWER(email) FROM users WHERE id = $1)))
          AND oi.product_id = $2
          AND o.status = 'delivered'
+       ORDER BY o.updated_at DESC
        LIMIT 1`,
       [userId, productId]
     );
@@ -81,13 +82,64 @@ const ReviewModel = {
     return { can_review: true, already_reviewed: false, order_id: delivered.rows[0].id };
   },
 
-  create: async ({ product_id, user_id, order_id, rating, title, body }) => {
+  // Returns pending products from delivered orders that this user hasn't reviewed yet
+  getPendingReviewPrompts: async (userId) => {
     const { rows } = await pool.query(
-      `INSERT INTO product_reviews (product_id, user_id, order_id, rating, title, body)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id`,
-      [product_id, user_id, order_id || null, rating, title || null, body || null]
+      `SELECT DISTINCT ON (p.id)
+              o.id AS order_id,
+              o.order_number,
+              o.updated_at AS delivered_at,
+              p.id AS product_id,
+              p.name AS product_name,
+              p.image_url AS product_image,
+              p.price
+       FROM orders o
+       JOIN order_items oi ON o.id = oi.order_id
+       JOIN products p ON oi.product_id = p.id
+       LEFT JOIN product_reviews pr ON pr.user_id = $1 AND pr.product_id = p.id
+       WHERE (o.customer_id = $1 OR (o.guest_email IS NOT NULL AND LOWER(o.guest_email) = (SELECT LOWER(email) FROM users WHERE id = $1)))
+         AND o.status = 'delivered'
+         AND pr.id IS NULL
+       ORDER BY p.id, o.updated_at DESC
+       LIMIT 5`,
+      [userId]
     );
+    return rows;
+  },
+
+  // Public approved reviews for the storefront & homepage testimonials
+  getFeaturedReviews: async (limit = 8) => {
+    const { rows } = await pool.query(
+      `SELECT r.id, r.rating, r.title, r.body, r.created_at,
+              u.first_name,
+              LEFT(u.last_name, 1) AS last_initial,
+              p.id AS product_id,
+              p.name AS product_name,
+              p.image_url AS product_image,
+              COALESCE(o.shipping_city, 'Accra, Ghana') AS location,
+              TRUE AS verified_purchase
+       FROM product_reviews r
+       JOIN users u ON r.user_id = u.id
+       JOIN products p ON r.product_id = p.id
+       LEFT JOIN orders o ON r.order_id = o.id
+       WHERE r.is_approved = TRUE
+       ORDER BY r.rating DESC, r.created_at DESC
+       LIMIT $1`,
+      [limit]
+    );
+    return rows;
+  },
+
+  create: async ({ product_id, user_id, order_id, rating, title, body, autoApprove = false }) => {
+    const { rows } = await pool.query(
+      `INSERT INTO product_reviews (product_id, user_id, order_id, rating, title, body, is_approved)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, product_id, is_approved`,
+      [product_id, user_id, order_id || null, rating, title || null, body || null, autoApprove]
+    );
+    if (autoApprove) {
+      await ReviewModel.recalculateProductRating(product_id);
+    }
     return rows[0].id;
   },
 

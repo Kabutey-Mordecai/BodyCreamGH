@@ -175,10 +175,12 @@ export const couponsAPI = {
 
 // ── Reviews ───────────────────────────────────────────────────────────────────
 export const reviewsAPI = {
-  getByProduct: (productId, params) => api.get(`/products/${productId}/reviews`, { params }),
-  canReview:    (productId)         => api.get(`/products/${productId}/reviews/can-review`),
-  create:       (productId, data)   => api.post(`/products/${productId}/reviews`, data),
-  markHelpful:  (productId, reviewId) => api.post(`/products/${productId}/reviews/${reviewId}/helpful`),
+  getByProduct:      (productId, params)   => api.get(`/products/${productId}/reviews`, { params }),
+  canReview:         (productId)           => api.get(`/products/${productId}/reviews/can-review`),
+  create:            (productId, data)     => api.post(`/products/${productId}/reviews`, data),
+  markHelpful:       (productId, reviewId) => api.post(`/products/${productId}/reviews/${reviewId}/helpful`),
+  getFeatured:       (params)              => api.get('/reviews/featured', { params }),
+  getPendingPrompts: ()                    => api.get('/reviews/pending-prompts'),
 };
 
 // ── Order tracking (public) ───────────────────────────────────────────────────
