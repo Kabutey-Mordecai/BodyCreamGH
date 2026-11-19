@@ -343,45 +343,62 @@ export default function Shop() {
           {/* ── PRODUCTS MAIN CONTENT ── */}
           <main className="shop-main">
 
-            {/* Desktop Toolbar: Search + Sort */}
-            <div className="shop-toolbar">
-              <div className="shop-search-wrap">
-                <svg className="shop-search-icon" viewBox="0 0 20 20" fill="none">
-                  <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-                <input
-                  type="search"
-                  placeholder="Search products…"
-                  value={searchInput}
-                  onChange={e => setSearchInput(e.target.value)}
-                  className="shop-search"
-                  aria-label="Search products"
-                />
-                {searchInput && (
-                  <button
-                    className="shop-search-clear"
-                    onClick={() => {
-                      setSearchInput('');
-                      setParam('search', '');
-                    }}
-                    aria-label="Clear search"
-                  >✕</button>
-                )}
-              </div>
+            {/* Redesigned Toolbar: Luxury Search Bar + Standalone Sort Pill */}
+            <div className="shop-toolbar-redesign">
+              <form 
+                className="shop-search-form" 
+                onSubmit={(e) => { 
+                  e.preventDefault(); 
+                  setParam('search', searchInput.trim()); 
+                }}
+              >
+                <div className="shop-search-input-wrapper">
+                  <svg className="shop-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    type="search"
+                    placeholder="Search body creams, oils, scrubs, butters…"
+                    value={searchInput}
+                    onChange={e => setSearchInput(e.target.value)}
+                    className="shop-search-input"
+                    aria-label="Search products"
+                  />
+                  {searchInput && (
+                    <button
+                      type="button"
+                      className="shop-search-clear-btn"
+                      onClick={() => {
+                        setSearchInput('');
+                        setParam('search', '');
+                      }}
+                      aria-label="Clear search"
+                    >✕</button>
+                  )}
+                </div>
+                <button type="submit" className="shop-search-submit-btn">
+                  <span>Search</span>
+                </button>
+              </form>
 
-              <div className="shop-sort-wrap desktop-sort">
-                <span className="shop-sort-label">Sort by</span>
-                <select
-                  value={sort}
-                  onChange={e => setParam('sort', e.target.value)}
-                  className="shop-sort"
-                  aria-label="Sort products"
-                >
-                  {SORT_OPTIONS.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
+              <div className="shop-sort-pill desktop-sort">
+                <span className="shop-sort-caption">Sort:</span>
+                <div className="shop-sort-select-wrap">
+                  <select
+                    value={sort}
+                    onChange={e => setParam('sort', e.target.value)}
+                    className="shop-sort-select"
+                    aria-label="Sort products"
+                  >
+                    {SORT_OPTIONS.map(o => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  <svg className="shop-sort-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </div>
               </div>
             </div>
 
