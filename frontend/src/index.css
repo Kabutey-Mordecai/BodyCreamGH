@@ -388,5 +388,5 @@ input:not([type="checkbox"]):not([type="radio"]):not(.nav-search-input):not(.her
 }
 .toast-close:hover { color: var(--color-primary); }
 @media (max-width: 480px) {
-  .toast-stack { bottom: 16px; right: 16px; left: 16px; max-width: none; }
+  .toast-stack { bottom: 84px; right: 16px; left: 16px; max-width: none; }
 }
