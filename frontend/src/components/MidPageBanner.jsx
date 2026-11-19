@@ -82,10 +82,10 @@ export default function MidPageBanner() {
   const total = slides.length;
   const autoPlay = settings.mid_banner_autoplay !== false && settings.mid_banner_autoplay !== 'false';
   const intervalSec = Math.max(3, Number(settings.mid_banner_interval_sec) || 7);
-  // Default 520px height for the tall spacious luxury card matching the user's second screenshot
-  const heightPx = Math.max(380, Math.min(800, Number(settings.mid_banner_height_px) || 520));
-  // Default 1.2s flip speed for a slow, gentle, realistic page curl transition
-  const flipSpeedMs = Math.max(400, Math.min(3000, Math.round((Number(settings.mid_banner_flip_speed_sec) || 1.2) * 1000)));
+  // Default 340px height for the sleek, elegant wide banner matching the user's second image
+  const heightPx = Math.max(240, Math.min(800, Number(settings.mid_banner_height_px) || 340));
+  // Default 1.4s flip speed for a slow, gentle, realistic page curl transition
+  const flipSpeedMs = Math.max(400, Math.min(3000, Math.round((Number(settings.mid_banner_flip_speed_sec) || 1.4) * 1000)));
 
   // Initialize StPageFlip on mounted container
   useEffect(() => {
@@ -118,12 +118,12 @@ export default function MidPageBanner() {
 
     try {
       const pageFlip = new PageFlip(innerWrapper, {
-        width: 580,
+        width: 550,
         height: heightPx,
         size: 'stretch',
         minWidth: 320,
         maxWidth: 720,
-        minHeight: 380,
+        minHeight: 240,
         maxHeight: 750,
         maxShadowOpacity: 0.55,
         showCover: false,

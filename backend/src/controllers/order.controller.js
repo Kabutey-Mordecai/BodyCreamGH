@@ -312,7 +312,15 @@ const getAllOrders = async (req, res) => {
     }
     if (search) {
       params.push(`%${search}%`);
-      clauses.push(`(o.order_number ILIKE $${params.length} OR COALESCE(u.email, o.guest_email) ILIKE $${params.length})`);
+      clauses.push(`(
+        o.order_number ILIKE $${params.length}
+        OR COALESCE(u.email, o.guest_email) ILIKE $${params.length}
+        OR COALESCE(u.phone, o.guest_phone) ILIKE $${params.length}
+        OR o.guest_first_name ILIKE $${params.length}
+        OR o.guest_last_name ILIKE $${params.length}
+        OR u.first_name ILIKE $${params.length}
+        OR u.last_name ILIKE $${params.length}
+      )`);
     }
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
@@ -326,8 +334,10 @@ const getAllOrders = async (req, res) => {
                o.refund_status, o.fulfillment_method, o.payment_method, o.created_at,
                o.cancel_requested, o.cancel_request_rejected,
                o.return_requested, o.return_request_rejected,
-               COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name,
-               COALESCE(u.email, o.guest_email) AS customer_email
+               COALESCE(u.first_name || ' ' || u.last_name, u.first_name, NULLIF(TRIM(COALESCE(o.guest_first_name, '') || ' ' || COALESCE(o.guest_last_name, '')), ''), o.guest_email, 'Guest') AS customer_name,
+               COALESCE(u.email, o.guest_email) AS customer_email,
+               COALESCE(u.phone, o.guest_phone) AS customer_phone,
+               (o.customer_id IS NULL) AS is_guest
           FROM orders o
           LEFT JOIN users u ON o.customer_id = u.id
           ${where}
@@ -395,7 +405,9 @@ const getRequests = async (req, res) => {
              o.cancel_reason, o.cancel_requested_at,
              o.return_reason, o.return_requested_at,
              COALESCE(u.email, o.guest_email) AS customer_email,
-             COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name
+             COALESCE(u.phone, o.guest_phone) AS customer_phone,
+             (o.customer_id IS NULL) AS is_guest,
+             COALESCE(u.first_name || ' ' || u.last_name, u.first_name, NULLIF(TRIM(COALESCE(o.guest_first_name, '') || ' ' || COALESCE(o.guest_last_name, '')), ''), o.guest_email, 'Guest') AS customer_name
         FROM orders o
         LEFT JOIN users u ON o.customer_id = u.id
         ${where}
@@ -434,8 +446,10 @@ const exportOrders = async (req, res) => {
 
     const { rows } = await pool.query(`
       SELECT o.order_number, o.total_amount, o.status, o.payment_status, o.created_at,
-             COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name,
-             COALESCE(u.email, o.guest_email, '') AS customer_email
+             COALESCE(u.first_name || ' ' || u.last_name, u.first_name, NULLIF(TRIM(COALESCE(o.guest_first_name, '') || ' ' || COALESCE(o.guest_last_name, '')), ''), o.guest_email, 'Guest') AS customer_name,
+             COALESCE(u.email, o.guest_email, '') AS customer_email,
+             COALESCE(u.phone, o.guest_phone, '') AS customer_phone,
+             (o.customer_id IS NULL) AS is_guest
         FROM orders o
         LEFT JOIN users u ON o.customer_id = u.id
         ${where}
@@ -1041,10 +1055,12 @@ const createGuestOrder = async (req, res) => {
       `INSERT INTO orders
          (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
           shipping_region, delivery_fee, coupon_code, discount_amount, notes, guest_email,
+          guest_first_name, guest_last_name, guest_phone,
           fulfillment_method, payment_method, status, payment_status)
-       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'unpaid')`,
+       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'unpaid')`,
       [orderId, orderNumber, total, shipping_address, shipping_city,
        shipping_region, delivery_fee, appliedCouponCode, discountAmount, fullNotes, email,
+       first_name, last_name || null, phone,
        fulfillment_method, payment_method, initialStatus]
     );
 

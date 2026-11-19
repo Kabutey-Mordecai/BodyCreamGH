@@ -111,8 +111,8 @@ const DEFAULTS = {
   mid_banner_enabled: true,
   mid_banner_autoplay: true,
   mid_banner_interval_sec: 7,
-  mid_banner_flip_speed_sec: 1.2,
-  mid_banner_height_px: 520,
+  mid_banner_flip_speed_sec: 1.4,
+  mid_banner_height_px: 340,
   mid_banner_badge: 'PURE GHANAIAN BOTANICALS',
   mid_banner_title: 'Handcrafted in Small Batches.',
   mid_banner_highlight: 'Zero Harsh Bleaching Agents.',
@@ -871,12 +871,22 @@ export default function Storefront() {
                         <input
                           type="number"
                           step="0.1"
-                          min="0.3"
+                          min="0.4"
                           max="3.0"
-                          value={data.mid_banner_flip_speed_sec || 1.2}
-                          onChange={e => update('mid_banner_flip_speed_sec', Math.max(0.3, parseFloat(e.target.value) || 1.2))}
+                          value={data.mid_banner_flip_speed_sec ?? 1.4}
+                          onChange={e => update('mid_banner_flip_speed_sec', Math.max(0.4, parseFloat(e.target.value) || 1.4))}
                         />
-                        <div className="hint">Slow &amp; graceful turn (default 1.2s).</div>
+                        <div className="hint" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>Gentle &amp; realistic turn (default 1.4s).</span>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                            onClick={() => update('mid_banner_flip_speed_sec', 1.4)}
+                          >
+                            Set 1.4s (Realistic)
+                          </button>
+                        </div>
                       </div>
 
                       <div className="field" style={{ marginBottom: 0 }}>
@@ -884,12 +894,29 @@ export default function Storefront() {
                         <input
                           type="number"
                           step="10"
-                          min="380"
-                          max="700"
-                          value={data.mid_banner_height_px || 520}
-                          onChange={e => update('mid_banner_height_px', Math.max(380, parseInt(e.target.value) || 520))}
+                          min="260"
+                          max="650"
+                          value={data.mid_banner_height_px ?? 340}
+                          onChange={e => update('mid_banner_height_px', Math.max(260, parseInt(e.target.value) || 340))}
                         />
-                        <div className="hint">Desktop height (520px = tall luxury spread).</div>
+                        <div className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4 }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                            onClick={() => update('mid_banner_height_px', 340)}
+                          >
+                            340px (Sleek Banner)
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-xs"
+                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                            onClick={() => update('mid_banner_height_px', 520)}
+                          >
+                            520px (Tall Spread)
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>

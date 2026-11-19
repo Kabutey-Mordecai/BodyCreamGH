@@ -155,8 +155,16 @@ export default function Orders() {
             { key: 'customer', label: 'Customer',
               render: o => (
                 <div>
-                  <div>{o.customer_name || '—'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontWeight: 500 }}>{o.customer_name || '—'}</span>
+                    {o.is_guest && (
+                      <span style={{ fontSize: '0.65rem', padding: '1px 5px', borderRadius: '4px', background: '#3b2d1d', color: '#e5c378', border: '1px solid rgba(201,165,90,0.3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Guest
+                      </span>
+                    )}
+                  </div>
                   <div className="cell-muted text-xs">{o.customer_email || ''}</div>
+                  {o.customer_phone && <div className="cell-muted text-xs" style={{ fontSize: '0.72rem' }}>📞 {o.customer_phone}</div>}
                 </div>
               ) },
             { key: 'total_amount', label: 'Total', className: 'cell-right', render: o => fmt(o.total_amount) },

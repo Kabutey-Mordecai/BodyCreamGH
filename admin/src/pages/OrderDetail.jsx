@@ -215,9 +215,9 @@ export default function OrderDetail() {
   const refundInfo = refundLabel(order);
   const subtotal = (order.items || []).reduce((s, it) => s + Number(it.subtotal || (it.price_at_purchase * it.quantity) || 0), 0);
 
-  // Phone from user profile; delivery phone is stored in notes as "Phone: 233..."
-  const phoneFromNotes = order.notes?.match(/^Phone:\s*(.+?)(\n|$)/i)?.[1]?.trim();
-  const displayPhone = order.customer_phone || phoneFromNotes;
+  // Phone from user profile or guest order fields; fallback to notes
+  const phoneFromNotes = order.notes?.match(/(?:^|\n)Phone:\s*(.+?)(\n|$)/i)?.[1]?.trim();
+  const displayPhone = order.customer_phone || order.guest_phone || phoneFromNotes;
 
   return (
     <div>
@@ -459,13 +459,46 @@ export default function OrderDetail() {
         {/* Customer + shipping */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card">
-            <div className="card-header"><h2 className="card-title">Customer</h2></div>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 className="card-title">Customer</h2>
+              {order.is_guest && (
+                <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: '#3b2d1d', color: '#e5c378', border: '1px solid rgba(201,165,90,0.3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Guest Checkout
+                </span>
+              )}
+            </div>
             <div className="card-body">
-              <div style={{ fontSize: '0.92rem', marginBottom: 4 }}>
+              <div style={{ fontSize: '0.96rem', fontWeight: 600, marginBottom: 4 }}>
                 {order.first_name || order.customer_name || '—'} {order.last_name || ''}
               </div>
-              {order.email && <div className="text-sm muted" style={{ marginBottom: 2 }}>{order.email}</div>}
-              {displayPhone && <div className="text-sm muted">{displayPhone}</div>}
+              {order.email && (
+                <div className="text-sm muted" style={{ marginBottom: 4 }}>
+                  <a href={`mailto:${order.email}`} style={{ color: 'inherit', textDecoration: 'underline' }}>
+                    ✉️ {order.email}
+                  </a>
+                </div>
+              )}
+              {displayPhone && (
+                <div className="text-sm" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <span>📞 {displayPhone}</span>
+                  <a
+                    href={`https://wa.me/${displayPhone.replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="badge"
+                    style={{ fontSize: '0.7rem', padding: '2px 7px', textDecoration: 'none', background: '#25D366', color: '#fff', fontWeight: 600, borderRadius: '4px' }}
+                  >
+                    WhatsApp
+                  </a>
+                  <a
+                    href={`tel:${displayPhone}`}
+                    className="badge badge-neutral"
+                    style={{ fontSize: '0.7rem', padding: '2px 7px', textDecoration: 'none', borderRadius: '4px' }}
+                  >
+                    Call
+                  </a>
+                </div>
+              )}
             </div>
           </div>
 

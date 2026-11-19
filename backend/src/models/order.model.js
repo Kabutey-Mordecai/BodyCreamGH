@@ -13,10 +13,12 @@ module.exports = {
   findById: async (id, customerId = null) => {
     const params = [id];
     // LEFT JOIN so guest orders (customer_id IS NULL) are still returned.
-    // For guest orders the email is embedded in notes as "Guest: Name <email>\n..."
     let query = `SELECT o.*,
-                        u.first_name, u.last_name, u.phone AS customer_phone,
-                        COALESCE(u.email, o.guest_email, '') AS email
+                        COALESCE(u.first_name, o.guest_first_name) AS first_name,
+                        COALESCE(u.last_name, o.guest_last_name) AS last_name,
+                        COALESCE(u.phone, o.guest_phone) AS customer_phone,
+                        COALESCE(u.email, o.guest_email, '') AS email,
+                        (o.customer_id IS NULL) AS is_guest
                  FROM orders o
                  LEFT JOIN users u ON o.customer_id = u.id
                  WHERE o.id = $1`;
@@ -32,7 +34,10 @@ module.exports = {
     const { rows } = await pool.query(
       `SELECT o.*,
               COALESCE(u.email, o.guest_email, '') AS email,
-              u.first_name, u.last_name
+              COALESCE(u.first_name, o.guest_first_name) AS first_name,
+              COALESCE(u.last_name, o.guest_last_name) AS last_name,
+              COALESCE(u.phone, o.guest_phone) AS customer_phone,
+              (o.customer_id IS NULL) AS is_guest
          FROM orders o
     LEFT JOIN users u ON o.customer_id = u.id
      ORDER BY o.created_at DESC`
