@@ -148,6 +148,10 @@ const login = async (req, res) => {
       sendOtpEmail(user.email, { firstName: user.first_name, otp })
         .catch(err => logger.error('Failed to send OTP email', { recipient: user.email, err: err.message }));
 
+      if (process.env.NODE_ENV === 'development') {
+        logger.info(`Development Admin OTP: ${otp}`);
+      }
+
       logger.info('Admin MFA challenge issued', { userId: user.id });
       return res.json({ mfa_required: true, mfa_token: mfaToken });
     }
