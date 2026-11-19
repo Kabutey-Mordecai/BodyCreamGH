@@ -1,7 +1,6 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
 import { lazy, Suspense, useEffect } from 'react';
 import Navigation from './components/Navigation';
-import CategoryBar from './components/CategoryBar';
 import Footer from './components/Footer';
 import WhatsAppFloat from './components/WhatsAppFloat';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -77,7 +76,6 @@ export default function App() {
         <Navigation />
 
         <main className="main-content">
-          <CategoryBar />
           <Suspense fallback={<PageFallback />}>
             <RouteFade>
             <Routes>

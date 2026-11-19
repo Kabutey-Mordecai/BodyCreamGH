@@ -186,7 +186,7 @@ body.no-bar .main-content {
   color: var(--color-muted);
 }
 
-input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+input:not([type="checkbox"]):not([type="radio"]):not(.nav-search-input):not(.hero-search-input), select, textarea {
   padding: 12px 16px;
   border: 1.5px solid var(--color-border);
   border-radius: var(--radius);
@@ -197,7 +197,7 @@ input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   transition: border-color 0.15s;
   width: 100%;
 }
-input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+input:not([type="checkbox"]):not([type="radio"]):not(.nav-search-input):not(.hero-search-input):focus, select:focus, textarea:focus {
   outline: none;
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(201, 165, 90, 0.12);

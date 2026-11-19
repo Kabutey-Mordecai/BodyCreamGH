@@ -22,7 +22,7 @@ const DEFAULTS = {
   announcement_text: 'Free delivery on orders over GHS 200 · Shop now',
   announcement_show_whatsapp: true,
 
-  category_bar_enabled: true,
+  category_bar_enabled: false,
   quick_add_enabled: true,
   recently_viewed_enabled: true,
   flash_sale_enabled: true,
