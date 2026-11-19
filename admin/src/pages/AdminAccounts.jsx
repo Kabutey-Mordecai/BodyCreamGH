@@ -102,7 +102,7 @@ export default function AdminAccounts() {
               </div>
               <div className="form-group">
                 <label>Password (min. 8 characters)</label>
-                <input name="password" type="password" value={form.password} onChange={handleChange} required minLength={8} />
+                <input name="password" type="password" autoComplete="new-password" value={form.password} onChange={handleChange} required minLength={8} />
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 {formError && <p style={{ color: 'var(--ac-danger)', fontSize: '0.85rem', marginBottom: 10 }}>{formError}</p>}
