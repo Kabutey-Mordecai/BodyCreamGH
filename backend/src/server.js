@@ -119,8 +119,7 @@ app.post('/api/payments/webhook', handleWebhook);
 
 // ── Rate limiting ─────────────────────────────────────────────────────────────
 // Auth endpoint limiters (login, register, verify-otp, refresh, logout, password reset)
-// are mounted directly inside routes/auth.js to avoid double-counting.
-app.use('/api/payments', makeRateLimiter(60 * 1000, 30,  'Too many payment requests'));
+// are mounted inside routes/auth.js; payment endpoint limiters inside routes/payments.js.
 app.use('/api',          makeRateLimiter(60 * 1000, 200, 'Rate limit exceeded'));
 
 // ── Routes ───────────────────────────────────────────────────────────────────

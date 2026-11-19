@@ -145,9 +145,9 @@ export const ordersAPI = {
 
 // ── Payments ──────────────────────────────────────────────────────────────────
 export const paymentsAPI = {
-  initialize:      (orderId)          => api.post('/payments/initialize', { orderId }),
-  initializeGuest: (orderId, email)   => api.post('/payments/guest/initialize', { orderId, email }),
-  verify:          (reference)        => api.post('/payments/verify', { reference }),
+  initialize:      (orderId)           => api.post('/payments/initialize', { orderId }),
+  initializeGuest: (orderId, email)    => api.post('/payments/guest/initialize', { orderId, email }),
+  verify:          (reference, config) => api.post('/payments/verify', { reference }, config),
 };
 
 // ── Customer profile ──────────────────────────────────────────────────────────

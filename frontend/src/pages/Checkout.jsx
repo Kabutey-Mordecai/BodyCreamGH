@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { ordersAPI, paymentsAPI, couponsAPI, cartAPI } from '../services/api';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { isSafePaystackCheckoutUrl } from '../utils/safePaystackUrl';
 import './Checkout.css';
 
 // Ghana's 16 administrative regions — shown in a select rather than a free text input
@@ -50,6 +52,7 @@ export default function Checkout() {
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const submittingRef         = useRef(false);
 
   // Coupon state
   const [couponInput, setCouponInput]       = useState('');
@@ -106,6 +109,7 @@ export default function Checkout() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     if (cart.length === 0) return setError('Your cart is empty.');
 
     // Guest-only submit guards — keep authenticated path untouched
@@ -116,6 +120,8 @@ export default function Checkout() {
       return setError('Some items in your cart are unavailable. Please review your cart and remove unavailable items.');
     }
 
+    submittingRef.current = true;
+    let redirecting = false;
     setError('');
     setLoading(true);
 
@@ -162,8 +168,19 @@ export default function Checkout() {
         }
 
         const { data: payment } = await paymentsAPI.initializeGuest(order.orderId, order.email);
-        await clearLocalCart();
-        window.location.href = payment.authorization_url;
+        if (!isSafePaystackCheckoutUrl(payment?.authorization_url)) {
+          throw new Error('Invalid payment redirect URL received. Please try again.');
+        }
+        try {
+          sessionStorage.removeItem('pending_auth_payment');
+          sessionStorage.setItem('pending_guest_payment', JSON.stringify({
+            orderId: order.orderId,
+            orderNumber: order.orderNumber || '',
+            email: order.email || form.email,
+          }));
+        } catch { /* ignore storage quota errors */ }
+        redirecting = true;
+        window.location.assign(payment.authorization_url);
       } else {
         // Authenticated checkout — cart is on the server
         const { data: order } = await ordersAPI.create({
@@ -186,13 +203,28 @@ export default function Checkout() {
         }
 
         const { data: payment } = await paymentsAPI.initialize(order.orderId);
-        await clearLocalCart();
-        window.location.href = payment.authorization_url;
+        if (!isSafePaystackCheckoutUrl(payment?.authorization_url)) {
+          throw new Error('Invalid payment redirect URL received. Please try again.');
+        }
+        try {
+          sessionStorage.removeItem('pending_guest_payment');
+          sessionStorage.setItem(
+            'pending_auth_payment',
+            JSON.stringify({ orderId: order.orderId, orderNumber: order.orderNumber || '' })
+          );
+        } catch {
+          // Ignore storage errors (private browsing / quota).
+        }
+        redirecting = true;
+        window.location.assign(payment.authorization_url);
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Checkout failed. Please try again.');
+      setError(err.response?.data?.error || err.message || 'Checkout failed. Please try again.');
     } finally {
-      setLoading(false);
+      if (!redirecting) {
+        submittingRef.current = false;
+        setLoading(false);
+      }
     }
   };
 
@@ -379,7 +411,7 @@ export default function Checkout() {
               <h2>Delivery Method</h2>
               <div className="gold-divider" style={{ margin: '0 0 24px' }} />
 
-              {error && <div className="alert alert-error">{error}</div>}
+              {error && <div className="alert alert-error" role="alert">{error}</div>}
 
               {pickupEnabled && (
                 <div className="checkout-method-grid" role="radiogroup" aria-label="Fulfillment method">
@@ -549,7 +581,7 @@ export default function Checkout() {
               <div className="gold-divider" style={{ margin: '0 0 16px' }} />
 
               {coupon ? (
-                <div className="coupon-applied">
+                <div className="coupon-applied" role="status">
                   <div>
                     <span className="coupon-tag">{coupon.code}</span>
                     <span className="coupon-desc">
@@ -588,12 +620,13 @@ export default function Checkout() {
                   </button>
                 </div>
               )}
-              {couponError && <p className="coupon-error">{couponError}</p>}
+              {couponError && <p className="coupon-error" role="alert">{couponError}</p>}
             </div>
 
             <button
               type="submit"
               className="btn btn-accent btn-full checkout-submit"
+              aria-busy={loading}
               disabled={
                 loading ||
                 cart.length === 0 ||
@@ -611,7 +644,7 @@ export default function Checkout() {
             </button>
 
             <div className="checkout-note">
-              <span className="checkout-lock">🔒</span>
+              <span className="checkout-lock" aria-hidden="true">🔒</span>
               <span>
                 {paymentMethod === 'pay_on_delivery'
                   ? 'Your order will be confirmed immediately. Pay in cash or Mobile Money upon receipt.'
@@ -657,7 +690,7 @@ export default function Checkout() {
                   >
                     <div className="checkout-item-thumb">
                       <img
-                        src={item.image_url || 'https://placehold.co/80x80?text=?'}
+                        src={resolveImageUrl(item.image_url) || 'https://placehold.co/80x80?text=?'}
                         alt={item.name}
                       />
                       <span className="checkout-item-badge">{item.quantity}</span>

@@ -476,6 +476,26 @@ const sendOtpEmail = async (to, { firstName, otp }) => {
   });
 };
 
+const escapeHtml = (s) =>
+  String(s ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+
+const sendAdminPaymentAlert = async (to, { orderNumber, title, detail }) => {
+  if (!isConfigured() || !to) return;
+  await getTransporter().sendMail({
+    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    to,
+    subject: `[Payment Alert] ${title} — order ${orderNumber}`,
+    html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+      <h2>${escapeHtml(title)}</h2>
+      <p><strong>Order:</strong> ${escapeHtml(orderNumber)}</p>
+      ${detail ? `<p>${escapeHtml(detail)}</p>` : ''}
+      <p style="color:#666;font-size:0.85rem">Please review this order in the Admin Dashboard.</p>
+    </div>`,
+  });
+};
+
 module.exports = {
   verifyTransporter,
   sendOrderConfirmation, sendWelcomeEmail, sendShippingNotification,
@@ -484,6 +504,7 @@ module.exports = {
   sendAdminNewOrder, sendAdminCancelRequest, sendAdminCancelRejected,
   sendAdminReturnRequest, sendAdminReturnRejected,
   sendAdminOrderCancelled, sendAdminOrderRefunded, sendAdminOrderShipped, sendAdminOrderDelivered,
+  sendAdminPaymentAlert,
   sendOtpEmail,
   sendNewsletterWelcome, sendNewsletterEmail,
 };

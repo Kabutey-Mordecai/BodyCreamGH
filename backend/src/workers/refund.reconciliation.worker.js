@@ -9,7 +9,7 @@ const BATCH_LIMIT = 100;
 
 // ── Transactional helpers ─────────────────────────────────────────────────────
 
-async function applyRefundSuccess(order, paystackRefund) {
+async function applyRefundSuccess(order, paystackRefund, boss) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -23,8 +23,8 @@ async function applyRefundSuccess(order, paystackRefund) {
     const current = rows[0];
 
     // success is terminal — webhook may have arrived and committed first.
-    // Any non-pending state means this run is a no-op.
-    if (!current || current.refund_status !== 'pending') {
+    // Only pending or needs_attention refunds can transition to success.
+    if (!current || !['pending', 'needs_attention'].includes(current.refund_status)) {
       await client.query('ROLLBACK');
       return false;
     }
@@ -42,6 +42,15 @@ async function applyRefundSuccess(order, paystackRefund) {
       [String(paystackRefund.id), paystackRefund.reference || null, order.id]
     );
 
+    await client.query(
+      `UPDATE payments
+          SET status = 'refunded',
+              updated_at = NOW()
+        WHERE order_id = $1
+          AND status IN ('success', 'needs_review')`,
+      [order.id]
+    );
+
     await logStatusChange(
       order.id,
       current.status,
@@ -55,6 +64,16 @@ async function applyRefundSuccess(order, paystackRefund) {
       orderId: order.id,
       paystackId: paystackRefund.id,
     });
+    if (boss) {
+      await boss.send(
+        'notification/order-refunded',
+        { orderId: order.id },
+        { retryLimit: 3 }
+      ).catch(err => logger.error('Refund reconciliation: failed to enqueue order-refunded notification', {
+        orderId: order.id,
+        err: err.message,
+      }));
+    }
     return true;
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
@@ -80,7 +99,7 @@ async function applyRefundFailed(order, paystackRefund) {
     const current = rows[0];
 
     // Never downgrade success; skip if already resolved by webhook.
-    if (!current || current.refund_status !== 'pending') {
+    if (!current || !['pending', 'needs_attention'].includes(current.refund_status)) {
       await client.query('ROLLBACK');
       return false;
     }
@@ -118,6 +137,75 @@ async function applyRefundFailed(order, paystackRefund) {
   }
 }
 
+async function applyRefundNeedsAttention(order, paystackRefund, boss) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows } = await client.query(
+      'SELECT status, refund_status, refund_notes FROM orders WHERE id = $1 FOR UPDATE',
+      [order.id]
+    );
+    const current = rows[0];
+
+    if (!current || current.refund_status !== 'pending') {
+      await client.query('ROLLBACK');
+      return false;
+    }
+
+    const note = [current.refund_notes, 'Paystack refund needs attention — customer account details required (reconciliation)']
+      .filter(Boolean)
+      .join('\n');
+
+    await client.query(
+      `UPDATE orders
+          SET refund_status     = 'needs_attention',
+              refund_provider_id = COALESCE(refund_provider_id, $1),
+              refund_reference  = COALESCE(refund_reference,  $2),
+              refund_notes      = $3,
+              updated_at        = NOW()
+        WHERE id = $4`,
+      [String(paystackRefund.id), paystackRefund.reference || null, note, order.id]
+    );
+
+    await logStatusChange(
+      order.id,
+      current.status,
+      current.status,
+      'Paystack refund needs attention — customer account details required',
+      client
+    );
+
+    await client.query('COMMIT');
+    logger.warn('Refund reconciliation: marked needs_attention', {
+      orderId: order.id,
+      paystackId: paystackRefund.id,
+    });
+    if (boss) {
+      await boss.send(
+        'notification/admin-payment-alert',
+        {
+          orderId: order.id,
+          alertKey: `refund_needs_attention_${paystackRefund.id || order.id}`,
+          title: 'Paystack refund needs attention',
+          detail: 'Paystack requires customer account details to complete this refund.',
+        },
+        { retryLimit: 3 }
+      );
+    }
+    return true;
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('Refund reconciliation: error applying needs_attention', {
+      orderId: order.id,
+      err: err.message,
+    });
+    return false;
+  } finally {
+    client.release();
+  }
+}
+
 // ── Worker registration ───────────────────────────────────────────────────────
 
 module.exports = async function register(boss) {
@@ -128,22 +216,27 @@ module.exports = async function register(boss) {
     let checked = 0, updated = 0, failed = 0, unmatched = 0;
 
     try {
-      // Only Paystack-method refunds that are still pending.
-      // LEFT JOIN on the confirmed payment row to get the transaction reference
-      // needed for the fallback lookup path.
+      // Paystack-method refunds that are pending or awaiting customer details.
+      // Correlated scalar subquery picks at most one transaction reference per order
+      // (preferring 'success' over 'needs_review') for the fallback lookup path.
       const { rows: pending } = await pool.query(
         `SELECT o.id,
                 o.status,
                 o.refund_status,
                 o.refund_provider_id,
                 o.refund_notes,
-                p.paystack_reference AS transaction_reference
+                (
+                  SELECT p.paystack_reference
+                    FROM payments p
+                   WHERE p.order_id       = o.id
+                     AND p.payment_method = 'paystack'
+                     AND p.status         IN ('success', 'needs_review')
+                   ORDER BY CASE WHEN p.status = 'success' THEN 1 ELSE 2 END,
+                            p.updated_at DESC
+                   LIMIT 1
+                ) AS transaction_reference
            FROM orders o
-           LEFT JOIN payments p
-             ON p.order_id      = o.id
-            AND p.payment_method = 'paystack'
-            AND p.status         = 'success'
-          WHERE o.refund_status  = 'pending'
+          WHERE o.refund_status  IN ('pending', 'needs_attention')
             AND o.refund_method  = 'paystack'
           ORDER BY o.updated_at ASC
           LIMIT $1`,
@@ -186,9 +279,11 @@ module.exports = async function register(boss) {
         const paystackStatus = paystackRefund.status;
 
         if (paystackStatus === 'processed') {
-          if (await applyRefundSuccess(order, paystackRefund)) updated++;
+          if (await applyRefundSuccess(order, paystackRefund, boss)) updated++;
         } else if (paystackStatus === 'failed') {
           if (await applyRefundFailed(order, paystackRefund)) failed++;
+        } else if (paystackStatus === 'needs-attention') {
+          await applyRefundNeedsAttention(order, paystackRefund, boss);
         } else {
           // pending or processing — Paystack is still working on it
           logger.info('Refund reconciliation: still in progress', {

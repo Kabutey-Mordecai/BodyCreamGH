@@ -2,8 +2,8 @@
 // Any transition not listed here is rejected with a 400.
 const TRANSITIONS = {
   pending:    ['confirmed', 'cancelled'],
-  confirmed:  ['processing', 'cancelled'],
-  processing: ['shipped',    'cancelled'],
+  confirmed:  ['processing', 'shipped', 'delivered', 'cancelled'],
+  processing: ['shipped', 'delivered', 'cancelled'],
   shipped:    ['delivered'],
   delivered:  ['refunded'],
   cancelled:  ['refunded'],

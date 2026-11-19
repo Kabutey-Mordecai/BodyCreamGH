@@ -1,25 +1,74 @@
 'use strict';
 
+const net = require('net');
+
 /**
- * Per-key fixed-window rate limiter (no external dependencies).
+ * Normalize an IP address for rate-limit keying.
+ * - Unwraps IPv4-mapped IPv6 addresses (::ffff:1.2.3.4 → 1.2.3.4).
+ * - Masks IPv6 addresses to their /64 prefix so a single /64 allocation
+ *   cannot bypass limits or exhaust the store by rotating interface IDs.
+ */
+function normalizeIp(rawIp) {
+  if (!rawIp || typeof rawIp !== 'string') return 'unknown';
+  let ip = rawIp.trim();
+  const zoneIdx = ip.indexOf('%');
+  if (zoneIdx !== -1) ip = ip.slice(0, zoneIdx);
+  if (ip.toLowerCase().startsWith('::ffff:')) {
+    ip = ip.slice(7);
+  }
+
+  if (net.isIP(ip) === 6) {
+    // Convert trailing IPv4-embedded notation if present
+    let working = ip;
+    if (working.includes('.')) {
+      const lastColon = working.lastIndexOf(':');
+      const ipv4Part = working.slice(lastColon + 1);
+      if (net.isIP(ipv4Part) === 4) {
+        const octets = ipv4Part.split('.').map(n => parseInt(n, 10));
+        const hi = ((octets[0] << 8) | octets[1]).toString(16);
+        const lo = ((octets[2] << 8) | octets[3]).toString(16);
+        working = `${working.slice(0, lastColon)}:${hi}:${lo}`;
+      }
+    }
+
+    const halves = working.split('::');
+    let groups;
+    if (halves.length === 2) {
+      const left = halves[0] ? halves[0].split(':') : [];
+      const right = halves[1] ? halves[1].split(':') : [];
+      const missing = Math.max(0, 8 - left.length - right.length);
+      groups = [...left, ...Array(missing).fill('0'), ...right];
+    } else {
+      groups = working.split(':');
+    }
+    const padded = groups.slice(0, 8).map(g => g.padStart(4, '0').toLowerCase());
+    return `${padded.slice(0, 4).join(':')}::/64`;
+  }
+
+  return ip || 'unknown';
+}
+
+/**
+ * Per-key fixed-window rate limiter with LRU eviction (no external dependencies).
  *
- * Security properties:
- * - Each IP key tracks its own { count, resetAt } window and resets individually
- *   when `now >= entry.resetAt` (no global wipe boundary burst).
- * - Expired entries are swept periodically to reclaim memory.
+ * Security & availability properties:
+ * - IPv6 clients are keyed by their /64 prefix via normalizeIp().
  * - Store size is bounded (`maxKeys`, default 10,000). When full after sweeping
- *   expired keys, new unknown keys fail CLOSED with 429 rather than evicting
- *   existing tracked attackers (preventing limit-flush attacks).
+ *   expired keys, least-recently-used entries are evicted so legitimate clients
+ *   are not globally locked out.
  *
  * @param {number} windowMs   - Window duration in milliseconds
- * @param {number} max        - Max requests allowed per IP per window
+ * @param {number} max        - Max requests allowed per key per window
  * @param {string} message    - Error message returned on 429
- * @param {object} [options]  - Optional { maxKeys }
+ * @param {object} [options]  - Optional { maxKeys, keyGenerator(req, normalizedIp) }
  */
 function makeRateLimiter(windowMs, max, message, options = {}) {
   const maxKeys = Number.isInteger(options.maxKeys) && options.maxKeys > 0
     ? options.maxKeys
     : 10_000;
+  const keyGenerator = typeof options.keyGenerator === 'function'
+    ? options.keyGenerator
+    : (_req, ip) => ip;
   const store = new Map(); // key → { count, resetAt }
 
   function sweepExpired(now) {
@@ -35,7 +84,8 @@ function makeRateLimiter(windowMs, max, message, options = {}) {
   if (timer.unref) timer.unref();
 
   return (req, res, next) => {
-    const key = req.ip || req.socket?.remoteAddress || 'unknown';
+    const ip = normalizeIp(req.ip || req.socket?.remoteAddress || 'unknown');
+    const key = String(keyGenerator(req, ip) || ip);
     const now = Date.now();
 
     let entry = store.get(key);
@@ -48,17 +98,16 @@ function makeRateLimiter(windowMs, max, message, options = {}) {
       if (store.size >= maxKeys) {
         sweepExpired(now);
       }
-      if (store.size >= maxKeys) {
-        const retryAfter = Math.max(1, Math.ceil(windowMs / 1000));
-        res.set('X-RateLimit-Limit',     String(max));
-        res.set('X-RateLimit-Remaining', '0');
-        res.set('Retry-After',           String(retryAfter));
-        return res.status(429).json({
-          error: message || 'Too many requests. Please try again later.',
-          retryAfter,
-        });
+      while (store.size >= maxKeys) {
+        const oldestKey = store.keys().next().value;
+        if (oldestKey === undefined) break;
+        store.delete(oldestKey);
       }
       entry = { count: 0, resetAt: now + windowMs };
+      store.set(key, entry);
+    } else {
+      // Refresh insertion order for LRU eviction
+      store.delete(key);
       store.set(key, entry);
     }
 
@@ -84,4 +133,4 @@ function makeRateLimiter(windowMs, max, message, options = {}) {
   };
 }
 
-module.exports = { makeRateLimiter };
+module.exports = { makeRateLimiter, normalizeIp };
