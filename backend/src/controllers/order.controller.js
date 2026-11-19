@@ -43,6 +43,7 @@ async function getCheckoutSettings(client) {
       'pickup_location',
       'pay_on_delivery_enabled',
       'pay_on_delivery_accra_only',
+      'guest_checkout_enabled',
     ]]
   );
   const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
@@ -54,8 +55,9 @@ async function getCheckoutSettings(client) {
     pickupLocation: typeof map.pickup_location === 'string' && map.pickup_location.trim()
       ? map.pickup_location.trim()
       : 'East Legon, Accra (Call upon arrival)',
-    podEnabled:     parseSettingBool(map.pay_on_delivery_enabled, false),
-    podAccraOnly:   parseSettingBool(map.pay_on_delivery_accra_only, true),
+    podEnabled:           parseSettingBool(map.pay_on_delivery_enabled, false),
+    podAccraOnly:         parseSettingBool(map.pay_on_delivery_accra_only, true),
+    guestCheckoutEnabled: parseSettingBool(map.guest_checkout_enabled, false),
   };
 }
 
@@ -963,6 +965,11 @@ const createGuestOrder = async (req, res) => {
     transactionStarted = true;
 
     const checkoutCfg = await getCheckoutSettings(client);
+    if (!checkoutCfg.guestCheckoutEnabled) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(403).json({ error: 'Please sign in or create an account to place an order.' });
+    }
     const optionError = validateFulfillmentAndPayment(
       checkoutCfg, fulfillment_method, payment_method, shipping_region
     );

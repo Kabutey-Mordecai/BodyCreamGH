@@ -48,6 +48,7 @@ export function CartProvider({ children }) {
     if (user) {
       const pending = readGuestCart();
       if (pending.length > 0) {
+        setLoading(true);
         Promise.allSettled(
           pending.map(item => cartAPI.addItem(item.product_id, item.quantity, item.variant_id || null))
         ).then(results => {

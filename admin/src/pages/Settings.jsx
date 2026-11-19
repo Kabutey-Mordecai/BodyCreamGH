@@ -36,6 +36,7 @@ const DEFAULTS = {
   paystack_public_key:          '',
   pay_on_delivery_enabled:      false,
   pay_on_delivery_accra_only:   true,
+  guest_checkout_enabled:       false,
   whatsapp_number:              '',
   order_notification_email:     '',
 };
@@ -243,6 +244,18 @@ export default function Settings() {
             </div>
 
             <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 14, marginTop: 14 }}>
+              <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                <input
+                  id="guest_checkout_enabled"
+                  type="checkbox"
+                  checked={Boolean(data.guest_checkout_enabled)}
+                  onChange={e => update('guest_checkout_enabled', e.target.checked)}
+                  style={{ width: 'auto' }}
+                />
+                <label htmlFor="guest_checkout_enabled" style={{ margin: 0, cursor: 'pointer' }}>
+                  Allow Guest Checkout without signing in (Unchecked = Require login/registration like Jumia &amp; Temu)
+                </label>
+              </div>
               <div className="field" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <input
                   id="pay_on_delivery_enabled"

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
@@ -15,8 +15,8 @@ const GHANA_REGIONS = [
 ];
 
 export default function Checkout() {
-  const { cart, cartTotal, clearLocalCart, isGuest } = useCart();
-  const { user } = useAuth();
+  const { cart, cartTotal, clearLocalCart, isGuest, loading: cartLoading } = useCart();
+  const { user, loading: authLoading } = useAuth();
   const {
     delivery_fee_flat,
     delivery_fee_accra,
@@ -26,8 +26,11 @@ export default function Checkout() {
     pickup_hours,
     pay_on_delivery_enabled,
     pay_on_delivery_accra_only,
+    guest_checkout_enabled,
   } = useSettings();
   const navigate = useNavigate();
+
+  const allowGuestCheckout = guest_checkout_enabled === true || guest_checkout_enabled === 'true';
 
   const [fulfillmentMethod, setFulfillmentMethod] = useState('delivery');
   const [paymentMethod, setPaymentMethod]         = useState('paystack');
@@ -59,9 +62,16 @@ export default function Checkout() {
   const [validating, setValidating]               = useState(false);
   const [validationFetchError, setValidationFetchError] = useState('');
 
-  // Pre-flight: validate guest cart against backend on mount (bypasses stale localStorage prices)
+  // Pre-fill phone number from authenticated user's profile
   useEffect(() => {
-    if (!isGuest || cart.length === 0) return;
+    if (user?.phone && !form.phone) {
+      setForm(prev => ({ ...prev, phone: prev.phone || user.phone }));
+    }
+  }, [user?.phone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pre-flight: validate guest cart against backend on mount (only when guest checkout is allowed)
+  useEffect(() => {
+    if (!isGuest || !allowGuestCheckout || cart.length === 0) return;
     setValidating(true);
     setValidationFetchError('');
     cartAPI.validateGuest(
@@ -70,7 +80,7 @@ export default function Checkout() {
       .then(({ data }) => setValidation(data))
       .catch(() => setValidationFetchError('Could not check item availability. Please try again.'))
       .finally(() => setValidating(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allowGuestCheckout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pickupEnabled = pickup_enabled !== false && pickup_enabled !== 'false';
   const podEnabled    = pay_on_delivery_enabled === true || pay_on_delivery_enabled === 'true';
@@ -253,6 +263,25 @@ export default function Checkout() {
         </div>
       </div>
     );
+  }
+
+  // Require sign in / account creation at checkout (Jumia / Temu flow) unless guest checkout is explicitly enabled in Admin
+  if (authLoading) {
+    return <div className="spinner" style={{ marginTop: '80px' }} />;
+  }
+
+  if (!user && !allowGuestCheckout) {
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: { pathname: '/checkout' }, checkoutRedirect: true }}
+        replace
+      />
+    );
+  }
+
+  if (cartLoading) {
+    return <div className="spinner" style={{ marginTop: '80px' }} />;
   }
 
   if (cart.length === 0) {

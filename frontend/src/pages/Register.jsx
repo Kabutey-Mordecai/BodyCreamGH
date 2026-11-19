@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import PasswordStrength, { getPasswordStrength } from '../components/PasswordStrength';
 
@@ -12,6 +12,10 @@ function formatCountdown(secs) {
 export default function Register() {
   const { register } = useAuth();
   const navigate     = useNavigate();
+  const location     = useLocation();
+
+  const from = location.state?.from?.pathname || '/shop';
+  const isCheckoutRedirect = Boolean(location.state?.checkoutRedirect || from === '/checkout');
 
   const [form, setForm] = useState({
     first_name: '',
@@ -66,7 +70,7 @@ export default function Register() {
         password:   form.password,
         phone:      form.phone,
       });
-      navigate('/shop');
+      navigate(from, { replace: true });
     } catch (err) {
       if (err.response?.status === 429) {
         const wait = parseInt(
@@ -88,8 +92,16 @@ export default function Register() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>Create account</h1>
-        <p>Join us and start shopping for premium body creams.</p>
+        {isCheckoutRedirect && (
+          <div className="alert alert-info" style={{ marginBottom: '20px', background: 'rgba(201, 165, 90, 0.12)', border: '1px solid rgba(201, 165, 90, 0.35)', color: '#e5c378', fontSize: '0.9rem', borderRadius: '8px', padding: '12px 16px' }}>
+            <strong>Create an account to checkout</strong>
+            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', opacity: 0.9 }}>
+              Like Jumia &amp; Temu, your basket will be transferred to your new account automatically so you can finish your order right away.
+            </p>
+          </div>
+        )}
+        <h1>{isCheckoutRedirect ? 'Create Account & Checkout' : 'Create account'}</h1>
+        <p>{isCheckoutRedirect ? 'Quick signup to save your address, track your shipment, and order.' : 'Join us and start shopping for premium body creams.'}</p>
 
         {error && (
           <div className={`alert ${isLocked ? 'alert-warning' : 'alert-error'}`}>
@@ -198,7 +210,7 @@ export default function Register() {
 
         <p className="auth-footer">
           Already have an account?{' '}
-          <Link to="/login">Sign in</Link>
+          <Link to="/login" state={isCheckoutRedirect ? { from: { pathname: '/checkout' }, checkoutRedirect: true } : undefined}>Sign in</Link>
         </p>
       </div>
     </div>

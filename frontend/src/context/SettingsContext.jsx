@@ -16,6 +16,7 @@ const DEFAULTS = {
   pickup_hours: 'Mon–Sat, 9:00 AM – 6:00 PM',
   pay_on_delivery_enabled: false,
   pay_on_delivery_accra_only: true,
+  guest_checkout_enabled: false,
 
   announcement_enabled: true,
   announcement_text: 'Free delivery on orders over GHS 200 · Shop now',
