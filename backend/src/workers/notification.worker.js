@@ -30,6 +30,7 @@ module.exports = async function register(boss) {
   await boss.createQueue('notification/cancel-rejected');
   await boss.createQueue('notification/return-requested');
   await boss.createQueue('notification/return-rejected');
+  await boss.createQueue('notification/admin-payment-alert');
 
   // ── Payment confirmed ─────────────────────────────────────────────────────
   await boss.work('notification/payment-success', { teamSize: 10 }, async (jobs) => {
@@ -234,7 +235,8 @@ module.exports = async function register(boss) {
     }
 
     const { rows } = await pool.query(
-      `SELECT o.order_number, o.total_amount,
+      `SELECT o.order_number,
+              COALESCE(o.refund_amount, o.total_amount) AS refund_total,
               COALESCE(u.email, o.guest_email) AS email,
               COALESCE(u.first_name, 'Customer') AS first_name
          FROM orders o LEFT JOIN users u ON o.customer_id = u.id
@@ -248,7 +250,7 @@ module.exports = async function register(boss) {
       await emailService.sendRefundNotification(row.email, {
         customerName: row.first_name,
         orderNumber:  row.order_number,
-        total:        row.total_amount,
+        total:        row.refund_total,
       });
       logger.info('Refund notification sent', { orderId });
     }
@@ -259,7 +261,7 @@ module.exports = async function register(boss) {
     } else {
       await emailService.sendAdminOrderRefunded(admin, {
         orderNumber: row?.order_number,
-        total:       row?.total_amount,
+        total:       row?.refund_total,
       });
       logger.info('Admin refund alert sent', { orderId });
     }
@@ -441,6 +443,42 @@ module.exports = async function register(boss) {
     }
 
     await markProcessed(eventId, 'notification.return-rejected');
+  });
+
+  // ── Admin payment alert (duplicates, terminal payments, disputes, needs-attention) ─
+  await boss.work('notification/admin-payment-alert', { teamSize: 5 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
+    const { orderId, alertKey, title, detail } = job.data;
+    const eventId = `notification_payment_alert_${alertKey || orderId}`;
+
+    if (await isProcessed(eventId)) {
+      logger.info('Payment alert notification already sent, skipping', { orderId, alertKey });
+      return;
+    }
+
+    let orderNumber = orderId || 'Unknown';
+    if (orderId) {
+      const { rows } = await pool.query(
+        'SELECT order_number FROM orders WHERE id = $1',
+        [orderId]
+      );
+      if (rows[0]?.order_number) orderNumber = rows[0].order_number;
+    }
+
+    const admin = await getAdminEmail();
+    if (!admin) {
+      logger.warn('[NOTIFICATION SKIP] Missing admin email', { orderId, event: 'admin-payment-alert', title });
+    } else {
+      await emailService.sendAdminPaymentAlert(admin, {
+        orderNumber,
+        title: title || 'Payment requires review',
+        detail,
+      });
+      logger.info('Admin payment alert sent', { orderId, alertKey, title });
+    }
+
+    await markProcessed(eventId, 'notification.admin-payment-alert');
   });
 
   logger.info('Notification workers registered');
