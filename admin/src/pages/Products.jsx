@@ -6,7 +6,6 @@ import DataTable from '../components/DataTable';
 import SearchInput from '../components/SearchInput';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
-import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const PAGE_SIZE = 20;
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
@@ -118,7 +117,7 @@ export default function Products() {
               label: 'Product',
               render: p => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, opacity: p.is_active ? 1 : 0.45 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 6, background: 'var(--ac-bg)', backgroundImage: p.image_url ? `url(${resolveImageUrl(p.image_url)})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />
+                  <div style={{ width: 42, height: 42, borderRadius: 6, background: 'var(--ac-bg)', backgroundImage: p.image_url ? `url(${p.image_url})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />
                   <div style={{ minWidth: 0 }}>
                     <div className="cell-primary" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
                     <div className="cell-muted text-xs">{p.brand || '—'}</div>

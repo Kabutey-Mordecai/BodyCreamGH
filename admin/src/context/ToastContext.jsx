@@ -15,7 +15,6 @@ export function ToastProvider({ children }) {
   const api = {
     success: (m) => push('success', m),
     error:   (m) => push('error',   m),
-    warning: (m) => push('warning', m, 5000),
     info:    (m) => push('info',    m),
   };
 

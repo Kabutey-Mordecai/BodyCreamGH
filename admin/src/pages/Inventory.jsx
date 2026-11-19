@@ -5,7 +5,6 @@ import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
 import StatCard from '../components/StatCard';
-import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
 
@@ -133,16 +132,7 @@ export default function Inventory() {
           rows={filtered}
           emptyMessage="No products to show."
           columns={[
-            {
-              key: 'name',
-              label: 'Product',
-              render: p => (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <div style={{ width: 42, height: 42, borderRadius: 6, background: 'var(--ac-bg)', backgroundImage: p.image_url ? `url(${resolveImageUrl(p.image_url)})` : 'none', backgroundSize: 'cover', backgroundPosition: 'center', flexShrink: 0 }} />
-                  <span className="cell-primary">{p.name}</span>
-                </div>
-              ),
-            },
+            { key: 'name', label: 'Product', render: p => <span className="cell-primary">{p.name}</span> },
             { key: 'sku',  label: 'SKU', className: 'cell-mono', render: p => p.sku || '—' },
             { key: 'price', label: 'Price', className: 'cell-right', render: p => fmt(p.price) },
             { key: 'stock_quantity', label: 'Stock', className: 'cell-right',

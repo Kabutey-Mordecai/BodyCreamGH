@@ -199,9 +199,7 @@ module.exports = {
         id, name, price,
         compare_at_price != null && compare_at_price !== '' ? Number(compare_at_price) : null,
         cost, category, brand, description, image_url,
-        stock_quantity || 0,
-        (sku !== undefined && sku !== null && String(sku).trim() !== '') ? String(sku).trim() : null,
-        ingredients, usage_instructions,
+        stock_quantity || 0, sku, ingredients, usage_instructions,
         is_active !== false,
       ]
     );
@@ -213,26 +211,19 @@ module.exports = {
     description, image_url, stock_quantity, sku,
     ingredients, usage_instructions, is_active,
   }) => {
-    const updateSku = sku !== undefined;
-    const sanitizedSku = (sku !== undefined && sku !== null && String(sku).trim() !== '') ? String(sku).trim() : null;
     await pool.query(
       `UPDATE products
        SET name=$1, price=$2, compare_at_price=$3, cost=$4,
            category=$5, brand=$6, description=$7, image_url=$8,
            stock_quantity=$9, ingredients=$10, usage_instructions=$11,
-           is_active=$12,
-           sku = CASE WHEN $15::boolean THEN $13 ELSE sku END,
-           updated_at=NOW()
+           is_active=$12, sku=COALESCE($13, sku), updated_at=NOW()
        WHERE id=$14`,
       [
         name, price,
         compare_at_price != null && compare_at_price !== '' ? Number(compare_at_price) : null,
         cost, category, brand, description, image_url,
         stock_quantity, ingredients, usage_instructions,
-        is_active !== false,
-        sanitizedSku,
-        id,
-        updateSku,
+        is_active !== false, (sku !== undefined && sku !== null && String(sku).trim() !== '') ? String(sku).trim() : null, id,
       ]
     );
   },

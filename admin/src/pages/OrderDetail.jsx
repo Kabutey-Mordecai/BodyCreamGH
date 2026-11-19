@@ -6,7 +6,6 @@ import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import { printInvoice } from '../utils/printInvoice';
-import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 // Fulfilment flow is strictly forward-moving. Skipping to "delivered" is allowed
 // if the merchant updates late (e.g. phone-confirmed pickups).
@@ -447,18 +446,9 @@ export default function OrderDetail() {
                 {(order.items || []).map(it => (
                   <tr key={it.id}>
                     <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        {it.image_url ? (
-                          <img
-                            src={resolveImageUrl(it.image_url)}
-                            alt={it.product_name || it.name}
-                            style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 4, flexShrink: 0 }}
-                          />
-                        ) : null}
-                        <Link to={`/products/${it.product_id}`} className="cell-primary">
-                          {it.product_name || it.name}
-                        </Link>
-                      </div>
+                      <Link to={`/products/${it.product_id}`} className="cell-primary">
+                        {it.product_name || it.name}
+                      </Link>
                     </td>
                     <td className="cell-right">{it.quantity}</td>
                     <td className="cell-right cell-muted">{fmt(it.price_at_purchase || it.price)}</td>
