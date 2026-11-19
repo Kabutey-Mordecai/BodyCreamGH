@@ -341,6 +341,7 @@ export default function Checkout() {
                       value={form.first_name}
                       onChange={handleChange}
                       required
+                      autoComplete="given-name"
                       placeholder="Ama"
                     />
                   </div>
@@ -352,6 +353,7 @@ export default function Checkout() {
                       type="text"
                       value={form.last_name}
                       onChange={handleChange}
+                      autoComplete="family-name"
                       placeholder="Mensah"
                     />
                   </div>
@@ -366,6 +368,7 @@ export default function Checkout() {
                     value={form.email}
                     onChange={handleChange}
                     required
+                    autoComplete="email"
                     placeholder="ama@example.com"
                   />
                 </div>
@@ -431,6 +434,7 @@ export default function Checkout() {
                       value={form.delivery_address}
                       onChange={handleChange}
                       required
+                      autoComplete="street-address"
                       placeholder="e.g. 12 Oxford Street"
                     />
                   </div>
@@ -445,6 +449,7 @@ export default function Checkout() {
                         value={form.city}
                         onChange={handleChange}
                         required
+                        autoComplete="address-level2"
                         placeholder="e.g. Accra"
                       />
                     </div>
@@ -456,6 +461,7 @@ export default function Checkout() {
                         value={form.region}
                         onChange={handleChange}
                         required
+                        autoComplete="address-level1"
                       >
                         <option value="" disabled>Select a region</option>
                         {GHANA_REGIONS.map(r => (
@@ -476,6 +482,7 @@ export default function Checkout() {
                   value={form.phone}
                   onChange={handleChange}
                   required
+                  autoComplete="tel"
                   placeholder="+233 XX XXX XXXX"
                 />
               </div>

@@ -86,7 +86,7 @@ class CartProvider extends ChangeNotifier {
     try {
       await api.clearCart();
       for (final item in _items) {
-        await api.addToCart(item.productId, item.quantity);
+        await api.addToCart(item.productId, item.quantity, variantId: item.variantId);
       }
     } catch (_) {
       // Best-effort sync

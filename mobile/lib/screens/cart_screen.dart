@@ -70,7 +70,12 @@ class CartScreen extends StatelessWidget {
                       final item = cart.items[i];
                       return ListTile(
                         contentPadding: EdgeInsets.zero,
-                        title: Text(item.name),
+                        title: Text(
+                          item.variantLabel != null && item.variantLabel!.isNotEmpty
+                              ? '${item.name} — ${item.variantLabel}'
+                              : item.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
                         subtitle: Text(
                           '${AppConfig.currencySymbol}${item.price.toStringAsFixed(2)} each',
                         ),
