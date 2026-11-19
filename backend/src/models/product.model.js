@@ -223,7 +223,7 @@ module.exports = {
         compare_at_price != null && compare_at_price !== '' ? Number(compare_at_price) : null,
         cost, category, brand, description, image_url,
         stock_quantity, ingredients, usage_instructions,
-        is_active !== false, sku !== undefined ? sku : null, id,
+        is_active !== false, (sku !== undefined && sku !== null && String(sku).trim() !== '') ? String(sku).trim() : null, id,
       ]
     );
   },

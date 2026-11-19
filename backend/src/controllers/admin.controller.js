@@ -4,6 +4,7 @@ const { randomUUID: uuidv4 } = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool   = require('../config/database');
 const logger = require('../utils/logger');
+const { bustCache } = require('./product.controller');
 let sharp;
 try {
   sharp = require('sharp');
@@ -283,6 +284,7 @@ const uploadProductImages = async (req, res) => {
     }
 
     await client.query('COMMIT');
+    bustCache();
     res.json({ images: await getProductImages(productId) });
 
   } catch (err) {
@@ -348,6 +350,7 @@ const deleteProductImage = async (req, res) => {
 
     await client.query('COMMIT');
     await deleteFileSafe(filename);
+    bustCache();
 
     res.json({ images: await getProductImages(productId) });
 
@@ -413,6 +416,7 @@ const reorderProductImages = async (req, res) => {
     }
 
     await client.query('COMMIT');
+    bustCache();
     res.json({ images: await getProductImages(productId) });
 
   } catch (err) {
@@ -459,6 +463,7 @@ const setPrimaryProductImage = async (req, res) => {
     );
 
     await client.query('COMMIT');
+    bustCache();
     res.json({ images: await getProductImages(productId) });
 
   } catch (err) {

@@ -131,6 +131,25 @@ export default function OrderDetail() {
     }
   };
 
+  const handleAdvanceSimulation = async () => {
+    if (!delivery?.tracking_number) return;
+    setDeliverySaving(true);
+    try {
+      const { data } = await deliveriesAPI.simulateAdvance(delivery.tracking_number);
+      if (data.alreadyDelivered) {
+        toast.info('Shipment is already delivered');
+      } else {
+        toast.success(`Courier advanced: ${data.from} → ${data.to}`);
+      }
+      loadDelivery();
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Simulation failed');
+    } finally {
+      setDeliverySaving(false);
+    }
+  };
+
   const handleCancelOrder = async () => {
     setCancelSaving(true);
     setCancelError('');
@@ -666,6 +685,18 @@ export default function OrderDetail() {
                   >
                     {deliverySaving ? 'Saving…' : 'Save changes'}
                   </button>
+
+                  {delivery.tracking_number && delivery.status !== 'delivered' && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ width: '100%', marginTop: 8, fontSize: '0.8rem' }}
+                      disabled={deliverySaving}
+                      onClick={handleAdvanceSimulation}
+                    >
+                      ⚡ Advance Courier Stage (Simulation)
+                    </button>
+                  )}
                 </form>
               ) : (
                 /* No delivery yet — create one */

@@ -169,9 +169,11 @@ export const couponsAPI = {
 
 // ── Deliveries ────────────────────────────────────────────────────────
 export const deliveriesAPI = {
-  getByOrder: (orderId)              => api.get(`/deliveries/order/${orderId}`),
-  create:     (data)                 => api.post('/deliveries', data),
-  update:     (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
+  getByOrder:      (orderId)              => api.get(`/deliveries/order/${orderId}`),
+  create:          (data)                 => api.post('/deliveries', data),
+  update:          (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
+  simulateAdvance: (trackingNumber)       => api.post(`/deliveries/simulate/advance/${trackingNumber}`),
+  simulateFull:    (trackingNumber, delay) => api.post(`/deliveries/simulate/full/${trackingNumber}${delay ? `?delay=${delay}` : ''}`),
 };
 
 // ── Product variants ──────────────────────────────────────────────────────────
