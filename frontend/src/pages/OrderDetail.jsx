@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
-import { ordersAPI, deliveriesAPI, reviewsAPI } from '../services/api';
+import { ordersAPI, deliveriesAPI, reviewsAPI, paymentsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import StarRating from '../components/StarRating';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { isSafePaystackCheckoutUrl } from '../utils/safePaystackUrl';
 import './OrderDetail.css';
 
 const ORDER_STATUS_STEPS = [
@@ -42,10 +44,11 @@ function isTerminalOrder(order) {
 
 function getRefundMessage(order) {
   if (!order) return null;
-  if (order.status === 'cancelled' && order.payment_status === 'paid' && (order.refund_status || 'not_requested') === 'not_requested') {
+  if (order.status === 'cancelled' && ['paid', 'payment_review'].includes(order.payment_status) && (order.refund_status || 'not_requested') === 'not_requested') {
     return 'This order was cancelled. A refund may be pending.';
   }
   if (order.refund_status === 'pending') return 'Refund pending';
+  if (order.refund_status === 'needs_attention') return 'Refund needs additional details - please contact support';
   if (order.refund_status === 'failed') return 'Refund failed - contact support';
   if (order.status === 'refunded' || order.refund_status === 'success') return 'Refunded';
   return null;
@@ -63,6 +66,9 @@ export default function OrderDetail() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [retryingPay, setRetryingPay]     = useState(false);
+  const [retryPayError, setRetryPayError] = useState('');
+  const retryPayLock = useRef(false);
 
   // Cancel request form
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
@@ -213,6 +219,37 @@ export default function OrderDetail() {
     }
   };
 
+  const handleRetryPayment = async () => {
+    if (!order || retryPayLock.current) return;
+    retryPayLock.current = true;
+    let redirecting = false;
+    setRetryPayError('');
+    setRetryingPay(true);
+
+    try {
+      const { data } = await paymentsAPI.initialize(order.id);
+      if (!isSafePaystackCheckoutUrl(data?.authorization_url)) {
+        throw new Error('Invalid payment redirect URL received. Please try again.');
+      }
+      try {
+        sessionStorage.removeItem('pending_guest_payment');
+        sessionStorage.setItem(
+          'pending_auth_payment',
+          JSON.stringify({ orderId: order.id, orderNumber: order.order_number || '' })
+        );
+      } catch { /* ignore storage errors */ }
+      redirecting = true;
+      window.location.assign(data.authorization_url);
+    } catch (err) {
+      setRetryPayError(err.response?.data?.error || err.message || 'Could not start payment. Please try again.');
+    } finally {
+      if (!redirecting) {
+        retryPayLock.current = false;
+        setRetryingPay(false);
+      }
+    }
+  };
+
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
 
   if (error || !order) {
@@ -289,6 +326,29 @@ export default function OrderDetail() {
             {order.status}
           </span>
         </div>
+
+        {/* ── Payment pending banner (authenticated retry) ── */}
+        {user && order.payment_method === 'paystack' && ['unpaid', 'pending'].includes(order.payment_status) && ['pending', 'confirmed'].includes(order.status) && (
+          <section className="order-state-banner order-state-banner--info" role="status" aria-live="polite">
+            <div>
+              <h2>Payment Pending</h2>
+              <p>Your order is reserved, but online payment has not been completed yet.</p>
+              {retryPayError && (
+                <p className="od-review-error" role="alert" style={{ marginTop: '8px' }}>{retryPayError}</p>
+              )}
+              <button
+                type="button"
+                className="btn btn-accent"
+                style={{ marginTop: '12px' }}
+                disabled={retryingPay}
+                aria-busy={retryingPay}
+                onClick={handleRetryPayment}
+              >
+                {retryingPay ? 'Redirecting to Paystack…' : `Pay ${money(order.total_amount)} Now`}
+              </button>
+            </div>
+          </section>
+        )}
 
         {order.status === 'cancelled' && (
           <section className="order-state-banner order-state-banner--cancelled">
@@ -704,7 +764,7 @@ export default function OrderDetail() {
                     <div className="od-review-product" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                         {item.image_url && (
-                          <img src={item.image_url} alt={item.name} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+                          <img src={resolveImageUrl(item.image_url)} alt={item.name} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--color-border)' }} />
                         )}
                         <div>
                           <span className="od-review-product-name">{item.name || item.product_name}</span>

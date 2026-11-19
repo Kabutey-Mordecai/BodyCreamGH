@@ -31,7 +31,7 @@ function groupOrders(orders) {
 }
 
 function refundHint(order) {
-  if (order.status === 'cancelled' && order.payment_status === 'paid' && (order.refund_status || 'not_requested') === 'not_requested') {
+  if (order.status === 'cancelled' && ['paid', 'payment_review'].includes(order.payment_status) && (order.refund_status || 'not_requested') === 'not_requested') {
     return 'Refund may be pending';
   }
   if (order.refund_status === 'pending') return 'Refund pending';
