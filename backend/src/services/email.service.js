@@ -405,23 +405,31 @@ const sendAdminOrderDelivered = async (to, { orderNumber }) => {
 
 // ── Newsletter emails ─────────────────────────────────────────────────────────
 
-const sendNewsletterWelcome = async (to, { name, unsubscribeUrl }) => {
+const sendNewsletterWelcome = async (to, { name, unsubscribeUrl, discountText = '10% off', couponCode = 'WELCOME10' }) => {
   if (!isConfigured() || !to) return;
   const storeName = process.env.STORE_NAME || 'BodyCreamGH';
   await getTransporter().sendMail({
     from: `${storeName} <${process.env.SMTP_USER}>`,
     to,
-    subject: `You're in! Here's your 1% off`,
+    subject: `You're in! Here's your ${discountText} coupon code`,
     html: `
-      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px">
-        <h2 style="font-size:24px;margin-bottom:8px">You're officially on the list! 🎉</h2>
-        ${name ? `<p>Hi ${name},</p>` : ''}
-        <p>Welcome to the <strong>${storeName}</strong> newsletter. As a thank-you for subscribing,
-           enjoy <strong>1% off</strong> your next order.</p>
-        <p style="margin-top:20px">Expect exclusive offers, new arrivals, and skincare tips — straight to your inbox.</p>
+      <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:24px;background:#ffffff;border:1px solid #f0ebe4;border-radius:12px">
+        <h2 style="font-size:24px;margin-bottom:8px;color:#1c1410">You're officially on the list! 🎉</h2>
+        ${name ? `<p style="color:#4b5563">Hi ${name},</p>` : ''}
+        <p style="color:#4b5563;font-size:15px;line-height:1.6">Welcome to the <strong>${storeName}</strong> family. As a special thank-you for joining us, enjoy <strong>${discountText}</strong> on your next order.</p>
+
+        ${couponCode ? `
+        <div style="margin:24px 0;padding:20px;background:#faf6ee;border:2px dashed #c9a55a;border-radius:10px;text-align:center">
+          <p style="margin:0 0 6px;font-size:12px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#8b6b23">Your Exclusive Welcome Code</p>
+          <div style="font-size:26px;font-weight:800;letter-spacing:0.15em;color:#1c1410;font-family:monospace">${couponCode}</div>
+          <p style="margin:8px 0 0;font-size:13px;color:#6b7280">Enter this code at checkout to claim your ${discountText}.</p>
+        </div>
+        ` : ''}
+
+        <p style="margin-top:20px;color:#4b5563;font-size:15px;line-height:1.6">Expect subscriber-only offers, botanical skincare tips, and first access to our limited-batch releases — straight to your inbox.</p>
         <div style="margin-top:40px;padding-top:20px;border-top:1px solid #e5e7eb;font-size:0.78rem;color:#9ca3af;text-align:center">
           <p>You're receiving this because you subscribed to ${storeName} updates.<br>
-          <a href="${unsubscribeUrl}" style="color:#9ca3af">Unsubscribe here</a></p>
+          <a href="${unsubscribeUrl}" style="color:#9ca3af;text-decoration:underline">Unsubscribe here</a></p>
         </div>
       </div>
     `,

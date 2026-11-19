@@ -554,36 +554,39 @@ export default function Home() {
       {/* ══════════════════════════════════════════
           NEWSLETTER CTA
           ══════════════════════════════════════════ */}
-      <section className="newsletter-section">
-        <div className="container newsletter-inner">
-          <h2>Get 1% off your first order</h2>
-          <p>Join our newsletter for exclusive offers, skincare tips, and new arrivals.</p>
+      {settings.newsletter_enabled !== false && settings.newsletter_enabled !== 'false' && (
+        <section className="newsletter-section">
+          <div className="container newsletter-inner">
+            <h2>{settings.newsletter_headline || 'Get 10% off your first order'}</h2>
+            <p>{settings.newsletter_subtitle || 'Join our newsletter for exclusive offers, skincare tips, and new arrivals.'}</p>
 
-          {nlState === 'success' ? (
-            <p style={{ marginTop: '16px', color: '#22c55e', fontWeight: 600 }}>
-              You're in! Check your inbox for your discount.
-            </p>
-          ) : (
-            <form className="newsletter-form" onSubmit={handleNewsletterSubmit}>
-              <input
-                type="email"
-                placeholder="Enter your email address"
-                required
-                value={nlEmail}
-                onChange={e => setNlEmail(e.target.value)}
-                disabled={nlState === 'loading'}
-              />
-              <button type="submit" className="btn btn-accent" disabled={nlState === 'loading'}>
-                {nlState === 'loading' ? 'Subscribing…' : 'Subscribe'}
-              </button>
-            </form>
-          )}
+            {nlState === 'success' ? (
+              <p style={{ marginTop: '16px', color: '#22c55e', fontWeight: 600 }}>
+                You're in! Check your inbox for your discount.
+              </p>
+            ) : (
+              <form className="newsletter-form" onSubmit={handleNewsletterSubmit}>
+                <input
+                  type="email"
+                  placeholder="Enter your email address"
+                  required
+                  value={nlEmail}
+                  onChange={e => setNlEmail(e.target.value)}
+                  disabled={nlState === 'loading'}
+                  autoComplete="email"
+                />
+                <button type="submit" className="btn btn-accent" disabled={nlState === 'loading'}>
+                  {nlState === 'loading' ? 'Subscribing…' : 'Subscribe'}
+                </button>
+              </form>
+            )}
 
-          {nlState === 'error' && (
-            <p style={{ marginTop: '8px', color: '#ef4444', fontSize: '0.85rem' }}>{nlError}</p>
-          )}
-        </div>
-      </section>
+            {nlState === 'error' && (
+              <p style={{ marginTop: '8px', color: '#ef4444', fontSize: '0.85rem' }}>{nlError}</p>
+            )}
+          </div>
+        </section>
+      )}
 
     </div>
   );

@@ -48,6 +48,14 @@ const subscribe = async (req, res) => {
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+    // Fetch dynamic discount settings for welcome voucher
+    const { rows: settingRows } = await pool.query(
+      "SELECT key, value FROM site_settings WHERE key IN ('newsletter_discount_text', 'newsletter_coupon_code')"
+    );
+    const settingsMap = Object.fromEntries(settingRows.map(r => [r.key, typeof r.value === 'string' ? r.value.replace(/^"|"$/g, '') : r.value]));
+    const discountText = settingsMap.newsletter_discount_text || '10% off';
+    const couponCode   = settingsMap.newsletter_coupon_code || 'WELCOME10';
+
     if (existing.length > 0) {
       const sub = existing[0];
       if (sub.status === 'active') {
@@ -62,7 +70,7 @@ const subscribe = async (req, res) => {
         [sub.id]
       );
       const unsubscribeUrl = `${frontendUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
-      emailService.sendNewsletterWelcome(email, { name, unsubscribeUrl }).catch(() => {});
+      emailService.sendNewsletterWelcome(email, { name, unsubscribeUrl, discountText, couponCode }).catch(() => {});
       return res.json({ success: true, message: 'Subscribed successfully' });
     }
 
@@ -75,7 +83,7 @@ const subscribe = async (req, res) => {
     );
 
     const unsubscribeUrl = `${frontendUrl}/unsubscribe?token=${token}`;
-    emailService.sendNewsletterWelcome(email, { name, unsubscribeUrl }).catch(() => {});
+    emailService.sendNewsletterWelcome(email, { name, unsubscribeUrl, discountText, couponCode }).catch(() => {});
 
     res.status(201).json({ success: true, message: 'Subscribed successfully' });
   } catch (err) {

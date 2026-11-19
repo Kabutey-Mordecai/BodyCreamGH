@@ -21,6 +21,7 @@ const SECTIONS = [
   { id: 'popup',        label: 'Promotional popup ✦' },
   { id: 'hero',         label: 'Hero banner' },
   { id: 'campaigns',    label: 'Campaign banners' },
+  { id: 'newsletter',   label: 'Newsletter section' },
   { id: 'layout',       label: 'Layout & features' },
   { id: 'categories',   label: 'Category cards' },
   { id: 'testimonials', label: 'Testimonials' },
@@ -57,6 +58,13 @@ const DEFAULTS = {
   announcement_enabled: true,
   announcement_text: 'Free delivery on orders over GHS 200 · Shop now',
   announcement_show_whatsapp: true,
+
+  // Newsletter section & welcome voucher
+  newsletter_enabled: true,
+  newsletter_headline: 'Get 10% off your first order',
+  newsletter_subtitle: 'Join our newsletter for exclusive offers, skincare tips, and new arrivals.',
+  newsletter_discount_text: '10% off',
+  newsletter_coupon_code: 'WELCOME10',
 
   hero_label:      'Handcrafted in Ghana',
   hero_headline:   'Reveal your natural glow.',
@@ -1709,6 +1717,91 @@ export default function Storefront() {
                   />
                   <div className="hint">Mention your shipping timelines, Accra pickup location, Paystack / MoMo security, and raw Northern Shea sources.</div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {active === 'newsletter' && (
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <h2 className="card-title">Homepage Newsletter & Welcome Offer</h2>
+                  <p className="card-subtitle" style={{ color: 'var(--ac-text-muted)', fontSize: '0.85rem', margin: '4px 0 0' }}>
+                    Configure the email subscription banner on the homepage and the welcome voucher sent to new subscribers.
+                  </p>
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="field">
+                  <label className="toggle-label" style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={data.newsletter_enabled !== false && data.newsletter_enabled !== 'false'}
+                      onChange={e => update('newsletter_enabled', e.target.checked)}
+                    />
+                    <span style={{ fontWeight: 600 }}>Enable Newsletter Section on Homepage</span>
+                  </label>
+                  <p className="hint">When disabled, the newsletter banner will be hidden from the storefront.</p>
+                </div>
+
+                <div className="field">
+                  <label>Section Headline</label>
+                  <input
+                    type="text"
+                    value={data.newsletter_headline || ''}
+                    onChange={e => update('newsletter_headline', e.target.value)}
+                    placeholder="e.g. Get 10% off your first order"
+                  />
+                  <p className="hint">Primary heading displayed above the email input box on the storefront.</p>
+                </div>
+
+                <div className="field">
+                  <label>Subtitle / Description</label>
+                  <textarea
+                    rows={2}
+                    value={data.newsletter_subtitle || ''}
+                    onChange={e => update('newsletter_subtitle', e.target.value)}
+                    placeholder="e.g. Join our newsletter for exclusive offers, skincare tips, and new arrivals."
+                  />
+                </div>
+
+                <div className="field-row">
+                  <div className="field">
+                    <label>Discount Label in Welcome Email</label>
+                    <input
+                      type="text"
+                      value={data.newsletter_discount_text || ''}
+                      onChange={e => update('newsletter_discount_text', e.target.value)}
+                      placeholder="e.g. 10% off or GHS 20 off"
+                    />
+                    <p className="hint">Used in the welcome email subject and copy (e.g. "Here's your 10% off coupon code").</p>
+                  </div>
+
+                  <div className="field">
+                    <label>Welcome Coupon Code</label>
+                    <input
+                      type="text"
+                      value={data.newsletter_coupon_code || ''}
+                      onChange={e => update('newsletter_coupon_code', e.target.value.toUpperCase())}
+                      placeholder="e.g. WELCOME10"
+                    />
+                    <p className="hint">This promo code is prominently framed inside the subscriber welcome email.</p>
+                  </div>
+                </div>
+
+                {/* Live Preview Card */}
+                <div style={{ marginTop: '24px', padding: '24px', background: '#1c1410', borderRadius: '12px', color: '#ffffff', textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: '#c9a55a', fontWeight: 700 }}>Storefront Preview</span>
+                  <h3 style={{ margin: '12px 0 6px', fontSize: '1.4rem', fontFamily: 'serif' }}>{data.newsletter_headline || 'Get 10% off your first order'}</h3>
+                  <p style={{ margin: 0, fontSize: '0.88rem', opacity: 0.85, maxWidth: '480px', marginInline: 'auto' }}>
+                    {data.newsletter_subtitle || 'Join our newsletter for exclusive offers, skincare tips, and new arrivals.'}
+                  </p>
+                  <div style={{ marginTop: '16px', display: 'inline-flex', maxWidth: '420px', width: '100%', borderRadius: '6px', overflow: 'hidden' }}>
+                    <div style={{ flex: 1, background: '#ffffff', color: '#9ca3af', padding: '10px 14px', fontSize: '0.85rem', textAlign: 'left' }}>Enter your email address</div>
+                    <div style={{ background: '#c9a55a', color: '#ffffff', padding: '10px 18px', fontSize: '0.82rem', fontWeight: 700, textTransform: 'uppercase' }}>Subscribe</div>
+                  </div>
+                </div>
+
               </div>
             </div>
           )}
