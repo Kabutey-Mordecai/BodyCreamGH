@@ -23,6 +23,7 @@ class AuthProvider extends ChangeNotifier {
 
   // Called once at app start to restore session from secure storage.
   Future<void> init() async {
+    ApiService.instance.onSessionExpired = _handleSessionExpired;
     final has = await _auth.hasSession();
     if (!has) {
       _status = AuthStatus.unauthenticated;
@@ -36,6 +37,14 @@ class AuthProvider extends ChangeNotifier {
       _status = AuthStatus.unauthenticated;
     }
     notifyListeners();
+  }
+
+  void _handleSessionExpired() {
+    if (_status != AuthStatus.unauthenticated || _user != null) {
+      _user = null;
+      _status = AuthStatus.unauthenticated;
+      notifyListeners();
+    }
   }
 
   Future<bool> login(String email, String password) async {

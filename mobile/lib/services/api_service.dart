@@ -20,6 +20,11 @@ class ApiService {
 
   final _storage = const FlutterSecureStorage();
   final _client = http.Client();
+  Future<String?>? _refreshInFlight;
+
+  /// Optional callback invoked when stored tokens can no longer be refreshed,
+  /// so AuthProvider can immediately transition out of the authenticated state.
+  void Function()? onSessionExpired;
 
   // ── Token management ──────────────────────────────────────────────────────
 
@@ -70,21 +75,36 @@ class ApiService {
   // Sends request with the access token; if it gets a 401, refreshes and retries once.
   Future<dynamic> _authed(Future<http.Response> Function(String token) call) async {
     var token = await getAccessToken();
-    if (token == null) throw const ApiException(401, 'Not authenticated');
+    token ??= await _refreshAccessToken();
+    if (token == null) {
+      onSessionExpired?.call();
+      throw const ApiException(401, 'Session expired. Please sign in again.');
+    }
 
     var res = await call(token);
 
-    // Token expired — attempt silent refresh
+    // Token expired — attempt single-flight silent refresh
     if (res.statusCode == 401) {
-      token = await _refreshAccessToken();
-      if (token == null) throw const ApiException(401, 'Session expired');
-      res = await call(token);
+      final refreshed = await _refreshAccessToken();
+      if (refreshed == null) {
+        onSessionExpired?.call();
+        throw const ApiException(401, 'Session expired. Please sign in again.');
+      }
+      res = await call(refreshed);
     }
 
     return _handleResponse(res);
   }
 
-  Future<String?> _refreshAccessToken() async {
+  /// Single-flight refresh: concurrent 401s share one POST /auth/refresh call
+  /// so rotated refresh tokens are never double-spent and wiped.
+  Future<String?> _refreshAccessToken() {
+    return _refreshInFlight ??= _doRefreshAccessToken().whenComplete(() {
+      _refreshInFlight = null;
+    });
+  }
+
+  Future<String?> _doRefreshAccessToken() async {
     final refresh = await getRefreshToken();
     if (refresh == null) return null;
     try {
@@ -103,7 +123,7 @@ class ApiService {
       await saveTokens(newAccess, newRefresh);
       return newAccess;
     } catch (_) {
-      await clearTokens();
+      // Do not wipe tokens on transient network errors — only on 401/403 from server.
       return null;
     }
   }
