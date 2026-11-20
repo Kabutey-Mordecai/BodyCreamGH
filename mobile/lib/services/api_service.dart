@@ -171,7 +171,7 @@ class ApiService {
 
   Future<void> verifyResetToken(String token) async {
     final res = await _client.get(
-      _uri('/auth/reset-password/${Uri.encodeComponent(token)}'),
+      _uri('/auth/verify-reset-token/${Uri.encodeComponent(token)}'),
       headers: _headers(),
     );
     await _handleResponse(res);

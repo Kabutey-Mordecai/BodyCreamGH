@@ -116,22 +116,33 @@ const sendShippingNotification = async (to, { orderNumber, trackingNumber, deliv
   });
 };
 
-const sendPasswordResetEmail = async (to, resetUrl) => {
+const sendPasswordResetEmail = async (to, resetUrl, token = null) => {
   if (!isConfigured() || !to) return;
 
+  let extractedToken = token;
+  if (!extractedToken && resetUrl) {
+    try {
+      extractedToken = new URL(resetUrl).searchParams.get('token');
+    } catch (_) {}
+  }
+
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: `BodyCream GH <${process.env.SMTP_USER}>`,
     to,
     subject: 'Reset your password',
     html: `
       <h2>Password Reset Request</h2>
-      <p>We received a request to reset your password. Click the link below to choose a new one:</p>
+      <p>We received a request to reset your password. Click the button below to choose a new one:</p>
       <p>
-        <a href="${resetUrl}" style="background:#000;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;display:inline-block;">
+        <a href="${escapeHtml(resetUrl)}" style="background:#000;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;display:inline-block;">
           Reset Password
         </a>
       </p>
-      <p>This link expires in <strong>1 hour</strong>.</p>
+      ${extractedToken ? `
+        <p style="margin-top:16px">Using the mobile app? Tap <strong>Already have a reset token?</strong> and paste this token:</p>
+        <p style="font-family:monospace;font-size:13px;background:#f5f2ee;padding:10px 12px;border-radius:4px;word-break:break-all;">${escapeHtml(extractedToken)}</p>
+      ` : ''}
+      <p>This link and token expire in <strong>1 hour</strong>.</p>
       <p>If you did not request a password reset, you can safely ignore this email.</p>
     `,
   });
