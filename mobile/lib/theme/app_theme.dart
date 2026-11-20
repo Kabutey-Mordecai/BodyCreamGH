@@ -211,17 +211,7 @@ class AppTheme {
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surface,
         selectedColor: AppColors.primary,
-        checkmarkColor: Colors.white,
-        labelStyle: const TextStyle(
-          color: AppColors.text,
-          fontSize: 12.5,
-          fontWeight: FontWeight.w500,
-        ),
-        secondaryLabelStyle: const TextStyle(
-          color: Colors.white,
-          fontSize: 12.5,
-          fontWeight: FontWeight.w600,
-        ),
+        showCheckmark: false,
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(6),
@@ -253,6 +243,7 @@ class AppTheme {
         backgroundColor: AppColors.primary,
         contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13.5),
         behavior: SnackBarBehavior.floating,
+        insetPadding: const EdgeInsets.fromLTRB(14, 14, 14, 76),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
       progressIndicatorTheme: const ProgressIndicatorThemeData(

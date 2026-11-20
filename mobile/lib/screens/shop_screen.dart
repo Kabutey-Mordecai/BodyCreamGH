@@ -24,14 +24,15 @@ class _ShopScreenState extends State<ShopScreen> {
   bool _inStockOnly = false;
   bool _onSaleOnly = false;
 
-  final List<String> _categories = [
-    'All',
-    'Skincare',
-    'Body Care',
-    'Haircare',
-    'Makeup',
-    'Fragrance',
-  ];
+  List<String> get _categories {
+    final set = <String>{'All'};
+    for (final p in _products) {
+      if (p.category != null && p.category!.trim().isNotEmpty) {
+        set.add(p.category!.trim());
+      }
+    }
+    return set.toList();
+  }
 
   @override
   void initState() {
@@ -49,11 +50,8 @@ class _ShopScreenState extends State<ShopScreen> {
     setState(() => _loading = true);
     try {
       final raw = await ApiService.instance.getProducts(
-        category: (_selectedCategory == null || _selectedCategory == 'All')
-            ? null
-            : _selectedCategory,
         search: _searchCtrl.text.trim(),
-        limit: 50,
+        limit: 100,
       );
       if (mounted) {
         setState(() {
@@ -71,6 +69,12 @@ class _ShopScreenState extends State<ShopScreen> {
 
   List<Product> get _visibleProducts {
     var list = _products.where((p) {
+      if (_selectedCategory != null &&
+          _selectedCategory != 'All' &&
+          (p.category ?? '').toLowerCase() !=
+              _selectedCategory!.toLowerCase()) {
+        return false;
+      }
       if (_inStockOnly && !p.inStock) return false;
       if (_onSaleOnly && !p.isOnSale) return false;
       return true;
@@ -166,13 +170,21 @@ class _ShopScreenState extends State<ShopScreen> {
                 final cat = _categories[i];
                 final selected = cat == (_selectedCategory ?? 'All');
                 return FilterChip(
-                  label: Text(cat),
+                  showCheckmark: false,
+                  label: Text(
+                    cat,
+                    style: TextStyle(
+                      color: selected ? Colors.white : AppColors.text,
+                      fontWeight:
+                          selected ? FontWeight.w700 : FontWeight.w500,
+                      fontSize: 12.5,
+                    ),
+                  ),
                   selected: selected,
                   onSelected: (_) {
                     setState(
                       () => _selectedCategory = cat == 'All' ? null : cat,
                     );
-                    _fetch();
                   },
                 );
               },
@@ -185,14 +197,32 @@ class _ShopScreenState extends State<ShopScreen> {
             child: Row(
               children: [
                 FilterChip(
-                  label: const Text('In Stock'),
+                  showCheckmark: false,
+                  label: Text(
+                    'In Stock',
+                    style: TextStyle(
+                      color: _inStockOnly ? Colors.white : AppColors.text,
+                      fontWeight:
+                          _inStockOnly ? FontWeight.w700 : FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                  ),
                   selected: _inStockOnly,
                   visualDensity: VisualDensity.compact,
                   onSelected: (v) => setState(() => _inStockOnly = v),
                 ),
                 const SizedBox(width: 6),
                 FilterChip(
-                  label: const Text('On Sale'),
+                  showCheckmark: false,
+                  label: Text(
+                    'On Sale',
+                    style: TextStyle(
+                      color: _onSaleOnly ? Colors.white : AppColors.text,
+                      fontWeight:
+                          _onSaleOnly ? FontWeight.w700 : FontWeight.w500,
+                      fontSize: 12,
+                    ),
+                  ),
                   selected: _onSaleOnly,
                   visualDensity: VisualDensity.compact,
                   onSelected: (v) => setState(() => _onSaleOnly = v),

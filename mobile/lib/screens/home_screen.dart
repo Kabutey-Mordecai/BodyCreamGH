@@ -362,7 +362,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     final cat = _categories[i];
                     final selected = cat == _activeCategory;
                     return ChoiceChip(
-                      label: Text(cat),
+                      showCheckmark: false,
+                      label: Text(
+                        cat,
+                        style: TextStyle(
+                          color: selected ? Colors.white : AppColors.text,
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: 12.5,
+                        ),
+                      ),
                       selected: selected,
                       onSelected: (_) => setState(() => _activeCategory = cat),
                     );

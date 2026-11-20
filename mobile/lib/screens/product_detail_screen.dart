@@ -475,8 +475,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 children: _variants.map((v) {
                                   final selected = _selectedVariant?.id == v.id;
                                   return ChoiceChip(
+                                    showCheckmark: false,
                                     label: Text(
                                       '${v.label} · ${AppConfig.currencySymbol}${v.price.toStringAsFixed(2)}',
+                                      style: TextStyle(
+                                        color: selected
+                                            ? Colors.white
+                                            : AppColors.text,
+                                        fontWeight: selected
+                                            ? FontWeight.w700
+                                            : FontWeight.w500,
+                                        fontSize: 12.5,
+                                      ),
                                     ),
                                     selected: selected,
                                     onSelected: v.inStock
