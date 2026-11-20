@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/password_strength.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -235,14 +236,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       TextFormField(
                         controller: _newPwdCtrl,
                         obscureText: true,
+                        onChanged: (_) => setState(() {}),
                         decoration: const InputDecoration(
                           labelText: 'New Password (min 8 characters) *',
                           prefixIcon: Icon(Icons.lock_reset_outlined),
                         ),
-                        validator: (v) => v == null || v.length < 8
-                            ? 'At least 8 characters'
-                            : null,
+                        validator: (v) {
+                          if (v == null || v.length < 8) {
+                            return 'At least 8 characters';
+                          }
+                          if (getPasswordStrength(v).score < 4) {
+                            return 'Meet all 4 password strength rules';
+                          }
+                          return null;
+                        },
                       ),
+                      PasswordStrengthMeter(password: _newPwdCtrl.text),
                       const SizedBox(height: 14),
                       TextFormField(
                         controller: _confirmPwdCtrl,

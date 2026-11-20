@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/cart_item.dart';
 import '../models/product.dart';
 import '../services/api_service.dart';
+
+const String _guestCartStorageKey = 'guest_cart';
 
 class CartProvider extends ChangeNotifier {
   final List<CartItem> _items = [];
@@ -9,6 +13,7 @@ class CartProvider extends ChangeNotifier {
   double _deliveryFeeFlat = 15.0;
   double _deliveryFeeAccra = 10.0;
   double _freeDeliveryOver = 200.0;
+  String? _mergeError;
 
   List<CartItem> get items => List.unmodifiable(_items);
   int get itemCount => _items.fold(0, (sum, i) => sum + i.quantity);
@@ -18,6 +23,42 @@ class CartProvider extends ChangeNotifier {
   double get deliveryFeeFlat => _deliveryFeeFlat;
   double get deliveryFeeAccra => _deliveryFeeAccra;
   double get freeDeliveryOver => _freeDeliveryOver;
+  String? get mergeError => _mergeError;
+
+  void clearMergeError() {
+    if (_mergeError != null) {
+      _mergeError = null;
+      notifyListeners();
+    }
+  }
+
+  Future<void> init() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_guestCartStorageKey);
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        _items
+          ..clear()
+          ..addAll(
+            decoded
+                .whereType<Map<String, dynamic>>()
+                .map(CartItem.fromJson),
+          );
+        notifyListeners();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _guestCartStorageKey,
+        jsonEncode(_items.map((i) => i.toJson()).toList()),
+      );
+    } catch (_) {}
+  }
 
   void updateDeliverySettings({
     double? feeFlat,
@@ -78,6 +119,7 @@ class CartProvider extends ChangeNotifier {
       _items[idx].quantity += quantity;
     }
     notifyListeners();
+    _persist();
   }
 
   void remove(String productId, {String? variantId}) {
@@ -87,6 +129,7 @@ class CartProvider extends ChangeNotifier {
           (variantId == null || i.variantId == variantId),
     );
     notifyListeners();
+    _persist();
   }
 
   void updateQuantity(String productId, int quantity, {String? variantId}) {
@@ -102,24 +145,40 @@ class CartProvider extends ChangeNotifier {
       _items[idx].quantity = quantity;
     }
     notifyListeners();
+    _persist();
   }
 
   /// Syncs all in-memory cart items to the server-side cart before checkout.
+  /// Mirrors Web CartContext Promise.allSettled behavior and exposes mergeError
+  /// if any individual item fails to merge.
   Future<void> syncToServer() async {
     final api = ApiService.instance;
+    int failedCount = 0;
     try {
       await api.clearCart();
-      for (final item in _items) {
+    } catch (_) {}
+    for (final item in _items) {
+      try {
         await api.addToCart(item.productId, item.quantity, variantId: item.variantId);
+      } catch (_) {
+        failedCount++;
       }
-    } catch (_) {
-      // Best-effort sync
+    }
+    if (failedCount > 0) {
+      _mergeError =
+          '$failedCount item(s) could not be synced to your cart and have been kept locally for you.';
+      notifyListeners();
+    } else if (_mergeError != null) {
+      _mergeError = null;
+      notifyListeners();
     }
   }
 
   void clear() {
     _items.clear();
+    _mergeError = null;
     notifyListeners();
+    _persist();
   }
 
   // Builds the payload expected by POST /api/orders (validateCreateOrder)

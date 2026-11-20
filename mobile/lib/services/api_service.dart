@@ -7,7 +7,8 @@ import '../config.dart';
 class ApiException implements Exception {
   final int statusCode;
   final String message;
-  const ApiException(this.statusCode, this.message);
+  final int? retryAfter;
+  const ApiException(this.statusCode, this.message, {this.retryAfter});
 
   @override
   String toString() => 'ApiException($statusCode): $message';
@@ -54,11 +55,16 @@ class ApiService {
       return Future.value(jsonDecode(res.body));
     }
     String message = 'Request failed';
+    int? retryAfter = int.tryParse(res.headers['retry-after'] ?? '');
     try {
       final body = jsonDecode(res.body) as Map<String, dynamic>;
       message = body['error'] as String? ?? body['message'] as String? ?? message;
+      retryAfter ??= int.tryParse((body['retryAfter'] ?? '').toString());
     } catch (_) {}
-    throw ApiException(res.statusCode, message);
+    if (res.statusCode == 429 && retryAfter == null) {
+      retryAfter = 60;
+    }
+    throw ApiException(res.statusCode, message, retryAfter: retryAfter);
   }
 
   // Sends request with the access token; if it gets a 401, refreshes and retries once.
@@ -143,6 +149,26 @@ class ApiService {
     await _handleResponse(res);
   }
 
+  Future<void> verifyResetToken(String token) async {
+    final res = await _client.get(
+      _uri('/auth/reset-password/${Uri.encodeComponent(token)}'),
+      headers: _headers(),
+    );
+    await _handleResponse(res);
+  }
+
+  Future<void> resetPassword({
+    required String token,
+    required String newPassword,
+  }) async {
+    final res = await _client.post(
+      _uri('/auth/reset-password'),
+      headers: _headers(),
+      body: jsonEncode({'token': token, 'new_password': newPassword}),
+    );
+    await _handleResponse(res);
+  }
+
   Future<void> logout() async {
     try {
       final token = await getAccessToken();
@@ -163,27 +189,77 @@ class ApiService {
 
   // ── Products ──────────────────────────────────────────────────────────────
 
+  Future<Map<String, dynamic>> getProductsWithMeta({
+    int page = 1,
+    int limit = 20,
+    int? offset,
+    String? category,
+    String? search,
+    String? sort,
+    String? minPrice,
+    String? maxPrice,
+    bool? inStock,
+    bool? onSale,
+  }) async {
+    final query = <String, String>{
+      'limit': limit.toString(),
+      'offset': (offset ?? ((page - 1) * limit)).toString(),
+      'page': page.toString(),
+      if (category != null && category.isNotEmpty) 'category': category,
+      if (search != null && search.isNotEmpty) 'search': search,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (minPrice != null && minPrice.isNotEmpty) 'min_price': minPrice,
+      if (maxPrice != null && maxPrice.isNotEmpty) 'max_price': maxPrice,
+      if (inStock == true) 'in_stock': 'true',
+      if (onSale == true) 'on_sale': 'true',
+    };
+    final uri = _uri('/products').replace(queryParameters: query);
+    final res = await _client.get(uri, headers: _headers());
+    final data = await _handleResponse(res);
+    if (data is Map) {
+      final list = data['products'] as List<dynamic>? ?? [];
+      final total = int.tryParse((data['total'] ?? list.length).toString()) ?? list.length;
+      return {'products': list, 'total': total};
+    }
+    if (data is List) {
+      return {'products': data, 'total': data.length};
+    }
+    return {'products': <dynamic>[], 'total': 0};
+  }
+
   Future<List<dynamic>> getProducts({
     int page = 1,
     int limit = 20,
     String? category,
     String? search,
     String? sort,
+    String? minPrice,
+    String? maxPrice,
+    bool? inStock,
     bool? onSale,
   }) async {
-    final query = <String, String>{
-      'page': page.toString(),
-      'limit': limit.toString(),
-      if (category != null && category.isNotEmpty) 'category': category,
-      if (search != null && search.isNotEmpty) 'search': search,
-      if (sort != null && sort.isNotEmpty) 'sort': sort,
-      if (onSale == true) 'on_sale': 'true',
-    };
-    final uri = _uri('/products').replace(queryParameters: query);
+    final res = await getProductsWithMeta(
+      page: page,
+      limit: limit,
+      category: category,
+      search: search,
+      sort: sort,
+      minPrice: minPrice,
+      maxPrice: maxPrice,
+      inStock: inStock,
+      onSale: onSale,
+    );
+    return res['products'] as List<dynamic>? ?? [];
+  }
+
+  Future<List<dynamic>> suggestProducts(String q) async {
+    if (q.trim().length < 2) return [];
+    final uri = _uri('/products/suggest').replace(queryParameters: {'q': q.trim()});
     final res = await _client.get(uri, headers: _headers());
     final data = await _handleResponse(res);
+    if (data is List) return data;
     if (data is Map) return data['products'] as List<dynamic>? ?? [];
-    return data as List<dynamic>;
+    return [];
   }
 
   Future<Map<String, dynamic>> getProduct(String id) async {
@@ -203,25 +279,47 @@ class ApiService {
     return [];
   }
 
-  Future<List<dynamic>> getProductVariants(String id) async {
+  Future<Map<String, dynamic>> getProductVariantsFull(String id) async {
     final res = await _client.get(_uri('/products/$id/variants'), headers: _headers());
     final data = await _handleResponse(res);
-    if (data is Map) return data['variants'] as List<dynamic>? ?? [];
-    if (data is List) return data;
-    return [];
+    if (data is Map<String, dynamic>) return data;
+    if (data is List) return {'option_types': <dynamic>[], 'variants': data};
+    return {'option_types': <dynamic>[], 'variants': <dynamic>[]};
+  }
+
+  Future<List<dynamic>> getProductVariants(String id) async {
+    final data = await getProductVariantsFull(id);
+    return data['variants'] as List<dynamic>? ?? [];
   }
 
   // ── Reviews ───────────────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> getProductReviews(String productId) async {
-    final res = await _client.get(
-      _uri('/products/$productId/reviews'),
-      headers: _headers(),
-    );
+  Future<Map<String, dynamic>> getProductReviews(
+    String productId, {
+    int page = 1,
+    int limit = 10,
+    String sort = 'recent',
+  }) async {
+    final uri = _uri('/products/$productId/reviews').replace(queryParameters: {
+      'page': page.toString(),
+      'limit': limit.toString(),
+      'sort': sort,
+    });
+    final res = await _client.get(uri, headers: _headers());
     final data = await _handleResponse(res);
     if (data is Map<String, dynamic>) return data;
-    if (data is List) return {'reviews': data};
-    return {'reviews': <dynamic>[]};
+    if (data is List) return {'reviews': data, 'total': data.length, 'totalPages': 1};
+    return {'reviews': <dynamic>[], 'total': 0, 'totalPages': 1};
+  }
+
+  Future<Map<String, dynamic>> canReviewProduct(String productId) async {
+    final data = await _authed((token) => _client.get(
+          _uri('/products/$productId/reviews/can-review'),
+          headers: _headers(token: token),
+        ));
+    return data is Map<String, dynamic>
+        ? data
+        : {'can_review': false, 'already_reviewed': false};
   }
 
   Future<void> createProductReview(
@@ -236,9 +334,29 @@ class ApiService {
           body: jsonEncode({
             'rating': rating,
             if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+            'body': comment.trim(),
             'comment': comment.trim(),
           }),
         ));
+  }
+
+  Future<void> markReviewHelpful(String productId, dynamic reviewId) async {
+    final token = await getAccessToken();
+    final res = await _client.post(
+      _uri('/products/$productId/reviews/$reviewId/helpful'),
+      headers: _headers(token: token),
+    );
+    await _handleResponse(res);
+  }
+
+  Future<List<dynamic>> getPendingReviewPrompts() async {
+    final data = await _authed((token) => _client.get(
+          _uri('/products/reviews/pending-prompts'),
+          headers: _headers(token: token),
+        ));
+    if (data is Map) return data['prompts'] as List<dynamic>? ?? [];
+    if (data is List) return data;
+    return [];
   }
 
   Future<List<dynamic>> getFeaturedReviews() async {
@@ -277,6 +395,18 @@ class ApiService {
         ));
   }
 
+  Future<Map<String, dynamic>> validateGuestCart(
+    List<Map<String, dynamic>> items,
+  ) async {
+    final res = await _client.post(
+      _uri('/cart/validate-guest'),
+      headers: _headers(),
+      body: jsonEncode({'items': items}),
+    );
+    final data = await _handleResponse(res);
+    return data is Map<String, dynamic> ? data : {'valid': true, 'items': <dynamic>[]};
+  }
+
   // ── Orders & Order Tracking ───────────────────────────────────────────────
 
   Future<Map<String, dynamic>> createOrder(Map<String, dynamic> payload) async {
@@ -296,15 +426,33 @@ class ApiService {
     return await _handleResponse(res) as Map<String, dynamic>;
   }
 
-  Future<List<dynamic>> getMyOrders() async {
+  Future<Map<String, dynamic>> getMyOrdersWithMeta({
+    int page = 1,
+    int limit = 20,
+  }) async {
+    final uri = _uri('/orders').replace(queryParameters: {
+      'page': page.toString(),
+      'limit': limit.toString(),
+    });
     final data = await _authed((token) => _client.get(
-          _uri('/orders'),
+          uri,
           headers: _headers(token: token),
         ));
-    if (data is Map && data.containsKey('orders')) {
-      return data['orders'] as List<dynamic>? ?? [];
+    if (data is Map<String, dynamic>) {
+      return {
+        'orders': data['orders'] as List<dynamic>? ?? [],
+        'pagination': data['pagination'] as Map<String, dynamic>?,
+      };
     }
-    return data as List<dynamic>? ?? [];
+    if (data is List) {
+      return {'orders': data, 'pagination': null};
+    }
+    return {'orders': <dynamic>[], 'pagination': null};
+  }
+
+  Future<List<dynamic>> getMyOrders({int page = 1, int limit = 20}) async {
+    final res = await getMyOrdersWithMeta(page: page, limit: limit);
+    return res['orders'] as List<dynamic>? ?? [];
   }
 
   Future<Map<String, dynamic>> getOrder(String id) async {
@@ -312,6 +460,35 @@ class ApiService {
           _uri('/orders/$id'),
           headers: _headers(token: token),
         )) as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> getOrderStatusLog(String orderId) async {
+    final data = await _authed((token) => _client.get(
+          _uri('/orders/$orderId/log'),
+          headers: _headers(token: token),
+        ));
+    if (data is List) return data;
+    if (data is Map && data['log'] is List) return data['log'] as List<dynamic>;
+    return [];
+  }
+
+  Future<List<String>> getOrderReviewStatus(String orderId) async {
+    final data = await _authed((token) => _client.get(
+          _uri('/orders/$orderId/review-status'),
+          headers: _headers(token: token),
+        ));
+    if (data is Map && data['reviewed'] is List) {
+      return (data['reviewed'] as List).map((e) => e.toString()).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>?> getOrderDelivery(String orderId) async {
+    final data = await _authed((token) => _client.get(
+          _uri('/deliveries/order/$orderId'),
+          headers: _headers(token: token),
+        ));
+    return data is Map<String, dynamic> ? data : null;
   }
 
   Future<Map<String, dynamic>> trackOrder(String orderNumber, String email) async {
@@ -366,6 +543,25 @@ class ApiService {
       body: jsonEncode({'orderId': orderId, 'email': email.trim()}),
     );
     return await _handleResponse(res) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> verifyPayment(String reference) async {
+    final token = await getAccessToken();
+    final res = await _client.get(
+      _uri('/payments/verify/${Uri.encodeComponent(reference)}'),
+      headers: _headers(token: token),
+    );
+    if (res.statusCode == 202) {
+      Map<String, dynamic> body = {};
+      try {
+        body = jsonDecode(res.body) as Map<String, dynamic>;
+      } catch (_) {}
+      return {'httpStatus': 202, 'status': 'pending', ...body};
+    }
+    final data = await _handleResponse(res);
+    return data is Map<String, dynamic>
+        ? {'httpStatus': res.statusCode, ...data}
+        : {'httpStatus': res.statusCode, 'status': 'success'};
   }
 
   // ── Coupons ───────────────────────────────────────────────────────────────

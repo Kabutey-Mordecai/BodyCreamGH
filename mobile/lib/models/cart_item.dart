@@ -59,6 +59,9 @@ class CartItem {
         'product_id': productId,
         if (variantId != null) 'variant_id': variantId,
         if (variantLabel != null) 'variant_label': variantLabel,
+        'name': name,
+        'price': price,
+        if (imageUrl != null) 'image_url': imageUrl,
         'quantity': quantity,
       };
 }

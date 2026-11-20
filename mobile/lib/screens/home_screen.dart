@@ -8,8 +8,12 @@ import '../models/product.dart';
 import '../providers/wishlist_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/whatsapp_helper.dart';
 import '../widgets/cart_badge.dart';
 import '../widgets/product_card.dart';
+import '../widgets/search_autocomplete_field.dart';
+
+bool _promoPopupShownThisSession = false;
 
 const String _defaultHeroImg =
     'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1024&q=80';
@@ -135,6 +139,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _nlSubmitting = false;
   String? _nlCouponResult;
   String? _nlError;
+  bool _announcementDismissed = false;
+  Timer? _promoPopupTimer;
 
   @override
   void initState() {
@@ -144,9 +150,206 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _promoPopupTimer?.cancel();
     _heroSearchCtrl.dispose();
     _nlEmailCtrl.dispose();
     super.dispose();
+  }
+
+  List<Map<String, String>> _buildDynamicFaqs() {
+    if (_settings['faq_items'] is List) {
+      final custom = <Map<String, String>>[];
+      for (final item in (_settings['faq_items'] as List)) {
+        if (item is Map && item['q'] != null && item['a'] != null) {
+          final q = item['q'].toString().trim();
+          final a = item['a'].toString().trim();
+          if (q.isNotEmpty && a.isNotEmpty) {
+            custom.add({'q': q, 'a': a});
+          }
+        }
+      }
+      if (custom.isNotEmpty) return custom;
+    }
+
+    final storeName = _str('store_name', 'BodyCream GH');
+    final accraEta = _str('delivery_estimate_accra', '1–2 business days');
+    final nationEta = _str('delivery_estimate_nationwide', '3–5 business days');
+    final freeOver = double.tryParse((_settings['free_delivery_over'] ?? 200).toString()) ?? 200;
+    final pickupEnabled = _settings['pickup_enabled'] != false && _settings['pickup_enabled'] != 'false';
+    final pickupLocation = _str('pickup_location', 'East Legon, Accra (Call upon arrival)');
+    final pickupHours = _str('pickup_hours', 'Mon–Sat, 9:00 AM – 6:00 PM');
+    final podEnabled = _settings['pay_on_delivery_enabled'] == true || _settings['pay_on_delivery_enabled'] == 'true';
+    final podAccraOnly = _settings['pay_on_delivery_accra_only'] != false && _settings['pay_on_delivery_accra_only'] != 'false';
+
+    final freeDeliverySentence = freeOver > 0
+        ? ' Orders over GHS ${freeOver.toStringAsFixed(0)} qualify for free delivery.'
+        : '';
+    final pickupSentence = pickupEnabled
+        ? ' Free store pickup is also available at $pickupLocation ($pickupHours).'
+        : '';
+    final podSentence = podEnabled
+        ? (podAccraOnly
+            ? ' Pay on Delivery is also available for Greater Accra deliveries and Store Pickup.'
+            : ' Pay on Delivery (Cash or Mobile Money on arrival) is also available.')
+        : '';
+
+    return [
+      {
+        'q': 'How long does delivery take across Ghana?',
+        'a': 'Orders within Greater Accra typically arrive in $accraEta. Nationwide deliveries across all 16 regions of Ghana take $nationEta.$freeDeliverySentence$pickupSentence',
+      },
+      {
+        'q': 'Which payment methods do you accept?',
+        'a': 'We accept MTN Mobile Money (MoMo), Telecel Cash, AirtelTigo Money, Visa, Mastercard, and Bank Transfer securely through Paystack.$podSentence',
+      },
+      {
+        'q': 'Are $storeName products safe for all skin types?',
+        'a': 'Yes. Every batch is handcrafted in Ghana with raw, unrefined Northern Ghana shea butter and cold-pressed botanical oils — free from hydroquinone, mercury, parabens, sulfates, and harsh bleaching agents.',
+      },
+      {
+        'q': 'How do I track my order after checkout?',
+        'a': 'As soon as your order is confirmed, you receive an order number by email. You can check live order and delivery updates anytime on our Track Order page or under My Orders in your account.',
+      },
+      {
+        'q': 'What is your return and refund policy?',
+        'a': 'If an item arrives damaged or differs from what you ordered, you can request a return or refund within 7 days of delivery directly from your Order Detail page.',
+      },
+    ];
+  }
+
+  void _maybeSchedulePromoPopup(Map<String, dynamic> settings) {
+    if (_promoPopupShownThisSession) return;
+    final enabled = settings['promo_popup_enabled'] == true ||
+        settings['promo_popup_enabled'] == 'true';
+    if (!enabled) return;
+    final delaySec = (int.tryParse((settings['promo_popup_delay_sec'] ?? 2).toString()) ?? 2)
+        .clamp(0, 30);
+    _promoPopupTimer?.cancel();
+    _promoPopupTimer = Timer(Duration(seconds: delaySec), () {
+      if (!mounted || _promoPopupShownThisSession) return;
+      _promoPopupShownThisSession = true;
+      _showPromoPopupDialog(settings);
+    });
+  }
+
+  void _showPromoPopupDialog(Map<String, dynamic> s) {
+    final badge = (s['promo_popup_badge'] ?? '● BRAND DAY · TODAY ONLY').toString();
+    final title = (s['promo_popup_title'] ?? 'Pure Shea Radiance.').toString();
+    final highlight = (s['promo_popup_highlight'] ?? 'Slashed Prices').toString();
+    final discount = (s['promo_popup_discount'] ?? 'UP TO 50% OFF').toString();
+    final subtext = (s['promo_popup_subtext'] ?? 'Limited quantity · Handcrafted in Ghana').toString();
+    final ctaText = (s['promo_popup_cta_text'] ?? 'Claim Your Glow').toString();
+    final rawImg = (s['promo_popup_image'] ?? _defaultHeroImg).toString();
+    final img = rawImg.startsWith('http') ? rawImg : AppConfig.resolveImageUrl(rawImg);
+
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: AppColors.dark,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: const BorderSide(color: AppColors.accent, width: 1),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Stack(
+              children: [
+                SizedBox(
+                  height: 155,
+                  width: double.infinity,
+                  child: CachedNetworkImage(imageUrl: img, fit: BoxFit.cover),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      foregroundColor: Colors.white,
+                    ),
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ),
+                Positioned(
+                  left: 14,
+                  bottom: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      discount,
+                      style: const TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    badge,
+                    style: const TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '$title $highlight',
+                    style: const TextStyle(
+                      fontFamily: 'serif',
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    subtext,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      fontSize: 12.5,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: AppColors.primary,
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        _goToShop();
+                      },
+                      child: Text('$ctaText →'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _load() async {
@@ -169,6 +372,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _reviews = rawReviews.whereType<Map<String, dynamic>>().toList();
           _loading = false;
         });
+        _maybeSchedulePromoPopup(settings);
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -290,28 +494,74 @@ class _HomeScreenState extends State<HomeScreen> {
     final reviewsToShow =
         _reviews.isNotEmpty ? _reviews : _defaultTestimonials;
 
-    final List<Map<String, String>> faqs = [];
-    if (_settings['faq_items'] is List) {
-      for (final item in (_settings['faq_items'] as List)) {
-        if (item is Map && item['q'] != null && item['a'] != null) {
-          faqs.add({'q': item['q'].toString(), 'a': item['a'].toString()});
-        }
-      }
-    }
-    if (faqs.isEmpty) faqs.addAll(_defaultFaqs);
+    final faqs = _buildDynamicFaqs();
+    final logoUrl = _str('logo_url', '');
+    final whatsappNumber = _str('whatsapp_number', '');
+    final whatsappFloatEnabled =
+        _settings['whatsapp_float_enabled'] != false &&
+            _settings['whatsapp_float_enabled'] != 'false';
+    final showAnnounceWhatsapp =
+        _settings['announcement_show_whatsapp'] != false &&
+            _settings['announcement_show_whatsapp'] != 'false' &&
+            WhatsAppHelper.normalizeNumber(whatsappNumber).isNotEmpty;
+    final seoEnabled = _settings['seo_editorial_enabled'] != false &&
+        _settings['seo_editorial_enabled'] != 'false';
+    final seoTitle = _str(
+      'seo_editorial_title',
+      'Handcrafted Luxury Skincare & Organic Body Creams in Ghana',
+    );
+    final seoText = _str(
+      'seo_editorial_text',
+      "Welcome to BodyCream GH, Ghana's premier destination for raw, unrefined shea butter creams, botanical radiance oils, and whipped moisturizing butters. Every formulation is handcrafted in Ghana using sustainably wildcrafted shea nuts harvested by women cooperatives across the Northern Region. Whether you are in Accra, Tema, Kumasi, Takoradi, Sunyani, or Tamale, we deliver glowing, deeply nourished skin directly to your doorstep with same-day express delivery in Accra and swift nationwide dispatch.",
+    );
 
     return Scaffold(
+      floatingActionButton: whatsappFloatEnabled &&
+              WhatsAppHelper.normalizeNumber(whatsappNumber).isNotEmpty
+          ? FloatingActionButton.small(
+              heroTag: 'home-whatsapp-fab',
+              backgroundColor: const Color(0xFF25D366),
+              foregroundColor: Colors.white,
+              tooltip: 'Chat on WhatsApp',
+              onPressed: () => WhatsAppHelper.openWhatsApp(
+                rawNumber: whatsappNumber,
+                message:
+                    'Hi $storeName, I have a question about your products.',
+              ),
+              child: const Icon(Icons.chat_bubble_outline, size: 20),
+            )
+          : null,
       appBar: AppBar(
-        title: Text(
-          storeName.toUpperCase(),
-          style: const TextStyle(
-            fontFamily: 'serif',
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 1.6,
-            color: AppColors.primary,
-          ),
-        ),
+        title: logoUrl.isNotEmpty
+            ? SizedBox(
+                height: 30,
+                child: CachedNetworkImage(
+                  imageUrl: logoUrl.startsWith('http')
+                      ? logoUrl
+                      : AppConfig.resolveImageUrl(logoUrl),
+                  fit: BoxFit.contain,
+                  errorWidget: (_, __, ___) => Text(
+                    storeName.toUpperCase(),
+                    style: const TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.6,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              )
+            : Text(
+                storeName.toUpperCase(),
+                style: const TextStyle(
+                  fontFamily: 'serif',
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 1.6,
+                  color: AppColors.primary,
+                ),
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.local_shipping_outlined,
@@ -364,31 +614,66 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. Top dark announcement strip
-              if (announcementEnabled)
-                InkWell(
-                  onTap: () => _goToShop(),
-                  child: Container(
-                    width: double.infinity,
-                    color: AppColors.dark,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                    child: Text(
-                      announcementText,
-                      textAlign: TextAlign.center,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: AppColors.accentLight,
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0.4,
+              // 1. Top dark announcement strip (with WhatsApp link & dismiss button)
+              if (announcementEnabled && !_announcementDismissed)
+                Container(
+                  width: double.infinity,
+                  color: AppColors.dark,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => _goToShop(),
+                          child: Text(
+                            announcementText,
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.accentLight,
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
+                      if (showAnnounceWhatsapp) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () => WhatsAppHelper.openWhatsApp(
+                            rawNumber: whatsappNumber,
+                            message:
+                                "Hi $storeName, I'd like to place an order.",
+                          ),
+                          child: const Text(
+                            'WhatsApp',
+                            style: TextStyle(
+                              color: Color(0xFF4ADE80),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              decoration: TextDecoration.underline,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(width: 6),
+                      InkWell(
+                        onTap: () =>
+                            setState(() => _announcementDismissed = true),
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 4),
+                          child: Icon(Icons.close,
+                              size: 14, color: AppColors.accentLight),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
-              // 2. Editorial Hero Banner with Search Bar & Dual CTAs (matches web Home.jsx)
+              // 2. Editorial Hero Banner with Live Autocomplete Search Bar & Dual CTAs
               _EditorialHero(
                 imageUrl: heroImage,
                 label: heroLabel,
@@ -397,11 +682,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 ctaText: heroCta,
                 searchCtrl: _heroSearchCtrl,
                 onSearch: (q) => _goToShop(search: q),
+                onProductSelected: (pid) => context.push('/product/$pid'),
                 onCta: () => _goToShop(),
               ),
 
-              // 3. Trust Strip
-              const _TrustStrip(),
+              // 3. Dynamic Trust Strip (reads settings.trust_items)
+              _TrustStrip(trustItems: _settings['trust_items']),
 
               const SizedBox(height: 22),
 
@@ -628,7 +914,10 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 28),
 
               // 13. FAQ Accordion (matches web HomeFaq)
-              _FaqSection(faqs: faqs),
+              _FaqSection(
+                faqs: faqs,
+                onTrackOrder: () => context.push('/track-order'),
+              ),
 
               const SizedBox(height: 28),
 
@@ -647,6 +936,16 @@ class _HomeScreenState extends State<HomeScreen> {
                 onSubmit: _subscribeNewsletter,
               ),
 
+              // 15. Expandable Regional SEO Editorial Block (matches web HomeSeoBlock.jsx)
+              if (seoEnabled) ...[
+                const SizedBox(height: 24),
+                _HomeSeoBlock(
+                  title: seoTitle,
+                  text: seoText,
+                  onSelectCategory: (cat) => _goToShop(category: cat),
+                ),
+              ],
+
               const SizedBox(height: 32),
             ],
           ),
@@ -664,6 +963,7 @@ class _EditorialHero extends StatelessWidget {
   final String ctaText;
   final TextEditingController searchCtrl;
   final ValueChanged<String> onSearch;
+  final ValueChanged<String>? onProductSelected;
   final VoidCallback onCta;
 
   const _EditorialHero({
@@ -674,6 +974,7 @@ class _EditorialHero extends StatelessWidget {
     required this.ctaText,
     required this.searchCtrl,
     required this.onSearch,
+    this.onProductSelected,
     required this.onCta,
   });
 
@@ -681,7 +982,7 @@ class _EditorialHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 335,
+      height: 360,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -705,7 +1006,7 @@ class _EditorialHero extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -744,29 +1045,13 @@ class _EditorialHero extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 14),
-                // Hero Search Bar (matches web Home.jsx SearchBar variant="hero")
-                SizedBox(
-                  height: 40,
-                  child: TextField(
-                    controller: searchCtrl,
-                    style: const TextStyle(fontSize: 13, color: AppColors.text),
-                    decoration: InputDecoration(
-                      hintText: 'Search for body creams, oils, scrubs…',
-                      hintStyle:
-                          const TextStyle(fontSize: 12.5, color: AppColors.muted),
-                      prefixIcon: const Icon(Icons.search,
-                          size: 18, color: AppColors.muted),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.95),
-                      contentPadding:
-                          const EdgeInsets.symmetric(horizontal: 12),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(6),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                    onSubmitted: onSearch,
-                  ),
+                // Hero Search Bar with live autocomplete & recent searches (matches web SearchBar variant="hero")
+                SearchAutocompleteField(
+                  controller: searchCtrl,
+                  isHeroVariant: true,
+                  hintText: 'Search for body creams, oils, scrubs…',
+                  onSubmitted: onSearch,
+                  onProductSelected: onProductSelected,
                 ),
                 const SizedBox(height: 14),
                 Row(
@@ -822,49 +1107,99 @@ class _EditorialHero extends StatelessWidget {
 }
 
 class _TrustStrip extends StatelessWidget {
-  const _TrustStrip();
+  final dynamic trustItems;
+  const _TrustStrip({this.trustItems});
+
+  static const List<Map<String, String>> _defaults = [
+    {'icon': '🚚', 'label': 'Free delivery', 'sub': 'Over GHS 200'},
+    {'icon': '✦', 'label': 'Handcrafted', 'sub': 'In small batches'},
+    {'icon': '↩', 'label': '7-day returns', 'sub': 'No questions asked'},
+    {'icon': '🔒', 'label': 'Secure checkout', 'sub': 'Paystack'},
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final items = <Map<String, String>>[];
+    if (trustItems is List) {
+      for (final raw in (trustItems as List)) {
+        if (raw is Map && raw['label'] != null) {
+          items.add({
+            'icon': (raw['icon'] ?? '✦').toString(),
+            'label': raw['label'].toString(),
+            'sub': (raw['sub'] ?? '').toString(),
+          });
+        }
+      }
+    }
+    final list = items.isNotEmpty ? items : _defaults;
+
     return Container(
       width: double.infinity,
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(bottom: BorderSide(color: AppColors.border, width: 1)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _TrustItem(icon: Icons.eco_outlined, label: '100% Natural'),
-          _TrustItem(icon: Icons.local_shipping_outlined, label: 'Nationwide'),
-          _TrustItem(icon: Icons.verified_user_outlined, label: 'Paystack Safe'),
-        ],
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      child: Wrap(
+        alignment: WrapAlignment.spaceAround,
+        spacing: 12,
+        runSpacing: 8,
+        children: list
+            .map(
+              (t) => _TrustItem(
+                iconText: t['icon'] ?? '✦',
+                label: t['label'] ?? '',
+                sub: t['sub'] ?? '',
+              ),
+            )
+            .toList(),
       ),
     );
   }
 }
 
 class _TrustItem extends StatelessWidget {
-  final IconData icon;
+  final String iconText;
   final String label;
+  final String sub;
 
-  const _TrustItem({required this.icon, required this.label});
+  const _TrustItem({
+    required this.iconText,
+    required this.label,
+    required this.sub,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: AppColors.accentDark),
-        const SizedBox(width: 6),
         Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w600,
-            color: AppColors.primary,
-          ),
+          iconText,
+          style: const TextStyle(fontSize: 15, color: AppColors.accentDark),
+        ),
+        const SizedBox(width: 6),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w700,
+                color: AppColors.primary,
+              ),
+            ),
+            if (sub.isNotEmpty)
+              Text(
+                sub,
+                style: const TextStyle(
+                  fontSize: 10,
+                  color: AppColors.muted,
+                ),
+              ),
+          ],
         ),
       ],
     );
@@ -1698,7 +2033,8 @@ class _TestimonialsSection extends StatelessWidget {
 
 class _FaqSection extends StatelessWidget {
   final List<Map<String, String>> faqs;
-  const _FaqSection({required this.faqs});
+  final VoidCallback onTrackOrder;
+  const _FaqSection({required this.faqs, required this.onTrackOrder});
 
   @override
   Widget build(BuildContext context) {
@@ -1758,6 +2094,149 @@ class _FaqSection extends StatelessWidget {
                     ),
                   )
                   .toList(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Center(
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 4,
+              children: [
+                const Text(
+                  'Already placed an order?',
+                  style: TextStyle(fontSize: 13, color: AppColors.muted),
+                ),
+                InkWell(
+                  onTap: onTrackOrder,
+                  child: const Text(
+                    'Track your order →',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.accentDark,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeSeoBlock extends StatefulWidget {
+  final String title;
+  final String text;
+  final ValueChanged<String> onSelectCategory;
+
+  const _HomeSeoBlock({
+    required this.title,
+    required this.text,
+    required this.onSelectCategory,
+  });
+
+  @override
+  State<_HomeSeoBlock> createState() => _HomeSeoBlockState();
+}
+
+class _HomeSeoBlockState extends State<_HomeSeoBlock> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            widget.title,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontFamily: 'serif',
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            widget.text,
+            maxLines: _expanded ? null : 3,
+            overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12.5,
+              color: AppColors.muted,
+              height: 1.5,
+            ),
+          ),
+          if (_expanded) ...[
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 10),
+            const Text(
+              'NATIONWIDE DELIVERY ACROSS GHANA',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.1,
+                color: AppColors.accentDark,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Greater Accra (East Legon, Osu, Cantonments, Tema, Spintex, Madina, Dansoman, Achimota) · Ashanti (Kumasi) · Western (Takoradi) · Central (Cape Coast) · Eastern (Koforidua) · Northern (Tamale) · Volta (Ho) · Bono (Sunyani).',
+              style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.45),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: [
+                'Body Cream',
+                'Body Butter',
+                'Body Oil',
+                'Body Scrub',
+                'Body Mask',
+              ]
+                  .map(
+                    (cat) => ActionChip(
+                      label: Text(
+                        cat,
+                        style: const TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                      backgroundColor: AppColors.blush,
+                      side: const BorderSide(color: AppColors.border),
+                      onPressed: () => widget.onSelectCategory(cat),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          const SizedBox(height: 8),
+          InkWell(
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Text(
+                _expanded ? 'Show Less ↑' : 'Read More ↓',
+                style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.accentDark,
+                ),
+              ),
             ),
           ),
         ],

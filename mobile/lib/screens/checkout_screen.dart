@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -46,6 +47,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressCtrl = TextEditingController();
   final _cityCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _notesCtrl = TextEditingController();
   final _couponCtrl = TextEditingController();
 
   String _selectedRegion = 'Greater Accra';
@@ -54,6 +56,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   bool _pickupEnabled = true;
   String _pickupLocation = 'East Legon, Accra (Call upon arrival)';
+  String _pickupHours = 'Mon–Sat, 9:00 AM – 6:00 PM';
   bool _podEnabled = false;
   bool _podAccraOnly = true;
 
@@ -62,10 +65,59 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Map<String, dynamic>? _appliedCoupon;
   double _discount = 0;
 
+  // Guest cart pre-flight validation state (matches web Checkout.jsx)
+  Map<String, dynamic>? _guestValidation;
+  bool _validatingGuestCart = false;
+  String? _validationFetchError;
+
+  // Pay-on-Delivery confirmation state (matches web Checkout.jsx podConfirmation)
+  Map<String, dynamic>? _podConfirmation;
+
   @override
   void initState() {
     super.initState();
+    final user = context.read<AuthProvider>().user;
+    if (user?.phone != null && user!.phone!.trim().isNotEmpty) {
+      _phoneCtrl.text = user.phone!.trim();
+    }
+    if (user?.address != null && user!.address!.trim().isNotEmpty) {
+      _addressCtrl.text = user.address!.trim();
+    }
     _loadStoreSettings();
+    _runGuestCartValidation();
+  }
+
+  Future<void> _runGuestCartValidation() async {
+    final auth = context.read<AuthProvider>();
+    final cart = context.read<CartProvider>();
+    if (auth.isLoggedIn || cart.items.isEmpty) return;
+
+    setState(() {
+      _validatingGuestCart = true;
+      _validationFetchError = null;
+    });
+    try {
+      final itemsPayload = cart.items
+          .map((i) => {
+                'product_id': i.productId,
+                'quantity': i.quantity,
+                'variant_id': i.variantId,
+              })
+          .toList();
+      final data = await ApiService.instance.validateGuestCart(itemsPayload);
+      if (!mounted) return;
+      setState(() {
+        _guestValidation = data;
+        _validatingGuestCart = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _validatingGuestCart = false;
+        _validationFetchError =
+            'Could not verify item availability. You can still try placing your order.';
+      });
+    }
   }
 
   Future<void> _loadStoreSettings() async {
@@ -82,6 +134,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         if (settings['pickup_location'] is String &&
             (settings['pickup_location'] as String).trim().isNotEmpty) {
           _pickupLocation = (settings['pickup_location'] as String).trim();
+        }
+        if (settings['pickup_hours'] is String &&
+            (settings['pickup_hours'] as String).trim().isNotEmpty) {
+          _pickupHours = (settings['pickup_hours'] as String).trim();
         }
         _podEnabled = _parseBool(settings['pay_on_delivery_enabled'], false);
         _podAccraOnly = _parseBool(settings['pay_on_delivery_accra_only'], true);
@@ -111,6 +167,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _addressCtrl.dispose();
     _cityCtrl.dispose();
     _phoneCtrl.dispose();
+    _notesCtrl.dispose();
     _couponCtrl.dispose();
     super.dispose();
   }
@@ -120,8 +177,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         isPickup: _fulfillmentMethod == 'pickup',
       );
 
-  double _total(CartProvider cart) {
-    final raw = cart.subtotal + _deliveryFee(cart) - _discount;
+  double _validatedSubtotal(CartProvider cart, bool isGuest) {
+    if (isGuest &&
+        _guestValidation != null &&
+        _guestValidation!['valid'] == true &&
+        _guestValidation!['items'] is List) {
+      double sum = 0;
+      for (final item in (_guestValidation!['items'] as List)) {
+        if (item is Map) {
+          sum += double.tryParse((item['subtotal'] ?? 0).toString()) ?? 0;
+        }
+      }
+      if (sum > 0) return sum;
+    }
+    return cart.subtotal;
+  }
+
+  double _total(CartProvider cart, bool isGuest) {
+    final raw =
+        _validatedSubtotal(cart, isGuest) + _deliveryFee(cart) - _discount;
     return raw < 0 ? 0 : raw;
   }
 
@@ -130,11 +204,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (code.isEmpty) return;
 
     final cart = context.read<CartProvider>();
+    final isGuest = !context.read<AuthProvider>().isLoggedIn;
     setState(() => _couponError = null);
     try {
       final data = await ApiService.instance.validateCoupon(
         code,
-        cart.subtotal + _deliveryFee(cart),
+        _validatedSubtotal(cart, isGuest) + _deliveryFee(cart),
       );
       setState(() {
         _appliedCoupon = data;
@@ -161,10 +236,24 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   Future<void> _placeOrder() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _placing = true);
-
     final auth = context.read<AuthProvider>();
     final isGuest = !auth.isLoggedIn;
+
+    if (isGuest &&
+        _guestValidation != null &&
+        _guestValidation!['valid'] == false) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Some items in your bag are unavailable. Please update your bag before proceeding.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _placing = true);
+
     final cart = context.read<CartProvider>();
     final isPickup = _fulfillmentMethod == 'pickup';
     final shippingAddress =
@@ -172,6 +261,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final shippingCity = isPickup ? 'Accra' : _cityCtrl.text.trim();
     final shippingRegion = isPickup ? 'Greater Accra' : _selectedRegion;
     final couponCode = _appliedCoupon != null ? _couponCtrl.text.trim() : null;
+    final notesText =
+        _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
+    final finalTotal = _total(cart, isGuest);
 
     try {
       Map<String, dynamic> order;
@@ -187,6 +279,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           deliveryFee: _deliveryFee(cart),
           fulfillmentMethod: _fulfillmentMethod,
           paymentMethod: _paymentMethod,
+          notes: notesText,
           couponCode: couponCode,
         );
         order = await ApiService.instance.createGuestOrder(guestPayload);
@@ -200,40 +293,42 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           paymentMethod: _paymentMethod,
           phone:
               _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+          notes: notesText,
           couponCode: couponCode,
         );
         order = await ApiService.instance.createOrder(payload);
       }
 
       final orderId = (order['orderId'] ?? order['id']).toString();
-      final orderNum = (order['orderNumber'] ?? orderId).toString();
+      final orderNum = (order['orderNumber'] ?? order['order_number'] ?? orderId).toString();
 
       if (_paymentMethod == 'pay_on_delivery') {
         if (!mounted) return;
         cart.clear();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Order $orderNum confirmed! Pay on ${isPickup ? 'pickup' : 'delivery'}.',
-            ),
-          ),
-        );
-        context.go(isGuest ? '/track-order' : '/orders');
+        setState(() {
+          _placing = false;
+          _podConfirmation = {
+            'orderId': orderId,
+            'orderNumber': orderNum,
+            'total': order['total'] ?? order['total_amount'] ?? finalTotal,
+            'fulfillment_method': _fulfillmentMethod,
+            'isGuest': isGuest,
+            'email': _emailCtrl.text.trim(),
+          };
+        });
         return;
       }
 
-      // Initialize payment (guest or authenticated) and navigate to payment WebView
+      final guestEmail = (order['email'] ?? _emailCtrl.text.trim()).toString();
       final payment = isGuest
           ? await ApiService.instance.initializeGuestPayment(
               orderId,
-              (order['email'] ?? _emailCtrl.text.trim()).toString(),
+              guestEmail,
             )
           : await ApiService.instance.initializePayment(orderId);
       final authUrl = payment['authorization_url'];
 
       if (authUrl is! String || !isSafePaystackCheckoutUrl(authUrl)) {
-        // Never navigate to an unexpected payment URL. The order is saved and
-        // can be paid later from the Orders / Track Order page.
         throw Exception(
           'Received an invalid payment link. Your order was saved — please pay from your Orders page.',
         );
@@ -241,7 +336,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       if (!mounted) return;
       cart.clear();
-      context.go('/payment', extra: {'url': authUrl, 'order_id': orderId});
+      context.go('/payment', extra: {
+        'url': authUrl,
+        'order_id': orderId,
+        'order_number': orderNum,
+        if (isGuest) 'guest_email': guestEmail,
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -259,12 +359,143 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Dedicated Pay-on-Delivery Confirmation View (matches web Checkout.jsx podConfirmation)
+    if (_podConfirmation != null) {
+      final orderNum = (_podConfirmation!['orderNumber'] ?? '').toString();
+      final totalDue = double.tryParse(
+              (_podConfirmation!['total'] ?? 0).toString()) ??
+          0;
+      final isPickup = _podConfirmation!['fulfillment_method'] == 'pickup';
+      final isGuest = _podConfirmation!['isGuest'] == true;
+      final orderId = (_podConfirmation!['orderId'] ?? '').toString();
+
+      return Scaffold(
+        appBar: AppBar(title: const Text('Order Confirmed')),
+        body: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: const BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.check,
+                          color: Colors.white, size: 30),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'ORDER CONFIRMED',
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.8,
+                        color: AppColors.accentDark,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Thank you!',
+                      style: Theme.of(context).textTheme.headlineMedium,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Order #$orderNum has been confirmed.',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: AppColors.muted),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Total due on ${isPickup ? 'pickup' : 'delivery'}: ${AppConfig.currencySymbol}${totalDue.toStringAsFixed(2)} (Cash or Mobile Money).',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    if (isPickup) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.blush,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Pickup Station',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(_pickupLocation),
+                            if (_pickupHours.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                'Hours: $_pickupHours',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.muted,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton(
+                        onPressed: () {
+                          if (!isGuest && orderId.isNotEmpty) {
+                            context.go('/order/$orderId');
+                          } else {
+                            context.go(
+                              '/track-order?order_number=${Uri.encodeComponent(orderNum)}',
+                            );
+                          }
+                        },
+                        child: Text(
+                            isGuest ? 'Track Your Order' : 'View Order Detail'),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: () => context.go('/shop'),
+                        child: const Text('Continue Shopping'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final auth = context.watch<AuthProvider>();
     final isGuest = !auth.isLoggedIn;
     final cart = context.watch<CartProvider>();
     final deliveryFee = _deliveryFee(cart);
-    final total = _total(cart);
+    final subtotal = _validatedSubtotal(cart, isGuest);
+    final total = _total(cart, isGuest);
     final isPickup = _fulfillmentMethod == 'pickup';
+    final hasInvalidGuestItems =
+        isGuest && _guestValidation != null && _guestValidation!['valid'] == false;
 
     return Scaffold(
       appBar: AppBar(
@@ -293,20 +524,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   children: [
                     const Expanded(
                       child: Text(
-                        'Checking out as a guest',
+                        'Checking out as guest. Sign in to track orders in your account.',
                         style: TextStyle(
-                            fontSize: 13.5, fontWeight: FontWeight.w600),
+                            fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                     ),
                     TextButton(
-                      onPressed: () => context.push('/login'),
-                      child: const Text('Log in instead'),
+                      onPressed: () =>
+                          context.push('/login?from=checkout'),
+                      child: const Text('Sign in'),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              Text('Contact Information',
+              Text('Your Details',
                   style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 10),
               Row(
@@ -324,10 +556,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   Expanded(
                     child: TextFormField(
                       controller: _lastNameCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Last Name *'),
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? 'Required' : null,
+                      decoration: const InputDecoration(
+                          labelText: 'Last Name (optional)'),
                     ),
                   ),
                 ],
@@ -347,7 +577,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               const SizedBox(height: 20),
             ],
 
-            Text('Delivery Method', style: Theme.of(context).textTheme.titleLarge),
+            Text('Delivery Method',
+                style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
 
             if (_pickupEnabled) ...[
@@ -356,12 +587,13 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 groupValue: _fulfillmentMethod,
                 title: const Text('Doorstep Delivery'),
                 subtitle: Text(
-                  'Accra: ${AppConfig.currencySymbol}${cart.deliveryFeeAccra.toStringAsFixed(0)} · Nationwide: ${AppConfig.currencySymbol}${cart.deliveryFeeFlat.toStringAsFixed(0)}',
+                  'Accra: ${AppConfig.currencySymbol}${cart.deliveryFeeAccra.toStringAsFixed(0)} · Nationwide: ${AppConfig.currencySymbol}${cart.deliveryFeeFlat.toStringAsFixed(0)}${cart.freeDeliveryOver > 0 ? ' (Free over ${AppConfig.currencySymbol}${cart.freeDeliveryOver.toStringAsFixed(0)})' : ''}',
                 ),
                 onChanged: (v) {
                   setState(() {
                     _fulfillmentMethod = v!;
-                    if (!_isPodEligible && _paymentMethod == 'pay_on_delivery') {
+                    if (!_isPodEligible &&
+                        _paymentMethod == 'pay_on_delivery') {
                       _paymentMethod = 'paystack';
                     }
                   });
@@ -370,23 +602,54 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               RadioListTile<String>(
                 value: 'pickup',
                 groupValue: _fulfillmentMethod,
-                title: const Text('Pickup Station (Free)'),
+                title: const Text('Pickup Station — Free'),
                 subtitle: Text(_pickupLocation),
                 onChanged: (v) => setState(() => _fulfillmentMethod = v!),
               ),
               const SizedBox(height: 12),
             ],
 
-            if (!isPickup) ...[
+            if (isPickup)
+              Container(
+                margin: const EdgeInsets.only(bottom: 14),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.blush,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Pickup Location',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(_pickupLocation),
+                    if (_pickupHours.isNotEmpty) ...[
+                      const SizedBox(height: 3),
+                      Text(
+                        'Pickup hours: $_pickupHours',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.muted),
+                      ),
+                    ],
+                  ],
+                ),
+              )
+            else ...[
               TextFormField(
                 controller: _addressCtrl,
                 decoration: const InputDecoration(
                   labelText: 'Street Address *',
+                  hintText: 'e.g. 12 Oxford Street',
                   prefixIcon: Icon(Icons.location_on_outlined),
                   border: OutlineInputBorder(),
                 ),
-                minLines: 2,
-                maxLines: 3,
+                minLines: 1,
+                maxLines: 2,
                 validator: (v) => v == null || v.trim().length < 3
                     ? 'Please enter your delivery address'
                     : null,
@@ -396,6 +659,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 controller: _cityCtrl,
                 decoration: const InputDecoration(
                   labelText: 'City *',
+                  hintText: 'e.g. Accra',
                   prefixIcon: Icon(Icons.location_city_outlined),
                   border: OutlineInputBorder(),
                 ),
@@ -418,7 +682,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   if (v == null) return;
                   setState(() {
                     _selectedRegion = v;
-                    if (!_isPodEligible && _paymentMethod == 'pay_on_delivery') {
+                    if (!_isPodEligible &&
+                        _paymentMethod == 'pay_on_delivery') {
                       _paymentMethod = 'paystack';
                     }
                   });
@@ -431,6 +696,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               controller: _phoneCtrl,
               decoration: const InputDecoration(
                 labelText: 'Phone Number *',
+                hintText: '+233 XX XXX XXXX',
                 prefixIcon: Icon(Icons.phone_outlined),
                 border: OutlineInputBorder(),
               ),
@@ -439,35 +705,51 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   ? 'Please enter your phone number'
                   : null,
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 12),
 
-            if (_podEnabled) ...[
-              Text('Payment Method', style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 4),
-              RadioListTile<String>(
-                value: 'paystack',
-                groupValue: _paymentMethod,
-                title: const Text('Pay Online (Paystack)'),
-                subtitle: const Text('MTN MoMo, Telecel Cash, Card & Bank'),
-                onChanged: (v) => setState(() => _paymentMethod = v!),
+            // Order Notes (matches web Checkout.jsx notes textarea)
+            TextFormField(
+              controller: _notesCtrl,
+              maxLines: 2,
+              decoration: InputDecoration(
+                labelText: 'Order notes (optional)',
+                hintText: isPickup
+                    ? 'Preferred pickup time or notes?'
+                    : 'Any special instructions for delivery?',
+                prefixIcon: const Icon(Icons.edit_note_outlined),
+                border: const OutlineInputBorder(),
               ),
+            ),
+            const SizedBox(height: 22),
+
+            Text('Payment Method',
+                style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            RadioListTile<String>(
+              value: 'paystack',
+              groupValue: _paymentMethod,
+              title: const Text('Pay Online (Paystack)'),
+              subtitle: const Text(
+                  'MTN MoMo, Telecel Cash, Cards & Bank Transfer'),
+              onChanged: (v) => setState(() => _paymentMethod = v!),
+            ),
+            if (_podEnabled)
               RadioListTile<String>(
                 value: 'pay_on_delivery',
                 groupValue: _paymentMethod,
                 title: Text(isPickup ? 'Pay on Pickup' : 'Pay on Delivery'),
                 subtitle: Text(
                   _isPodEligible
-                      ? 'Cash or Mobile Money on arrival'
-                      : 'Available for Greater Accra or Store Pickup only',
+                      ? 'Pay with Cash or Mobile Money when your order arrives'
+                      : 'Available for Greater Accra deliveries or Store Pickup only',
                 ),
                 onChanged: _isPodEligible
                     ? (v) => setState(() => _paymentMethod = v!)
                     : null,
               ),
-              const SizedBox(height: 16),
-            ],
+            const SizedBox(height: 16),
 
-            Text('Coupon Code', style: Theme.of(context).textTheme.titleMedium),
+            Text('Promo Code', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
             Row(
               children: [
@@ -475,7 +757,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                   child: TextFormField(
                     controller: _couponCtrl,
                     decoration: InputDecoration(
-                      hintText: 'Enter coupon code',
+                      hintText: 'Enter promo code',
                       errorText: _couponError,
                       border: const OutlineInputBorder(),
                     ),
@@ -502,40 +784,192 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 24),
 
-            // Order summary
-            Text('Order Summary', style: Theme.of(context).textTheme.titleLarge),
+            // Order summary with item thumbnails & guest validation status
+            Text('Your Order', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            ...cart.items.map((item) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Expanded(child: Text('${item.name} × ${item.quantity}')),
-                      Text('${AppConfig.currencySymbol}${item.subtotal.toStringAsFixed(2)}'),
-                    ],
-                  ),
-                )),
+            if (_validatingGuestCart)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'Checking item availability…',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                ),
+              ),
+            if (_validationFetchError != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  _validationFetchError!,
+                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+              ),
+            if (hasInvalidGuestItems)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                      color: AppColors.error.withValues(alpha: 0.3)),
+                ),
+                child: const Text(
+                  'Some items are unavailable. Remove them from your bag before proceeding.',
+                  style: TextStyle(fontSize: 12.5, color: AppColors.error),
+                ),
+              ),
+
+            ...cart.items.map((item) {
+              Map<String, dynamic>? vItem;
+              if (isGuest && _guestValidation?['items'] is List) {
+                for (final vi in (_guestValidation!['items'] as List)) {
+                  if (vi is Map<String, dynamic> &&
+                      vi['product_id'].toString() == item.productId &&
+                      (vi['variant_id']?.toString() ?? '') ==
+                          (item.variantId ?? '')) {
+                    vItem = vi;
+                    break;
+                  }
+                }
+              }
+              final unavailable = vItem != null && vItem['available'] == false;
+              final unitPrice = double.tryParse(
+                      (vItem?['price'] ?? item.price).toString()) ??
+                  item.price;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(
+                  children: [
+                    Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: SizedBox(
+                            width: 44,
+                            height: 44,
+                            child: item.imageUrl != null
+                                ? CachedNetworkImage(
+                                    imageUrl: item.imageUrl!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : const ColoredBox(
+                                    color: AppColors.blush,
+                                    child: Icon(Icons.spa_outlined,
+                                        size: 18, color: AppColors.accent),
+                                  ),
+                          ),
+                        ),
+                        Positioned(
+                          right: -5,
+                          top: -5,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 5, vertical: 1),
+                            decoration: const BoxDecoration(
+                              color: AppColors.primary,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${item.quantity}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            item.variantLabel != null &&
+                                    item.variantLabel!.isNotEmpty
+                                ? '${item.name} (${item.variantLabel})'
+                                : item.name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13.5,
+                              decoration: unavailable
+                                  ? TextDecoration.lineThrough
+                                  : null,
+                            ),
+                          ),
+                          if (unavailable && vItem['error'] != null)
+                            Text(
+                              vItem['error'].toString(),
+                              style: const TextStyle(
+                                fontSize: 11.5,
+                                color: AppColors.error,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '${AppConfig.currencySymbol}${(unitPrice * item.quantity).toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ],
+                ),
+              );
+            }),
             const Divider(),
-            _Row('Subtotal', cart.subtotal),
+            _Row('Subtotal', subtotal),
             _Row(isPickup ? 'Pickup Station' : 'Delivery Fee', deliveryFee),
-            if (_discount > 0) _Row('Discount', -_discount, color: Colors.green),
+            if (_discount > 0)
+              _Row('Discount', -_discount, color: AppColors.accentDark),
             const Divider(),
             _Row('Total', total, bold: true),
-            const SizedBox(height: 24),
+            const SizedBox(height: 20),
 
             FilledButton(
-              onPressed: _placing ? null : _placeOrder,
+              onPressed: (_placing ||
+                      _validatingGuestCart ||
+                      hasInvalidGuestItems)
+                  ? null
+                  : _placeOrder,
               child: _placing
                   ? const SizedBox(
                       height: 20,
                       width: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     )
                   : Text(
-                      _paymentMethod == 'pay_on_delivery'
-                          ? 'Place Order — ${AppConfig.currencySymbol}${total.toStringAsFixed(2)}'
-                          : 'Pay ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} with Paystack',
+                      _validatingGuestCart
+                          ? 'Checking availability…'
+                          : _paymentMethod == 'pay_on_delivery'
+                              ? 'Place Order — ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} (${isPickup ? 'Pay on Pickup' : 'Pay on Delivery'})'
+                              : 'Pay ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} with Paystack',
                     ),
             ),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.lock_outline,
+                    size: 14, color: AppColors.muted),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    _paymentMethod == 'pay_on_delivery'
+                        ? 'Your order will be confirmed immediately. Pay in cash or Mobile Money upon receipt.'
+                        : "Secured by Paystack — cards, Mobile Money, and bank transfers accepted.",
+                    textAlign: TextAlign.center,
+                    style:
+                        const TextStyle(fontSize: 11.5, color: AppColors.muted),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
           ],
         ),
       ),

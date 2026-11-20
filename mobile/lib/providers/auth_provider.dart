@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../models/user.dart';
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 
 enum AuthStatus { unknown, authenticated, unauthenticated }
@@ -10,10 +11,14 @@ class AuthProvider extends ChangeNotifier {
   AuthStatus _status = AuthStatus.unknown;
   User? _user;
   String? _error;
+  int? _lastStatusCode;
+  int? _lastRetryAfter;
 
   AuthStatus get status => _status;
   User? get user => _user;
   String? get error => _error;
+  int? get lastStatusCode => _lastStatusCode;
+  int? get lastRetryAfter => _lastRetryAfter;
   bool get isLoggedIn => _status == AuthStatus.authenticated;
 
   // Called once at app start to restore session from secure storage.
@@ -35,11 +40,19 @@ class AuthProvider extends ChangeNotifier {
 
   Future<bool> login(String email, String password) async {
     _error = null;
+    _lastStatusCode = null;
+    _lastRetryAfter = null;
     try {
       _user = await _auth.login(email, password);
       _status = AuthStatus.authenticated;
       notifyListeners();
       return true;
+    } on ApiException catch (e) {
+      _lastStatusCode = e.statusCode;
+      _lastRetryAfter = e.retryAfter;
+      _error = e.message;
+      notifyListeners();
+      return false;
     } on Exception catch (e) {
       _error = e.toString().replaceFirst(RegExp(r'ApiException\(\d+\):\s*'), '');
       notifyListeners();
@@ -55,6 +68,8 @@ class AuthProvider extends ChangeNotifier {
     String? phone,
   }) async {
     _error = null;
+    _lastStatusCode = null;
+    _lastRetryAfter = null;
     try {
       _user = await _auth.register(
         firstName: firstName,
@@ -66,6 +81,12 @@ class AuthProvider extends ChangeNotifier {
       _status = AuthStatus.authenticated;
       notifyListeners();
       return true;
+    } on ApiException catch (e) {
+      _lastStatusCode = e.statusCode;
+      _lastRetryAfter = e.retryAfter;
+      _error = e.message;
+      notifyListeners();
+      return false;
     } on Exception catch (e) {
       _error = e.toString().replaceFirst(RegExp(r'ApiException\(\d+\):\s*'), '');
       notifyListeners();

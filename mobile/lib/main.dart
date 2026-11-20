@@ -37,7 +37,7 @@ class CosmeticsApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()..init()),
-        ChangeNotifierProvider(create: (_) => CartProvider()),
+        ChangeNotifierProvider(create: (_) => CartProvider()..init()),
         ChangeNotifierProvider(create: (_) => WishlistProvider()..init()),
       ],
       child: Builder(builder: (ctx) {
@@ -56,8 +56,6 @@ class CosmeticsApp extends StatelessWidget {
 GoRouter _buildRouter(BuildContext ctx) {
   return GoRouter(
     initialLocation: '/',
-    // Redirect unauthenticated users away from account-only routes.
-    // Note: /checkout is intentionally public so Guest Checkout works just like web!
     redirect: (context, state) {
       final auth = context.read<AuthProvider>();
       final isAuth = auth.isLoggedIn;
@@ -65,9 +63,6 @@ GoRouter _buildRouter(BuildContext ctx) {
 
       if (isInitializing) return null;
 
-      // Only /profile/edit requires authentication redirect; /orders and /account
-      // render their own signed-out views inside the bottom-nav shell so tapping
-      // a bottom tab never traps the user on /login.
       final protectedRoutes = ['/profile/edit'];
       final isProtected =
           protectedRoutes.any((r) => state.matchedLocation.startsWith(r));
@@ -117,7 +112,9 @@ GoRouter _buildRouter(BuildContext ctx) {
       ),
       GoRoute(
         path: '/track-order',
-        builder: (_, __) => const TrackOrderScreen(),
+        builder: (_, state) => TrackOrderScreen(
+          initialOrderNumber: state.uri.queryParameters['order_number'],
+        ),
       ),
       GoRoute(
         path: '/profile/edit',
@@ -134,6 +131,8 @@ GoRouter _buildRouter(BuildContext ctx) {
           return PaymentScreen(
             paymentUrl: extra['url'] as String,
             orderId: extra['order_id'] as String,
+            orderNumber: extra['order_number'] as String?,
+            guestEmail: extra['guest_email'] as String?,
           );
         },
       ),
@@ -149,11 +148,15 @@ GoRouter _buildRouter(BuildContext ctx) {
       ),
       GoRoute(
         path: '/login',
-        builder: (_, __) => const LoginScreen(),
+        builder: (_, state) => LoginScreen(
+          isCheckoutRedirect: state.uri.queryParameters['from'] == 'checkout',
+        ),
       ),
       GoRoute(
         path: '/register',
-        builder: (_, __) => const RegisterScreen(),
+        builder: (_, state) => RegisterScreen(
+          isCheckoutRedirect: state.uri.queryParameters['from'] == 'checkout',
+        ),
       ),
     ],
   );

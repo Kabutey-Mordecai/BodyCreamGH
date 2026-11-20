@@ -64,7 +64,7 @@ class CartScreen extends StatelessWidget {
                     const SizedBox(height: 20),
                     FilledButton(
                       onPressed: () => context.go('/shop'),
-                      child: const Text('Browse Collection'),
+                      child: const Text('Browse Products'),
                     ),
                   ],
                 ),
@@ -72,6 +72,37 @@ class CartScreen extends StatelessWidget {
             )
           : Column(
               children: [
+                // Merge error banner if any item failed to sync on login
+                if (cart.mergeError != null)
+                  Container(
+                    width: double.infinity,
+                    color: const Color(0xFFFEF3C7),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.warning_amber_rounded,
+                            size: 16, color: Color(0xFF92400E)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            cart.mergeError!,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF92400E),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 16),
+                          onPressed: cart.clearMergeError,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+                  ),
+
                 // Free delivery progress bar (matches web Cart)
                 if (cart.freeDeliveryOver > 0)
                   Container(
@@ -104,48 +135,66 @@ class CartScreen extends StatelessWidget {
                           padding: const EdgeInsets.all(12),
                           child: Row(
                             children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: SizedBox(
-                                  width: 64,
-                                  height: 64,
-                                  child: item.imageUrl != null
-                                      ? CachedNetworkImage(
-                                          imageUrl: item.imageUrl!,
-                                          fit: BoxFit.cover,
-                                        )
-                                      : const ColoredBox(
-                                          color: AppColors.blush,
-                                          child: Icon(Icons.spa_outlined,
-                                              color: AppColors.accent),
-                                        ),
+                              GestureDetector(
+                                onTap: () =>
+                                    context.push('/product/${item.productId}'),
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: SizedBox(
+                                    width: 64,
+                                    height: 64,
+                                    child: item.imageUrl != null
+                                        ? CachedNetworkImage(
+                                            imageUrl: item.imageUrl!,
+                                            fit: BoxFit.cover,
+                                          )
+                                        : const ColoredBox(
+                                            color: AppColors.blush,
+                                            child: Icon(Icons.spa_outlined,
+                                                color: AppColors.accent),
+                                          ),
+                                  ),
                                 ),
                               ),
                               const SizedBox(width: 12),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.variantLabel != null &&
-                                              item.variantLabel!.isNotEmpty
-                                          ? '${item.name} (${item.variantLabel})'
-                                          : item.name,
-                                      style: const TextStyle(
-                                        fontFamily: 'serif',
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
+                                child: GestureDetector(
+                                  onTap: () => context
+                                      .push('/product/${item.productId}'),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.variantLabel != null &&
+                                                item.variantLabel!.isNotEmpty
+                                            ? '${item.name} (${item.variantLabel})'
+                                            : item.name,
+                                        style: const TextStyle(
+                                          fontFamily: 'serif',
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      '${AppConfig.currencySymbol}${item.price.toStringAsFixed(2)} each',
-                                      style: const TextStyle(
-                                        color: AppColors.muted,
-                                        fontSize: 12.5,
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        '${AppConfig.currencySymbol}${item.price.toStringAsFixed(2)} each',
+                                        style: const TextStyle(
+                                          color: AppColors.muted,
+                                          fontSize: 12,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '${AppConfig.currencySymbol}${item.subtotal.toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          color: AppColors.primary,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
                               Row(
@@ -175,6 +224,7 @@ class CartScreen extends StatelessWidget {
                                   IconButton(
                                     icon: const Icon(Icons.delete_outline,
                                         color: AppColors.error, size: 20),
+                                    tooltip: 'Remove',
                                     onPressed: () => cart.remove(
                                       item.productId,
                                       variantId: item.variantId,
@@ -190,9 +240,9 @@ class CartScreen extends StatelessWidget {
                   ),
                 ),
 
-                // Order summary footer
+                // Order summary footer + Continue Shopping + Trust Badges (matches web Cart.jsx)
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                   decoration: const BoxDecoration(
                     color: AppColors.surface,
                     border: Border(top: BorderSide(color: AppColors.border)),
@@ -201,27 +251,45 @@ class CartScreen extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _SummaryRow('Subtotal',
-                            '${AppConfig.currencySymbol}${cart.subtotal.toStringAsFixed(2)}'),
                         _SummaryRow(
-                          'Estimated Delivery',
-                          cart.deliveryFee == 0
-                              ? 'Free'
-                              : '${AppConfig.currencySymbol}${cart.deliveryFee.toStringAsFixed(2)}',
+                          'Subtotal (${cart.itemCount})',
+                          '${AppConfig.currencySymbol}${cart.subtotal.toStringAsFixed(2)}',
+                        ),
+                        const _SummaryRow(
+                          'Delivery',
+                          'Calculated at checkout',
                         ),
                         const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
+                          padding: EdgeInsets.symmetric(vertical: 6),
                           child: Divider(),
                         ),
                         _SummaryRow(
                           'Total',
-                          '${AppConfig.currencySymbol}${cart.total.toStringAsFixed(2)}',
+                          '${AppConfig.currencySymbol}${cart.subtotal.toStringAsFixed(2)}+',
                           bold: true,
                         ),
-                        const SizedBox(height: 14),
+                        const SizedBox(height: 12),
                         FilledButton(
                           onPressed: () => context.push('/checkout'),
                           child: const Text('Proceed to Checkout'),
+                        ),
+                        const SizedBox(height: 6),
+                        Center(
+                          child: TextButton(
+                            onPressed: () => context.go('/shop'),
+                            child: const Text('← Continue Shopping'),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        const Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            _CartTrustItem(
+                                icon: '🔒', label: 'Secure Paystack'),
+                            _CartTrustItem(
+                                icon: '🚚', label: 'Nationwide delivery'),
+                            _CartTrustItem(icon: '↩', label: '7-day returns'),
+                          ],
                         ),
                       ],
                     ),
@@ -229,6 +297,31 @@ class CartScreen extends StatelessWidget {
                 ),
               ],
             ),
+    );
+  }
+}
+
+class _CartTrustItem extends StatelessWidget {
+  final String icon;
+  final String label;
+  const _CartTrustItem({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(icon, style: const TextStyle(fontSize: 12)),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.muted,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/wishlist_provider.dart';
 import '../theme/app_theme.dart';
+import '../utils/whatsapp_helper.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -81,6 +82,8 @@ class AccountScreen extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(height: 16),
+            const _StoreSupportAndPaymentsCard(),
           ],
         ),
       );
@@ -193,7 +196,7 @@ class AccountScreen extends StatelessWidget {
           const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.person_outline),
-            title: const Text('Edit Profile'),
+            title: const Text('Edit Profile & Password'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => context.push('/profile/edit'),
           ),
@@ -210,7 +213,133 @@ class AccountScreen extends StatelessWidget {
               title: const Text('Default Address'),
               subtitle: Text(user.address!),
             ),
+
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: _StoreSupportAndPaymentsCard(),
+          ),
         ],
+      ),
+    );
+  }
+}
+
+/// Mirrors Web Footer.jsx contact details, social links & payment badges
+class _StoreSupportAndPaymentsCard extends StatelessWidget {
+  const _StoreSupportAndPaymentsCard();
+
+  static const _paymentBadges = [
+    '🔒 Paystack',
+    '📱 MTN MoMo',
+    '💳 Visa / Mastercard',
+    '🏪 Pickup Station',
+    '💵 Pay on Delivery',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'CUSTOMER SUPPORT & CONTACT',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.5,
+                color: AppColors.accentDark,
+              ),
+            ),
+            const SizedBox(height: 10),
+            const Row(
+              children: [
+                Icon(Icons.place_outlined, size: 16, color: AppColors.muted),
+                SizedBox(width: 8),
+                Text('Accra, Ghana', style: TextStyle(fontSize: 13)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () => WhatsAppHelper.openUrl('tel:+233245852804'),
+              child: const Row(
+                children: [
+                  Icon(Icons.phone_outlined,
+                      size: 16, color: AppColors.accentDark),
+                  SizedBox(width: 8),
+                  Text(
+                    '+233 24 585 2804',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () =>
+                  WhatsAppHelper.openUrl('mailto:hello@bodycreamgh.com'),
+              child: const Row(
+                children: [
+                  Icon(Icons.email_outlined,
+                      size: 16, color: AppColors.accentDark),
+                  SizedBox(width: 8),
+                  Text(
+                    'hello@bodycreamgh.com',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 10),
+            const Text(
+              'ACCEPTED PAYMENT & DELIVERY METHODS',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+                color: AppColors.muted,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _paymentBadges
+                  .map(
+                    (b) => Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppColors.blush,
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Text(
+                        b,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ),
       ),
     );
   }

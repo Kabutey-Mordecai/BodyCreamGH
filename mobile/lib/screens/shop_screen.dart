@@ -7,6 +7,7 @@ import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/cart_badge.dart';
 import '../widgets/product_card.dart';
+import '../widgets/search_autocomplete_field.dart';
 
 class ShopScreen extends StatefulWidget {
   final String? initialCategory;
@@ -23,16 +24,29 @@ class ShopScreen extends StatefulWidget {
 }
 
 class _ShopScreenState extends State<ShopScreen> {
+  static const int _pageLimit = 12;
+
   final _searchCtrl = TextEditingController();
   List<Product> _products = [];
+  int _total = 0;
+  int _page = 1;
   bool _loading = true;
   String? _selectedCategory;
-  String _sortBy = 'newest'; // newest | price_asc | price_desc | rating
+  String _sortBy = 'newest'; // newest | price_low | price_high | name_asc | top_rated
   bool _inStockOnly = false;
   bool _onSaleOnly = false;
+  String _minPrice = '';
+  String _maxPrice = '';
 
   List<String> get _categories {
-    final set = <String>{'All'};
+    final set = <String>{
+      'All',
+      'Body Cream',
+      'Body Butter',
+      'Body Oil',
+      'Body Scrub',
+      'Body Mask',
+    };
     if (_selectedCategory != null && _selectedCategory!.trim().isNotEmpty) {
       set.add(_selectedCategory!.trim());
     }
@@ -66,10 +80,12 @@ class _ShopScreenState extends State<ShopScreen> {
           (widget.initialCategory != null && widget.initialCategory!.isNotEmpty)
               ? widget.initialCategory
               : null;
+      _page = 1;
       changed = true;
     }
     if (widget.initialSearch != oldWidget.initialSearch) {
       _searchCtrl.text = widget.initialSearch ?? '';
+      _page = 1;
       changed = true;
     }
     if (changed) _fetch();
@@ -84,16 +100,31 @@ class _ShopScreenState extends State<ShopScreen> {
   Future<void> _fetch() async {
     setState(() => _loading = true);
     try {
-      final raw = await ApiService.instance.getProducts(
-        search: _searchCtrl.text.trim(),
-        limit: 100,
+      final res = await ApiService.instance.getProductsWithMeta(
+        page: _page,
+        limit: _pageLimit,
+        offset: (_page - 1) * _pageLimit,
+        category: (_selectedCategory != null && _selectedCategory != 'All')
+            ? _selectedCategory
+            : null,
+        search: _searchCtrl.text.trim().isNotEmpty
+            ? _searchCtrl.text.trim()
+            : null,
+        sort: _sortBy,
+        minPrice: _minPrice.isNotEmpty ? _minPrice : null,
+        maxPrice: _maxPrice.isNotEmpty ? _maxPrice : null,
+        inStock: _inStockOnly ? true : null,
+        onSale: _onSaleOnly ? true : null,
       );
+      final raw = res['products'] as List<dynamic>? ?? [];
+      final total = res['total'] as int? ?? raw.length;
       if (mounted) {
         setState(() {
           _products = raw
               .whereType<Map<String, dynamic>>()
               .map(Product.fromJson)
               .toList();
+          _total = total;
           _loading = false;
         });
       }
@@ -112,17 +143,24 @@ class _ShopScreenState extends State<ShopScreen> {
       }
       if (_inStockOnly && !p.inStock) return false;
       if (_onSaleOnly && !p.isOnSale) return false;
+      final minP = double.tryParse(_minPrice);
+      final maxP = double.tryParse(_maxPrice);
+      if (minP != null && p.price < minP) return false;
+      if (maxP != null && p.price > maxP) return false;
       return true;
     }).toList();
 
     switch (_sortBy) {
-      case 'price_asc':
+      case 'price_low':
         list.sort((a, b) => a.price.compareTo(b.price));
         break;
-      case 'price_desc':
+      case 'price_high':
         list.sort((a, b) => b.price.compareTo(a.price));
         break;
-      case 'rating':
+      case 'name_asc':
+        list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        break;
+      case 'top_rated':
         list.sort(
           (a, b) => (b.averageRating ?? 0).compareTo(a.averageRating ?? 0),
         );
@@ -133,11 +171,14 @@ class _ShopScreenState extends State<ShopScreen> {
     return list;
   }
 
+  bool get _hasPriceFilter => _minPrice.isNotEmpty || _maxPrice.isNotEmpty;
+
   bool get _hasActiveFilters =>
       _selectedCategory != null ||
       _searchCtrl.text.trim().isNotEmpty ||
       _inStockOnly ||
       _onSaleOnly ||
+      _hasPriceFilter ||
       _sortBy != 'newest';
 
   void _clearFilters() {
@@ -146,14 +187,112 @@ class _ShopScreenState extends State<ShopScreen> {
       _selectedCategory = null;
       _inStockOnly = false;
       _onSaleOnly = false;
+      _minPrice = '';
+      _maxPrice = '';
       _sortBy = 'newest';
+      _page = 1;
     });
     _fetch();
+  }
+
+  Future<void> _openPriceFilterSheet() async {
+    final minCtrl = TextEditingController(text: _minPrice);
+    final maxCtrl = TextEditingController(text: _maxPrice);
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          MediaQuery.of(ctx).viewInsets.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Filter by Price (GH₵)',
+              style: Theme.of(ctx).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: minCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Min Price',
+                      hintText: '0',
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 10),
+                  child: Text('–'),
+                ),
+                Expanded(
+                  child: TextField(
+                    controller: maxCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: 'Max Price',
+                      hintText: '500',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _minPrice = '';
+                        _maxPrice = '';
+                        _page = 1;
+                      });
+                      _fetch();
+                    },
+                    child: const Text('Clear'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _minPrice = minCtrl.text.trim();
+                        _maxPrice = maxCtrl.text.trim();
+                        _page = 1;
+                      });
+                      _fetch();
+                    },
+                    child: const Text('Apply Price'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final visible = _visibleProducts;
+    final totalPages = (_total / _pageLimit).ceil().clamp(1, 999);
 
     return Scaffold(
       appBar: AppBar(
@@ -169,27 +308,21 @@ class _ShopScreenState extends State<ShopScreen> {
       ),
       body: Column(
         children: [
-          // Search input
+          // Search input with live autocomplete & recent searches (matches web SearchBar.jsx)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
-            child: TextField(
+            child: SearchAutocompleteField(
               controller: _searchCtrl,
-              decoration: InputDecoration(
-                hintText: 'Search shea butter, oils, masks...',
-                prefixIcon: const Icon(Icons.search, size: 20),
-                suffixIcon: _searchCtrl.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
-                        onPressed: () {
-                          _searchCtrl.clear();
-                          _fetch();
-                        },
-                      )
-                    : null,
-                isDense: true,
-              ),
-              onChanged: (_) => setState(() {}),
-              onSubmitted: (_) => _fetch(),
+              hintText: 'Search products by name, collection, ingredients…',
+              onSubmitted: (_) {
+                setState(() => _page = 1);
+                _fetch();
+              },
+              onProductSelected: (pid) => context.push('/product/$pid'),
+              onClear: () {
+                setState(() => _page = 1);
+                _fetch();
+              },
             ),
           ),
 
@@ -217,9 +350,11 @@ class _ShopScreenState extends State<ShopScreen> {
                   ),
                   selected: selected,
                   onSelected: (_) {
-                    setState(
-                      () => _selectedCategory = cat == 'All' ? null : cat,
-                    );
+                    setState(() {
+                      _selectedCategory = cat == 'All' ? null : cat;
+                      _page = 1;
+                    });
+                    _fetch();
                   },
                 );
               },
@@ -229,75 +364,116 @@ class _ShopScreenState extends State<ShopScreen> {
           // Sort & secondary filter bar (matches web Shop toolbar)
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
-            child: Row(
-              children: [
-                FilterChip(
-                  showCheckmark: false,
-                  label: Text(
-                    'In Stock',
-                    style: TextStyle(
-                      color: _inStockOnly ? Colors.white : AppColors.text,
-                      fontWeight:
-                          _inStockOnly ? FontWeight.w700 : FontWeight.w500,
-                      fontSize: 12,
-                    ),
-                  ),
-                  selected: _inStockOnly,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (v) => setState(() => _inStockOnly = v),
-                ),
-                const SizedBox(width: 6),
-                FilterChip(
-                  showCheckmark: false,
-                  label: Text(
-                    'On Sale',
-                    style: TextStyle(
-                      color: _onSaleOnly ? Colors.white : AppColors.text,
-                      fontWeight:
-                          _onSaleOnly ? FontWeight.w700 : FontWeight.w500,
-                      fontSize: 12,
-                    ),
-                  ),
-                  selected: _onSaleOnly,
-                  visualDensity: VisualDensity.compact,
-                  onSelected: (v) => setState(() => _onSaleOnly = v),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _sortBy,
-                      isDense: true,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  FilterChip(
+                    showCheckmark: false,
+                    label: Text(
+                      'In Stock',
+                      style: TextStyle(
+                        color: _inStockOnly ? Colors.white : AppColors.text,
+                        fontWeight:
+                            _inStockOnly ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 12,
                       ),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'newest', child: Text('Sort: Featured')),
-                        DropdownMenuItem(
-                            value: 'price_asc',
-                            child: Text('Price: Low to High')),
-                        DropdownMenuItem(
-                            value: 'price_desc',
-                            child: Text('Price: High to Low')),
-                        DropdownMenuItem(
-                            value: 'rating', child: Text('Top Rated')),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) setState(() => _sortBy = v);
-                      },
+                    ),
+                    selected: _inStockOnly,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (v) {
+                      setState(() {
+                        _inStockOnly = v;
+                        _page = 1;
+                      });
+                      _fetch();
+                    },
+                  ),
+                  const SizedBox(width: 6),
+                  FilterChip(
+                    showCheckmark: false,
+                    label: Text(
+                      'On Sale',
+                      style: TextStyle(
+                        color: _onSaleOnly ? Colors.white : AppColors.text,
+                        fontWeight:
+                            _onSaleOnly ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 12,
+                      ),
+                    ),
+                    selected: _onSaleOnly,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (v) {
+                      setState(() {
+                        _onSaleOnly = v;
+                        _page = 1;
+                      });
+                      _fetch();
+                    },
+                  ),
+                  const SizedBox(width: 6),
+                  FilterChip(
+                    showCheckmark: false,
+                    label: Text(
+                      _hasPriceFilter
+                          ? 'GH₵${_minPrice.isEmpty ? '0' : _minPrice}–${_maxPrice.isEmpty ? '∞' : _maxPrice}'
+                          : 'Price Range',
+                      style: TextStyle(
+                        color: _hasPriceFilter ? Colors.white : AppColors.text,
+                        fontWeight:
+                            _hasPriceFilter ? FontWeight.w700 : FontWeight.w500,
+                        fontSize: 12,
+                      ),
+                    ),
+                    selected: _hasPriceFilter,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => _openPriceFilterSheet(),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _sortBy,
+                        isDense: true,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                        items: const [
+                          DropdownMenuItem(
+                              value: 'newest', child: Text('Newest first')),
+                          DropdownMenuItem(
+                              value: 'price_low',
+                              child: Text('Price: low → high')),
+                          DropdownMenuItem(
+                              value: 'price_high',
+                              child: Text('Price: high → low')),
+                          DropdownMenuItem(
+                              value: 'name_asc', child: Text('Name: A–Z')),
+                          DropdownMenuItem(
+                              value: 'top_rated', child: Text('Top rated')),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) {
+                            setState(() {
+                              _sortBy = v;
+                              _page = 1;
+                            });
+                            _fetch();
+                          }
+                        },
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
@@ -308,7 +484,7 @@ class _ShopScreenState extends State<ShopScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Showing ${visible.length} product${visible.length == 1 ? '' : 's'}',
+                  'Showing ${visible.length} of ${_total > visible.length ? _total : visible.length} product${visible.length == 1 ? '' : 's'}',
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
                 ),
                 if (_hasActiveFilters)
@@ -327,7 +503,7 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
           ),
 
-          // Product grid
+          // Product grid + Pagination bar
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -351,37 +527,90 @@ class _ShopScreenState extends State<ShopScreen> {
                     : RefreshIndicator(
                         onRefresh: _fetch,
                         color: AppColors.accent,
-                        child: GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
-                          gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.59,
-                            crossAxisSpacing: 10,
-                            mainAxisSpacing: 12,
-                          ),
-                          itemCount: visible.length,
-                          itemBuilder: (_, i) {
-                            final p = visible[i];
-                            return ProductCard(
-                              product: p,
-                              heroPrefix: 'shop',
-                              onTap: () => context.push('/product/${p.id}'),
-                              onAddToCart: p.inStock
-                                  ? () {
-                                      context.read<CartProvider>().add(p);
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content:
-                                              Text('${p.name} added to cart'),
-                                          duration: const Duration(seconds: 2),
+                        child: CustomScrollView(
+                          slivers: [
+                            SliverPadding(
+                              padding: const EdgeInsets.fromLTRB(14, 8, 14, 16),
+                              sliver: SliverGrid(
+                                gridDelegate:
+                                    const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  childAspectRatio: 0.56,
+                                  crossAxisSpacing: 10,
+                                  mainAxisSpacing: 12,
+                                ),
+                                delegate: SliverChildBuilderDelegate(
+                                  (_, i) {
+                                    final p = visible[i];
+                                    return ProductCard(
+                                      product: p,
+                                      heroPrefix: 'shop',
+                                      onTap: () =>
+                                          context.push('/product/${p.id}'),
+                                      onAddToCart: p.inStock
+                                          ? () {
+                                              context
+                                                  .read<CartProvider>()
+                                                  .add(p);
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                      '${p.name} added to cart'),
+                                                  duration: const Duration(
+                                                      seconds: 2),
+                                                ),
+                                              );
+                                            }
+                                          : null,
+                                    );
+                                  },
+                                  childCount: visible.length,
+                                ),
+                              ),
+                            ),
+                            if (totalPages > 1)
+                              SliverToBoxAdapter(
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      OutlinedButton(
+                                        onPressed: _page > 1
+                                            ? () {
+                                                setState(() => _page--);
+                                                _fetch();
+                                              }
+                                            : null,
+                                        child: const Text('← Prev'),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 14),
+                                        child: Text(
+                                          'Page $_page of $totalPages',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                          ),
                                         ),
-                                      );
-                                    }
-                                  : null,
-                            );
-                          },
+                                      ),
+                                      OutlinedButton(
+                                        onPressed: _page < totalPages
+                                            ? () {
+                                                setState(() => _page++);
+                                                _fetch();
+                                              }
+                                            : null,
+                                        child: const Text('Next →'),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
           ),
