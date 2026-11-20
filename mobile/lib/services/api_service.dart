@@ -547,9 +547,10 @@ class ApiService {
 
   Future<Map<String, dynamic>> verifyPayment(String reference) async {
     final token = await getAccessToken();
-    final res = await _client.get(
-      _uri('/payments/verify/${Uri.encodeComponent(reference)}'),
+    final res = await _client.post(
+      _uri('/payments/verify'),
       headers: _headers(token: token),
+      body: jsonEncode({'reference': reference.trim()}),
     );
     if (res.statusCode == 202) {
       Map<String, dynamic> body = {};
