@@ -29,64 +29,208 @@ const DISPUTE_EVENTS = new Set([
   'charge.dispute.resolve',
 ]);
 
+// ── Initialize payment (shared helpers) ───────────────────────────────────────
+// An open Paystack transaction for an order is reused for a short window instead
+// of minting a new reference on every init call. Older references are never
+// marked abandoned/failed here: the customer may still pay on an old tab, and
+// verifyPayment / the webhook / duplicate-payment detection must keep working.
+const REUSE_WINDOW_MINUTES = 30;
+const REUSE_COLUMNS = ['authorization_url', 'access_code', 'currency'];
+const REUSE_COLUMN_NEGATIVE_TTL_MS = 60 * 1000;
+const reuseColumnCache = { present: null, checkedAt: 0 };
+
+// Test hook: forget the cached "do the reuse columns exist" answer.
+function _resetReuseColumnCache() {
+  reuseColumnCache.present = null;
+  reuseColumnCache.checkedAt = 0;
+}
+
+// The reuse columns come from migration 033. Until it is applied we fall back to
+// the previous behaviour (always create a new transaction) instead of failing.
+async function hasReuseColumns(client) {
+  const now = Date.now();
+  if (reuseColumnCache.present === true) return true;
+  if (reuseColumnCache.present === false && now - reuseColumnCache.checkedAt < REUSE_COLUMN_NEGATIVE_TTL_MS) {
+    return false;
+  }
+  const { rows } = await client.query(
+    `SELECT column_name FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'payments'
+        AND column_name = ANY($1::text[])`,
+    [REUSE_COLUMNS]
+  );
+  reuseColumnCache.present = rows.length === REUSE_COLUMNS.length;
+  reuseColumnCache.checkedAt = now;
+  return reuseColumnCache.present;
+}
+
+function toPesewas(order) {
+  return Math.round(parseFloat(order.total_amount) * 100);
+}
+
+// Shared eligibility checks for authenticated and guest init (same order and
+// messages as before). Returns { status, error } or null when payable.
+function getInitError(order) {
+  if (order.payment_method && order.payment_method !== 'paystack') {
+    return { status: 400, error: 'This order is not configured for Paystack payment' };
+  }
+  if (!ELIGIBLE_INIT_ORDER_STATUSES.has(order.status)) {
+    return { status: 400, error: `Cannot initialize payment for order with status "${order.status}"` };
+  }
+  if (order.payment_status === 'paid') {
+    return { status: 400, error: 'Order already paid' };
+  }
+  if (!PAYABLE_STATUSES.has(order.payment_status)) {
+    return { status: 400, error: `Cannot initialize payment when payment status is "${order.payment_status}"` };
+  }
+  const amountPesewas = toPesewas(order);
+  if (!Number.isFinite(amountPesewas) || amountPesewas <= 0) {
+    return { status: 400, error: 'Order total must be greater than zero for Paystack payment' };
+  }
+  return null;
+}
+
+function isPaystackCheckoutUrl(url) {
+  try {
+    return new URL(url).origin === 'https://checkout.paystack.com';
+  } catch {
+    return false;
+  }
+}
+
+// Newest pending, recent transaction for this order with the same amount and
+// currency, or null. Must run under the per-order advisory lock.
+async function findReusableTransaction(client, orderId, amountPesewas) {
+  const { rows } = await client.query(
+    `SELECT paystack_reference, authorization_url, access_code, amount, currency
+       FROM payments
+      WHERE order_id = $1
+        AND payment_method = 'paystack'
+        AND status = 'pending'
+        AND authorization_url IS NOT NULL
+        AND created_at > (CURRENT_TIMESTAMP - ($2::int * INTERVAL '1 minute'))
+      ORDER BY created_at DESC
+      LIMIT 5`,
+    [orderId, REUSE_WINDOW_MINUTES]
+  );
+  return rows.find(r =>
+    Math.round(parseFloat(r.amount) * 100) === amountPesewas &&
+    (r.currency || 'GHS') === 'GHS' &&
+    isPaystackCheckoutUrl(r.authorization_url)
+  ) || null;
+}
+
+// Reuse a recent open transaction or create a new one. Caller holds the per-order
+// advisory lock inside an open transaction on `client`.
+async function getOrCreateTransaction(client, { orderId, order, email, metadata }) {
+  const amountPesewas = toPesewas(order);
+  const reuseColumns = await hasReuseColumns(client);
+
+  if (reuseColumns) {
+    const existing = await findReusableTransaction(client, orderId, amountPesewas);
+    if (existing) {
+      logger.info('Paystack init: reusing open transaction', {
+        orderId, reference: existing.paystack_reference,
+      });
+      return {
+        authorization_url: existing.authorization_url,
+        access_code:       existing.access_code,
+        reference:         existing.paystack_reference,
+      };
+    }
+  }
+
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
+  const callbackUrl = `${frontendUrl}/payment/callback`;
+  const response = await paystackAPI.post('/transaction/initialize', {
+    email,
+    amount:       amountPesewas, // pesewas
+    currency:     'GHS',
+    callback_url: callbackUrl,
+    metadata,
+  });
+  const tx = response.data.data;
+
+  if (reuseColumns) {
+    await client.query(
+      `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method,
+                             authorization_url, access_code, currency)
+       VALUES ($1,$2,$3,'pending',$4,$5,'paystack',$6,$7,'GHS')
+       ON CONFLICT (paystack_reference) DO NOTHING`,
+      [uuid(), orderId, order.total_amount, tx.reference, email, tx.authorization_url, tx.access_code || null]
+    );
+  } else {
+    await client.query(
+      `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method)
+       VALUES ($1,$2,$3,'pending',$4,$5,'paystack')
+       ON CONFLICT (paystack_reference) DO NOTHING`,
+      [uuid(), orderId, order.total_amount, tx.reference, email]
+    );
+  }
+
+  return {
+    authorization_url: tx.authorization_url,
+    access_code:       tx.access_code,
+    reference:         tx.reference,
+  };
+}
+
+// Serialise init calls per order so two simultaneous requests cannot both create
+// a reference. An advisory lock (not a row lock) is used on purpose: the lock is
+// held across the Paystack HTTP call, and a row lock on `orders` would block
+// webhook/admin updates to that order for that long.
+async function lockOrderForInit(client, orderId) {
+  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`paystack_init:${orderId}`]);
+}
+
 // ── Initialize payment (authenticated user) ───────────────────────────────────
 const initializePayment = async (req, res) => {
+  let client = null;
+  let txOpen = false;
   try {
     const { orderId } = req.body;
     if (typeof orderId !== 'string' || !UUID_RE.test(orderId)) {
       return res.status(400).json({ error: 'Invalid orderId' });
     }
 
+    client = await pool.connect();
+    await client.query('BEGIN');
+    txOpen = true;
+    await lockOrderForInit(client, orderId);
+
+    // Load the order only after taking the lock so we see the latest state.
     const order = await OrderModel.findById(orderId, req.user.id);
     if (!order) return res.status(404).json({ error: 'Order not found' });
-    if (order.payment_method && order.payment_method !== 'paystack') {
-      return res.status(400).json({ error: 'This order is not configured for Paystack payment' });
-    }
-    if (!ELIGIBLE_INIT_ORDER_STATUSES.has(order.status)) {
-      return res.status(400).json({ error: `Cannot initialize payment for order with status "${order.status}"` });
-    }
-    if (order.payment_status === 'paid') {
-      return res.status(400).json({ error: 'Order already paid' });
-    }
-    if (!PAYABLE_STATUSES.has(order.payment_status)) {
-      return res.status(400).json({ error: `Cannot initialize payment when payment status is "${order.payment_status}"` });
-    }
 
-    const amountPesewas = Math.round(parseFloat(order.total_amount) * 100);
-    if (!Number.isFinite(amountPesewas) || amountPesewas <= 0) {
-      return res.status(400).json({ error: 'Order total must be greater than zero for Paystack payment' });
-    }
+    const initError = getInitError(order);
+    if (initError) return res.status(initError.status).json({ error: initError.error });
 
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
-    const callbackUrl = `${frontendUrl}/payment/callback`;
-    const response = await paystackAPI.post('/transaction/initialize', {
-      email:        req.user.email,
-      amount:       amountPesewas, // pesewas
-      currency:     'GHS',
-      callback_url: callbackUrl,
-      metadata:     { orderId, userId: req.user.id },
+    const tx = await getOrCreateTransaction(client, {
+      orderId,
+      order,
+      email:    req.user.email,
+      metadata: { orderId, userId: req.user.id },
     });
 
-    await pool.query(
-      `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method)
-       VALUES ($1,$2,$3,'pending',$4,$5,'paystack')
-       ON CONFLICT (paystack_reference) DO NOTHING`,
-      [uuid(), orderId, order.total_amount, response.data.data.reference, req.user.email]
-    );
-
-    res.json({
-      authorization_url: response.data.data.authorization_url,
-      access_code:       response.data.data.access_code,
-      reference:         response.data.data.reference,
-    });
+    await client.query('COMMIT');
+    txOpen = false;
+    res.json(tx);
   } catch (error) {
     logger.error('Paystack init error', { err: error.response?.data?.message || error.message });
     res.status(500).json({ error: 'Failed to initialize payment' });
+  } finally {
+    if (client) {
+      if (txOpen) await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    }
   }
 };
 
 // ── Initialize payment (guest checkout) ──────────────────────────────────────
 const initializeGuestPayment = async (req, res) => {
+  let client = null;
+  let txOpen = false;
   try {
     const { orderId, email } = req.body;
     if (
@@ -97,6 +241,11 @@ const initializeGuestPayment = async (req, res) => {
     ) {
       return res.status(400).json({ error: 'Valid orderId and email are required' });
     }
+
+    client = await pool.connect();
+    await client.query('BEGIN');
+    txOpen = true;
+    await lockOrderForInit(client, orderId);
 
     const order = await OrderModel.findById(orderId);
 
@@ -111,49 +260,27 @@ const initializeGuestPayment = async (req, res) => {
       return res.status(404).json({ error: 'Order not found' });
     }
 
-    if (order.payment_method && order.payment_method !== 'paystack') {
-      return res.status(400).json({ error: 'This order is not configured for Paystack payment' });
-    }
-    if (!ELIGIBLE_INIT_ORDER_STATUSES.has(order.status)) {
-      return res.status(400).json({ error: `Cannot initialize payment for order with status "${order.status}"` });
-    }
-    if (order.payment_status === 'paid') {
-      return res.status(400).json({ error: 'Order already paid' });
-    }
-    if (!PAYABLE_STATUSES.has(order.payment_status)) {
-      return res.status(400).json({ error: `Cannot initialize payment when payment status is "${order.payment_status}"` });
-    }
+    const initError = getInitError(order);
+    if (initError) return res.status(initError.status).json({ error: initError.error });
 
-    const amountPesewas = Math.round(parseFloat(order.total_amount) * 100);
-    if (!Number.isFinite(amountPesewas) || amountPesewas <= 0) {
-      return res.status(400).json({ error: 'Order total must be greater than zero for Paystack payment' });
-    }
-
-    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/+$/, '');
-    const callbackUrl = `${frontendUrl}/payment/callback`;
-    const response = await paystackAPI.post('/transaction/initialize', {
-      email:        order.guest_email,
-      amount:       amountPesewas,
-      currency:     'GHS',
-      callback_url: callbackUrl,
-      metadata:     { orderId, guest: true },
+    const tx = await getOrCreateTransaction(client, {
+      orderId,
+      order,
+      email:    order.guest_email,
+      metadata: { orderId, guest: true },
     });
 
-    await pool.query(
-      `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method)
-       VALUES ($1,$2,$3,'pending',$4,$5,'paystack')
-       ON CONFLICT (paystack_reference) DO NOTHING`,
-      [uuid(), orderId, order.total_amount, response.data.data.reference, order.guest_email]
-    );
-
-    res.json({
-      authorization_url: response.data.data.authorization_url,
-      access_code:       response.data.data.access_code,
-      reference:         response.data.data.reference,
-    });
+    await client.query('COMMIT');
+    txOpen = false;
+    res.json(tx);
   } catch (error) {
     logger.error('Paystack guest init error', { err: error.response?.data?.message || error.message });
     res.status(500).json({ error: 'Failed to initialize payment' });
+  } finally {
+    if (client) {
+      if (txOpen) await client.query('ROLLBACK').catch(() => {});
+      client.release();
+    }
   }
 };
 
@@ -1056,4 +1183,4 @@ const handleWebhook = async (req, res) => {
   }
 };
 
-module.exports = { initializePayment, initializeGuestPayment, verifyPayment, handleWebhook };
+module.exports = { initializePayment, initializeGuestPayment, verifyPayment, handleWebhook, _resetReuseColumnCache };

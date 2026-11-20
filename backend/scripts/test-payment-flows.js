@@ -28,6 +28,7 @@ const sentEmails = [];
 let lastPendingRefundSql = null;
 let lastExportQuery = null;
 let txSnapshot = null;
+let mockReuseColumns = true;
 let onBeforeMockQuery = null;
 const mockPaystackHandlers = {
   post: async () => { throw new Error('Unmocked paystack POST'); },
@@ -55,6 +56,8 @@ function resetAll() {
   lastExportQuery = null;
   txSnapshot = null;
   onBeforeMockQuery = null;
+  mockReuseColumns = true;
+  _resetReuseColumnCache();
 }
 
 function makeOrder(overrides = {}) {
@@ -317,11 +320,42 @@ function runMockQuery(sql, params = []) {
     return { rows: [], rowCount: 1 };
   }
 
-  // INSERT INTO payments
+  // payments columns added by migration 033 (reuse of open transactions)
+  if (q.includes('FROM information_schema.columns') && q.includes("table_name = 'payments'")) {
+    const rows = mockReuseColumns
+      ? (params[0] || []).map(column_name => ({ column_name }))
+      : [];
+    return { rows, rowCount: rows.length };
+  }
+
+  // newest recent pending payment with a stored authorization_url for an order
+  if (q.includes('FROM payments WHERE order_id = $1') && q.includes('authorization_url IS NOT NULL')) {
+    const cutoff = Date.now() - Number(params[1]) * 60 * 1000;
+    const rows = [...dbState.payments.values()]
+      .filter(p =>
+        p.order_id === params[0] &&
+        p.payment_method === 'paystack' &&
+        p.status === 'pending' &&
+        p.authorization_url &&
+        new Date(p.created_at).getTime() > cutoff
+      )
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 5)
+      .map(p => ({
+        paystack_reference: p.paystack_reference,
+        authorization_url: p.authorization_url,
+        access_code: p.access_code,
+        amount: p.amount,
+        currency: p.currency || 'GHS',
+      }));
+    return { rows, rowCount: rows.length };
+  }
+
+  // INSERT INTO payments (legacy: 5 params; with reuse columns: 7 params)
   if (q.startsWith('INSERT INTO payments')) {
     const ref = params[3];
     if (!dbState.payments.has(ref)) {
-      dbState.payments.set(ref, {
+      const row = {
         id: params[0],
         order_id: params[1],
         amount: params[2],
@@ -331,7 +365,13 @@ function runMockQuery(sql, params = []) {
         payment_method: 'paystack',
         created_at: new Date(),
         updated_at: new Date(),
-      });
+      };
+      if (params.length > 5) {
+        row.authorization_url = params[5];
+        row.access_code = params[6];
+        row.currency = 'GHS';
+      }
+      dbState.payments.set(ref, row);
     }
     return { rows: [], rowCount: 1 };
   }
@@ -564,12 +604,37 @@ function runMockQuery(sql, params = []) {
   throw new Error(`Unhandled mock SQL query: ${q}`);
 }
 
+// Per-key async mutex emulating pg_advisory_xact_lock: a client holds the lock
+// until it COMMITs, ROLLBACKs or is released, and other clients wait their turn.
+const advisoryLocks = new Map();
+async function acquireAdvisoryLock(key) {
+  const prev = advisoryLocks.get(key) || Promise.resolve();
+  let release;
+  const mine = new Promise(resolve => { release = resolve; });
+  advisoryLocks.set(key, prev.then(() => mine));
+  await prev;
+  return release;
+}
+
 const mockPool = {
   query: async (sql, params) => runMockQuery(sql, params),
-  connect: async () => ({
-    query: async (sql, params) => runMockQuery(sql, params),
-    release: () => {},
-  }),
+  connect: async () => {
+    const heldReleases = [];
+    const releaseAll = () => { while (heldReleases.length) heldReleases.pop()(); };
+    return {
+      query: async (sql, params) => {
+        const q = String(sql).replace(/\s+/g, ' ').trim();
+        if (q.startsWith('SELECT pg_advisory_xact_lock')) {
+          heldReleases.push(await acquireAdvisoryLock(String(params[0])));
+          return { rows: [], rowCount: 1 };
+        }
+        const result = runMockQuery(sql, params);
+        if (q === 'COMMIT' || q === 'ROLLBACK') releaseAll();
+        return result;
+      },
+      release: () => releaseAll(),
+    };
+  },
 };
 
 // Install mocks into require.cache BEFORE loading controllers/workers
@@ -662,6 +727,7 @@ const {
   initializeGuestPayment,
   verifyPayment,
   handleWebhook,
+  _resetReuseColumnCache,
 } = require(path.join(SRC, 'controllers', 'payment.controller.js'));
 const { createOrder, createGuestOrder, refundOrder, markOrderPaid, exportOrders } = require(path.join(SRC, 'controllers', 'order.controller.js'));
 const registerPaymentWorker = require(path.join(SRC, 'workers', 'payment.worker.js'));
@@ -1619,6 +1685,231 @@ async function runTests() {
     assert.deepEqual(lastExportQuery.params, ['payment_review']);
     assert(rExp.body.includes('ORD-EXP-REV'));
     assert(!rExp.body.includes('ORD-EXP-PAID'));
+  }
+
+  // ── 15. Security audit finding 2: reuse open Paystack transaction, race-safe ─
+  {
+    const initCalls = () => paystackCalls.filter(c => c.method === 'POST' && c.url === '/transaction/initialize');
+    const minutesAgo = (m) => new Date(Date.now() - m * 60 * 1000);
+    const installPaystackInit = (delayMs = 0) => {
+      let n = 0;
+      mockPaystackHandlers.post = async () => {
+        const id = ++n;
+        if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
+        return {
+          data: {
+            status: true,
+            data: {
+              authorization_url: `https://checkout.paystack.com/tx_${id}`,
+              access_code: `ac_${id}`,
+              reference: `ref_reuse_${id}`,
+            },
+          },
+        };
+      };
+    };
+
+    // 15a: second authenticated init returns the SAME reference; old row untouched
+    resetAll();
+    installPaystackInit();
+    const oReuse = makeOrder({ customer_id: 'cust-reuse', payment_status: 'unpaid', total_amount: '100.00' });
+    const rI1 = makeRes();
+    await initializePayment({ body: { orderId: oReuse.id }, user: { id: 'cust-reuse', email: 'reuse@test.com' } }, rI1);
+    const rI2 = makeRes();
+    await initializePayment({ body: { orderId: oReuse.id }, user: { id: 'cust-reuse', email: 'reuse@test.com' } }, rI2);
+    assert.equal(rI1.statusCode, 200);
+    assert.equal(rI2.statusCode, 200);
+    assert.equal(rI2.body.reference, rI1.body.reference, 'second init must reuse the open reference');
+    assert.equal(rI2.body.authorization_url, rI1.body.authorization_url);
+    assert.equal(rI2.body.access_code, rI1.body.access_code);
+    assert.equal(initCalls().length, 1, 'Paystack initialize must be called once');
+    assert.equal(dbState.payments.size, 1);
+    assert.equal(dbState.payments.get(rI1.body.reference).status, 'pending');
+
+    // 15b: guest flow reuses too
+    resetAll();
+    installPaystackInit();
+    const oReuseG = makeOrder({ customer_id: null, guest_email: 'reuseg@test.com', payment_status: 'unpaid', total_amount: '60.00' });
+    const rG1 = makeRes();
+    await initializeGuestPayment({ body: { orderId: oReuseG.id, email: 'reuseg@test.com' } }, rG1);
+    const rG2 = makeRes();
+    await initializeGuestPayment({ body: { orderId: oReuseG.id, email: 'REUSEG@test.com' } }, rG2);
+    assert.equal(rG2.body.reference, rG1.body.reference);
+    assert.equal(initCalls().length, 1);
+
+    // 15c: stale (older than 30 min) open transaction is not reused and is left pending
+    resetAll();
+    installPaystackInit();
+    const oStale = makeOrder({ customer_id: 'cust-stale', payment_status: 'unpaid', total_amount: '100.00' });
+    makePayment(oStale.id, 'ref_stale_old', {
+      amount: '100.00', authorization_url: 'https://checkout.paystack.com/old', access_code: 'old', currency: 'GHS',
+      created_at: minutesAgo(31),
+    });
+    const rStale = makeRes();
+    await initializePayment({ body: { orderId: oStale.id }, user: { id: 'cust-stale', email: 's@test.com' } }, rStale);
+    assert.equal(rStale.statusCode, 200);
+    assert.equal(rStale.body.reference, 'ref_reuse_1', 'stale transaction must not be reused');
+    assert.equal(initCalls().length, 1);
+    assert.equal(dbState.payments.get('ref_stale_old').status, 'pending', 'old reference must NOT be marked abandoned/failed');
+
+    // 15d: a recent one just inside the window IS reused
+    resetAll();
+    installPaystackInit();
+    const oFresh = makeOrder({ customer_id: 'cust-fresh', payment_status: 'unpaid', total_amount: '100.00' });
+    makePayment(oFresh.id, 'ref_fresh_old', {
+      amount: '100.00', authorization_url: 'https://checkout.paystack.com/fresh', access_code: 'fresh', currency: 'GHS',
+      created_at: minutesAgo(29),
+    });
+    const rFresh = makeRes();
+    await initializePayment({ body: { orderId: oFresh.id }, user: { id: 'cust-fresh', email: 'f@test.com' } }, rFresh);
+    assert.equal(rFresh.body.reference, 'ref_fresh_old');
+    assert.equal(initCalls().length, 0);
+
+    // 15e: changed order amount -> new reference; old stays pending
+    resetAll();
+    installPaystackInit();
+    const oAmt = makeOrder({ customer_id: 'cust-amt', payment_status: 'unpaid', total_amount: '120.00' });
+    makePayment(oAmt.id, 'ref_amt_old', {
+      amount: '100.00', authorization_url: 'https://checkout.paystack.com/amt', access_code: 'amt', currency: 'GHS',
+      created_at: minutesAgo(2),
+    });
+    const rAmt = makeRes();
+    await initializePayment({ body: { orderId: oAmt.id }, user: { id: 'cust-amt', email: 'a@test.com' } }, rAmt);
+    assert.equal(rAmt.body.reference, 'ref_reuse_1', 'changed amount must create a new reference');
+    assert.equal(initCalls().length, 1);
+    assert.equal(initCalls()[0].payload.amount, 12000);
+    assert.equal(dbState.payments.get('ref_amt_old').status, 'pending');
+
+    // 15f: other currency, failed rows and rows without a stored URL are never reused
+    resetAll();
+    installPaystackInit();
+    const oSkip = makeOrder({ customer_id: 'cust-skip', payment_status: 'unpaid', total_amount: '100.00' });
+    makePayment(oSkip.id, 'ref_skip_usd', {
+      amount: '100.00', authorization_url: 'https://checkout.paystack.com/usd', currency: 'USD', created_at: minutesAgo(1),
+    });
+    makePayment(oSkip.id, 'ref_skip_failed', {
+      amount: '100.00', authorization_url: 'https://checkout.paystack.com/failed', currency: 'GHS', status: 'failed', created_at: minutesAgo(1),
+    });
+    makePayment(oSkip.id, 'ref_skip_legacy', { amount: '100.00', created_at: minutesAgo(1) });
+    makePayment(oSkip.id, 'ref_skip_badhost', {
+      amount: '100.00', authorization_url: 'https://evil.example.com/pay', currency: 'GHS', created_at: minutesAgo(1),
+    });
+    const rSkip = makeRes();
+    await initializePayment({ body: { orderId: oSkip.id }, user: { id: 'cust-skip', email: 'k@test.com' } }, rSkip);
+    assert.equal(rSkip.body.reference, 'ref_reuse_1');
+    assert.equal(initCalls().length, 1);
+
+    // 15g: two simultaneous init calls produce ONE reference (auth and guest)
+    resetAll();
+    installPaystackInit(30);
+    const oRace = makeOrder({ customer_id: 'cust-race', payment_status: 'unpaid', total_amount: '100.00' });
+    const [rr1, rr2] = [makeRes(), makeRes()];
+    await Promise.all([
+      initializePayment({ body: { orderId: oRace.id }, user: { id: 'cust-race', email: 'race@test.com' } }, rr1),
+      initializePayment({ body: { orderId: oRace.id }, user: { id: 'cust-race', email: 'race@test.com' } }, rr2),
+    ]);
+    assert.equal(rr1.statusCode, 200);
+    assert.equal(rr2.statusCode, 200);
+    assert.equal(rr1.body.reference, rr2.body.reference, 'parallel inits must share one reference');
+    assert.equal(initCalls().length, 1, 'parallel inits must create exactly one Paystack transaction');
+    assert.equal(dbState.payments.size, 1);
+
+    resetAll();
+    installPaystackInit(30);
+    const oRaceG = makeOrder({ customer_id: null, guest_email: 'raceg@test.com', payment_status: 'unpaid', total_amount: '100.00' });
+    const [rg1, rg2, rg3] = [makeRes(), makeRes(), makeRes()];
+    await Promise.all([
+      initializeGuestPayment({ body: { orderId: oRaceG.id, email: 'raceg@test.com' } }, rg1),
+      initializeGuestPayment({ body: { orderId: oRaceG.id, email: 'raceg@test.com' } }, rg2),
+      initializeGuestPayment({ body: { orderId: oRaceG.id, email: 'raceg@test.com' } }, rg3),
+    ]);
+    assert.equal(new Set([rg1.body.reference, rg2.body.reference, rg3.body.reference]).size, 1);
+    assert.equal(initCalls().length, 1);
+    assert.equal(dbState.payments.size, 1);
+
+    // different orders do not block or share references
+    resetAll();
+    installPaystackInit(10);
+    const oX = makeOrder({ customer_id: 'cust-x', payment_status: 'unpaid', total_amount: '100.00' });
+    const oY = makeOrder({ customer_id: 'cust-x', payment_status: 'unpaid', total_amount: '100.00' });
+    const [rx, ry] = [makeRes(), makeRes()];
+    await Promise.all([
+      initializePayment({ body: { orderId: oX.id }, user: { id: 'cust-x', email: 'x@test.com' } }, rx),
+      initializePayment({ body: { orderId: oY.id }, user: { id: 'cust-x', email: 'x@test.com' } }, ry),
+    ]);
+    assert.notEqual(rx.body.reference, ry.body.reference);
+    assert.equal(initCalls().length, 2);
+
+    // 15h: an old reference can still be paid; duplicate detection still works after reuse logic
+    resetAll();
+    installPaystackInit();
+    const oDup = makeOrder({ customer_id: 'cust-dup', payment_status: 'unpaid', total_amount: '100.00' });
+    makePayment(oDup.id, 'ref_dup_old', {
+      amount: '100.00', authorization_url: 'https://checkout.paystack.com/dupold', currency: 'GHS',
+      created_at: minutesAgo(45),
+    });
+    const rDupInit = makeRes();
+    await initializePayment({ body: { orderId: oDup.id }, user: { id: 'cust-dup', email: 'd@test.com' } }, rDupInit);
+    const newRef = rDupInit.body.reference;
+    assert.equal(newRef, 'ref_reuse_1');
+    assert.equal(dbState.payments.get('ref_dup_old').status, 'pending');
+
+    const paystackSuccess = (reference) => async () => ({
+      data: { status: true, data: { reference, status: 'success', amount: 10000, currency: 'GHS', metadata: { orderId: oDup.id } } },
+    });
+    mockPaystackHandlers.get = paystackSuccess('ref_dup_old');
+    const rPayOld = makeRes();
+    await verifyPayment({ body: { reference: 'ref_dup_old' }, user: { id: 'cust-dup', role: 'customer' } }, rPayOld);
+    assert.equal(rPayOld.body.status, 'success');
+    assert.equal(dbState.orders.get(oDup.id).payment_status, 'paid');
+    assert.equal(dbState.payments.get('ref_dup_old').status, 'success');
+
+    mockPaystackHandlers.get = paystackSuccess(newRef);
+    const rPayNew = makeRes();
+    await verifyPayment({ body: { reference: newRef }, user: { id: 'cust-dup', role: 'customer' } }, rPayNew);
+    assert.equal(rPayNew.body.status, 'attention', 'second payment on the same order must be flagged as duplicate');
+    assert.equal(dbState.payments.get(newRef).status, 'duplicate');
+    assert(queuedJobs.some(j => j.queue === 'notification/admin-payment-alert'));
+
+    // 15i: before migration 033 is applied, init falls back to the previous behaviour
+    resetAll();
+    mockReuseColumns = false;
+    installPaystackInit();
+    const oLegacy = makeOrder({ customer_id: 'cust-legacy', payment_status: 'unpaid', total_amount: '100.00' });
+    const rL1 = makeRes();
+    await initializePayment({ body: { orderId: oLegacy.id }, user: { id: 'cust-legacy', email: 'l@test.com' } }, rL1);
+    const rL2 = makeRes();
+    await initializePayment({ body: { orderId: oLegacy.id }, user: { id: 'cust-legacy', email: 'l@test.com' } }, rL2);
+    assert.equal(rL1.statusCode, 200);
+    assert.equal(rL2.statusCode, 200);
+    assert.notEqual(rL1.body.reference, rL2.body.reference, 'without reuse columns each init creates a new reference');
+    assert.equal(initCalls().length, 2);
+    assert.equal(dbState.payments.get(rL1.body.reference).authorization_url, undefined);
+
+    // 15j: an eligibility error inside the lock still releases it (next call is not stuck)
+    resetAll();
+    installPaystackInit();
+    const oBad = makeOrder({ customer_id: 'cust-bad', payment_status: 'paid', total_amount: '100.00' });
+    const rBad1 = makeRes();
+    await initializePayment({ body: { orderId: oBad.id }, user: { id: 'cust-bad', email: 'b@test.com' } }, rBad1);
+    assert.equal(rBad1.statusCode, 400);
+    dbState.orders.get(oBad.id).payment_status = 'unpaid';
+    const rBad2 = makeRes();
+    await initializePayment({ body: { orderId: oBad.id }, user: { id: 'cust-bad', email: 'b@test.com' } }, rBad2);
+    assert.equal(rBad2.statusCode, 200);
+
+    // 15k: a Paystack failure inside the lock releases it and stores nothing
+    resetAll();
+    const oFail = makeOrder({ customer_id: 'cust-pf', payment_status: 'unpaid', total_amount: '100.00' });
+    mockPaystackHandlers.post = async () => { throw new Error('Paystack down'); };
+    const rPf1 = makeRes();
+    await initializePayment({ body: { orderId: oFail.id }, user: { id: 'cust-pf', email: 'pf@test.com' } }, rPf1);
+    assert.equal(rPf1.statusCode, 500);
+    assert.equal(dbState.payments.size, 0);
+    installPaystackInit();
+    const rPf2 = makeRes();
+    await initializePayment({ body: { orderId: oFail.id }, user: { id: 'cust-pf', email: 'pf@test.com' } }, rPf2);
+    assert.equal(rPf2.statusCode, 200);
   }
 
   console.log('ALL PAYSTACK PAYMENT FLOW TESTS PASSED');
