@@ -33,11 +33,11 @@ class MainShell extends StatelessWidget {
             label: 'Shop',
           ),
           NavigationDestination(
-            icon: Badge(
+            icon: Badge.count(
               count: context.watch<CartProvider>().itemCount,
               child: const Icon(Icons.shopping_cart_outlined),
             ),
-            selectedIcon: Badge(
+            selectedIcon: Badge.count(
               count: context.watch<CartProvider>().itemCount,
               child: const Icon(Icons.shopping_cart),
             ),
