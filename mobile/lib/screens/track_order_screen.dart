@@ -91,7 +91,13 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
   Widget build(BuildContext context) {
     final fmt = DateFormat('MMM d, yyyy · HH:mm');
     return Scaffold(
-      appBar: AppBar(title: const Text('Track Your Order')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.canPop() ? context.pop() : context.go('/'),
+        ),
+        title: const Text('Track Your Order'),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(

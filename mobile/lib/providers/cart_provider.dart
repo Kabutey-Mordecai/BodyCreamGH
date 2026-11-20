@@ -80,13 +80,21 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void remove(String productId) {
-    _items.removeWhere((i) => i.productId == productId);
+  void remove(String productId, {String? variantId}) {
+    _items.removeWhere(
+      (i) =>
+          i.productId == productId &&
+          (variantId == null || i.variantId == variantId),
+    );
     notifyListeners();
   }
 
-  void updateQuantity(String productId, int quantity) {
-    final idx = _items.indexWhere((i) => i.productId == productId);
+  void updateQuantity(String productId, int quantity, {String? variantId}) {
+    final idx = _items.indexWhere(
+      (i) =>
+          i.productId == productId &&
+          (variantId == null || i.variantId == variantId),
+    );
     if (idx == -1) return;
     if (quantity <= 0) {
       _items.removeAt(idx);

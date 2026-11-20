@@ -182,6 +182,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/orders'),
+        ),
         title: Text(_order != null ? '#${_order!.orderNumber}' : 'Order Detail'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),

@@ -246,6 +246,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/shop'),
+        ),
         title: Text(_product?.name ?? 'Product'),
         actions: [
           if (_product != null)

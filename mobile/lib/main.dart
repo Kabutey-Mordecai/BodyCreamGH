@@ -10,6 +10,7 @@ import 'providers/wishlist_provider.dart';
 import 'screens/account_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/checkout_screen.dart';
+import 'screens/edit_profile_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/order_detail_screen.dart';
@@ -64,7 +65,10 @@ GoRouter _buildRouter(BuildContext ctx) {
 
       if (isInitializing) return null;
 
-      final protectedRoutes = ['/orders', '/profile/edit'];
+      // Only /profile/edit requires authentication redirect; /orders and /account
+      // render their own signed-out views inside the bottom-nav shell so tapping
+      // a bottom tab never traps the user on /login.
+      final protectedRoutes = ['/profile/edit'];
       final isProtected =
           protectedRoutes.any((r) => state.matchedLocation.startsWith(r));
 
@@ -108,6 +112,10 @@ GoRouter _buildRouter(BuildContext ctx) {
       GoRoute(
         path: '/track-order',
         builder: (_, __) => const TrackOrderScreen(),
+      ),
+      GoRoute(
+        path: '/profile/edit',
+        builder: (_, __) => const EditProfileScreen(),
       ),
       GoRoute(
         path: '/checkout',

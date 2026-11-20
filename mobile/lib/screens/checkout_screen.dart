@@ -267,7 +267,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final isPickup = _fulfillmentMethod == 'pickup';
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Checkout')),
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () =>
+              context.canPop() ? context.pop() : context.go('/cart'),
+        ),
+        title: const Text('Checkout'),
+      ),
       body: Form(
         key: _formKey,
         child: ListView(
