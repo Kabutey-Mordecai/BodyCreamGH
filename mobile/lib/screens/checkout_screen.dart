@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -64,7 +65,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   bool _placing = false;
   String? _couponError;
   Map<String, dynamic>? _appliedCoupon;
+  bool _isAutoWelcome = false;
   double _discount = 0;
+  int _welcomeCheckSeq = 0;
+  Timer? _emailDebounce;
+  static final _emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
 
   // Guest cart pre-flight validation state (matches web Checkout.jsx)
   Map<String, dynamic>? _guestValidation;
@@ -89,27 +94,64 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _autoApplyWelcomeCoupon();
   }
 
+  void _onGuestEmailChanged(String value) {
+    _emailDebounce?.cancel();
+    final trimmed = value.trim();
+    if (!_emailRegex.hasMatch(trimmed)) return;
+    _emailDebounce = Timer(const Duration(milliseconds: 450), () {
+      _checkWelcomeCouponForEmail(explicitEmail: trimmed);
+    });
+  }
+
   Future<void> _autoApplyWelcomeCoupon() async {
-    if (_appliedCoupon != null) return;
+    await _checkWelcomeCouponForEmail();
+  }
+
+  Future<void> _checkWelcomeCouponForEmail({String? explicitEmail}) async {
     final auth = context.read<AuthProvider>();
     final cart = context.read<CartProvider>();
     if (cart.items.isEmpty) return;
 
+    final seq = ++_welcomeCheckSeq;
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final savedEmail = prefs.getString('bc_newsletter_email');
-      final emailToCheck = auth.isLoggedIn
-          ? (auth.user?.email ?? savedEmail)
-          : (_emailCtrl.text.trim().isNotEmpty ? _emailCtrl.text.trim() : savedEmail);
-      if ((emailToCheck == null || emailToCheck.isEmpty) && !auth.isLoggedIn) {
+      final emailToCheck = explicitEmail ??
+          (auth.isLoggedIn
+              ? (auth.user?.email ?? savedEmail)
+              : (_emailCtrl.text.trim().isNotEmpty
+                  ? _emailCtrl.text.trim()
+                  : savedEmail));
+      if (emailToCheck == null ||
+          emailToCheck.isEmpty ||
+          !_emailRegex.hasMatch(emailToCheck)) {
         return;
       }
 
-      final status = await ApiService.instance.getNewsletterStatus(email: emailToCheck);
-      if (!mounted) return;
+      final status =
+          await ApiService.instance.getNewsletterStatus(email: emailToCheck);
+      if (!mounted || seq != _welcomeCheckSeq) return;
+
+      final welcomeCode = (status['couponCode'] ?? '').toString().toUpperCase();
+      final activeCode =
+          (_appliedCoupon?['code'] ?? _couponCtrl.text.trim()).toString().toUpperCase();
+
       if (status['hasPlacedOrder'] == true) {
         await prefs.setBool('bc_first_order_done', true);
         await prefs.remove('bc_welcome_coupon');
+        final isActiveWelcome = _appliedCoupon != null &&
+            (_isAutoWelcome ||
+                (welcomeCode.isNotEmpty && activeCode == welcomeCode));
+        if (isActiveWelcome && mounted) {
+          setState(() {
+            _appliedCoupon = null;
+            _isAutoWelcome = false;
+            _discount = 0;
+            _couponCtrl.clear();
+            _couponError = 'Welcome discount is valid on your first order only.';
+          });
+        }
         return;
       }
       if (status['eligibleForWelcomeDiscount'] == true &&
@@ -123,10 +165,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           total,
           email: emailToCheck,
         );
-        if (!mounted) return;
+        if (!mounted || seq != _welcomeCheckSeq) return;
         setState(() {
           _couponCtrl.text = code;
           _appliedCoupon = data;
+          _isAutoWelcome = true;
+          _couponError = null;
           _discount = double.tryParse(
                   (data['discountAmount'] ?? data['discount_amount'] ?? 0)
                       .toString()) ??
@@ -210,6 +254,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _emailDebounce?.cancel();
     _firstNameCtrl.dispose();
     _lastNameCtrl.dispose();
     _emailCtrl.dispose();
@@ -242,9 +287,22 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     return cart.subtotal;
   }
 
+  double _effectiveDiscount(CartProvider cart, bool isGuest) {
+    if (_appliedCoupon == null) return 0;
+    final type = _appliedCoupon!['type']?.toString();
+    final val = _parseNum(_appliedCoupon!['value']) ?? 0;
+    final baseTotal = _validatedSubtotal(cart, isGuest) + _deliveryFee(cart);
+    if (type == 'percentage' && val > 0) {
+      final computed = ((baseTotal * val / 100) * 100).roundToDouble() / 100;
+      return computed > baseTotal ? baseTotal : computed;
+    }
+    return _discount > baseTotal ? baseTotal : _discount;
+  }
+
   double _total(CartProvider cart, bool isGuest) {
-    final raw =
-        _validatedSubtotal(cart, isGuest) + _deliveryFee(cart) - _discount;
+    final raw = _validatedSubtotal(cart, isGuest) +
+        _deliveryFee(cart) -
+        _effectiveDiscount(cart, isGuest);
     return raw < 0 ? 0 : raw;
   }
 
@@ -265,6 +323,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       );
       setState(() {
         _appliedCoupon = data;
+        _isAutoWelcome = false;
         _discount = double.parse(
           (data['discountAmount'] ?? data['discount_amount'] ?? 0).toString(),
         );
@@ -624,6 +683,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               TextFormField(
                 controller: _emailCtrl,
                 keyboardType: TextInputType.emailAddress,
+                onChanged: _onGuestEmailChanged,
                 decoration: const InputDecoration(
                   labelText: 'Email Address (for receipt & tracking) *',
                   prefixIcon: Icon(Icons.email_outlined),
@@ -640,29 +700,34 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const SizedBox(height: 8),
 
             if (_pickupEnabled) ...[
-              RadioListTile<String>(
-                value: 'delivery',
+              RadioGroup<String>(
                 groupValue: _fulfillmentMethod,
-                title: const Text('Doorstep Delivery'),
-                subtitle: Text(
-                  'Accra: ${AppConfig.currencySymbol}${cart.deliveryFeeAccra.toStringAsFixed(0)} · Nationwide: ${AppConfig.currencySymbol}${cart.deliveryFeeFlat.toStringAsFixed(0)}${cart.freeDeliveryOver > 0 ? ' (Free over ${AppConfig.currencySymbol}${cart.freeDeliveryOver.toStringAsFixed(0)})' : ''}',
-                ),
                 onChanged: (v) {
+                  if (v == null) return;
                   setState(() {
-                    _fulfillmentMethod = v!;
+                    _fulfillmentMethod = v;
                     if (!_isPodEligible &&
                         _paymentMethod == 'pay_on_delivery') {
                       _paymentMethod = 'paystack';
                     }
                   });
                 },
-              ),
-              RadioListTile<String>(
-                value: 'pickup',
-                groupValue: _fulfillmentMethod,
-                title: const Text('Pickup Station — Free'),
-                subtitle: Text(_pickupLocation),
-                onChanged: (v) => setState(() => _fulfillmentMethod = v!),
+                child: Column(
+                  children: [
+                    RadioListTile<String>(
+                      value: 'delivery',
+                      title: const Text('Doorstep Delivery'),
+                      subtitle: Text(
+                        'Accra: ${AppConfig.currencySymbol}${cart.deliveryFeeAccra.toStringAsFixed(0)} · Nationwide: ${AppConfig.currencySymbol}${cart.deliveryFeeFlat.toStringAsFixed(0)}${cart.freeDeliveryOver > 0 ? ' (Free over ${AppConfig.currencySymbol}${cart.freeDeliveryOver.toStringAsFixed(0)})' : ''}',
+                      ),
+                    ),
+                    RadioListTile<String>(
+                      value: 'pickup',
+                      title: const Text('Pickup Station — Free'),
+                      subtitle: Text(_pickupLocation),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
             ],
@@ -727,7 +792,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _selectedRegion,
+                initialValue: _selectedRegion,
                 decoration: const InputDecoration(
                   labelText: 'Region *',
                   prefixIcon: Icon(Icons.map_outlined),
@@ -783,28 +848,36 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             Text('Payment Method',
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
-            RadioListTile<String>(
-              value: 'paystack',
+            RadioGroup<String>(
               groupValue: _paymentMethod,
-              title: const Text('Pay Online (Paystack)'),
-              subtitle: const Text(
-                  'MTN MoMo, Telecel Cash, Cards & Bank Transfer'),
-              onChanged: (v) => setState(() => _paymentMethod = v!),
-            ),
-            if (_podEnabled)
-              RadioListTile<String>(
-                value: 'pay_on_delivery',
-                groupValue: _paymentMethod,
-                title: Text(isPickup ? 'Pay on Pickup' : 'Pay on Delivery'),
-                subtitle: Text(
-                  _isPodEligible
-                      ? 'Pay with Cash or Mobile Money when your order arrives'
-                      : 'Available for Greater Accra deliveries or Store Pickup only',
-                ),
-                onChanged: _isPodEligible
-                    ? (v) => setState(() => _paymentMethod = v!)
-                    : null,
+              onChanged: (v) {
+                if (v == null) return;
+                if (v == 'pay_on_delivery' && !_isPodEligible) return;
+                setState(() => _paymentMethod = v);
+              },
+              child: Column(
+                children: [
+                  const RadioListTile<String>(
+                    value: 'paystack',
+                    title: Text('Pay Online (Paystack)'),
+                    subtitle: Text(
+                        'MTN MoMo, Telecel Cash, Cards & Bank Transfer'),
+                  ),
+                  if (_podEnabled)
+                    RadioListTile<String>(
+                      value: 'pay_on_delivery',
+                      enabled: _isPodEligible,
+                      title:
+                          Text(isPickup ? 'Pay on Pickup' : 'Pay on Delivery'),
+                      subtitle: Text(
+                        _isPodEligible
+                            ? 'Pay with Cash or Mobile Money when your order arrives'
+                            : 'Available for Greater Accra deliveries or Store Pickup only',
+                      ),
+                    ),
+                ],
               ),
+            ),
             const SizedBox(height: 16),
 
             Text('Promo Code', style: Theme.of(context).textTheme.titleMedium),
@@ -829,6 +902,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                         onPressed: () {
                           setState(() {
                             _appliedCoupon = null;
+                            _isAutoWelcome = false;
                             _discount = 0;
                             _couponCtrl.clear();
                           });
@@ -981,8 +1055,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             const Divider(),
             _Row('Subtotal', subtotal),
             _Row(isPickup ? 'Pickup Station' : 'Delivery Fee', deliveryFee),
-            if (_discount > 0)
-              _Row('Discount', -_discount, color: AppColors.accentDark),
+            if (_effectiveDiscount(cart, isGuest) > 0)
+              _Row('Discount', -_effectiveDiscount(cart, isGuest),
+                  color: AppColors.accentDark),
             const Divider(),
             _Row('Total', total, bold: true),
             const SizedBox(height: 20),

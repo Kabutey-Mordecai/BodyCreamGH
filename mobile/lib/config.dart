@@ -31,7 +31,7 @@ class AppConfig {
         parsed.host == '127.0.0.1';
 
     if (!hasStorefrontUrl || isLocalhost) {
-      final msg =
+      const msg =
           'STOREFRONT_URL is unset or points to localhost ("$storefrontUrl"). '
           'Pass --dart-define=STOREFRONT_URL=<backend FRONTEND_URL> so '
           'PaymentScreen can detect Paystack callbacks.';
