@@ -2,7 +2,7 @@ const pool = require('../config/database');
 
 module.exports = {
   findByEmail: async (email) => {
-    const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const { rows } = await pool.query('SELECT * FROM users WHERE LOWER(email) = LOWER(TRIM($1))', [email]);
     return rows[0] || null;
   },
 
@@ -22,7 +22,7 @@ module.exports = {
   create: async (id, { email, passwordHash, first_name, last_name, phone, role = 'customer' }) => {
     await pool.query(
       'INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-      [id, email, passwordHash, first_name, last_name, phone, role]
+      [id, String(email || '').trim().toLowerCase(), passwordHash, first_name, last_name, phone, role]
     );
   },
 
