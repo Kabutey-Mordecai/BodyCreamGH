@@ -5,7 +5,6 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../config.dart';
 import '../models/product.dart';
-import '../providers/cart_provider.dart';
 import '../providers/wishlist_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
