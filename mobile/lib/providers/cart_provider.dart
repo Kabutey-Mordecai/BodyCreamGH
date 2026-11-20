@@ -54,10 +54,26 @@ class CartProvider extends ChangeNotifier {
     return idx == -1 ? 0 : _items[idx].quantity;
   }
 
-  void add(Product product, {int quantity = 1}) {
-    final idx = _items.indexWhere((i) => i.productId == product.id);
+  void add(
+    Product product, {
+    int quantity = 1,
+    String? variantId,
+    String? variantLabel,
+    double? priceOverride,
+  }) {
+    final idx = _items.indexWhere(
+      (i) => i.productId == product.id && i.variantId == variantId,
+    );
     if (idx == -1) {
-      _items.add(CartItem.fromProduct(product, quantity: quantity));
+      _items.add(
+        CartItem.fromProduct(
+          product,
+          quantity: quantity,
+          variantId: variantId,
+          variantLabel: variantLabel,
+          priceOverride: priceOverride,
+        ),
+      );
     } else {
       _items[idx].quantity += quantity;
     }
@@ -122,6 +138,44 @@ class CartProvider extends ChangeNotifier {
       'shipping_region': shippingRegion,
       if (combinedNotes.isNotEmpty) 'notes': combinedNotes,
       if (couponCode != null && couponCode.isNotEmpty) 'coupon_code': couponCode,
+    };
+  }
+
+  Map<String, dynamic> toGuestOrderPayload({
+    required String email,
+    required String firstName,
+    required String lastName,
+    required String phone,
+    required String shippingAddress,
+    required String shippingCity,
+    required String shippingRegion,
+    required double deliveryFee,
+    String fulfillmentMethod = 'delivery',
+    String paymentMethod = 'paystack',
+    String? notes,
+    String? couponCode,
+  }) {
+    return {
+      'email': email,
+      'first_name': firstName,
+      'last_name': lastName,
+      'phone': phone,
+      'fulfillment_method': fulfillmentMethod,
+      'payment_method': paymentMethod,
+      'shipping_address': shippingAddress,
+      'shipping_city': shippingCity,
+      'shipping_region': shippingRegion,
+      'delivery_fee': deliveryFee,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (couponCode != null && couponCode.isNotEmpty) 'coupon_code': couponCode,
+      'items': _items
+          .map((i) => {
+                'product_id': i.productId,
+                'quantity': i.quantity,
+                if (i.variantId != null) 'variant_id': i.variantId,
+                if (i.variantLabel != null) 'variant_label': i.variantLabel,
+              })
+          .toList(),
     };
   }
 }

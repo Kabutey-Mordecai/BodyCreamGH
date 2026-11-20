@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../config.dart';
-import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 
 class CartScreen extends StatelessWidget {
@@ -128,14 +127,7 @@ class CartScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         FilledButton(
-                          onPressed: () {
-                            final auth = context.read<AuthProvider>();
-                            if (!auth.isLoggedIn) {
-                              context.go('/login');
-                            } else {
-                              context.go('/checkout');
-                            }
-                          },
+                          onPressed: () => context.push('/checkout'),
                           child: const Text('Proceed to Checkout'),
                         ),
                       ],

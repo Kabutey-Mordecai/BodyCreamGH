@@ -134,6 +134,15 @@ class ApiService {
     return await _handleResponse(res) as Map<String, dynamic>;
   }
 
+  Future<void> forgotPassword(String email) async {
+    final res = await _client.post(
+      _uri('/auth/forgot-password'),
+      headers: _headers(),
+      body: jsonEncode({'email': email}),
+    );
+    await _handleResponse(res);
+  }
+
   Future<void> logout() async {
     try {
       final token = await getAccessToken();
@@ -159,17 +168,20 @@ class ApiService {
     int limit = 20,
     String? category,
     String? search,
+    String? sort,
+    bool? onSale,
   }) async {
-    final query = {
+    final query = <String, String>{
       'page': page.toString(),
       'limit': limit.toString(),
-      if (category != null) 'category': category,
+      if (category != null && category.isNotEmpty) 'category': category,
       if (search != null && search.isNotEmpty) 'search': search,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (onSale == true) 'on_sale': 'true',
     };
     final uri = _uri('/products').replace(queryParameters: query);
     final res = await _client.get(uri, headers: _headers());
     final data = await _handleResponse(res);
-    // Backend returns { products: [...], total: n } or just [...]
     if (data is Map) return data['products'] as List<dynamic>? ?? [];
     return data as List<dynamic>;
   }
@@ -181,6 +193,60 @@ class ApiService {
       return data['product'] as Map<String, dynamic>;
     }
     return data as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> getRelatedProducts(String id) async {
+    final res = await _client.get(_uri('/products/$id/related'), headers: _headers());
+    final data = await _handleResponse(res);
+    if (data is Map) return data['products'] as List<dynamic>? ?? [];
+    if (data is List) return data;
+    return [];
+  }
+
+  Future<List<dynamic>> getProductVariants(String id) async {
+    final res = await _client.get(_uri('/products/$id/variants'), headers: _headers());
+    final data = await _handleResponse(res);
+    if (data is Map) return data['variants'] as List<dynamic>? ?? [];
+    if (data is List) return data;
+    return [];
+  }
+
+  // ── Reviews ───────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getProductReviews(String productId) async {
+    final res = await _client.get(
+      _uri('/products/$productId/reviews'),
+      headers: _headers(),
+    );
+    final data = await _handleResponse(res);
+    if (data is Map<String, dynamic>) return data;
+    if (data is List) return {'reviews': data};
+    return {'reviews': <dynamic>[]};
+  }
+
+  Future<void> createProductReview(
+    String productId, {
+    required int rating,
+    String? title,
+    required String comment,
+  }) async {
+    await _authed((token) => _client.post(
+          _uri('/products/$productId/reviews'),
+          headers: _headers(token: token),
+          body: jsonEncode({
+            'rating': rating,
+            if (title != null && title.trim().isNotEmpty) 'title': title.trim(),
+            'comment': comment.trim(),
+          }),
+        ));
+  }
+
+  Future<List<dynamic>> getFeaturedReviews() async {
+    final res = await _client.get(_uri('/reviews/featured'), headers: _headers());
+    final data = await _handleResponse(res);
+    if (data is Map) return data['reviews'] as List<dynamic>? ?? [];
+    if (data is List) return data;
+    return [];
   }
 
   // ── Cart ──────────────────────────────────────────────────────────────────
@@ -211,7 +277,7 @@ class ApiService {
         ));
   }
 
-  // ── Orders ────────────────────────────────────────────────────────────────
+  // ── Orders & Order Tracking ───────────────────────────────────────────────
 
   Future<Map<String, dynamic>> createOrder(Map<String, dynamic> payload) async {
     return await _authed((token) => _client.post(
@@ -219,6 +285,15 @@ class ApiService {
           headers: _headers(token: token),
           body: jsonEncode(payload),
         )) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> createGuestOrder(Map<String, dynamic> payload) async {
+    final res = await _client.post(
+      _uri('/orders/guest'),
+      headers: _headers(),
+      body: jsonEncode(payload),
+    );
+    return await _handleResponse(res) as Map<String, dynamic>;
   }
 
   Future<List<dynamic>> getMyOrders() async {
@@ -239,6 +314,34 @@ class ApiService {
         )) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> trackOrder(String orderNumber, String email) async {
+    final res = await _client.post(
+      _uri('/orders/track'),
+      headers: _headers(),
+      body: jsonEncode({
+        'order_number': orderNumber.trim(),
+        'email': email.trim(),
+      }),
+    );
+    return await _handleResponse(res) as Map<String, dynamic>;
+  }
+
+  Future<void> requestOrderCancel(String orderId, String reason) async {
+    await _authed((token) => _client.post(
+          _uri('/orders/$orderId/request-cancel'),
+          headers: _headers(token: token),
+          body: jsonEncode({'reason': reason.trim()}),
+        ));
+  }
+
+  Future<void> requestOrderReturn(String orderId, String reason) async {
+    await _authed((token) => _client.post(
+          _uri('/orders/$orderId/request-return'),
+          headers: _headers(token: token),
+          body: jsonEncode({'reason': reason.trim()}),
+        ));
+  }
+
   // ── Settings ──────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getSettings() async {
@@ -256,15 +359,65 @@ class ApiService {
         )) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> initializeGuestPayment(String orderId, String email) async {
+    final res = await _client.post(
+      _uri('/payments/guest/initialize'),
+      headers: _headers(),
+      body: jsonEncode({'orderId': orderId, 'email': email.trim()}),
+    );
+    return await _handleResponse(res) as Map<String, dynamic>;
+  }
+
   // ── Coupons ───────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> validateCoupon(String code, double total) async {
     final res = await _client.post(
       _uri('/coupons/validate'),
       headers: _headers(),
-      body: jsonEncode({'code': code, 'order_total': total}),
+      body: jsonEncode({'code': code, 'orderTotal': total, 'order_total': total}),
     );
     return await _handleResponse(res) as Map<String, dynamic>;
+  }
+
+  // ── Wishlist ──────────────────────────────────────────────────────────────
+
+  Future<List<dynamic>> getWishlist() async {
+    final data = await _authed((token) => _client.get(
+          _uri('/wishlist'),
+          headers: _headers(token: token),
+        ));
+    if (data is Map) return data['items'] as List<dynamic>? ?? data['products'] as List<dynamic>? ?? [];
+    if (data is List) return data;
+    return [];
+  }
+
+  Future<void> addWishlist(String productId) async {
+    await _authed((token) => _client.post(
+          _uri('/wishlist/$productId'),
+          headers: _headers(token: token),
+        ));
+  }
+
+  Future<void> removeWishlist(String productId) async {
+    await _authed((token) => _client.delete(
+          _uri('/wishlist/$productId'),
+          headers: _headers(token: token),
+        ));
+  }
+
+  // ── Newsletter ────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> subscribeNewsletter(String email, {String? name}) async {
+    final res = await _client.post(
+      _uri('/newsletter/subscribe'),
+      headers: _headers(),
+      body: jsonEncode({
+        'email': email.trim(),
+        if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+      }),
+    );
+    final data = await _handleResponse(res);
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 
   // ── Profile ───────────────────────────────────────────────────────────────

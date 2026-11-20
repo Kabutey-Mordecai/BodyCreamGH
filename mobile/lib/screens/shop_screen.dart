@@ -4,8 +4,9 @@ import 'package:provider/provider.dart';
 import '../models/product.dart';
 import '../providers/cart_provider.dart';
 import '../services/api_service.dart';
-import '../widgets/product_card.dart';
+import '../theme/app_theme.dart';
 import '../widgets/cart_badge.dart';
+import '../widgets/product_card.dart';
 
 class ShopScreen extends StatefulWidget {
   const ShopScreen({super.key});
@@ -19,7 +20,18 @@ class _ShopScreenState extends State<ShopScreen> {
   List<Product> _products = [];
   bool _loading = true;
   String? _selectedCategory;
-  final List<String> _categories = ['All', 'Skincare', 'Haircare', 'Makeup', 'Fragrance', 'Body Care'];
+  String _sortBy = 'newest'; // newest | price_asc | price_desc | rating
+  bool _inStockOnly = false;
+  bool _onSaleOnly = false;
+
+  final List<String> _categories = [
+    'All',
+    'Skincare',
+    'Body Care',
+    'Haircare',
+    'Makeup',
+    'Fragrance',
+  ];
 
   @override
   void initState() {
@@ -37,13 +49,18 @@ class _ShopScreenState extends State<ShopScreen> {
     setState(() => _loading = true);
     try {
       final raw = await ApiService.instance.getProducts(
-        category: (_selectedCategory == null || _selectedCategory == 'All') ? null : _selectedCategory,
+        category: (_selectedCategory == null || _selectedCategory == 'All')
+            ? null
+            : _selectedCategory,
         search: _searchCtrl.text.trim(),
         limit: 50,
       );
       if (mounted) {
         setState(() {
-          _products = raw.map((j) => Product.fromJson(j as Map<String, dynamic>)).toList();
+          _products = raw
+              .whereType<Map<String, dynamic>>()
+              .map(Product.fromJson)
+              .toList();
           _loading = false;
         });
       }
@@ -52,45 +69,97 @@ class _ShopScreenState extends State<ShopScreen> {
     }
   }
 
+  List<Product> get _visibleProducts {
+    var list = _products.where((p) {
+      if (_inStockOnly && !p.inStock) return false;
+      if (_onSaleOnly && !p.isOnSale) return false;
+      return true;
+    }).toList();
+
+    switch (_sortBy) {
+      case 'price_asc':
+        list.sort((a, b) => a.price.compareTo(b.price));
+        break;
+      case 'price_desc':
+        list.sort((a, b) => b.price.compareTo(a.price));
+        break;
+      case 'rating':
+        list.sort(
+          (a, b) => (b.averageRating ?? 0).compareTo(a.averageRating ?? 0),
+        );
+        break;
+      default:
+        break;
+    }
+    return list;
+  }
+
+  bool get _hasActiveFilters =>
+      _selectedCategory != null ||
+      _searchCtrl.text.trim().isNotEmpty ||
+      _inStockOnly ||
+      _onSaleOnly ||
+      _sortBy != 'newest';
+
+  void _clearFilters() {
+    _searchCtrl.clear();
+    setState(() {
+      _selectedCategory = null;
+      _inStockOnly = false;
+      _onSaleOnly = false;
+      _sortBy = 'newest';
+    });
+    _fetch();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final visible = _visibleProducts;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Shop'),
-        actions: [CartBadge(onPressed: () => context.go('/cart'))],
+        title: const Text('Shop Collection'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.favorite_border, color: AppColors.primary),
+            onPressed: () => context.push('/wishlist'),
+            tooltip: 'Wishlist',
+          ),
+          CartBadge(onPressed: () => context.go('/cart')),
+        ],
       ),
       body: Column(
         children: [
-          // Search bar
+          // Search input
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Search products...',
-                prefixIcon: const Icon(Icons.search),
+                hintText: 'Search shea butter, oils, masks...',
+                prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: _searchCtrl.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear),
+                        icon: const Icon(Icons.clear, size: 18),
                         onPressed: () {
                           _searchCtrl.clear();
                           _fetch();
                         },
                       )
                     : null,
-                border: const OutlineInputBorder(),
                 isDense: true,
               ),
+              onChanged: (_) => setState(() {}),
               onSubmitted: (_) => _fetch(),
             ),
           ),
 
-          // Category filter chips
+          // Category chips
           SizedBox(
-            height: 44,
+            height: 40,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
               itemCount: _categories.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (_, i) {
@@ -100,7 +169,9 @@ class _ShopScreenState extends State<ShopScreen> {
                   label: Text(cat),
                   selected: selected,
                   onSelected: (_) {
-                    setState(() => _selectedCategory = cat == 'All' ? null : cat);
+                    setState(
+                      () => _selectedCategory = cat == 'All' ? null : cat,
+                    );
                     _fetch();
                   },
                 );
@@ -108,34 +179,137 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
           ),
 
+          // Sort & secondary filter bar (matches web Shop toolbar)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 8, 14, 6),
+            child: Row(
+              children: [
+                FilterChip(
+                  label: const Text('In Stock'),
+                  selected: _inStockOnly,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (v) => setState(() => _inStockOnly = v),
+                ),
+                const SizedBox(width: 6),
+                FilterChip(
+                  label: const Text('On Sale'),
+                  selected: _onSaleOnly,
+                  visualDensity: VisualDensity.compact,
+                  onSelected: (v) => setState(() => _onSaleOnly = v),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _sortBy,
+                      isDense: true,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
+                      items: const [
+                        DropdownMenuItem(
+                            value: 'newest', child: Text('Sort: Featured')),
+                        DropdownMenuItem(
+                            value: 'price_asc',
+                            child: Text('Price: Low to High')),
+                        DropdownMenuItem(
+                            value: 'price_desc',
+                            child: Text('Price: High to Low')),
+                        DropdownMenuItem(
+                            value: 'rating', child: Text('Top Rated')),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) setState(() => _sortBy = v);
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Count + Clear filters bar
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Showing ${visible.length} product${visible.length == 1 ? '' : 's'}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+                if (_hasActiveFilters)
+                  GestureDetector(
+                    onTap: _clearFilters,
+                    child: const Text(
+                      'Reset filters',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.accentDark,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
           // Product grid
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
-                : _products.isEmpty
-                    ? const Center(child: Text('No products found'))
+                : visible.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.search_off,
+                                size: 48, color: AppColors.muted),
+                            const SizedBox(height: 12),
+                            const Text('No matching products found'),
+                            if (_hasActiveFilters)
+                              TextButton(
+                                onPressed: _clearFilters,
+                                child: const Text('Clear all filters'),
+                              ),
+                          ],
+                        ),
+                      )
                     : RefreshIndicator(
                         onRefresh: _fetch,
+                        color: AppColors.accent,
                         child: GridView.builder(
-                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          padding: const EdgeInsets.fromLTRB(14, 8, 14, 24),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
-                            childAspectRatio: 0.62,
+                            childAspectRatio: 0.59,
                             crossAxisSpacing: 10,
                             mainAxisSpacing: 12,
                           ),
-                          itemCount: _products.length,
+                          itemCount: visible.length,
                           itemBuilder: (_, i) {
-                            final p = _products[i];
+                            final p = visible[i];
                             return ProductCard(
                               product: p,
-                              onTap: () => context.go('/product/${p.id}'),
+                              heroPrefix: 'shop',
+                              onTap: () => context.push('/product/${p.id}'),
                               onAddToCart: p.inStock
                                   ? () {
                                       context.read<CartProvider>().add(p);
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
                                         SnackBar(
-                                          content: Text('${p.name} added'),
+                                          content:
+                                              Text('${p.name} added to cart'),
                                           duration: const Duration(seconds: 2),
                                         ),
                                       );

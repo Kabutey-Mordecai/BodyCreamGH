@@ -6,6 +6,7 @@ import 'config.dart';
 import 'main_shell.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
+import 'providers/wishlist_provider.dart';
 import 'screens/account_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/checkout_screen.dart';
@@ -17,6 +18,8 @@ import 'screens/payment_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/shop_screen.dart';
+import 'screens/track_order_screen.dart';
+import 'screens/wishlist_screen.dart';
 import 'theme/app_theme.dart';
 
 void main() {
@@ -34,6 +37,7 @@ class CosmeticsApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()..init()),
         ChangeNotifierProvider(create: (_) => CartProvider()),
+        ChangeNotifierProvider(create: (_) => WishlistProvider()..init()),
       ],
       child: Builder(builder: (ctx) {
         final router = _buildRouter(ctx);
@@ -51,23 +55,23 @@ class CosmeticsApp extends StatelessWidget {
 GoRouter _buildRouter(BuildContext ctx) {
   return GoRouter(
     initialLocation: '/',
-    // Redirect unauthenticated users away from protected routes
+    // Redirect unauthenticated users away from account-only routes.
+    // Note: /checkout is intentionally public so Guest Checkout works just like web!
     redirect: (context, state) {
       final auth = context.read<AuthProvider>();
       final isAuth = auth.isLoggedIn;
       final isInitializing = auth.status == AuthStatus.unknown;
 
-      // Wait for auth to initialise before redirecting
       if (isInitializing) return null;
 
-      final protectedRoutes = ['/checkout', '/orders', '/profile/edit'];
-      final isProtected = protectedRoutes.any((r) => state.matchedLocation.startsWith(r));
+      final protectedRoutes = ['/orders', '/profile/edit'];
+      final isProtected =
+          protectedRoutes.any((r) => state.matchedLocation.startsWith(r));
 
       if (isProtected && !isAuth) return '/login';
       return null;
     },
     routes: [
-      // Shell with bottom nav — wraps the four main tabs
       StatefulShellRoute.indexedStack(
         builder: (_, __, shell) => MainShell(navigationShell: shell),
         branches: [
@@ -84,7 +88,8 @@ GoRouter _buildRouter(BuildContext ctx) {
             GoRoute(path: '/orders', builder: (_, __) => const OrdersScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/account', builder: (_, __) => const AccountScreen()),
+            GoRoute(
+                path: '/account', builder: (_, __) => const AccountScreen()),
           ]),
         ],
       ),
@@ -97,6 +102,14 @@ GoRouter _buildRouter(BuildContext ctx) {
         ),
       ),
       GoRoute(
+        path: '/wishlist',
+        builder: (_, __) => const WishlistScreen(),
+      ),
+      GoRoute(
+        path: '/track-order',
+        builder: (_, __) => const TrackOrderScreen(),
+      ),
+      GoRoute(
         path: '/checkout',
         builder: (_, __) => const CheckoutScreen(),
       ),
@@ -106,7 +119,7 @@ GoRouter _buildRouter(BuildContext ctx) {
           final extra = state.extra as Map<String, dynamic>;
           return PaymentScreen(
             paymentUrl: extra['url'] as String,
-            orderId: (extra['order_id'] ?? '').toString(),
+            orderId: extra['order_id'] as String,
           );
         },
       ),

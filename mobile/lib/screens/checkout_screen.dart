@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../config.dart';
+import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/payment_url.dart';
 
 const List<String> _ghanaRegions = [
@@ -38,6 +40,9 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _firstNameCtrl = TextEditingController();
+  final _lastNameCtrl = TextEditingController();
+  final _emailCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   final _cityCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
@@ -100,6 +105,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   void dispose() {
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _emailCtrl.dispose();
     _addressCtrl.dispose();
     _cityCtrl.dispose();
     _phoneCtrl.dispose();
@@ -155,24 +163,50 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _placing = true);
 
+    final auth = context.read<AuthProvider>();
+    final isGuest = !auth.isLoggedIn;
     final cart = context.read<CartProvider>();
     final isPickup = _fulfillmentMethod == 'pickup';
-    try {
-      // Sync local cart to server so order.controller reads items successfully
-      await cart.syncToServer();
+    final shippingAddress =
+        isPickup ? 'Pickup: $_pickupLocation' : _addressCtrl.text.trim();
+    final shippingCity = isPickup ? 'Accra' : _cityCtrl.text.trim();
+    final shippingRegion = isPickup ? 'Greater Accra' : _selectedRegion;
+    final couponCode = _appliedCoupon != null ? _couponCtrl.text.trim() : null;
 
-      final payload = cart.toOrderPayload(
-        shippingAddress:
-            isPickup ? 'Pickup: $_pickupLocation' : _addressCtrl.text.trim(),
-        shippingCity: isPickup ? 'Accra' : _cityCtrl.text.trim(),
-        shippingRegion: isPickup ? 'Greater Accra' : _selectedRegion,
-        fulfillmentMethod: _fulfillmentMethod,
-        paymentMethod: _paymentMethod,
-        phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
-        couponCode: _appliedCoupon != null ? _couponCtrl.text.trim() : null,
-      );
-      final order = await ApiService.instance.createOrder(payload);
+    try {
+      Map<String, dynamic> order;
+      if (isGuest) {
+        final guestPayload = cart.toGuestOrderPayload(
+          email: _emailCtrl.text.trim(),
+          firstName: _firstNameCtrl.text.trim(),
+          lastName: _lastNameCtrl.text.trim(),
+          phone: _phoneCtrl.text.trim(),
+          shippingAddress: shippingAddress,
+          shippingCity: shippingCity,
+          shippingRegion: shippingRegion,
+          deliveryFee: _deliveryFee(cart),
+          fulfillmentMethod: _fulfillmentMethod,
+          paymentMethod: _paymentMethod,
+          couponCode: couponCode,
+        );
+        order = await ApiService.instance.createGuestOrder(guestPayload);
+      } else {
+        await cart.syncToServer();
+        final payload = cart.toOrderPayload(
+          shippingAddress: shippingAddress,
+          shippingCity: shippingCity,
+          shippingRegion: shippingRegion,
+          fulfillmentMethod: _fulfillmentMethod,
+          paymentMethod: _paymentMethod,
+          phone:
+              _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+          couponCode: couponCode,
+        );
+        order = await ApiService.instance.createOrder(payload);
+      }
+
       final orderId = (order['orderId'] ?? order['id']).toString();
+      final orderNum = (order['orderNumber'] ?? orderId).toString();
 
       if (_paymentMethod == 'pay_on_delivery') {
         if (!mounted) return;
@@ -180,21 +214,26 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Order ${order['orderNumber'] ?? orderId} confirmed! Pay on ${isPickup ? 'pickup' : 'delivery'}.',
+              'Order $orderNum confirmed! Pay on ${isPickup ? 'pickup' : 'delivery'}.',
             ),
           ),
         );
-        context.go('/orders');
+        context.go(isGuest ? '/track-order' : '/orders');
         return;
       }
 
-      // Initialize payment and navigate to payment WebView
-      final payment = await ApiService.instance.initializePayment(orderId);
+      // Initialize payment (guest or authenticated) and navigate to payment WebView
+      final payment = isGuest
+          ? await ApiService.instance.initializeGuestPayment(
+              orderId,
+              (order['email'] ?? _emailCtrl.text.trim()).toString(),
+            )
+          : await ApiService.instance.initializePayment(orderId);
       final authUrl = payment['authorization_url'];
 
       if (authUrl is! String || !isSafePaystackCheckoutUrl(authUrl)) {
         // Never navigate to an unexpected payment URL. The order is saved and
-        // can be paid later from the Orders page.
+        // can be paid later from the Orders / Track Order page.
         throw Exception(
           'Received an invalid payment link. Your order was saved — please pay from your Orders page.',
         );
@@ -220,6 +259,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final isGuest = !auth.isLoggedIn;
     final cart = context.watch<CartProvider>();
     final deliveryFee = _deliveryFee(cart);
     final total = _total(cart);
@@ -232,6 +273,73 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (isGuest) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.blush,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Checking out as a guest',
+                        style: TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => context.push('/login'),
+                      child: const Text('Log in instead'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text('Contact Information',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _firstNameCtrl,
+                      decoration:
+                          const InputDecoration(labelText: 'First Name *'),
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _lastNameCtrl,
+                      decoration:
+                          const InputDecoration(labelText: 'Last Name *'),
+                      validator: (v) =>
+                          v == null || v.trim().isEmpty ? 'Required' : null,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _emailCtrl,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email Address (for receipt & tracking) *',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+                validator: (v) => v == null || !v.contains('@')
+                    ? 'Enter a valid email'
+                    : null,
+              ),
+              const SizedBox(height: 20),
+            ],
+
             Text('Delivery Method', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
 
