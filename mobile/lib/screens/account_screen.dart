@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import '../theme/app_theme.dart';
 
 class AccountScreen extends StatelessWidget {
   const AccountScreen({super.key});
@@ -74,29 +75,47 @@ class AccountScreen extends StatelessWidget {
         children: [
           // Profile header
           Container(
-            color: Theme.of(context).colorScheme.primaryContainer,
+            color: AppColors.primary,
             padding: const EdgeInsets.all(24),
             child: Row(
               children: [
                 CircleAvatar(
-                  radius: 32,
-                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  radius: 30,
+                  backgroundColor: AppColors.accent,
                   child: Text(
                     user.firstName.isNotEmpty
                         ? user.firstName[0].toUpperCase()
                         : (user.email.isNotEmpty ? user.email[0].toUpperCase() : 'U'),
-                    style: const TextStyle(fontSize: 28, color: Colors.white),
+                    style: const TextStyle(
+                      fontFamily: 'serif',
+                      fontSize: 26,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.primary,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(user.fullName,
-                        style: Theme.of(context).textTheme.titleLarge),
-                    Text(user.email,
-                        style: Theme.of(context).textTheme.bodyMedium),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        user.fullName,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(color: Colors.white),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        user.email,
+                        style: const TextStyle(
+                          color: AppColors.accentLight,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),

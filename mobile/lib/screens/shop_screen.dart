@@ -117,12 +117,12 @@ class _ShopScreenState extends State<ShopScreen> {
                     : RefreshIndicator(
                         onRefresh: _fetch,
                         child: GridView.builder(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.fromLTRB(14, 10, 14, 24),
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
-                            childAspectRatio: 0.72,
-                            crossAxisSpacing: 8,
-                            mainAxisSpacing: 8,
+                            childAspectRatio: 0.62,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 12,
                           ),
                           itemCount: _products.length,
                           itemBuilder: (_, i) {

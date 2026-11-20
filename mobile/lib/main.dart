@@ -17,6 +17,7 @@ import 'screens/payment_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/shop_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -38,12 +39,7 @@ class CosmeticsApp extends StatelessWidget {
         final router = _buildRouter(ctx);
         return MaterialApp.router(
           title: AppConfig.appName,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFFB5556A), // dusty rose — cosmetics brand color
-            ),
-            useMaterial3: true,
-          ),
+          theme: AppTheme.light(),
           routerConfig: router,
           debugShowCheckedModeBanner: false,
         );
