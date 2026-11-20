@@ -20,6 +20,7 @@ import 'screens/shop_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  AppConfig.validateConfig();
   runApp(const CosmeticsApp());
 }
 

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 // Central configuration — change baseUrl to point at your deployed API.
 // In development, use your machine's LAN IP so the emulator/device can reach it:
 //   Android emulator: http://10.0.2.2:3000/api
@@ -12,10 +14,33 @@ class AppConfig {
   // Public storefront URL. The backend builds the Paystack callback URL from
   // its FRONTEND_URL, so this must match it (build with
   // --dart-define=STOREFRONT_URL=https://yourdomain.com in production).
+  static const bool hasStorefrontUrl = bool.hasEnvironment('STOREFRONT_URL');
   static const String storefrontUrl = String.fromEnvironment(
     'STOREFRONT_URL',
     defaultValue: 'http://localhost:5173',
   );
+
+  /// Fails loudly in release builds (and logs clearly in debug builds) if
+  /// STOREFRONT_URL was not configured, preventing silent Paystack callback
+  /// detection failures.
+  static void validateConfig() {
+    final parsed = Uri.tryParse(storefrontUrl);
+    final isLocalhost = parsed == null ||
+        parsed.host.isEmpty ||
+        parsed.host == 'localhost' ||
+        parsed.host == '127.0.0.1';
+
+    if (!hasStorefrontUrl || isLocalhost) {
+      final msg =
+          'STOREFRONT_URL is unset or points to localhost ("$storefrontUrl"). '
+          'Pass --dart-define=STOREFRONT_URL=<backend FRONTEND_URL> so '
+          'PaymentScreen can detect Paystack callbacks.';
+      if (kReleaseMode) {
+        throw StateError('[AppConfig] $msg');
+      }
+      debugPrint('[AppConfig] WARNING: $msg');
+    }
+  }
 
   /// Origins (scheme + host + port) that Paystack may redirect back to.
   static List<Uri> get trustedCallbackOrigins => [

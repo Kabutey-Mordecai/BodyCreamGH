@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 
+import '../config.dart';
 import '../utils/payment_url.dart';
 
 // Loads Paystack's hosted payment page in a WebView.
@@ -54,6 +55,16 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   extra: {'paymentRef': ref, 'justPaid': true});
             }
             return NavigationDecision.prevent;
+          }
+          if (uri != null &&
+              (uri.path == paymentCallbackPath ||
+                  uri.path == '$paymentCallbackPath/')) {
+            debugPrint(
+              '[PaymentScreen] Ignoring callback path on untrusted origin '
+              '"${uri.scheme}://${uri.host}:${uri.port}". '
+              'Trusted origins: ${AppConfig.trustedCallbackOrigins}. '
+              'Ensure --dart-define=STOREFRONT_URL matches backend FRONTEND_URL.',
+            );
           }
           return NavigationDecision.navigate;
         },
