@@ -47,13 +47,17 @@ function _resetReuseColumnCache() {
 
 // The reuse columns come from migration 033. Until it is applied we fall back to
 // the previous behaviour (always create a new transaction) instead of failing.
-async function hasReuseColumns(client) {
+// Negative results expire after REUSE_COLUMN_NEGATIVE_TTL_MS (60s), so once 033
+// is applied the process picks it up automatically on the next init call without
+// requiring a restart. If a cached positive result ever hits undefined_column
+// (42703), the cache is invalidated so the next call re-checks.
+async function hasReuseColumns(queryable) {
   const now = Date.now();
   if (reuseColumnCache.present === true) return true;
   if (reuseColumnCache.present === false && now - reuseColumnCache.checkedAt < REUSE_COLUMN_NEGATIVE_TTL_MS) {
     return false;
   }
-  const { rows } = await client.query(
+  const { rows } = await queryable.query(
     `SELECT column_name FROM information_schema.columns
       WHERE table_schema = current_schema()
         AND table_name = 'payments'
@@ -121,23 +125,58 @@ async function findReusableTransaction(client, orderId, amountPesewas) {
   ) || null;
 }
 
-// Reuse a recent open transaction or create a new one. Caller holds the per-order
-// advisory lock inside an open transaction on `client`.
-async function getOrCreateTransaction(client, { orderId, order, email, metadata }) {
+// In-process per-order mutex so simultaneous init requests in this process
+// serialize in memory without holding a PostgreSQL connection during the
+// Paystack HTTP call. A short DB transaction with pg_advisory_xact_lock is
+// then used only when persisting the new row (to guard cross-process races).
+const orderInitLocks = new Map();
+
+async function withOrderInitLock(orderId, fn) {
+  const prev = orderInitLocks.get(orderId) || Promise.resolve();
+  let release;
+  const mine = new Promise(resolve => { release = resolve; });
+  const tail = prev.then(() => mine);
+  orderInitLocks.set(orderId, tail);
+  await prev;
+  try {
+    return await fn();
+  } finally {
+    release();
+    if (orderInitLocks.get(orderId) === tail) {
+      orderInitLocks.delete(orderId);
+    }
+  }
+}
+
+// Reuse a recent open transaction or create a new one.
+// No DB connection or transaction is held while calling Paystack's HTTP API:
+//   1. Quick read against `pool` to reuse an existing recent pending row.
+//   2. External HTTP call to Paystack with zero DB connections checked out.
+//   3. Short DB transaction with pg_advisory_xact_lock to re-check & INSERT.
+async function getOrCreateTransaction({ orderId, order, email, metadata }) {
   const amountPesewas = toPesewas(order);
-  const reuseColumns = await hasReuseColumns(client);
+  let reuseColumns = await hasReuseColumns(pool);
 
   if (reuseColumns) {
-    const existing = await findReusableTransaction(client, orderId, amountPesewas);
-    if (existing) {
-      logger.info('Paystack init: reusing open transaction', {
-        orderId, reference: existing.paystack_reference,
-      });
-      return {
-        authorization_url: existing.authorization_url,
-        access_code:       existing.access_code,
-        reference:         existing.paystack_reference,
-      };
+    try {
+      const existing = await findReusableTransaction(pool, orderId, amountPesewas);
+      if (existing) {
+        logger.info('Paystack init: reusing open transaction', {
+          orderId, reference: existing.paystack_reference,
+        });
+        return {
+          authorization_url: existing.authorization_url,
+          access_code:       existing.access_code,
+          reference:         existing.paystack_reference,
+        };
+      }
+    } catch (err) {
+      if (err.code === '42703') {
+        _resetReuseColumnCache();
+        reuseColumns = false;
+      } else {
+        throw err;
+      }
     }
   }
 
@@ -152,21 +191,56 @@ async function getOrCreateTransaction(client, { orderId, order, email, metadata 
   });
   const tx = response.data.data;
 
-  if (reuseColumns) {
-    await client.query(
-      `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method,
-                             authorization_url, access_code, currency)
-       VALUES ($1,$2,$3,'pending',$4,$5,'paystack',$6,$7,'GHS')
-       ON CONFLICT (paystack_reference) DO NOTHING`,
-      [uuid(), orderId, order.total_amount, tx.reference, email, tx.authorization_url, tx.access_code || null]
-    );
-  } else {
-    await client.query(
-      `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method)
-       VALUES ($1,$2,$3,'pending',$4,$5,'paystack')
-       ON CONFLICT (paystack_reference) DO NOTHING`,
-      [uuid(), orderId, order.total_amount, tx.reference, email]
-    );
+  // Short DB transaction strictly for persisting the new row (and reconciling
+  // any rare cross-process race via pg_advisory_xact_lock).
+  const client = await pool.connect();
+  let txOpen = false;
+  try {
+    await client.query('BEGIN');
+    txOpen = true;
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`paystack_init:${orderId}`]);
+
+    if (reuseColumns) {
+      const raced = await findReusableTransaction(client, orderId, amountPesewas);
+      if (raced) {
+        await client.query('COMMIT');
+        txOpen = false;
+        logger.warn('Paystack init: reusing transaction created by concurrent process; discarding duplicate reference', {
+          orderId,
+          reference: raced.paystack_reference,
+          discardedReference: tx.reference,
+        });
+        return {
+          authorization_url: raced.authorization_url,
+          access_code:       raced.access_code,
+          reference:         raced.paystack_reference,
+        };
+      }
+
+      await client.query(
+        `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method,
+                               authorization_url, access_code, currency)
+         VALUES ($1,$2,$3,'pending',$4,$5,'paystack',$6,$7,'GHS')
+         ON CONFLICT (paystack_reference) DO NOTHING`,
+        [uuid(), orderId, order.total_amount, tx.reference, email, tx.authorization_url, tx.access_code || null]
+      );
+    } else {
+      await client.query(
+        `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method)
+         VALUES ($1,$2,$3,'pending',$4,$5,'paystack')
+         ON CONFLICT (paystack_reference) DO NOTHING`,
+        [uuid(), orderId, order.total_amount, tx.reference, email]
+      );
+    }
+
+    await client.query('COMMIT');
+    txOpen = false;
+  } catch (err) {
+    if (err.code === '42703') _resetReuseColumnCache();
+    throw err;
+  } finally {
+    if (txOpen) await client.query('ROLLBACK').catch(() => {});
+    client.release();
   }
 
   return {
@@ -176,61 +250,41 @@ async function getOrCreateTransaction(client, { orderId, order, email, metadata 
   };
 }
 
-// Serialise init calls per order so two simultaneous requests cannot both create
-// a reference. An advisory lock (not a row lock) is used on purpose: the lock is
-// held across the Paystack HTTP call, and a row lock on `orders` would block
-// webhook/admin updates to that order for that long.
-async function lockOrderForInit(client, orderId) {
-  await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`paystack_init:${orderId}`]);
-}
-
 // ── Initialize payment (authenticated user) ───────────────────────────────────
 const initializePayment = async (req, res) => {
-  let client = null;
-  let txOpen = false;
   try {
     const { orderId } = req.body;
     if (typeof orderId !== 'string' || !UUID_RE.test(orderId)) {
       return res.status(400).json({ error: 'Invalid orderId' });
     }
 
-    client = await pool.connect();
-    await client.query('BEGIN');
-    txOpen = true;
-    await lockOrderForInit(client, orderId);
+    const result = await withOrderInitLock(orderId, async () => {
+      // Load the order inside the per-order lock so we see the latest state.
+      const order = await OrderModel.findById(orderId, req.user.id);
+      if (!order) return { status: 404, body: { error: 'Order not found' } };
 
-    // Load the order only after taking the lock so we see the latest state.
-    const order = await OrderModel.findById(orderId, req.user.id);
-    if (!order) return res.status(404).json({ error: 'Order not found' });
+      const initError = getInitError(order);
+      if (initError) return { status: initError.status, body: { error: initError.error } };
 
-    const initError = getInitError(order);
-    if (initError) return res.status(initError.status).json({ error: initError.error });
-
-    const tx = await getOrCreateTransaction(client, {
-      orderId,
-      order,
-      email:    req.user.email,
-      metadata: { orderId, userId: req.user.id },
+      const tx = await getOrCreateTransaction({
+        orderId,
+        order,
+        email:    req.user.email,
+        metadata: { orderId, userId: req.user.id },
+      });
+      return { status: 200, body: tx };
     });
 
-    await client.query('COMMIT');
-    txOpen = false;
-    res.json(tx);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    res.json(result.body);
   } catch (error) {
     logger.error('Paystack init error', { err: error.response?.data?.message || error.message });
     res.status(500).json({ error: 'Failed to initialize payment' });
-  } finally {
-    if (client) {
-      if (txOpen) await client.query('ROLLBACK').catch(() => {});
-      client.release();
-    }
   }
 };
 
 // ── Initialize payment (guest checkout) ──────────────────────────────────────
 const initializeGuestPayment = async (req, res) => {
-  let client = null;
-  let txOpen = false;
   try {
     const { orderId, email } = req.body;
     if (
@@ -242,45 +296,37 @@ const initializeGuestPayment = async (req, res) => {
       return res.status(400).json({ error: 'Valid orderId and email are required' });
     }
 
-    client = await pool.connect();
-    await client.query('BEGIN');
-    txOpen = true;
-    await lockOrderForInit(client, orderId);
+    const result = await withOrderInitLock(orderId, async () => {
+      const order = await OrderModel.findById(orderId);
 
-    const order = await OrderModel.findById(orderId);
+      // Return a single generic 404 across missing, non-guest, and email-mismatch
+      // cases so this endpoint cannot be used as an order existence/ownership oracle.
+      if (
+        !order ||
+        (order.customer_id !== null && order.customer_id !== undefined) ||
+        !order.guest_email ||
+        order.guest_email.toLowerCase() !== email.trim().toLowerCase()
+      ) {
+        return { status: 404, body: { error: 'Order not found' } };
+      }
 
-    // Return a single generic 404 across missing, non-guest, and email-mismatch
-    // cases so this endpoint cannot be used as an order existence/ownership oracle.
-    if (
-      !order ||
-      (order.customer_id !== null && order.customer_id !== undefined) ||
-      !order.guest_email ||
-      order.guest_email.toLowerCase() !== email.trim().toLowerCase()
-    ) {
-      return res.status(404).json({ error: 'Order not found' });
-    }
+      const initError = getInitError(order);
+      if (initError) return { status: initError.status, body: { error: initError.error } };
 
-    const initError = getInitError(order);
-    if (initError) return res.status(initError.status).json({ error: initError.error });
-
-    const tx = await getOrCreateTransaction(client, {
-      orderId,
-      order,
-      email:    order.guest_email,
-      metadata: { orderId, guest: true },
+      const tx = await getOrCreateTransaction({
+        orderId,
+        order,
+        email:    order.guest_email,
+        metadata: { orderId, guest: true },
+      });
+      return { status: 200, body: tx };
     });
 
-    await client.query('COMMIT');
-    txOpen = false;
-    res.json(tx);
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    res.json(result.body);
   } catch (error) {
     logger.error('Paystack guest init error', { err: error.response?.data?.message || error.message });
     res.status(500).json({ error: 'Failed to initialize payment' });
-  } finally {
-    if (client) {
-      if (txOpen) await client.query('ROLLBACK').catch(() => {});
-      client.release();
-    }
   }
 };
 
@@ -1183,4 +1229,12 @@ const handleWebhook = async (req, res) => {
   }
 };
 
-module.exports = { initializePayment, initializeGuestPayment, verifyPayment, handleWebhook, _resetReuseColumnCache };
+module.exports = {
+  initializePayment,
+  initializeGuestPayment,
+  verifyPayment,
+  handleWebhook,
+  _resetReuseColumnCache,
+  _withOrderInitLock: withOrderInitLock,
+  _orderInitLockCount: () => orderInitLocks.size,
+};
