@@ -52,6 +52,7 @@ function resetAll() {
   queuedJobs.length = 0;
   paystackCalls.length = 0;
   sentEmails.length = 0;
+  loggedEvents.length = 0;
   lastPendingRefundSql = null;
   lastExportQuery = null;
   txSnapshot = null;
@@ -616,9 +617,13 @@ async function acquireAdvisoryLock(key) {
   return release;
 }
 
+let activePoolClients = 0;
+
 const mockPool = {
   query: async (sql, params) => runMockQuery(sql, params),
   connect: async () => {
+    activePoolClients += 1;
+    let released = false;
     const heldReleases = [];
     const releaseAll = () => { while (heldReleases.length) heldReleases.pop()(); };
     return {
@@ -632,7 +637,13 @@ const mockPool = {
         if (q === 'COMMIT' || q === 'ROLLBACK') releaseAll();
         return result;
       },
-      release: () => releaseAll(),
+      release: () => {
+        if (!released) {
+          released = true;
+          activePoolClients -= 1;
+        }
+        releaseAll();
+      },
     };
   },
 };
@@ -694,12 +705,18 @@ require.cache[path.join(SRC, 'models', 'order.model.js')] = {
   },
 };
 
+const loggedEvents = [];
 const loggerPath = path.join(SRC, 'utils', 'logger.js');
 require.cache[loggerPath] = {
   id: loggerPath,
   filename: loggerPath,
   loaded: true,
-  exports: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+  exports: {
+    info:  (msg, meta) => loggedEvents.push({ level: 'info', msg, meta }),
+    warn:  (msg, meta) => loggedEvents.push({ level: 'warn', msg, meta }),
+    error: (msg, meta) => loggedEvents.push({ level: 'error', msg, meta }),
+    debug: (msg, meta) => loggedEvents.push({ level: 'debug', msg, meta }),
+  },
 };
 
 const emailPath = path.join(SRC, 'services', 'email.service.js');
@@ -728,6 +745,8 @@ const {
   verifyPayment,
   handleWebhook,
   _resetReuseColumnCache,
+  _withOrderInitLock,
+  _orderInitLockCount,
 } = require(path.join(SRC, 'controllers', 'payment.controller.js'));
 const { createOrder, createGuestOrder, refundOrder, markOrderPaid, exportOrders } = require(path.join(SRC, 'controllers', 'order.controller.js'));
 const registerPaymentWorker = require(path.join(SRC, 'workers', 'payment.worker.js'));
@@ -1910,6 +1929,105 @@ async function runTests() {
     const rPf2 = makeRes();
     await initializePayment({ body: { orderId: oFail.id }, user: { id: 'cust-pf', email: 'pf@test.com' } }, rPf2);
     assert.equal(rPf2.statusCode, 200);
+
+    // 15l: no DB pool connection is held while Paystack HTTP call is in flight
+    resetAll();
+    let clientsDuringHttp = -1;
+    mockPaystackHandlers.post = async () => {
+      clientsDuringHttp = activePoolClients;
+      await new Promise(resolve => setTimeout(resolve, 15));
+      return {
+        data: {
+          status: true,
+          data: {
+            authorization_url: 'https://checkout.paystack.com/tx_no_conn',
+            access_code: 'ac_no_conn',
+            reference: 'ref_no_conn',
+          },
+        },
+      };
+    };
+    const oNoConn = makeOrder({ customer_id: 'cust-nc', payment_status: 'unpaid', total_amount: '100.00' });
+    const [rNc1, rNc2] = [makeRes(), makeRes()];
+    await Promise.all([
+      initializePayment({ body: { orderId: oNoConn.id }, user: { id: 'cust-nc', email: 'nc@test.com' } }, rNc1),
+      initializePayment({ body: { orderId: oNoConn.id }, user: { id: 'cust-nc', email: 'nc@test.com' } }, rNc2),
+    ]);
+    assert.equal(clientsDuringHttp, 0, 'no DB connection may be held during the Paystack HTTP call');
+    assert.equal(activePoolClients, 0, 'all DB connections must be released after init');
+    assert.equal(rNc1.body.reference, 'ref_no_conn');
+    assert.equal(rNc2.body.reference, 'ref_no_conn');
+    assert.equal(initCalls().length, 1);
+
+    // 15m: cross-process race — another process inserts a reusable row while our
+    // Paystack HTTP call is in flight -> return existing row, do NOT insert ours,
+    // and log the discarded reference.
+    resetAll();
+    const oCross = makeOrder({ customer_id: 'cust-cross', payment_status: 'unpaid', total_amount: '100.00' });
+    mockPaystackHandlers.post = async () => {
+      // Simulate another server process committing a pending row during our HTTP call
+      makePayment(oCross.id, 'ref_peer_proc', {
+        amount: '100.00',
+        authorization_url: 'https://checkout.paystack.com/peer_tx',
+        access_code: 'ac_peer',
+        currency: 'GHS',
+        created_at: new Date(),
+      });
+      return {
+        data: {
+          status: true,
+          data: {
+            authorization_url: 'https://checkout.paystack.com/discarded_tx',
+            access_code: 'ac_discarded',
+            reference: 'ref_discarded_1',
+          },
+        },
+      };
+    };
+    const rCross = makeRes();
+    await initializePayment({ body: { orderId: oCross.id }, user: { id: 'cust-cross', email: 'c@test.com' } }, rCross);
+    assert.equal(rCross.statusCode, 200);
+    assert.equal(rCross.body.reference, 'ref_peer_proc', 'must return existing peer reference');
+    assert.equal(rCross.body.authorization_url, 'https://checkout.paystack.com/peer_tx');
+    assert.equal(rCross.body.access_code, 'ac_peer');
+    assert.equal(dbState.payments.has('ref_discarded_1'), false, 'discarded reference must not be inserted');
+    assert.equal(dbState.payments.size, 1);
+    assert(
+      loggedEvents.some(e =>
+        e.level === 'warn' &&
+        e.meta?.reference === 'ref_peer_proc' &&
+        e.meta?.discardedReference === 'ref_discarded_1'
+      ),
+      'discarded reference must be logged'
+    );
+
+    // 15n: withOrderInitLock deletes its Map entry when the last waiter finishes,
+    // including when callbacks throw (single waiter and multiple waiters).
+    assert.equal(_orderInitLockCount(), 0);
+    await _withOrderInitLock('lock-ok', async () => 'done');
+    assert.equal(_orderInitLockCount(), 0, 'map entry deleted after single success');
+
+    await assert.rejects(
+      () => _withOrderInitLock('lock-throw', async () => { throw new Error('boom'); }),
+      /boom/
+    );
+    assert.equal(_orderInitLockCount(), 0, 'map entry deleted after single throw');
+
+    const lockResults = await Promise.allSettled([
+      _withOrderInitLock('lock-multi', async () => {
+        await new Promise(resolve => setTimeout(resolve, 10));
+        throw new Error('first-failed');
+      }),
+      _withOrderInitLock('lock-multi', async () => 'second-ok'),
+      _withOrderInitLock('lock-multi', async () => {
+        throw new Error('last-failed');
+      }),
+    ]);
+    assert.equal(lockResults[0].status, 'rejected');
+    assert.equal(lockResults[1].status, 'fulfilled');
+    assert.equal(lockResults[1].value, 'second-ok');
+    assert.equal(lockResults[2].status, 'rejected');
+    assert.equal(_orderInitLockCount(), 0, 'map entry deleted after last waiter finishes even on throw');
   }
 
   // ── 16. Security audit finding 3: HTML escaping in email.service.js ─────────
@@ -2048,6 +2166,42 @@ async function runTests() {
       assert(
         lastHtml().includes('href="https://store.example.com/reset?token=abc&foo=bar"'),
         'sendPasswordResetEmail: self-built resetUrl must remain unescaped'
+      );
+
+      // Verify "Ama & Kofi": escaped in HTML body, unescaped in subject and plain-text body
+      await realEmail.sendOrderCancellation('u@test.com', {
+        customerName: 'Ama & Kofi',
+        orderNumber: 'ORD-A&K',
+      });
+      const cancelMail = sentMails[sentMails.length - 1];
+      assert(cancelMail.html.includes('Hi Ama &amp; Kofi,'), 'HTML body must escape ampersands in customerName');
+      assert(cancelMail.html.includes('ORD-A&amp;K'), 'HTML body must escape ampersands in orderNumber');
+      assert.equal(
+        cancelMail.subject,
+        'Your order ORD-A&K has been cancelled',
+        'email subject must not be HTML-escaped'
+      );
+
+      await realEmail.sendNewsletterEmail('u@test.com', {
+        subject: 'Hello Ama & Kofi',
+        bodyHtml: '<p>Welcome</p>',
+        bodyText: 'Hi Ama & Kofi, thanks for subscribing!',
+        unsubscribeUrl: 'https://store.example.com/unsub?t=1',
+        storeName: 'Ama & Kofi Store',
+      });
+      const nlMail = sentMails[sentMails.length - 1];
+      assert.equal(nlMail.subject, 'Hello Ama & Kofi', 'newsletter subject must not be HTML-escaped');
+      assert(
+        nlMail.text.includes('Hi Ama & Kofi, thanks for subscribing!'),
+        'plain-text body must not be HTML-escaped'
+      );
+      assert(
+        !nlMail.text.includes('&amp;'),
+        'plain-text body must not contain HTML entities from escapeHtml'
+      );
+      assert(
+        nlMail.html.includes('Ama &amp; Kofi Store'),
+        'HTML footer must escape storeName'
       );
     } finally {
       if (origNodemailer) require.cache[nodemailerPath] = origNodemailer;
