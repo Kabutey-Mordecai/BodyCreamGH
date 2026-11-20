@@ -1912,6 +1912,155 @@ async function runTests() {
     assert.equal(rPf2.statusCode, 200);
   }
 
+  // ── 16. Security audit finding 3: HTML escaping in email.service.js ─────────
+  {
+    const nodemailerPath = require.resolve('nodemailer');
+    const emailServicePath = require.resolve('../src/services/email.service');
+    const origNodemailer = require.cache[nodemailerPath];
+    const origEmailService = require.cache[emailServicePath];
+    const origSmtpUser = process.env.SMTP_USER;
+    const origSmtpPass = process.env.SMTP_PASS;
+
+    const sentMails = [];
+    try {
+      process.env.SMTP_USER = 'noreply@bodycreamgh.test';
+      process.env.SMTP_PASS = 'real_test_app_password';
+      require.cache[nodemailerPath] = {
+        id: nodemailerPath,
+        filename: nodemailerPath,
+        loaded: true,
+        exports: {
+          createTransport: () => ({
+            sendMail: async (mail) => {
+              sentMails.push(mail);
+              return { messageId: `mock-${sentMails.length}` };
+            },
+            verify: async () => true,
+          }),
+        },
+      };
+      delete require.cache[emailServicePath];
+      const realEmail = require('../src/services/email.service');
+
+      const xss = '<img src=x onerror=alert(1)>';
+      const escapedXss = '&lt;img src=x onerror=alert(1)&gt;';
+
+      const lastHtml = () => sentMails[sentMails.length - 1].html;
+      const assertEscaped = (label) => {
+        const html = lastHtml();
+        assert(html.includes(escapedXss), `${label}: expected escaped XSS payload in HTML`);
+        assert(!html.includes(xss), `${label}: raw unescaped XSS payload must not appear in HTML`);
+      };
+
+      await realEmail.sendWelcomeEmail('u@test.com', xss);
+      assertEscaped('sendWelcomeEmail');
+
+      await realEmail.sendOrderConfirmation('u@test.com', {
+        orderNumber: xss,
+        total: 120,
+        items: [{ name: xss, quantity: 2, price_at_purchase: 60 }],
+      });
+      assertEscaped('sendOrderConfirmation');
+
+      await realEmail.sendShippingNotification('u@test.com', {
+        orderNumber: 'ORD-1',
+        deliveryPartner: xss,
+        trackingNumber: xss,
+      });
+      assertEscaped('sendShippingNotification');
+
+      await realEmail.sendReviewRequest('u@test.com', {
+        customerName: xss,
+        orderNumber: 'ORD-2',
+        orderId: 'order-123',
+        items: [{ id: 'p-1', name: xss }],
+        frontendUrl: 'https://store.example.com',
+      });
+      assertEscaped('sendReviewRequest');
+      assert(
+        lastHtml().includes('href="https://store.example.com/orders/order-123?review=1"'),
+        'sendReviewRequest: self-built targetUrl must remain unescaped'
+      );
+
+      await realEmail.sendOrderCancellation('u@test.com', { customerName: xss, orderNumber: 'ORD-3' });
+      assertEscaped('sendOrderCancellation');
+
+      await realEmail.sendRefundNotification('u@test.com', { customerName: xss, orderNumber: 'ORD-4', total: 50 });
+      assertEscaped('sendRefundNotification');
+
+      await realEmail.sendCancelRequested('u@test.com', { customerName: xss, orderNumber: 'ORD-5' });
+      assertEscaped('sendCancelRequested');
+
+      await realEmail.sendCancelRejected('u@test.com', { customerName: xss, orderNumber: 'ORD-6' });
+      assertEscaped('sendCancelRejected');
+
+      await realEmail.sendReturnRequested('u@test.com', { customerName: xss, orderNumber: 'ORD-7' });
+      assertEscaped('sendReturnRequested');
+
+      await realEmail.sendReturnRejected('u@test.com', { customerName: xss, orderNumber: 'ORD-8' });
+      assertEscaped('sendReturnRejected');
+
+      await realEmail.sendAdminNewOrder('admin@test.com', { orderNumber: 'ORD-9', total: 80, customerName: xss });
+      assertEscaped('sendAdminNewOrder');
+
+      await realEmail.sendAdminCancelRequest('admin@test.com', { orderNumber: 'ORD-10', customerName: xss, reason: xss });
+      assertEscaped('sendAdminCancelRequest');
+
+      await realEmail.sendAdminReturnRequest('admin@test.com', { orderNumber: 'ORD-11', customerName: xss, reason: xss });
+      assertEscaped('sendAdminReturnRequest');
+
+      await realEmail.sendAdminOrderShipped('admin@test.com', { orderNumber: 'ORD-12', trackingNumber: xss });
+      assertEscaped('sendAdminOrderShipped');
+
+      await realEmail.sendNewsletterWelcome('u@test.com', {
+        name: xss,
+        couponCode: xss,
+        discountText: '15% & more',
+        unsubscribeUrl: 'https://store.example.com/unsub?t=abc&x=1',
+      });
+      assertEscaped('sendNewsletterWelcome');
+      assert(lastHtml().includes('15% &amp; more'), 'sendNewsletterWelcome: discountText must be escaped');
+      assert(
+        lastHtml().includes('href="https://store.example.com/unsub?t=abc&x=1"'),
+        'sendNewsletterWelcome: self-built unsubscribeUrl must remain unescaped'
+      );
+
+      await realEmail.sendNewsletterEmail('u@test.com', {
+        subject: 'Campaign',
+        bodyHtml: '<p><strong>Intentional HTML</strong></p>',
+        unsubscribeUrl: 'https://store.example.com/unsub?t=xyz&a=2',
+        storeName: xss,
+      });
+      assertEscaped('sendNewsletterEmail(storeName)');
+      assert(
+        lastHtml().includes('<p><strong>Intentional HTML</strong></p>'),
+        'sendNewsletterEmail: intentional bodyHtml must not be escaped'
+      );
+      assert(
+        lastHtml().includes('href="https://store.example.com/unsub?t=xyz&a=2"'),
+        'sendNewsletterEmail: self-built unsubscribeUrl must remain unescaped'
+      );
+
+      await realEmail.sendOtpEmail('admin@test.com', { firstName: xss, otp: '123456' });
+      assertEscaped('sendOtpEmail');
+
+      await realEmail.sendPasswordResetEmail('u@test.com', 'https://store.example.com/reset?token=abc&foo=bar');
+      assert(
+        lastHtml().includes('href="https://store.example.com/reset?token=abc&foo=bar"'),
+        'sendPasswordResetEmail: self-built resetUrl must remain unescaped'
+      );
+    } finally {
+      if (origNodemailer) require.cache[nodemailerPath] = origNodemailer;
+      else delete require.cache[nodemailerPath];
+      if (origEmailService) require.cache[emailServicePath] = origEmailService;
+      else delete require.cache[emailServicePath];
+      if (origSmtpUser === undefined) delete process.env.SMTP_USER;
+      else process.env.SMTP_USER = origSmtpUser;
+      if (origSmtpPass === undefined) delete process.env.SMTP_PASS;
+      else process.env.SMTP_PASS = origSmtpPass;
+    }
+  }
+
   console.log('ALL PAYSTACK PAYMENT FLOW TESTS PASSED');
 }
 
