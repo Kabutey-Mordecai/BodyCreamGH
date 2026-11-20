@@ -83,7 +83,13 @@ GoRouter _buildRouter(BuildContext ctx) {
             GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/shop', builder: (_, __) => const ShopScreen()),
+            GoRoute(
+              path: '/shop',
+              builder: (_, state) => ShopScreen(
+                initialCategory: state.uri.queryParameters['category'],
+                initialSearch: state.uri.queryParameters['search'],
+              ),
+            ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/cart', builder: (_, __) => const CartScreen()),

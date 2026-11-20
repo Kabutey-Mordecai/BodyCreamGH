@@ -9,7 +9,14 @@ import '../widgets/cart_badge.dart';
 import '../widgets/product_card.dart';
 
 class ShopScreen extends StatefulWidget {
-  const ShopScreen({super.key});
+  final String? initialCategory;
+  final String? initialSearch;
+
+  const ShopScreen({
+    super.key,
+    this.initialCategory,
+    this.initialSearch,
+  });
 
   @override
   State<ShopScreen> createState() => _ShopScreenState();
@@ -26,6 +33,9 @@ class _ShopScreenState extends State<ShopScreen> {
 
   List<String> get _categories {
     final set = <String>{'All'};
+    if (_selectedCategory != null && _selectedCategory!.trim().isNotEmpty) {
+      set.add(_selectedCategory!.trim());
+    }
     for (final p in _products) {
       if (p.category != null && p.category!.trim().isNotEmpty) {
         set.add(p.category!.trim());
@@ -37,7 +47,32 @@ class _ShopScreenState extends State<ShopScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedCategory =
+        (widget.initialCategory != null && widget.initialCategory!.isNotEmpty)
+            ? widget.initialCategory
+            : null;
+    if (widget.initialSearch != null && widget.initialSearch!.isNotEmpty) {
+      _searchCtrl.text = widget.initialSearch!;
+    }
     _fetch();
+  }
+
+  @override
+  void didUpdateWidget(covariant ShopScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    bool changed = false;
+    if (widget.initialCategory != oldWidget.initialCategory) {
+      _selectedCategory =
+          (widget.initialCategory != null && widget.initialCategory!.isNotEmpty)
+              ? widget.initialCategory
+              : null;
+      changed = true;
+    }
+    if (widget.initialSearch != oldWidget.initialSearch) {
+      _searchCtrl.text = widget.initialSearch ?? '';
+      changed = true;
+    }
+    if (changed) _fetch();
   }
 
   @override

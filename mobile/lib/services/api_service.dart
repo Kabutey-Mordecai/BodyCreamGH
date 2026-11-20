@@ -436,4 +436,18 @@ class ApiService {
           body: jsonEncode(data),
         )) as Map<String, dynamic>;
   }
+
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _authed((token) => _client.put(
+          _uri('/customers/password'),
+          headers: _headers(token: token),
+          body: jsonEncode({
+            'current_password': currentPassword,
+            'new_password': newPassword,
+          }),
+        ));
+  }
 }

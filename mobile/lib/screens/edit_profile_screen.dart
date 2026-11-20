@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
+import '../theme/app_theme.dart';
 
 class EditProfileScreen extends StatefulWidget {
   const EditProfileScreen({super.key});
@@ -12,12 +13,20 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
+  final _profileKey = GlobalKey<FormState>();
+  final _pwdKey = GlobalKey<FormState>();
+
   late final TextEditingController _firstCtrl;
   late final TextEditingController _lastCtrl;
   late final TextEditingController _phoneCtrl;
   late final TextEditingController _addressCtrl;
-  bool _saving = false;
+
+  final _currentPwdCtrl = TextEditingController();
+  final _newPwdCtrl = TextEditingController();
+  final _confirmPwdCtrl = TextEditingController();
+
+  bool _savingProfile = false;
+  bool _savingPwd = false;
 
   @override
   void initState() {
@@ -35,6 +44,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _lastCtrl.dispose();
     _phoneCtrl.dispose();
     _addressCtrl.dispose();
+    _currentPwdCtrl.dispose();
+    _newPwdCtrl.dispose();
+    _confirmPwdCtrl.dispose();
     super.dispose();
   }
 
@@ -46,9 +58,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
+  Future<void> _saveProfile() async {
+    if (!_profileKey.currentState!.validate()) return;
+    setState(() => _savingProfile = true);
     try {
       await ApiService.instance.updateProfile({
         'first_name': _firstCtrl.text.trim(),
@@ -62,7 +74,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile updated successfully')),
       );
-      _goBack();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -72,7 +83,40 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         ),
       );
-      setState(() => _saving = false);
+    } finally {
+      if (mounted) setState(() => _savingProfile = false);
+    }
+  }
+
+  Future<void> _changePassword() async {
+    if (!_pwdKey.currentState!.validate()) return;
+    setState(() => _savingPwd = true);
+    try {
+      await ApiService.instance.changePassword(
+        currentPassword: _currentPwdCtrl.text,
+        newPassword: _newPwdCtrl.text,
+      );
+      if (!mounted) return;
+      _currentPwdCtrl.clear();
+      _newPwdCtrl.clear();
+      _confirmPwdCtrl.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password changed successfully.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), ''),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _savingPwd = false);
     }
   }
 
@@ -84,63 +128,145 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: _goBack,
         ),
-        title: const Text('Edit Profile'),
+        title: const Text('Account Settings'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _firstCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'First Name *'),
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? 'Required' : null,
-                    ),
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // 1. Personal Information card (matches web Account.jsx)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Form(
+                  key: _profileKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Personal Information',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _firstCtrl,
+                              decoration: const InputDecoration(
+                                  labelText: 'First Name *'),
+                              validator: (v) => v == null || v.trim().isEmpty
+                                  ? 'Required'
+                                  : null,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _lastCtrl,
+                              decoration: const InputDecoration(
+                                  labelText: 'Last Name *'),
+                              validator: (v) => v == null || v.trim().isEmpty
+                                  ? 'Required'
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _phoneCtrl,
+                        keyboardType: TextInputType.phone,
+                        decoration: const InputDecoration(
+                          labelText: 'Phone Number',
+                          prefixIcon: Icon(Icons.phone_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _addressCtrl,
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          labelText: 'Default Delivery Address',
+                          prefixIcon: Icon(Icons.location_on_outlined),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      FilledButton(
+                        onPressed: _savingProfile ? null : _saveProfile,
+                        child: Text(
+                            _savingProfile ? 'Saving...' : 'Save Changes'),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextFormField(
-                      controller: _lastCtrl,
-                      decoration:
-                          const InputDecoration(labelText: 'Last Name *'),
-                      validator: (v) =>
-                          v == null || v.trim().isEmpty ? 'Required' : null,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _phoneCtrl,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'Phone Number',
-                  prefixIcon: Icon(Icons.phone_outlined),
                 ),
               ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: _addressCtrl,
-                maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Default Delivery Address',
-                  prefixIcon: Icon(Icons.location_on_outlined),
+            ),
+
+            const SizedBox(height: 18),
+
+            // 2. Change Password card (matches web Account.jsx)
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(18),
+                child: Form(
+                  key: _pwdKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'Change Password',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _currentPwdCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Current Password *',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                        validator: (v) => v == null || v.isEmpty
+                            ? 'Enter current password'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _newPwdCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'New Password (min 8 characters) *',
+                          prefixIcon: Icon(Icons.lock_reset_outlined),
+                        ),
+                        validator: (v) => v == null || v.length < 8
+                            ? 'At least 8 characters'
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _confirmPwdCtrl,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Confirm New Password *',
+                          prefixIcon: Icon(Icons.check_circle_outline),
+                        ),
+                        validator: (v) => v != _newPwdCtrl.text
+                            ? 'Passwords do not match'
+                            : null,
+                      ),
+                      const SizedBox(height: 18),
+                      OutlinedButton(
+                        onPressed: _savingPwd ? null : _changePassword,
+                        child: Text(
+                            _savingPwd ? 'Updating...' : 'Update Password'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: _saving ? null : _save,
-                child: Text(_saving ? 'Saving...' : 'Save Changes'),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

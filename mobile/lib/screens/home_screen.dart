@@ -15,6 +15,72 @@ import '../widgets/product_card.dart';
 const String _defaultHeroImg =
     'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1024&q=80';
 
+const List<String> _galleryImages = [
+  'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=400&h=400&q=80',
+  'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=400&h=400&q=80',
+  'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=400&h=400&q=80',
+  'https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?auto=format&fit=crop&w=400&h=400&q=80',
+  'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=400&h=400&q=80',
+];
+
+const List<Map<String, String>> _defaultCategories = [
+  {
+    'label': 'Body Butter',
+    'image': 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    'label': 'Body Cream',
+    'image': 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    'label': 'Body Oil',
+    'image': 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=600&q=80',
+  },
+  {
+    'label': 'Body Scrub',
+    'image': 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=600&q=80',
+  },
+];
+
+const List<Map<String, String>> _defaultLookbookSlides = [
+  {
+    'badge': 'PURE GHANAIAN BOTANICALS',
+    'title': 'Handcrafted in Small Batches.',
+    'highlight': 'Zero Harsh Bleaching Agents.',
+    'subtitle': 'Raw unrefined shea butter from Northern Ghana cooperatives, blended with botanical oils for rich, natural skin nutrition.',
+    'cta_text': 'Shop Collection',
+    'category': '',
+    'image': 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    'badge': 'CLINICALLY PROVEN HYDRATION',
+    'title': '48-Hour Deep Moisture Lock.',
+    'highlight': 'Melanin-Rich Formula.',
+    'subtitle': 'Enriched with cold-pressed baobab and virgin coconut oil to soothe eczema, stretch marks, and dry harmattan skin.',
+    'cta_text': 'Shop Body Creams',
+    'category': 'Body Cream',
+    'image': 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    'badge': 'BESTSELLER RADIANCE',
+    'title': 'Rose Gold Botanical Glow.',
+    'highlight': 'Non-Greasy Velvet Finish.',
+    'subtitle': 'Infused with golden mica particles and wild rosehip seed oil for an instant sun-kissed Ghanaian summer glow.',
+    'cta_text': 'Discover Glow Oils',
+    'category': 'Body Oil',
+    'image': 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
+  },
+  {
+    'badge': 'WEEKEND LUXURY RITUAL',
+    'title': 'Botanical Exfoliating Polish.',
+    'highlight': 'Silky Smooth Finish.',
+    'subtitle': 'Natural Ghanaian cane sugar crystals and raw shea butter to gently buff away dry skin and reveal radiant softness.',
+    'cta_text': 'Shop Body Scrubs',
+    'category': 'Body Scrub',
+    'image': 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=700&q=80',
+  },
+];
+
 const List<Map<String, String>> _defaultFaqs = [
   {
     'q': 'How quickly do you deliver across Ghana?',
@@ -32,17 +98,20 @@ const List<Map<String, String>> _defaultFaqs = [
 
 const List<Map<String, dynamic>> _defaultTestimonials = [
   {
-    'customer_name': 'Akosua M. · East Legon',
+    'customer_name': 'Akosua M.',
+    'location': 'East Legon, Accra',
     'rating': 5,
     'comment': 'The Cinnamon & Honey Glow Mask left my skin luminous after the very first use. Best Ghanaian skincare brand!',
   },
   {
-    'customer_name': 'Nana Ama K. · Kumasi',
+    'customer_name': 'Nana Ama K.',
+    'location': 'Kumasi',
     'rating': 5,
     'comment': 'Rich, whipped texture that melts right in without feeling greasy in our warm weather. Delivery to Kumasi was super fast.',
   },
   {
-    'customer_name': 'Efua T. · Tema',
+    'customer_name': 'Efua T.',
+    'location': 'Tema',
     'rating': 5,
     'comment': 'The Lavender Calm Night Butter smells heavenly and completely healed my dry elbows in a week.',
   },
@@ -62,6 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   String _activeCategory = 'All';
 
+  final _heroSearchCtrl = TextEditingController();
   final _nlEmailCtrl = TextEditingController();
   bool _nlSubmitting = false;
   String? _nlCouponResult;
@@ -75,6 +145,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _heroSearchCtrl.dispose();
     _nlEmailCtrl.dispose();
     super.dispose();
   }
@@ -82,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _load() async {
     try {
       final results = await Future.wait([
-        ApiService.instance.getProducts(limit: 12),
+        ApiService.instance.getProducts(limit: 20),
         ApiService.instance.getSettings().catchError((_) => <String, dynamic>{}),
         ApiService.instance.getFeaturedReviews().catchError((_) => <dynamic>[]),
       ]);
@@ -117,10 +188,24 @@ class _HomeScreenState extends State<HomeScreen> {
         set.add(p.category!.trim());
       }
     }
-    if (set.length <= 1) {
-      set.addAll(['Skincare', 'Body Care', 'Haircare', 'Fragrance']);
-    }
     return set.toList();
+  }
+
+  List<Map<String, String>> get _categoryCards {
+    if (_settings['categories'] is List) {
+      final list = <Map<String, String>>[];
+      for (final c in (_settings['categories'] as List)) {
+        if (c is Map && c['label'] != null) {
+          final img = (c['image'] ?? '').toString();
+          list.add({
+            'label': c['label'].toString(),
+            'image': img.startsWith('http') ? img : AppConfig.resolveImageUrl(img),
+          });
+        }
+      }
+      if (list.isNotEmpty) return list;
+    }
+    return _defaultCategories;
   }
 
   List<Product> get _filteredFeatured {
@@ -135,6 +220,18 @@ class _HomeScreenState extends State<HomeScreen> {
     final onSale = _products.where((p) => p.isOnSale && p.inStock).toList();
     if (onSale.isNotEmpty) return onSale;
     return _products.where((p) => p.inStock).take(4).toList();
+  }
+
+  void _goToShop({String? category, String? search}) {
+    final params = <String, String>{
+      if (category != null && category.isNotEmpty) 'category': category,
+      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+    };
+    final uri = Uri(
+      path: '/shop',
+      queryParameters: params.isEmpty ? null : params,
+    );
+    context.go(uri.toString());
   }
 
   Future<void> _subscribeNewsletter() async {
@@ -189,6 +286,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final flashEnabled = _settings['flash_sale_enabled'] != false;
     final flashTitle = _str('flash_sale_title', "Today's Deals");
     final flashBadge = _str('flash_sale_badge', 'FLASH SALE');
+    final campaignTilesEnabled = _settings['campaign_tiles_enabled'] != false;
 
     final reviewsToShow =
         _reviews.isNotEmpty ? _reviews : _defaultTestimonials;
@@ -235,12 +333,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   right: 6,
                   top: 6,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                     decoration: const BoxDecoration(
                       color: AppColors.accent,
                       shape: BoxShape.circle,
                     ),
-                    constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                    constraints:
+                        const BoxConstraints(minWidth: 15, minHeight: 15),
                     child: Text(
                       '${wishlist.count}',
                       style: const TextStyle(
@@ -268,7 +368,7 @@ class _HomeScreenState extends State<HomeScreen> {
               // 1. Top dark announcement strip
               if (announcementEnabled)
                 InkWell(
-                  onTap: () => context.go('/shop'),
+                  onTap: () => _goToShop(),
                   child: Container(
                     width: double.infinity,
                     color: AppColors.dark,
@@ -289,14 +389,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
 
-              // 2. Editorial Hero Banner
+              // 2. Editorial Hero Banner with Search Bar & Dual CTAs (matches web Home.jsx)
               _EditorialHero(
                 imageUrl: heroImage,
                 label: heroLabel,
                 headline: heroHeadline,
                 subtitle: heroSubtitle,
                 ctaText: heroCta,
-                onCta: () => context.go('/shop'),
+                searchCtrl: _heroSearchCtrl,
+                onSearch: (q) => _goToShop(search: q),
+                onCta: () => _goToShop(),
               ),
 
               // 3. Trust Strip
@@ -310,47 +412,136 @@ class _HomeScreenState extends State<HomeScreen> {
                   badge: flashBadge,
                   title: flashTitle,
                   products: _flashDeals,
+                  onSeeAll: () => _goToShop(),
+                ),
+                const SizedBox(height: 24),
+              ],
+
+              // 5. Dual Campaign Split Tiles (matches web CampaignTiles.jsx)
+              if (campaignTilesEnabled) ...[
+                _CampaignTilesSection(
+                  settings: _settings,
+                  onSelectCategory: (cat) => _goToShop(category: cat),
                 ),
                 const SizedBox(height: 26),
               ],
 
-              // 5. Featured Collection header + Category filter tabs
+              // 6. Browse by Category Image Grid (matches web Home.jsx categories-section)
+              _CategoriesGridSection(
+                categories: _categoryCards,
+                onSelectCategory: (cat) => _goToShop(category: cat),
+              ),
+
+              // 7. Recently Viewed Shelf (matches web Home.jsx recently-viewed-section)
+              if (wishlist.recentlyViewed.isNotEmpty) ...[
+                const SizedBox(height: 26),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'PICKED UP WHERE YOU LEFT OFF',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.6,
+                              color: AppColors.accentDark,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Recently viewed',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                        ],
+                      ),
+                      TextButton(
+                        onPressed: () => wishlist.clearRecentlyViewed(),
+                        child: const Text('Clear history'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  height: 265,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                    itemCount: wishlist.recentlyViewed.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 10),
+                    itemBuilder: (_, i) {
+                      final p = wishlist.recentlyViewed[i];
+                      return SizedBox(
+                        width: 168,
+                        child: ProductCard(
+                          product: p,
+                          heroPrefix: 'recent',
+                          onTap: () => context.push('/product/${p.id}'),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 28),
+
+              // 8. Bestsellers / Featured Collection (matches web Home.jsx featured-section)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'OUR COLLECTION',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 1.8,
-                            color: AppColors.accentDark,
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'BESTSELLERS',
+                              style: TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.8,
+                                color: AppColors.accentDark,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Loved by thousands',
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Featured Products',
-                          style: Theme.of(context).textTheme.headlineSmall,
+                        TextButton(
+                          onPressed: () => _goToShop(
+                            category: _activeCategory == 'All'
+                                ? null
+                                : _activeCategory,
+                          ),
+                          child: const Text('View all →'),
                         ),
                       ],
                     ),
-                    TextButton(
-                      onPressed: () => context.go('/shop'),
-                      child: const Text('View all →'),
+                    const SizedBox(height: 4),
+                    const Text(
+                      "Our most-reordered creams — made for melanin-rich skin and Ghana's climate.",
+                      style: TextStyle(color: AppColors.muted, fontSize: 13),
                     ),
                   ],
                 ),
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
 
-              // Category tabs (matches web Home category tabs)
+              // Category filter tabs
               SizedBox(
                 height: 38,
                 child: ListView.separated(
@@ -397,7 +588,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
-                      childAspectRatio: 0.59,
+                      childAspectRatio: 0.58,
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 12,
                     ),
@@ -408,17 +599,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         product: p,
                         heroPrefix: 'home',
                         onTap: () => context.push('/product/${p.id}'),
-                        onAddToCart: p.inStock
-                            ? () {
-                                context.read<CartProvider>().add(p);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('${p.name} added to cart'),
-                                    duration: const Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            : null,
                       );
                     },
                   ),
@@ -426,88 +606,34 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 28),
 
-              // 6. Mid-page Brand Story Banner (matches web MidPageBanner)
-              _MidPageStoryBanner(onExplore: () => context.go('/shop')),
-
-              // 7. Recently Viewed Shelf (matches web RecentlyViewed)
-              if (wishlist.recentlyViewed.isNotEmpty) ...[
-                const SizedBox(height: 28),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'PICK UP WHERE YOU LEFT OFF',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.6,
-                              color: AppColors.accentDark,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Recently Viewed',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ],
-                      ),
-                      TextButton(
-                        onPressed: () => wishlist.clearRecentlyViewed(),
-                        child: const Text('Clear'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 255,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    itemCount: wishlist.recentlyViewed.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (_, i) {
-                      final p = wishlist.recentlyViewed[i];
-                      return SizedBox(
-                        width: 165,
-                        child: ProductCard(
-                          product: p,
-                          heroPrefix: 'recent',
-                          onTap: () => context.push('/product/${p.id}'),
-                          onAddToCart: p.inStock
-                              ? () {
-                                  context.read<CartProvider>().add(p);
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                        content: Text('${p.name} added to cart')),
-                                  );
-                                }
-                              : null,
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              // 9. Mid-Page Interactive Editorial Lookbook Carousel (matches web MidPageBanner.jsx)
+              _MidPageLookbookCarousel(
+                onSelectCategory: (cat) => _goToShop(category: cat),
+              ),
 
               const SizedBox(height: 28),
 
-              // 8. Customer Testimonials Carousel
+              // 10. Brand Story Split Section ("OUR STORY · Born in Ghana, made for her.")
+              _BrandStorySection(onDiscover: () => _goToShop()),
+
+              const SizedBox(height: 28),
+
+              // 11. Verified Buyer Reviews Carousel
               _TestimonialsSection(reviews: reviewsToShow),
 
               const SizedBox(height: 28),
 
-              // 9. FAQ Accordion (matches web HomeFaq)
+              // 12. Lifestyle Photo Gallery Strip (matches web Home.jsx gallery-strip)
+              const _GalleryStripSection(),
+
+              const SizedBox(height: 28),
+
+              // 13. FAQ Accordion (matches web HomeFaq)
               _FaqSection(faqs: faqs),
 
               const SizedBox(height: 28),
 
-              // 10. Newsletter Subscription Card (matches web Newsletter)
+              // 14. Newsletter Subscription Card
               _NewsletterCard(
                 headline: _str(
                     'newsletter_headline', 'Get 10% off your first order'),
@@ -537,6 +663,8 @@ class _EditorialHero extends StatelessWidget {
   final String headline;
   final String subtitle;
   final String ctaText;
+  final TextEditingController searchCtrl;
+  final ValueChanged<String> onSearch;
   final VoidCallback onCta;
 
   const _EditorialHero({
@@ -545,6 +673,8 @@ class _EditorialHero extends StatelessWidget {
     required this.headline,
     required this.subtitle,
     required this.ctaText,
+    required this.searchCtrl,
+    required this.onSearch,
     required this.onCta,
   });
 
@@ -552,7 +682,7 @@ class _EditorialHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 270,
+      height: 335,
       child: Stack(
         fit: StackFit.expand,
         children: [
@@ -568,15 +698,15 @@ class _EditorialHero extends StatelessWidget {
                 begin: Alignment.centerLeft,
                 end: Alignment.centerRight,
                 colors: [
-                  Color(0xD9141010),
-                  Color(0x991C1410),
-                  Color(0x4D141010),
+                  Color(0xE0141010),
+                  Color(0xA61C1410),
+                  Color(0x66141010),
                 ],
               ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -590,49 +720,98 @@ class _EditorialHero extends StatelessWidget {
                     letterSpacing: 2.0,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   headline,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontFamily: 'serif',
-                    fontSize: 30,
+                    fontSize: 28,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
                     height: 1.12,
                   ),
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Text(
                   subtitle,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.86),
-                    fontSize: 13,
-                    height: 1.45,
+                    color: Colors.white.withValues(alpha: 0.88),
+                    fontSize: 12.5,
+                    height: 1.4,
                   ),
                 ),
-                const SizedBox(height: 18),
-                FilledButton(
-                  onPressed: onCta,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    foregroundColor: AppColors.primary,
-                    minimumSize: const Size(0, 42),
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(4),
+                const SizedBox(height: 14),
+                // Hero Search Bar (matches web Home.jsx SearchBar variant="hero")
+                SizedBox(
+                  height: 40,
+                  child: TextField(
+                    controller: searchCtrl,
+                    style: const TextStyle(fontSize: 13, color: AppColors.text),
+                    decoration: InputDecoration(
+                      hintText: 'Search for body creams, oils, scrubs…',
+                      hintStyle:
+                          const TextStyle(fontSize: 12.5, color: AppColors.muted),
+                      prefixIcon: const Icon(Icons.search,
+                          size: 18, color: AppColors.muted),
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.95),
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 12),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(6),
+                        borderSide: BorderSide.none,
+                      ),
                     ),
-                    textStyle: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.8,
-                    ),
+                    onSubmitted: onSearch,
                   ),
-                  child: Text(ctaText),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    FilledButton(
+                      onPressed: onCta,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: AppColors.primary,
+                        minimumSize: const Size(0, 40),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.6,
+                        ),
+                      ),
+                      child: Text(ctaText),
+                    ),
+                    const SizedBox(width: 10),
+                    OutlinedButton(
+                      onPressed: onCta,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.65)),
+                        minimumSize: const Size(0, 40),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        textStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      child: const Text('Explore All'),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -697,11 +876,13 @@ class _FlashSaleSection extends StatefulWidget {
   final String badge;
   final String title;
   final List<Product> products;
+  final VoidCallback onSeeAll;
 
   const _FlashSaleSection({
     required this.badge,
     required this.title,
     required this.products,
+    required this.onSeeAll,
   });
 
   @override
@@ -802,7 +983,7 @@ class _FlashSaleSectionState extends State<_FlashSaleSection> {
           ),
           const SizedBox(height: 12),
           SizedBox(
-            height: 255,
+            height: 265,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: widget.products.length,
@@ -810,22 +991,21 @@ class _FlashSaleSectionState extends State<_FlashSaleSection> {
               itemBuilder: (_, i) {
                 final p = widget.products[i];
                 return SizedBox(
-                  width: 165,
+                  width: 168,
                   child: ProductCard(
                     product: p,
                     heroPrefix: 'flash',
                     onTap: () => context.push('/product/${p.id}'),
-                    onAddToCart: p.inStock
-                        ? () {
-                            context.read<CartProvider>().add(p);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('${p.name} added to cart')),
-                            );
-                          }
-                        : null,
                   ),
                 );
               },
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton(
+              onPressed: widget.onSeeAll,
+              child: const Text('See All Deals →'),
             ),
           ),
         ],
@@ -871,62 +1051,503 @@ class _TimeBox extends StatelessWidget {
   }
 }
 
-class _MidPageStoryBanner extends StatelessWidget {
-  final VoidCallback onExplore;
-  const _MidPageStoryBanner({required this.onExplore});
+class _CampaignTilesSection extends StatelessWidget {
+  final Map<String, dynamic> settings;
+  final ValueChanged<String> onSelectCategory;
+
+  const _CampaignTilesSection({
+    required this.settings,
+    required this.onSelectCategory,
+  });
+
+  String _s(String key, String fallback) {
+    final v = settings[key];
+    return (v is String && v.trim().isNotEmpty) ? v.trim() : fallback;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tiles = [
+      {
+        'badge': _s('tile1_badge', 'LIMITED BATCH'),
+        'title': _s('tile1_title', 'Whipped Shea Butters'),
+        'sub': _s('tile1_subtitle',
+            'Deep 48-hour moisture crafted with raw Northern Ghana shea.'),
+        'cta': _s('tile1_cta_text', 'Shop Butters'),
+        'cat': 'Body Butter',
+        'img': _s('tile1_image',
+            'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80'),
+      },
+      {
+        'badge': _s('tile2_badge', 'HOT SELLER'),
+        'title': _s('tile2_title', 'Botanical Radiance Oils'),
+        'sub': _s('tile2_subtitle',
+            'Fast-absorbing golden glow with hibiscus and baobab oils.'),
+        'cta': _s('tile2_cta_text', 'Explore Oils'),
+        'cat': 'Body Oil',
+        'img': _s('tile2_image',
+            'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80'),
+      },
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Column(
+        children: tiles
+            .map(
+              (t) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: InkWell(
+                  onTap: () => onSelectCategory(t['cat']!),
+                  borderRadius: BorderRadius.circular(10),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(
+                      height: 165,
+                      width: double.infinity,
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          CachedNetworkImage(
+                            imageUrl: t['img']!,
+                            fit: BoxFit.cover,
+                          ),
+                          const DecoratedBox(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
+                                colors: [
+                                  Color(0xE6141010),
+                                  Color(0x801C1410),
+                                ],
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(18),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accent,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    t['badge']!,
+                                    style: const TextStyle(
+                                      color: AppColors.primary,
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  t['title']!,
+                                  style: const TextStyle(
+                                    fontFamily: 'serif',
+                                    color: Colors.white,
+                                    fontSize: 21,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  t['sub']!,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.85),
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                const SizedBox(height: 10),
+                                Text(
+                                  '${t['cta']} →',
+                                  style: const TextStyle(
+                                    color: AppColors.accent,
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+            .toList(),
+      ),
+    );
+  }
+}
+
+class _CategoriesGridSection extends StatelessWidget {
+  final List<Map<String, String>> categories;
+  final ValueChanged<String> onSelectCategory;
+
+  const _CategoriesGridSection({
+    required this.categories,
+    required this.onSelectCategory,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              'BROWSE BY CATEGORY',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.8,
+                color: AppColors.accentDark,
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              'Shop the range',
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+          ),
+          const SizedBox(height: 12),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2,
+              childAspectRatio: 1.45,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+            ),
+            itemCount: categories.length,
+            itemBuilder: (_, i) {
+              final cat = categories[i];
+              final label = cat['label'] ?? '';
+              final img = cat['image'] ?? '';
+              return InkWell(
+                onTap: () => onSelectCategory(label),
+                borderRadius: BorderRadius.circular(8),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      if (img.isNotEmpty)
+                        CachedNetworkImage(imageUrl: img, fit: BoxFit.cover)
+                      else
+                        const ColoredBox(color: AppColors.primary),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [
+                              Color(0x33141010),
+                              Color(0xCC141010),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        left: 12,
+                        right: 12,
+                        bottom: 10,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                label,
+                                style: const TextStyle(
+                                  fontFamily: 'serif',
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward,
+                                size: 15, color: AppColors.accent),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MidPageLookbookCarousel extends StatefulWidget {
+  final ValueChanged<String> onSelectCategory;
+  const _MidPageLookbookCarousel({required this.onSelectCategory});
+
+  @override
+  State<_MidPageLookbookCarousel> createState() =>
+      _MidPageLookbookCarouselState();
+}
+
+class _MidPageLookbookCarouselState extends State<_MidPageLookbookCarousel> {
+  final PageController _ctrl = PageController();
+  int _idx = 0;
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      child: Column(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              height: 255,
+              child: PageView.builder(
+                controller: _ctrl,
+                itemCount: _defaultLookbookSlides.length,
+                onPageChanged: (i) => setState(() => _idx = i),
+                itemBuilder: (_, i) {
+                  final s = _defaultLookbookSlides[i];
+                  return Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      CachedNetworkImage(
+                        imageUrl: s['image']!,
+                        fit: BoxFit.cover,
+                      ),
+                      const DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                            colors: [
+                              Color(0xEB141010),
+                              Color(0x991C1410),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              s['badge']!,
+                              style: const TextStyle(
+                                color: AppColors.accent,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.8,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              s['title']!,
+                              style: const TextStyle(
+                                fontFamily: 'serif',
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w600,
+                                height: 1.15,
+                              ),
+                            ),
+                            Text(
+                              s['highlight']!,
+                              style: const TextStyle(
+                                fontFamily: 'serif',
+                                color: AppColors.accent,
+                                fontSize: 19,
+                                fontStyle: FontStyle.italic,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              s['subtitle']!,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.85),
+                                fontSize: 12.5,
+                                height: 1.4,
+                              ),
+                            ),
+                            const SizedBox(height: 14),
+                            OutlinedButton(
+                              onPressed: () =>
+                                  widget.onSelectCategory(s['category']!),
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: AppColors.accent,
+                                side: const BorderSide(color: AppColors.accent),
+                                minimumSize: const Size(0, 36),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 6),
+                              ),
+                              child: Text('${s['cta_text']} →'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(
+              _defaultLookbookSlides.length,
+              (i) => Container(
+                width: i == _idx ? 20 : 7,
+                height: 7,
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                decoration: BoxDecoration(
+                  color: i == _idx ? AppColors.primary : AppColors.border,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrandStorySection extends StatelessWidget {
+  final VoidCallback onDiscover;
+  const _BrandStorySection({required this.onDiscover});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 14),
-      padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: AppColors.primary,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.border),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'PURE GHANAIAN BOTANICALS',
-            style: TextStyle(
-              color: AppColors.accent,
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.8,
+          SizedBox(
+            height: 190,
+            width: double.infinity,
+            child: CachedNetworkImage(
+              imageUrl:
+                  'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80',
+              fit: BoxFit.cover,
             ),
           ),
-          const SizedBox(height: 8),
-          const Text(
-            'Hand-whipped in small batches with unrefined Northern Ghana shea butter.',
-            style: TextStyle(
-              fontFamily: 'serif',
-              color: Colors.white,
-              fontSize: 21,
-              fontWeight: FontWeight.w600,
-              height: 1.22,
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'OUR STORY',
+                  style: TextStyle(
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.8,
+                    color: AppColors.accentDark,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Born in Ghana, made for her.',
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Every product begins with a simple belief: Ghanaian women deserve skincare that was made for them — not adapted from formulas designed for other climates and skin tones.',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: AppColors.text,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'We source raw shea butter directly from women cooperatives in the Northern Region, blend it with locally grown botanical oils, and bottle it with love right here in Accra.',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    color: AppColors.muted,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: onDiscover,
+                  child: const Text('Discover the Range'),
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Ethically sourced directly from women-led cooperatives and formulated for deep, lasting radiance in tropical climates.',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
-              fontSize: 13,
-              height: 1.45,
-            ),
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: onExplore,
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.accent,
-              side: const BorderSide(color: AppColors.accent),
-              minimumSize: const Size(0, 40),
-            ),
-            child: const Text('Explore Collection →'),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GalleryStripSection extends StatelessWidget {
+  const _GalleryStripSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 120,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        itemCount: _galleryImages.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            width: 120,
+            height: 120,
+            child: CachedNetworkImage(
+              imageUrl: _galleryImages[i],
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -947,7 +1568,7 @@ class _TestimonialsSection extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'VERIFIED BUYERS',
+                'VERIFIED BUYER REVIEWS',
                 style: TextStyle(
                   fontSize: 10.5,
                   fontWeight: FontWeight.w700,
@@ -957,7 +1578,7 @@ class _TestimonialsSection extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'What Our Customers Say',
+                'What our buyers say',
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
             ],
@@ -965,7 +1586,7 @@ class _TestimonialsSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 170,
+          height: 185,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -975,16 +1596,22 @@ class _TestimonialsSection extends StatelessWidget {
               final r = reviews[i];
               final rating =
                   int.tryParse((r['rating'] ?? 5).toString())?.clamp(1, 5) ?? 5;
-              final comment =
-                  (r['comment'] ?? r['text'] ?? '').toString().trim();
+              final comment = (r['comment'] ??
+                      r['body'] ??
+                      r['text'] ??
+                      'Exceptional handcrafted skincare!')
+                  .toString()
+                  .trim();
               final author = (r['customer_name'] ??
                       r['author'] ??
-                      r['first_name'] ??
-                      'Verified Customer')
+                      (r['first_name'] != null
+                          ? '${r['first_name']} ${r['last_initial'] ?? ''}.'
+                          : 'Verified Buyer'))
                   .toString();
+              final location = (r['location'] ?? 'Accra, Ghana').toString();
 
               return Container(
-                width: 265,
+                width: 275,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: AppColors.surface,
@@ -995,16 +1622,40 @@ class _TestimonialsSection extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
-                      children: List.generate(
-                        5,
-                        (idx) => Icon(
-                          idx < rating ? Icons.star_rounded : Icons.star_border_rounded,
-                          size: 16,
-                          color: AppColors.accent,
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: List.generate(
+                            5,
+                            (idx) => Icon(
+                              idx < rating
+                                  ? Icons.star_rounded
+                                  : Icons.star_border_rounded,
+                              size: 15,
+                              color: AppColors.accent,
+                            ),
+                          ),
                         ),
-                      ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.accentLight,
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                          child: const Text(
+                            '✓ VERIFIED BUYER',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.accentDark,
+                              letterSpacing: 0.4,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 10),
                     Expanded(
                       child: Text(
                         '"$comment"',
@@ -1018,24 +1669,22 @@ class _TestimonialsSection extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        const Icon(Icons.verified,
-                            size: 14, color: AppColors.accentDark),
-                        const SizedBox(width: 5),
-                        Expanded(
-                          child: Text(
-                            author,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.primary,
-                            ),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      author,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    Text(
+                      location,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.muted,
+                      ),
                     ),
                   ],
                 ),

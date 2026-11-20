@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config.dart';
 import '../models/product.dart';
+import '../providers/cart_provider.dart';
 import '../providers/wishlist_provider.dart';
 import '../theme/app_theme.dart';
 
@@ -23,7 +24,9 @@ class ProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final wishlist = context.watch<WishlistProvider>();
+    final cart = context.watch<CartProvider>();
     final wishlisted = wishlist.isWishlisted(product.id);
+    final cartQty = cart.quantityOf(product.id);
     final discountPct = product.effectiveDiscountPercent;
 
     return Container(
@@ -65,49 +68,45 @@ class ProductCard extends StatelessWidget {
                         : const _Placeholder(),
                   ),
 
-                  // Top-left status / discount pill
-                  if (!product.inStock)
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: AppColors.dark.withValues(alpha: 0.85),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: const Text(
-                          'OUT OF STOCK',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.8,
+                  // Top-left status / promo / low-stock badges (matches web ProductCard.jsx)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (!product.inStock)
+                          _BadgePill(
+                            label: 'SOLD OUT',
+                            bg: AppColors.dark.withValues(alpha: 0.86),
+                            fg: Colors.white,
+                          )
+                        else if (discountPct > 0)
+                          _BadgePill(
+                            label: product.promoName != null &&
+                                    product.promoName!.isNotEmpty
+                                ? '${product.promoName!.toUpperCase()} · -$discountPct%'
+                                : 'SALE · -$discountPct%',
+                            bg: AppColors.error,
+                            fg: Colors.white,
+                          )
+                        else if (product.isNew)
+                          const _BadgePill(
+                            label: 'NEW',
+                            bg: AppColors.primary,
+                            fg: AppColors.accent,
                           ),
-                        ),
-                      ),
-                    )
-                  else if (discountPct > 0)
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppColors.error,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          '-$discountPct%',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 0.4,
+                        if (product.isLowStock) ...[
+                          const SizedBox(height: 4),
+                          _BadgePill(
+                            label: 'Only ${product.stockQuantity} left',
+                            bg: const Color(0xFFFEF3C7),
+                            fg: const Color(0xFF92400E),
                           ),
-                        ),
-                      ),
+                        ],
+                      ],
                     ),
+                  ),
 
                   // Top-right Wishlist Heart toggle
                   Positioned(
@@ -120,16 +119,18 @@ class ProductCard extends StatelessWidget {
                         customBorder: const CircleBorder(),
                         onTap: () {
                           wishlist.toggle(product);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                wishlisted
-                                    ? 'Removed from wishlist'
-                                    : '${product.name} saved to wishlist',
+                          ScaffoldMessenger.of(context)
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  wishlisted
+                                      ? 'Removed from wishlist'
+                                      : '${product.name} saved to wishlist',
+                                ),
+                                duration: const Duration(milliseconds: 1200),
                               ),
-                              duration: const Duration(seconds: 1),
-                            ),
-                          );
+                            );
                         },
                         child: Padding(
                           padding: const EdgeInsets.all(6),
@@ -146,7 +147,7 @@ class ProductCard extends StatelessWidget {
               ),
             ),
 
-            // Details + rating + quick add
+            // Details + rating + quick add / stepper
             Padding(
               padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
               child: Column(
@@ -154,20 +155,19 @@ class ProductCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      if (product.category != null && product.category!.isNotEmpty)
-                        Expanded(
-                          child: Text(
-                            product.category!.toUpperCase(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 9.5,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: 1.0,
-                              color: AppColors.accentDark,
-                            ),
+                      Expanded(
+                        child: Text(
+                          (product.category ?? 'SKINCARE').toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.0,
+                            color: AppColors.accentDark,
                           ),
                         ),
+                      ),
                       if (product.averageRating != null && product.averageRating! > 0)
                         Row(
                           mainAxisSize: MainAxisSize.min,
@@ -195,17 +195,21 @@ class ProductCard extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(
-                    product.name,
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontFamily: 'serif',
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
+                  SizedBox(
+                    height: 36,
+                    child: Text(
+                      product.name,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontFamily: 'serif',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            height: 1.25,
+                          ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
                       Text(
@@ -234,26 +238,8 @@ class ProductCard extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     height: 33,
-                    child: product.inStock && onAddToCart != null
-                        ? FilledButton(
-                            onPressed: onAddToCart,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(0, 33),
-                              padding: const EdgeInsets.symmetric(horizontal: 8),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                            child: const Text('Add to Cart'),
-                          )
-                        : OutlinedButton(
+                    child: !product.inStock
+                        ? OutlinedButton(
                             onPressed: null,
                             style: OutlinedButton.styleFrom(
                               minimumSize: const Size(0, 33),
@@ -268,12 +254,124 @@ class ProductCard extends StatelessWidget {
                               ),
                             ),
                             child: const Text('Sold Out'),
-                          ),
+                          )
+                        : cartQty > 0
+                            // Inline quantity stepper (matches web ProductCard.jsx)
+                            ? Container(
+                                decoration: BoxDecoration(
+                                  color: AppColors.primary,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    InkWell(
+                                      onTap: () => cart.updateQuantity(
+                                        product.id,
+                                        cartQty - 1,
+                                      ),
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 4),
+                                        child: Icon(Icons.remove,
+                                            size: 16, color: Colors.white),
+                                      ),
+                                    ),
+                                    Text(
+                                      '$cartQty in bag',
+                                      style: const TextStyle(
+                                        color: AppColors.accentLight,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    InkWell(
+                                      onTap: cartQty < product.stockQuantity
+                                          ? () => cart.updateQuantity(
+                                                product.id,
+                                                cartQty + 1,
+                                              )
+                                          : null,
+                                      child: const Padding(
+                                        padding: EdgeInsets.symmetric(
+                                            horizontal: 10, vertical: 4),
+                                        child: Icon(Icons.add,
+                                            size: 16, color: Colors.white),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : FilledButton(
+                                onPressed: onAddToCart ??
+                                    () {
+                                      cart.add(product);
+                                      ScaffoldMessenger.of(context)
+                                        ..hideCurrentSnackBar()
+                                        ..showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                                '${product.name} added to bag'),
+                                            duration: const Duration(
+                                                milliseconds: 1400),
+                                          ),
+                                        );
+                                    },
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size(0, 33),
+                                  padding:
+                                      const EdgeInsets.symmetric(horizontal: 8),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w600,
+                                    letterSpacing: 0.4,
+                                  ),
+                                ),
+                                child: const Text('Add to Cart'),
+                              ),
                   ),
                 ],
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BadgePill extends StatelessWidget {
+  final String label;
+  final Color bg;
+  final Color fg;
+
+  const _BadgePill({
+    required this.label,
+    required this.bg,
+    required this.fg,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: fg,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.5,
         ),
       ),
     );
