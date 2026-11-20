@@ -726,7 +726,7 @@ export default function OrderDetail() {
                 <div style={{ fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span className="muted">Station</span>
-                    <span style={{ fontWeight: 500 }}>East Legon Station (Accra)</span>
+                    <span style={{ fontWeight: 500 }}>{store.pickup_location || 'East Legon Station (Accra)'}</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                     <span className="muted">Pickup Status</span>
@@ -734,7 +734,9 @@ export default function OrderDetail() {
                       {order.status === 'delivered' ? 'Picked Up / Completed' :
                        order.status === 'shipped' ? 'Ready for Pickup' :
                        order.status === 'processing' ? 'Processing at Station' :
-                       order.status === 'confirmed' ? 'Confirmed (Awaiting Packing)' : 'Pending Confirmation'}
+                       order.status === 'confirmed' ? 'Confirmed (Awaiting Packing)' :
+                       order.status === 'cancelled' ? 'Cancelled' :
+                       order.status === 'refunded' ? 'Refunded' : 'Pending Confirmation'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -743,28 +745,42 @@ export default function OrderDetail() {
                   </div>
                 </div>
 
-                {order.status !== 'delivered' && order.status !== 'cancelled' && (
+                {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {order.status !== 'shipped' && (
+                    {order.status === 'pending' ? (
                       <button
                         type="button"
                         className="btn btn-accent btn-sm"
                         style={{ width: '100%' }}
-                        onClick={() => handleStatusUpdate('shipped')}
+                        onClick={() => changeStatus('confirmed', 'Pickup order confirmed by admin')}
                         disabled={saving}
                       >
-                        {saving ? 'Updating…' : '📦 Mark Ready for Pickup'}
+                        {saving ? 'Updating…' : '✓ Confirm Pickup Order'}
                       </button>
+                    ) : (
+                      <>
+                        {order.status !== 'shipped' && (
+                          <button
+                            type="button"
+                            className="btn btn-accent btn-sm"
+                            style={{ width: '100%' }}
+                            onClick={() => changeStatus('shipped', 'Order marked ready for pickup by admin')}
+                            disabled={saving}
+                          >
+                            {saving ? 'Updating…' : '📦 Mark Ready for Pickup'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-success btn-sm"
+                          style={{ width: '100%' }}
+                          onClick={() => changeStatus('delivered', 'Order picked up by customer')}
+                          disabled={saving}
+                        >
+                          {saving ? 'Updating…' : '✓ Confirm Customer Picked Up'}
+                        </button>
+                      </>
                     )}
-                    <button
-                      type="button"
-                      className="btn btn-success btn-sm"
-                      style={{ width: '100%' }}
-                      onClick={() => handleStatusUpdate('delivered')}
-                      disabled={saving}
-                    >
-                      {saving ? 'Updating…' : '✓ Confirm Customer Picked Up'}
-                    </button>
                   </div>
                 )}
                 {order.status === 'delivered' && (
