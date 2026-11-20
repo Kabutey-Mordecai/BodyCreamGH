@@ -9,6 +9,20 @@ class AppConfig {
     defaultValue: 'http://10.0.2.2:3000/api',
   );
 
+  // Public storefront URL. The backend builds the Paystack callback URL from
+  // its FRONTEND_URL, so this must match it (build with
+  // --dart-define=STOREFRONT_URL=https://yourdomain.com in production).
+  static const String storefrontUrl = String.fromEnvironment(
+    'STOREFRONT_URL',
+    defaultValue: 'http://localhost:5173',
+  );
+
+  /// Origins (scheme + host + port) that Paystack may redirect back to.
+  static List<Uri> get trustedCallbackOrigins => [
+        Uri.parse(storefrontUrl),
+        Uri.parse(baseUrl),
+      ];
+
   static const String appName = 'BodyCream GH';
   static const String currency = 'GHS';
   static const String currencySymbol = '₵';

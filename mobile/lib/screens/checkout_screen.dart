@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../config.dart';
 import '../providers/cart_provider.dart';
 import '../services/api_service.dart';
+import '../utils/payment_url.dart';
 
 const List<String> _ghanaRegions = [
   'Greater Accra', 'Ashanti', 'Western', 'Western North',
@@ -189,7 +190,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       // Initialize payment and navigate to payment WebView
       final payment = await ApiService.instance.initializePayment(orderId);
-      final authUrl = payment['authorization_url'] as String;
+      final authUrl = payment['authorization_url'];
+
+      if (authUrl is! String || !isSafePaystackCheckoutUrl(authUrl)) {
+        // Never navigate to an unexpected payment URL. The order is saved and
+        // can be paid later from the Orders page.
+        throw Exception(
+          'Received an invalid payment link. Your order was saved — please pay from your Orders page.',
+        );
+      }
 
       if (!mounted) return;
       cart.clear();
@@ -199,7 +208,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), ''),
+            e.toString()
+                .replaceFirst(RegExp(r'ApiException\(\d+\): '), '')
+                .replaceFirst('Exception: ', ''),
           ),
         ),
       );
