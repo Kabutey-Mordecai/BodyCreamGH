@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cart_provider.dart';
@@ -85,6 +86,54 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     }
     _loadStoreSettings();
     _runGuestCartValidation();
+    _autoApplyWelcomeCoupon();
+  }
+
+  Future<void> _autoApplyWelcomeCoupon() async {
+    if (_appliedCoupon != null) return;
+    final auth = context.read<AuthProvider>();
+    final cart = context.read<CartProvider>();
+    if (cart.items.isEmpty) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEmail = prefs.getString('bc_newsletter_email');
+      final emailToCheck = auth.isLoggedIn
+          ? (auth.user?.email ?? savedEmail)
+          : (_emailCtrl.text.trim().isNotEmpty ? _emailCtrl.text.trim() : savedEmail);
+      if ((emailToCheck == null || emailToCheck.isEmpty) && !auth.isLoggedIn) {
+        return;
+      }
+
+      final status = await ApiService.instance.getNewsletterStatus(email: emailToCheck);
+      if (!mounted) return;
+      if (status['hasPlacedOrder'] == true) {
+        await prefs.setBool('bc_first_order_done', true);
+        await prefs.remove('bc_welcome_coupon');
+        return;
+      }
+      if (status['eligibleForWelcomeDiscount'] == true &&
+          status['couponCode'] != null &&
+          _appliedCoupon == null) {
+        final code = status['couponCode'].toString();
+        final isGuest = !auth.isLoggedIn;
+        final total = _validatedSubtotal(cart, isGuest) + _deliveryFee(cart);
+        final data = await ApiService.instance.validateCoupon(
+          code,
+          total,
+          email: emailToCheck,
+        );
+        if (!mounted) return;
+        setState(() {
+          _couponCtrl.text = code;
+          _appliedCoupon = data;
+          _discount = double.tryParse(
+                  (data['discountAmount'] ?? data['discount_amount'] ?? 0)
+                      .toString()) ??
+              0;
+        });
+      }
+    } catch (_) {}
   }
 
   Future<void> _runGuestCartValidation() async {
@@ -204,12 +253,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     if (code.isEmpty) return;
 
     final cart = context.read<CartProvider>();
-    final isGuest = !context.read<AuthProvider>().isLoggedIn;
+    final auth = context.read<AuthProvider>();
+    final isGuest = !auth.isLoggedIn;
+    final emailToCheck = isGuest ? _emailCtrl.text.trim() : auth.user?.email;
     setState(() => _couponError = null);
     try {
       final data = await ApiService.instance.validateCoupon(
         code,
         _validatedSubtotal(cart, isGuest) + _deliveryFee(cart),
+        email: emailToCheck,
       );
       setState(() {
         _appliedCoupon = data;
@@ -301,6 +353,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       final orderId = (order['orderId'] ?? order['id']).toString();
       final orderNum = (order['orderNumber'] ?? order['order_number'] ?? orderId).toString();
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setBool('bc_first_order_done', true);
+        await prefs.remove('bc_welcome_coupon');
+      } catch (_) {}
 
       if (_paymentMethod == 'pay_on_delivery') {
         if (!mounted) return;

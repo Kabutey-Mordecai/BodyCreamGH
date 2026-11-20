@@ -160,7 +160,10 @@ const createOrder = async (req, res) => {
     let discountAmount = 0;
     let appliedCouponCode = null;
     if (req.body.coupon_code) {
-      const cv = await CouponModel.validateAndLock(req.body.coupon_code, total, client);
+      const cv = await CouponModel.validateAndLock(req.body.coupon_code, total, client, {
+        customerId: req.user.id,
+        email: req.user.email || null,
+      });
       if (cv.valid) {
         discountAmount    = cv.discountAmount;
         appliedCouponCode = cv.coupon.code;
@@ -1333,7 +1336,9 @@ const createGuestOrder = async (req, res) => {
     let discountAmount = 0;
     let appliedCouponCode = null;
     if (req.body.coupon_code) {
-      const cv = await CouponModel.validateAndLock(req.body.coupon_code, total, client);
+      const cv = await CouponModel.validateAndLock(req.body.coupon_code, total, client, {
+        email,
+      });
       if (cv.valid) {
         discountAmount    = cv.discountAmount;
         appliedCouponCode = cv.coupon.code;

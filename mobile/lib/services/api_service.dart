@@ -566,11 +566,21 @@ class ApiService {
 
   // ── Coupons ───────────────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> validateCoupon(String code, double total) async {
+  Future<Map<String, dynamic>> validateCoupon(
+    String code,
+    double total, {
+    String? email,
+  }) async {
+    final token = await getAccessToken();
     final res = await _client.post(
       _uri('/coupons/validate'),
-      headers: _headers(),
-      body: jsonEncode({'code': code, 'orderTotal': total, 'order_total': total}),
+      headers: _headers(token: token),
+      body: jsonEncode({
+        'code': code,
+        'orderTotal': total,
+        'order_total': total,
+        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      }),
     );
     return await _handleResponse(res) as Map<String, dynamic>;
   }
@@ -602,6 +612,17 @@ class ApiService {
   }
 
   // ── Newsletter ────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getNewsletterStatus({String? email}) async {
+    final token = await getAccessToken();
+    final uri = email != null && email.trim().isNotEmpty
+        ? _uri('/newsletter/status')
+            .replace(queryParameters: {'email': email.trim()})
+        : _uri('/newsletter/status');
+    final res = await _client.get(uri, headers: _headers(token: token));
+    final data = await _handleResponse(res);
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
 
   Future<Map<String, dynamic>> subscribeNewsletter(String email, {String? name}) async {
     final res = await _client.post(

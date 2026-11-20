@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { productsAPI, newsletterAPI, reviewsAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductShelf from '../components/ProductShelf';
@@ -87,6 +88,7 @@ const GALLERY = [
 ];
 
 export default function Home() {
+  const { user } = useAuth();
   const settings = useSettings();
   const {
     store_name, hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image,
@@ -101,6 +103,15 @@ export default function Home() {
   const [nlEmail, setNlEmail]               = useState('');
   const [nlState, setNlState]               = useState('idle'); // idle | loading | success | error
   const [nlError, setNlError]               = useState('');
+  const [nlCouponCode, setNlCouponCode]     = useState('');
+  const [hideNewsletterBar, setHideNewsletterBar] = useState(() => {
+    try {
+      return localStorage.getItem('bc_newsletter_subscribed') === 'true' ||
+        localStorage.getItem('bc_first_order_done') === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [activeCategoryTab, setActiveCategoryTab] = useState('All');
 
   const filteredFeatured = useMemo(() => {
@@ -215,15 +226,49 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    let savedEmail = '';
+    try { savedEmail = localStorage.getItem('bc_newsletter_email') || ''; } catch {}
+    if (!user && !savedEmail) return;
+
+    newsletterAPI.status(user?.email || savedEmail)
+      .then(({ data }) => {
+        if (data?.shouldHideBar) {
+          setHideNewsletterBar(true);
+        }
+        try {
+          if (data?.hasPlacedOrder) {
+            localStorage.setItem('bc_first_order_done', 'true');
+            localStorage.removeItem('bc_welcome_coupon');
+          } else if (data?.eligibleForWelcomeDiscount && data?.couponCode) {
+            localStorage.setItem('bc_welcome_coupon', data.couponCode);
+          }
+        } catch {}
+      })
+      .catch(() => {});
+  }, [user]);
+
   const handleNewsletterSubmit = async (e) => {
     e.preventDefault();
     if (nlState === 'loading') return;
     setNlState('loading');
     setNlError('');
     try {
-      await newsletterAPI.subscribe(nlEmail);
+      const cleanEmail = nlEmail.trim();
+      const { data } = await newsletterAPI.subscribe(cleanEmail);
       setNlState('success');
       setNlEmail('');
+      try {
+        localStorage.setItem('bc_newsletter_subscribed', 'true');
+        localStorage.setItem('bc_newsletter_email', cleanEmail);
+        if (data?.isFirstOrderEligible && data?.couponCode) {
+          localStorage.setItem('bc_welcome_coupon', data.couponCode);
+          setNlCouponCode(data.couponCode);
+        } else {
+          localStorage.removeItem('bc_welcome_coupon');
+          localStorage.setItem('bc_first_order_done', 'true');
+        }
+      } catch {}
     } catch (err) {
       setNlState('error');
       setNlError(err.response?.data?.error || 'Something went wrong. Please try again.');
@@ -553,9 +598,9 @@ export default function Home() {
       <HomeSeoBlock />
 
       {/* ══════════════════════════════════════════
-          NEWSLETTER CTA
+          NEWSLETTER CTA (hidden automatically once subscribed or after first purchase)
           ══════════════════════════════════════════ */}
-      {settings.newsletter_enabled !== false && settings.newsletter_enabled !== 'false' && (
+      {!hideNewsletterBar && settings.newsletter_enabled !== false && settings.newsletter_enabled !== 'false' && (
         <section className="newsletter-section">
           <div className="container newsletter-inner">
             <h2>{settings.newsletter_headline || 'Get 10% off your first order'}</h2>
@@ -563,7 +608,9 @@ export default function Home() {
 
             {nlState === 'success' ? (
               <p style={{ marginTop: '16px', color: '#22c55e', fontWeight: 600 }}>
-                You're in! Check your inbox for your discount.
+                {nlCouponCode
+                  ? `You're in! Your first-order code ${nlCouponCode} will be applied automatically at checkout.`
+                  : "You're in! Check your inbox for updates and exclusive offers."}
               </p>
             ) : (
               <form className="newsletter-form" onSubmit={handleNewsletterSubmit}>

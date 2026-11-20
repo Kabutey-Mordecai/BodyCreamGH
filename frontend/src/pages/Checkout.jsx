@@ -3,7 +3,7 @@ import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
-import { ordersAPI, paymentsAPI, couponsAPI, cartAPI } from '../services/api';
+import { ordersAPI, paymentsAPI, couponsAPI, cartAPI, newsletterAPI } from '../services/api';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { isSafePaystackCheckoutUrl } from '../utils/safePaystackUrl';
 import './Checkout.css';
@@ -71,6 +71,41 @@ export default function Checkout() {
       setForm(prev => ({ ...prev, phone: prev.phone || user.phone }));
     }
   }, [user?.phone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-apply first-order newsletter welcome discount if eligible (and not yet ordered)
+  const autoCheckWelcomeDiscount = useRef(false);
+  useEffect(() => {
+    if (cart.length === 0 || coupon || autoCheckWelcomeDiscount.current) return;
+    let savedEmail = '';
+    try { savedEmail = localStorage.getItem('bc_newsletter_email') || ''; } catch {}
+    const emailToCheck = isGuest ? (form.email.trim() || savedEmail) : (user?.email || savedEmail);
+    if (!emailToCheck) return;
+
+    autoCheckWelcomeDiscount.current = true;
+    const baseTotal = cartTotal + (
+      fulfillmentMethod === 'pickup'
+        ? 0
+        : ((Number(free_delivery_over) || 0) > 0 && cartTotal >= (Number(free_delivery_over) || 0))
+          ? 0
+          : (form.region === 'Greater Accra' ? (Number(delivery_fee_accra) || 10) : (Number(delivery_fee_flat) || 15))
+    );
+
+    newsletterAPI.status(emailToCheck)
+      .then(async ({ data }) => {
+        if (data?.eligibleForWelcomeDiscount && data?.couponCode) {
+          const { data: cv } = await couponsAPI.validate(data.couponCode, baseTotal, emailToCheck);
+          if (cv?.valid) {
+            setCoupon({ code: cv.code, discountAmount: cv.discountAmount, type: cv.type, value: cv.value, autoWelcome: true });
+          }
+        } else if (data?.hasPlacedOrder) {
+          try {
+            localStorage.setItem('bc_first_order_done', 'true');
+            localStorage.removeItem('bc_welcome_coupon');
+          } catch {}
+        }
+      })
+      .catch(() => {});
+  }, [cart.length, isGuest, user?.email]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pre-flight: validate guest cart against backend on mount (only when guest checkout is allowed)
   useEffect(() => {
@@ -155,6 +190,11 @@ export default function Checkout() {
           })),
         });
 
+        try {
+          localStorage.setItem('bc_first_order_done', 'true');
+          localStorage.removeItem('bc_welcome_coupon');
+        } catch {}
+
         if (paymentMethod === 'pay_on_delivery') {
           await clearLocalCart();
           setPodConfirmation({
@@ -195,6 +235,11 @@ export default function Checkout() {
           delivery_fee: deliveryFee,
           coupon_code:  coupon?.code || undefined,
         });
+
+        try {
+          localStorage.setItem('bc_first_order_done', 'true');
+          localStorage.removeItem('bc_welcome_coupon');
+        } catch {}
 
         if (paymentMethod === 'pay_on_delivery') {
           await clearLocalCart();
@@ -255,7 +300,8 @@ export default function Checkout() {
     setCouponError('');
     setCouponLoading(true);
     try {
-      const { data } = await couponsAPI.validate(code, subtotalPlusDelivery);
+      const emailToCheck = isGuest ? form.email.trim() : user?.email;
+      const { data } = await couponsAPI.validate(code, subtotalPlusDelivery, emailToCheck);
       setCoupon({ code: data.code, discountAmount: data.discountAmount, type: data.type, value: data.value });
       setCouponInput('');
     } catch (err) {

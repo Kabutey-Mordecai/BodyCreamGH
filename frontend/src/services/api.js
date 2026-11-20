@@ -170,7 +170,8 @@ export const settingsAPI = {
 
 // ── Coupons ───────────────────────────────────────────────────────────────────
 export const couponsAPI = {
-  validate: (code, orderTotal) => api.post('/coupons/validate', { code, orderTotal }),
+  validate: (code, orderTotal, email) =>
+    api.post('/coupons/validate', { code, orderTotal, ...(email ? { email } : {}) }),
 };
 
 // ── Reviews ───────────────────────────────────────────────────────────────────
@@ -199,6 +200,7 @@ export const wishlistAPI = {
 // ── Newsletter (public) ───────────────────────────────────────────────────────
 export const newsletterAPI = {
   subscribe:   (email, name) => api.post('/newsletter/subscribe', { email, name }),
+  status:      (email)       => api.get('/newsletter/status', { params: email ? { email } : undefined }),
   unsubscribe: (token)       => api.get('/newsletter/unsubscribe', { params: { token } }),
 };
 

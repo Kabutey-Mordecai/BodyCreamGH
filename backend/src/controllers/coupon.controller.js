@@ -4,11 +4,15 @@ const logger = require('../utils/logger');
 
 const validateCoupon = async (req, res) => {
   try {
-    const { code, orderTotal } = req.body;
-    if (!code || orderTotal == null) {
+    const { code, orderTotal, order_total, email } = req.body;
+    const resolvedTotal = orderTotal ?? order_total;
+    if (!code || resolvedTotal == null) {
       return res.status(400).json({ error: 'code and orderTotal are required.' });
     }
-    const result = await CouponModel.validate(code, orderTotal);
+    const result = await CouponModel.validate(code, resolvedTotal, {
+      customerId: req.user?.id || null,
+      email: email || req.user?.email || null,
+    });
     if (!result.valid) return res.status(400).json({ error: result.error });
 
     res.json({
@@ -17,6 +21,7 @@ const validateCoupon = async (req, res) => {
       type:           result.coupon.type,
       value:          parseFloat(result.coupon.value),
       discountAmount: result.discountAmount,
+      isFirstOrderWelcome: Boolean(result.isFirstOrderWelcome),
     });
   } catch (err) {
     logger.error('Validate coupon error', { err: err.message });

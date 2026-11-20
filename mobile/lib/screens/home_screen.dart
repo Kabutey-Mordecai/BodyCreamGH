@@ -3,8 +3,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 import '../models/product.dart';
+import '../providers/auth_provider.dart';
 import '../providers/wishlist_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -139,13 +141,45 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _nlSubmitting = false;
   String? _nlCouponResult;
   String? _nlError;
+  bool _hideNewsletterBar = false;
   bool _announcementDismissed = false;
   Timer? _promoPopupTimer;
 
   @override
   void initState() {
     super.initState();
+    _initNewsletterVisibility();
     _load();
+  }
+
+  Future<void> _initNewsletterVisibility() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sub = prefs.getBool('bc_newsletter_subscribed') == true;
+      final ordered = prefs.getBool('bc_first_order_done') == true;
+      final savedEmail = prefs.getString('bc_newsletter_email');
+      if (mounted && (sub || ordered)) {
+        setState(() => _hideNewsletterBar = true);
+      }
+      final userEmail = context.mounted ? context.read<AuthProvider>().user?.email : null;
+      final emailToCheck = (userEmail != null && userEmail.isNotEmpty)
+          ? userEmail
+          : savedEmail;
+      if (emailToCheck != null || (context.mounted && context.read<AuthProvider>().isLoggedIn)) {
+        final status = await ApiService.instance.getNewsletterStatus(email: emailToCheck);
+        if (!mounted) return;
+        if (status['shouldHideBar'] == true) {
+          setState(() => _hideNewsletterBar = true);
+        }
+        if (status['hasPlacedOrder'] == true) {
+          await prefs.setBool('bc_first_order_done', true);
+          await prefs.remove('bc_welcome_coupon');
+        } else if (status['eligibleForWelcomeDiscount'] == true &&
+            status['couponCode'] != null) {
+          await prefs.setString('bc_welcome_coupon', status['couponCode'].toString());
+        }
+      }
+    } catch (_) {}
   }
 
   @override
@@ -338,7 +372,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       onPressed: () {
                         Navigator.pop(ctx);
-                        _goToShop();
+                        _navigateStorefrontLink(
+                          s['promo_popup_cta_link']?.toString(),
+                        );
                       },
                       child: Text('$ctaText →'),
                     ),
@@ -437,6 +473,40 @@ class _HomeScreenState extends State<HomeScreen> {
     context.go(uri.toString());
   }
 
+  /// Resolves any storefront CTA link (from Admin Storefront Editor):
+  /// - `/products/:id` or `/product/:id` -> pushes directly to ProductDetailScreen
+  /// - `/shop?category=...&search=...` -> navigates to ShopScreen with filters
+  /// - external `http(s)://`, `wa.me`, `tel:`, `mailto:` -> opens externally
+  void _navigateStorefrontLink(String? rawLink, {String? fallbackCategory}) {
+    final link = (rawLink ?? '').trim();
+    if (link.isEmpty) {
+      _goToShop(category: fallbackCategory);
+      return;
+    }
+    if (RegExp(r'^(https?:\/\/|mailto:|tel:|wa\.me)', caseSensitive: false)
+        .hasMatch(link)) {
+      WhatsAppHelper.openUrl(link);
+      return;
+    }
+    final uri = Uri.tryParse(link);
+    if (uri != null) {
+      if (uri.pathSegments.length >= 2 &&
+          (uri.pathSegments[0] == 'products' ||
+              uri.pathSegments[0] == 'product')) {
+        context.push('/product/${uri.pathSegments[1]}');
+        return;
+      }
+      if (uri.path == '/shop') {
+        _goToShop(
+          category: uri.queryParameters['category'] ?? fallbackCategory,
+          search: uri.queryParameters['search'],
+        );
+        return;
+      }
+    }
+    _goToShop(category: fallbackCategory);
+  }
+
   Future<void> _subscribeNewsletter() async {
     final email = _nlEmailCtrl.text.trim();
     if (email.isEmpty || !email.contains('@')) {
@@ -448,12 +518,24 @@ class _HomeScreenState extends State<HomeScreen> {
       _nlError = null;
     });
     try {
-      await ApiService.instance.subscribeNewsletter(email);
+      final res = await ApiService.instance.subscribeNewsletter(email);
       if (!mounted) return;
-      final code = _str('newsletter_coupon_code', 'WELCOME10');
+      final isEligible = res['isFirstOrderEligible'] == true;
+      final code = (res['couponCode'] ?? _str('newsletter_coupon_code', 'WELCOME10'))
+          .toString();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('bc_newsletter_subscribed', true);
+      await prefs.setString('bc_newsletter_email', email);
+      if (isEligible) {
+        await prefs.setString('bc_welcome_coupon', code);
+      } else {
+        await prefs.remove('bc_welcome_coupon');
+        await prefs.setBool('bc_first_order_done', true);
+      }
+      if (!mounted) return;
       setState(() {
         _nlSubmitting = false;
-        _nlCouponResult = code;
+        _nlCouponResult = isEligible ? code : 'SUBSCRIBED';
         _nlEmailCtrl.clear();
       });
     } catch (e) {
@@ -683,7 +765,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 searchCtrl: _heroSearchCtrl,
                 onSearch: (q) => _goToShop(search: q),
                 onProductSelected: (pid) => context.push('/product/$pid'),
-                onCta: () => _goToShop(),
+                onCta: () => _navigateStorefrontLink(
+                  _settings['hero_cta_link']?.toString(),
+                ),
               ),
 
               // 3. Dynamic Trust Strip (reads settings.trust_items)
@@ -706,7 +790,8 @@ class _HomeScreenState extends State<HomeScreen> {
               if (campaignTilesEnabled) ...[
                 _CampaignTilesSection(
                   settings: _settings,
-                  onSelectCategory: (cat) => _goToShop(category: cat),
+                  onNavigateLink: (link, cat) =>
+                      _navigateStorefrontLink(link, fallbackCategory: cat),
                 ),
                 const SizedBox(height: 26),
               ],
@@ -893,7 +978,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // 9. Mid-Page Interactive Editorial Lookbook Carousel (matches web MidPageBanner.jsx)
               _MidPageLookbookCarousel(
-                onSelectCategory: (cat) => _goToShop(category: cat),
+                settings: _settings,
+                onNavigateLink: (link, cat) =>
+                    _navigateStorefrontLink(link, fallbackCategory: cat),
               ),
 
               const SizedBox(height: 28),
@@ -919,22 +1006,25 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTrackOrder: () => context.push('/track-order'),
               ),
 
-              const SizedBox(height: 28),
-
-              // 14. Newsletter Subscription Card
-              _NewsletterCard(
-                headline: _str(
-                    'newsletter_headline', 'Get 10% off your first order'),
-                subtitle: _str(
-                  'newsletter_subtitle',
-                  'Join our newsletter for exclusive offers, skincare tips, and new arrivals.',
+              // 14. Newsletter Subscription Card (hidden once subscribed or after first order)
+              if (!_hideNewsletterBar &&
+                  _settings['newsletter_enabled'] != false &&
+                  _settings['newsletter_enabled'] != 'false') ...[
+                const SizedBox(height: 28),
+                _NewsletterCard(
+                  headline: _str(
+                      'newsletter_headline', 'Get 10% off your first order'),
+                  subtitle: _str(
+                    'newsletter_subtitle',
+                    'Join our newsletter for exclusive offers, skincare tips, and new arrivals.',
+                  ),
+                  emailCtrl: _nlEmailCtrl,
+                  submitting: _nlSubmitting,
+                  couponResult: _nlCouponResult,
+                  error: _nlError,
+                  onSubmit: _subscribeNewsletter,
                 ),
-                emailCtrl: _nlEmailCtrl,
-                submitting: _nlSubmitting,
-                couponResult: _nlCouponResult,
-                error: _nlError,
-                onSubmit: _subscribeNewsletter,
-              ),
+              ],
 
               // 15. Expandable Regional SEO Editorial Block (matches web HomeSeoBlock.jsx)
               if (seoEnabled) ...[
@@ -1387,11 +1477,11 @@ class _TimeBox extends StatelessWidget {
 
 class _CampaignTilesSection extends StatelessWidget {
   final Map<String, dynamic> settings;
-  final ValueChanged<String> onSelectCategory;
+  final void Function(String? link, String? fallbackCategory) onNavigateLink;
 
   const _CampaignTilesSection({
     required this.settings,
-    required this.onSelectCategory,
+    required this.onNavigateLink,
   });
 
   String _s(String key, String fallback) {
@@ -1408,6 +1498,7 @@ class _CampaignTilesSection extends StatelessWidget {
         'sub': _s('tile1_subtitle',
             'Deep 48-hour moisture crafted with raw Northern Ghana shea.'),
         'cta': _s('tile1_cta_text', 'Shop Butters'),
+        'link': _s('tile1_link', '/shop?category=Body+Butter'),
         'cat': 'Body Butter',
         'img': _s('tile1_image',
             'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80'),
@@ -1418,6 +1509,7 @@ class _CampaignTilesSection extends StatelessWidget {
         'sub': _s('tile2_subtitle',
             'Fast-absorbing golden glow with hibiscus and baobab oils.'),
         'cta': _s('tile2_cta_text', 'Explore Oils'),
+        'link': _s('tile2_link', '/shop?category=Body+Oil'),
         'cat': 'Body Oil',
         'img': _s('tile2_image',
             'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80'),
@@ -1432,7 +1524,7 @@ class _CampaignTilesSection extends StatelessWidget {
               (t) => Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: InkWell(
-                  onTap: () => onSelectCategory(t['cat']!),
+                  onTap: () => onNavigateLink(t['link'], t['cat']),
                   borderRadius: BorderRadius.circular(10),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(10),
@@ -1638,8 +1730,12 @@ class _CategoriesGridSection extends StatelessWidget {
 }
 
 class _MidPageLookbookCarousel extends StatefulWidget {
-  final ValueChanged<String> onSelectCategory;
-  const _MidPageLookbookCarousel({required this.onSelectCategory});
+  final Map<String, dynamic> settings;
+  final void Function(String? link, String? fallbackCategory) onNavigateLink;
+  const _MidPageLookbookCarousel({
+    required this.settings,
+    required this.onNavigateLink,
+  });
 
   @override
   State<_MidPageLookbookCarousel> createState() =>
@@ -1656,8 +1752,35 @@ class _MidPageLookbookCarouselState extends State<_MidPageLookbookCarousel> {
     super.dispose();
   }
 
+  List<Map<String, String>> get _slides {
+    final raw = widget.settings['mid_banner_slides'];
+    if (raw is List && raw.isNotEmpty) {
+      final parsed = <Map<String, String>>[];
+      for (final item in raw) {
+        if (item is Map) {
+          final rawImg = (item['image'] ?? '').toString();
+          parsed.add({
+            'badge': (item['badge'] ?? '').toString(),
+            'title': (item['title'] ?? '').toString(),
+            'highlight': (item['highlight'] ?? '').toString(),
+            'subtitle': (item['subtitle'] ?? '').toString(),
+            'cta_text': (item['cta_text'] ?? 'Shop Now').toString(),
+            'cta_link': (item['cta_link'] ?? '/shop').toString(),
+            'category': '',
+            'image': rawImg.startsWith('http')
+                ? rawImg
+                : AppConfig.resolveImageUrl(rawImg),
+          });
+        }
+      }
+      if (parsed.isNotEmpty) return parsed;
+    }
+    return _defaultLookbookSlides;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final slides = _slides;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14),
       child: Column(
@@ -1668,10 +1791,10 @@ class _MidPageLookbookCarouselState extends State<_MidPageLookbookCarousel> {
               height: 255,
               child: PageView.builder(
                 controller: _ctrl,
-                itemCount: _defaultLookbookSlides.length,
+                itemCount: slides.length,
                 onPageChanged: (i) => setState(() => _idx = i),
                 itemBuilder: (_, i) {
-                  final s = _defaultLookbookSlides[i];
+                  final s = slides[i];
                   return Stack(
                     fit: StackFit.expand,
                     children: [
@@ -1740,8 +1863,10 @@ class _MidPageLookbookCarouselState extends State<_MidPageLookbookCarousel> {
                             ),
                             const SizedBox(height: 14),
                             OutlinedButton(
-                              onPressed: () =>
-                                  widget.onSelectCategory(s['category']!),
+                              onPressed: () => widget.onNavigateLink(
+                                s['cta_link'],
+                                s['category'],
+                              ),
                               style: OutlinedButton.styleFrom(
                                 foregroundColor: AppColors.accent,
                                 side: const BorderSide(color: AppColors.accent),
@@ -1764,7 +1889,7 @@ class _MidPageLookbookCarouselState extends State<_MidPageLookbookCarousel> {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(
-              _defaultLookbookSlides.length,
+              slides.length,
               (i) => Container(
                 width: i == _idx ? 20 : 7,
                 height: 7,
@@ -2308,20 +2433,25 @@ class _NewsletterCard extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  const Text(
-                    "You're on the list! Use this code at checkout:",
-                    style: TextStyle(fontSize: 12.5, color: AppColors.muted),
+                  Text(
+                    couponResult == 'SUBSCRIBED'
+                        ? "You're subscribed! Check your inbox for updates."
+                        : "You're on the list! Your first-order code will apply automatically at checkout:",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12.5, color: AppColors.muted),
                   ),
-                  const SizedBox(height: 4),
-                  SelectableText(
-                    couponResult!,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 2.0,
-                      color: AppColors.primary,
+                  if (couponResult != 'SUBSCRIBED') ...[
+                    const SizedBox(height: 4),
+                    SelectableText(
+                      couponResult!,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 2.0,
+                        color: AppColors.primary,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             )
