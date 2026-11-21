@@ -7,15 +7,6 @@ import ProductCard from '../components/ProductCard';
 import TrustStrip from '../components/TrustStrip';
 import './Shop.css';
 
-const CATEGORIES = [
-  { label: 'All Products', value: '' },
-  { label: 'Body Cream',   value: 'Body Cream' },
-  { label: 'Body Butter',  value: 'Body Butter' },
-  { label: 'Body Oil',     value: 'Body Oil' },
-  { label: 'Body Scrub',   value: 'Body Scrub' },
-  { label: 'Body Mask',    value: 'Body Mask' },
-];
-
 const SORT_OPTIONS = [
   { label: 'Newest first',      value: 'newest' },
   { label: 'Price: low → high', value: 'price_low' },
@@ -33,6 +24,20 @@ export default function Shop() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const [apiCategories, setApiCategories] = useState([]);
+  const [catQuery, setCatQuery] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    productsAPI.getCategories()
+      .then(({ data }) => {
+        if (active && Array.isArray(data?.categories)) {
+          setApiCategories(data.categories);
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   // Local state for price range inputs — only committed to URL on "Apply"
   const [priceMinInput, setPriceMinInput] = useState('');
@@ -45,6 +50,31 @@ export default function Shop() {
   const minPrice  = searchParams.get('min_price') || '';
   const maxPrice  = searchParams.get('max_price') || '';
   const inStock   = searchParams.get('in_stock')  || '';
+  const categoryOptions = useMemo(() => {
+    const seen = new Set();
+    const list = [{ label: 'All Products', value: '' }];
+    const addCat = (raw) => {
+      const val = typeof raw === 'string' ? raw.trim() : '';
+      if (!val || seen.has(val.toLowerCase())) return;
+      seen.add(val.toLowerCase());
+      list.push({ label: val, value: val });
+    };
+    if (Array.isArray(settings.categories)) {
+      settings.categories.forEach((c) => addCat(typeof c === 'string' ? c : c?.label));
+    }
+    apiCategories.forEach(addCat);
+    if (category) addCat(category);
+    return list;
+  }, [settings.categories, apiCategories, category]);
+
+  const visibleCategoryOptions = useMemo(() => {
+    const q = catQuery.trim().toLowerCase();
+    if (!q) return categoryOptions;
+    return categoryOptions.filter(
+      (c) => c.value === '' || c.label.toLowerCase().includes(q)
+    );
+  }, [categoryOptions, catQuery]);
+
   const LIMIT     = 12;
 
   const [searchInput, setSearchInput] = useState(search);
@@ -235,8 +265,25 @@ export default function Shop() {
               {/* Filter Group: Categories */}
               <div className="shop-filter-group">
                 <h4 className="shop-filter-group-title">Category</h4>
-                <ul className="shop-category-list">
-                  {CATEGORIES.map(cat => (
+                {categoryOptions.length > 8 && (
+                  <input
+                    type="search"
+                    value={catQuery}
+                    onChange={(e) => setCatQuery(e.target.value)}
+                    placeholder="Filter categories…"
+                    aria-label="Filter categories"
+                    style={{
+                      width: '100%',
+                      padding: '6px 10px',
+                      marginBottom: '8px',
+                      fontSize: '0.85rem',
+                      border: '1px solid var(--color-border, #e5e7eb)',
+                      borderRadius: '6px',
+                    }}
+                  />
+                )}
+                <ul className="shop-category-list" style={{ maxHeight: '280px', overflowY: 'auto' }}>
+                  {visibleCategoryOptions.map(cat => (
                     <li key={cat.value}>
                       <button
                         type="button"

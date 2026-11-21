@@ -324,6 +324,16 @@ class ApiService {
     return {'products': <dynamic>[], 'total': 0};
   }
 
+  Future<List<String>> getCategories() async {
+    final res = await _client.get(_uri('/products/categories'), headers: _headers());
+    final data = await _handleResponse(res) as Map<String, dynamic>;
+    final list = data['categories'] as List<dynamic>? ?? const [];
+    return list
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+  }
+
   Future<List<dynamic>> getProducts({
     int page = 1,
     int limit = 20,

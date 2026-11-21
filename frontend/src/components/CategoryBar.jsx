@@ -1,8 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
+import { productsAPI } from '../services/api';
 import './CategoryBar.css';
-
-const DEFAULT_CATS = ['Body Cream', 'Body Butter', 'Body Oil', 'Body Scrub', 'Body Mask'];
 
 function CategoryIcon({ label }) {
   const key = label.toLowerCase();
@@ -41,6 +41,22 @@ export default function CategoryBar() {
   const { categories, category_bar_enabled } = useSettings();
   const { pathname } = useLocation();
   const [searchParams] = useSearchParams();
+  const [apiCats, setApiCats] = useState([]);
+
+  const hasSettingsCats = Array.isArray(categories) && categories.length > 0;
+
+  useEffect(() => {
+    if (hasSettingsCats) return;
+    let active = true;
+    productsAPI.getCategories()
+      .then(({ data }) => {
+        if (active && Array.isArray(data?.categories)) {
+          setApiCats(data.categories);
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [hasSettingsCats]);
 
   if (category_bar_enabled === false || category_bar_enabled === 'false') {
     return null;
@@ -54,9 +70,9 @@ export default function CategoryBar() {
   const activeCategory = pathname === '/shop' ? (searchParams.get('category') || '') : '';
   const activeSort = pathname === '/shop' ? (searchParams.get('sort') || '') : '';
 
-  const catLabels = Array.isArray(categories) && categories.length > 0
+  const catLabels = hasSettingsCats
     ? categories.map(c => (typeof c === 'string' ? c : c.label)).filter(Boolean)
-    : DEFAULT_CATS;
+    : apiCats;
 
   return (
     <nav className="category-bar" aria-label="Product categories">

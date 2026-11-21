@@ -104,6 +104,7 @@ export const adminAPI = {
 // ── Products ──────────────────────────────────────────────────────────
 export const productsAPI = {
   getAll:          (params) => api.get('/products', { params }),
+  getCategories:   ()       => api.get('/products/categories'),
   getAdminAll:     (params) => api.get('/products/admin', { params }),
   getById:         (id)     => api.get(`/products/${id}`),
   create:          (data)   => api.post('/products', data),

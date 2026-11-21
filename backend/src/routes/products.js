@@ -2,7 +2,7 @@ const express = require('express');
 const { verifyToken, optionalToken, requireAdmin } = require('../middleware/auth');
 const { makeRateLimiter } = require('../middleware/rateLimit');
 const { validateProduct } = require('../middleware/validation');
-const { getProducts, suggestProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility } = require('../controllers/product.controller');
+const { getProducts, suggestProducts, getCategories, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility } = require('../controllers/product.controller');
 const { getReviews, canReview, createReview, markHelpful, deleteReview } = require('../controllers/review.controller');
 const {
   getVariants, createVariant, updateVariant, deleteVariant,
@@ -15,6 +15,7 @@ const reviewHelpfulLimiter = makeRateLimiter(15 * 60 * 1000, 30, 'Too many reque
 
 router.get('/admin', verifyToken, requireAdmin, getAdminProducts);
 router.get('/suggest', suggestProducts);
+router.get('/categories', getCategories);
 router.get('/', getProducts);
 router.get('/:id/related', getRelatedProducts);
 router.get('/:id', getProductById);

@@ -40,6 +40,15 @@ export default function ProductEditor() {
   const [saving,        setSaving]        = useState(false);
   const [uploadingText, setUploadingText] = useState('');
   const [error,         setError]         = useState('');
+  const [catOptions,    setCatOptions]    = useState([]);
+
+  useEffect(() => {
+    productsAPI.getCategories()
+      .then(({ data }) => {
+        if (Array.isArray(data?.categories)) setCatOptions(data.categories);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (isNew) return;
@@ -168,11 +177,7 @@ export default function ProductEditor() {
                     placeholder="Body Cream"
                   />
                   <datalist id="cat-suggestions">
-                    <option value="Body Cream" />
-                    <option value="Body Butter" />
-                    <option value="Body Oil" />
-                    <option value="Body Scrub" />
-                    <option value="Body Mask" />
+                    {catOptions.map(c => <option key={c} value={c} />)}
                   </datalist>
                 </div>
                 <div className="field">

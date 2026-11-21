@@ -19,8 +19,6 @@ const EMPTY_FORM = {
 const TYPE_LABEL   = { percentage: 'Percentage', fixed: 'Fixed (GHS)' };
 const APPLIES_LABEL = { all: 'All products', category: 'By category', product: 'Specific product' };
 
-const CATEGORIES = ['Body Cream', 'Body Butter', 'Body Oil', 'Body Scrub', 'Body Mask'];
-
 function toDatetimeLocal(iso) {
   if (!iso) return '';
   try { return new Date(iso).toISOString().slice(0, 16); } catch { return ''; }
@@ -73,6 +71,15 @@ export default function Promotions() {
 
   const [modal, setModal]   = useState(null); // null | 'create' | 'edit'
   const [editId, setEditId] = useState(null);
+  const [catOptions, setCatOptions] = useState([]);
+
+  useEffect(() => {
+    productsAPI.getCategories()
+      .then(({ data }) => {
+        if (Array.isArray(data?.categories)) setCatOptions(data.categories);
+      })
+      .catch(() => {});
+  }, []);
   const [form, setForm]     = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
@@ -373,7 +380,7 @@ export default function Promotions() {
               placeholder="Body Cream"
             />
             <datalist id="promo-cat-list">
-              {CATEGORIES.map(c => <option key={c} value={c} />)}
+              {catOptions.map(c => <option key={c} value={c} />)}
             </datalist>
           </div>
         )}

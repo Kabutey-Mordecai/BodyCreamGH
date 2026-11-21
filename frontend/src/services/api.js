@@ -115,9 +115,10 @@ export const authAPI = {
 
 // ── Products ──────────────────────────────────────────────────────────────────
 export const productsAPI = {
-  getAll:      (params) => api.get('/products', { params }),
-  suggest:     (q)      => api.get('/products/suggest', { params: { q } }),
-  getById:     (id)     => api.get(`/products/${id}`),
+  getAll:        (params) => api.get('/products', { params }),
+  suggest:       (q)      => api.get('/products/suggest', { params: { q } }),
+  getCategories: ()       => api.get('/products/categories'),
+  getById:       (id)     => api.get(`/products/${id}`),
   getRelated:  (id)     => api.get(`/products/${id}/related`),
   getVariants: (id)     => api.get(`/products/${id}/variants`),
 };

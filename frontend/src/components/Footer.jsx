@@ -4,14 +4,6 @@ import './Footer.css';
 
 const YEAR = new Date().getFullYear();
 
-const SHOP_LINKS = [
-  { label: 'All Products',  to: '/shop' },
-  { label: 'Body Creams',   to: '/shop?category=Body+Cream' },
-  { label: 'Body Oils',     to: '/shop?category=Body+Oil' },
-  { label: 'Body Butters',  to: '/shop?category=Body+Butter' },
-  { label: 'Body Scrubs',   to: '/shop?category=Body+Scrub' },
-];
-
 const ACCOUNT_LINKS = [
   { label: 'My Account',  to: '/account' },
   { label: 'My Orders',   to: '/orders' },
@@ -156,11 +148,16 @@ export default function Footer() {
           <div className="footer-col">
             <h4 className="footer-col-head">Shop</h4>
             <ul>
-              {SHOP_LINKS.map(l => (
-                <li key={l.label}>
-                  <Link to={l.to}>{l.label}</Link>
-                </li>
-              ))}
+              <li><Link to="/shop">All Products</Link></li>
+              {(Array.isArray(settings.categories) ? settings.categories : [])
+                .map(c => (typeof c === 'string' ? c : c?.label))
+                .filter(Boolean)
+                .slice(0, 6)
+                .map(label => (
+                  <li key={label}>
+                    <Link to={`/shop?category=${encodeURIComponent(label)}`}>{label}</Link>
+                  </li>
+                ))}
             </ul>
           </div>
 

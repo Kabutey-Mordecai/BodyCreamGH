@@ -38,15 +38,13 @@ class _ShopScreenState extends State<ShopScreen> {
   String _minPrice = '';
   String _maxPrice = '';
 
+  List<String> _apiCategories = const [];
+
   List<String> get _categories {
-    final set = <String>{
-      'All',
-      'Body Cream',
-      'Body Butter',
-      'Body Oil',
-      'Body Scrub',
-      'Body Mask',
-    };
+    final set = <String>{'All'};
+    for (final c in _apiCategories) {
+      if (c.trim().isNotEmpty) set.add(c.trim());
+    }
     if (_selectedCategory != null && _selectedCategory!.trim().isNotEmpty) {
       set.add(_selectedCategory!.trim());
     }
@@ -56,6 +54,15 @@ class _ShopScreenState extends State<ShopScreen> {
       }
     }
     return set.toList();
+  }
+
+  Future<void> _fetchCategories() async {
+    try {
+      final cats = await ApiService.instance.getCategories();
+      if (mounted && cats.isNotEmpty) {
+        setState(() => _apiCategories = cats);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -68,6 +75,7 @@ class _ShopScreenState extends State<ShopScreen> {
     if (widget.initialSearch != null && widget.initialSearch!.isNotEmpty) {
       _searchCtrl.text = widget.initialSearch!;
     }
+    _fetchCategories();
     _fetch();
   }
 

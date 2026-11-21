@@ -189,4 +189,24 @@ const toggleProductVisibility = async (req, res) => {
   }
 };
 
-module.exports = { getProducts, suggestProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility, bustCache };
+const getCategories = async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT TRIM(category) AS category, COUNT(*)::int AS count
+       FROM products
+       WHERE is_active = TRUE
+         AND category IS NOT NULL
+         AND TRIM(category) <> ''
+       GROUP BY TRIM(category)
+       ORDER BY TRIM(category) ASC`
+    );
+    res.json({
+      categories: rows.map((r) => r.category),
+      details: rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load categories' });
+  }
+};
+
+module.exports = { getProducts, suggestProducts, getCategories, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility, bustCache };
