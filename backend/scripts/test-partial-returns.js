@@ -359,7 +359,155 @@ async function run() {
     assert.strictEqual(t3Ord.refund_status, 'success', 'Tier 3 must mark full order refund_status=success');
     assert.strictEqual(t3Ord.status, 'refunded');
 
-    console.log('ALL PARTIAL RETURNS, PRORATION, RETRY & 3-TIER PRECEDENCE TESTS PASSED');
+    // ── 8. Two equal-amount partial returns + webhook BEFORE refund_provider_id stored ──
+    const eqOrderId = uuid();
+    const eqItemId = uuid();
+    const eqPayId = uuid();
+    const eqRetA = uuid();
+    const eqRetB = uuid();
+    const eqTxRef = `tx_eq_${Date.now()}`;
+    const eqRefA = 'RET-AAAAAAAAAAAA-1';
+    const eqRefB = 'RET-BBBBBBBBBBBB-1';
+    try {
+      await pool.query(
+        `INSERT INTO orders (id, customer_id, order_number, total_amount, status, payment_status,
+                             payment_reference, fulfillment_method, payment_method, delivered_at)
+         VALUES ($1, $2, 'ORD-PREQUAL1', 200.00, 'delivered', 'paid', $3, 'delivery', 'paystack', NOW())`,
+        [eqOrderId, ownerId, eqTxRef]
+      );
+      await pool.query(
+        `INSERT INTO order_items (id, order_id, product_id, quantity, price_at_purchase, subtotal)
+         VALUES ($1, $2, $3, 4, 50.00, 200.00)`,
+        [eqItemId, eqOrderId, productId]
+      );
+      await pool.query(
+        `INSERT INTO payments (id, order_id, amount, currency, status, payment_method, paystack_reference)
+         VALUES ($1, $2, 200.00, 'GHS', 'success', 'paystack', $3)`,
+        [eqPayId, eqOrderId, eqTxRef]
+      );
+      // Both returns have IDENTICAL amount (50.00) and NULL refund_provider_id (webhook arrives first!)
+      await pool.query(
+        `INSERT INTO return_requests (id, order_id, customer_id, status, reason, refund_amount, refund_method, refund_provider_id, refund_reference, updated_at)
+         VALUES ($1, $3, $4, 'refund_pending', 'Equal A', 50.00, 'paystack', NULL, $5, NOW()),
+                ($2, $3, $4, 'refund_pending', 'Equal B', 50.00, 'paystack', NULL, $6, NOW() - INTERVAL '45 minutes')`,
+        [eqRetA, eqRetB, eqOrderId, ownerId, eqRefA, eqRefB]
+      );
+      await pool.query(
+        `INSERT INTO return_request_items (id, return_request_id, order_item_id, quantity, unit_refund_amount, line_refund_amount)
+         VALUES ($1, $3, $5, 1, 50.00, 50.00), ($2, $4, $5, 1, 50.00, 50.00)`,
+        [uuid(), uuid(), eqRetA, eqRetB, eqItemId]
+      );
+
+      // Webhook arrives BEFORE refund_provider_id is stored, carrying our RET- ref in merchant_note
+      const wEq = await sendSignedWebhook({
+        event: 'refund.processed',
+        data: { id: 800111, transaction_reference: eqTxRef, merchant_note: `Return ${eqRefA} — ok`, status: 'processed', amount: 5000 },
+      });
+      assert.strictEqual(wEq.statusCode, 200);
+      const { rows: [afterEqA] } = await pool.query('SELECT status, refund_provider_id FROM return_requests WHERE id = $1', [eqRetA]);
+      const { rows: [afterEqB] } = await pool.query('SELECT status, refund_provider_id FROM return_requests WHERE id = $1', [eqRetB]);
+      assert.strictEqual(afterEqA.status, 'refunded', 'Return A must be matched via merchant_note before refund_provider_id is stored');
+      assert.strictEqual(afterEqA.refund_provider_id, '800111');
+      assert.strictEqual(afterEqB.status, 'refund_pending', 'Equal-amount Return B must NOT be affected by Return A webhook');
+
+      // ── 9. Unmatched refund_pending > 30 min triggers reconciler admin alert ──
+      const unmatchedAlerts = [];
+      paystackAPI.defaults.adapter = async (config) => {
+        if (config.method === 'get' && config.url === '/refund') {
+          return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: [] } };
+        }
+        throw new Error(`Unexpected call: ${config.method} ${config.url}`);
+      };
+      const recUnmatched = await reconcileReturnRequestRefunds({
+        send: async (q, d, o) => unmatchedAlerts.push({ q, d, o }),
+      });
+      assert(recUnmatched.unmatchedAlerted >= 1, 'Expected unmatched refund_pending alert after 30 min');
+      assert(
+        unmatchedAlerts.some(a => a.d.alertKey.startsWith(`ret_refund_unmatched_${eqRetB}`) && a.o?.singletonKey === a.d.alertKey),
+        'Expected ret_refund_unmatched alert with singletonKey for eqRetB'
+      );
+
+      // ── 10. Return window enforcement: expired (20d) vs in-window (5d) ───────
+      await pool.query(`UPDATE orders SET delivered_at = NOW() - INTERVAL '20 days' WHERE id = $1`, [eqOrderId]);
+      const rExpired = makeRes();
+      await createReturnRequest({
+        params: { orderId: eqOrderId },
+        user: { id: ownerId, role: 'customer' },
+        body: { reason: 'Late return', items: [{ order_item_id: eqItemId, quantity: 1 }] },
+      }, rExpired);
+      assert.strictEqual(rExpired.statusCode, 400, 'Return after return_window_days must be rejected with 400');
+
+      await pool.query(`UPDATE orders SET delivered_at = NOW() - INTERVAL '5 days' WHERE id = $1`, [eqOrderId]);
+      const rInWindow = makeRes();
+      await createReturnRequest({
+        params: { orderId: eqOrderId },
+        user: { id: ownerId, role: 'customer' },
+        body: { reason: 'Within window', items: [{ order_item_id: eqItemId, quantity: 1 }] },
+      }, rInWindow);
+      assert.strictEqual(rInWindow.statusCode, 201, 'Return within return_window_days must succeed (201)');
+      const concRetId1 = rInWindow.body.return_request.id;
+
+      // ── 11. Concurrency: approve/approve & cancel/approve ────────────────────
+      let concPostCount = 0;
+      paystackAPI.defaults.adapter = async (config) => {
+        if (config.method === 'post' && config.url === '/refund') {
+          concPostCount++;
+          await new Promise(r => setTimeout(r, 40));
+          return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: { id: 800222, status: 'pending' } } };
+        }
+        throw new Error(`Unexpected call: ${config.method} ${config.url}`);
+      };
+      const [ra1, ra2] = [makeRes(), makeRes()];
+      await Promise.all([
+        approveReturnRequestById({ params: { returnId: concRetId1 }, user: { id: adminId, role: 'admin' }, body: { method: 'paystack' } }, ra1),
+        approveReturnRequestById({ params: { returnId: concRetId1 }, user: { id: adminId, role: 'admin' }, body: { method: 'paystack' } }, ra2),
+      ]);
+      const approveStatuses = [ra1.statusCode, ra2.statusCode].sort();
+      assert.strictEqual(approveStatuses[0], 200, `Expected one 200 in concurrent approve/approve, got ${approveStatuses}`);
+      assert([400, 409].includes(approveStatuses[1]), `Expected one 400/409 in concurrent approve/approve, got ${approveStatuses}`);
+      assert.strictEqual(concPostCount, 1, 'Concurrent approve/approve must call POST /refund at most ONCE');
+
+      // Concurrent cancel/approve on a fresh pending return
+      const rFresh = makeRes();
+      await createReturnRequest({
+        params: { orderId: eqOrderId },
+        user: { id: ownerId, role: 'customer' },
+        body: { reason: 'Race cancel vs approve', items: [{ order_item_id: eqItemId, quantity: 1 }] },
+      }, rFresh);
+      assert.strictEqual(rFresh.statusCode, 201);
+      const concRetId2 = rFresh.body.return_request.id;
+
+      let racePostCount = 0;
+      paystackAPI.defaults.adapter = async (config) => {
+        if (config.method === 'post' && config.url === '/refund') {
+          racePostCount++;
+          return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: { id: 800333, status: 'pending' } } };
+        }
+        throw new Error(`Unexpected call: ${config.method} ${config.url}`);
+      };
+      const [rc, ra] = [makeRes(), makeRes()];
+      await Promise.all([
+        cancelReturnRequest({ params: { orderId: eqOrderId, returnId: concRetId2 }, user: { id: ownerId, role: 'customer' } }, rc),
+        approveReturnRequestById({ params: { returnId: concRetId2 }, user: { id: adminId, role: 'admin' }, body: { method: 'paystack' } }, ra),
+      ]);
+      const raceStatuses = [rc.statusCode, ra.statusCode].sort();
+      assert.strictEqual(raceStatuses[0], 200, `Expected exactly one winner in cancel/approve race, got ${raceStatuses}`);
+      assert([400, 409].includes(raceStatuses[1]), `Expected loser to get 400/409 in cancel/approve race, got ${raceStatuses}`);
+      if (rc.statusCode === 200) {
+        assert.strictEqual(racePostCount, 0, 'If cancel won, POST /refund must NOT be called');
+      } else {
+        assert.strictEqual(racePostCount, 1, 'If approve won, POST /refund must be called once');
+      }
+    } finally {
+      await pool.query('DELETE FROM return_requests WHERE order_id = $1', [eqOrderId]).catch(() => {});
+      await pool.query('DELETE FROM order_status_log WHERE order_id = $1', [eqOrderId]).catch(() => {});
+      await pool.query('DELETE FROM payments WHERE order_id = $1', [eqOrderId]).catch(() => {});
+      await pool.query('DELETE FROM order_items WHERE order_id = $1', [eqOrderId]).catch(() => {});
+      await pool.query('DELETE FROM orders WHERE id = $1', [eqOrderId]).catch(() => {});
+      await pool.query("DELETE FROM processed_events WHERE event_id LIKE 'paystack_refund.processed_800%'").catch(() => {});
+    }
+
+    console.log('ALL PARTIAL RETURNS, PRORATION, RETRY, WINDOW, CONCURRENCY & 3-TIER PRECEDENCE TESTS PASSED');
   } finally {
     paystackAPI.defaults.adapter = originalAdapter;
     for (const oid of [orderId, precOrderId]) {
