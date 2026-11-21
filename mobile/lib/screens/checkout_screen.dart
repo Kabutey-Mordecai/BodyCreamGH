@@ -56,6 +56,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String _fulfillmentMethod = 'delivery'; // 'delivery' | 'pickup'
   String _paymentMethod = 'paystack'; // 'paystack' | 'pay_on_delivery'
 
+  bool _loadingSettings = true;
+  bool _allowGuestCheckout = false;
   bool _pickupEnabled = true;
   String _pickupLocation = 'East Legon, Accra (Call upon arrival)';
   String _pickupHours = 'Mon–Sat, 9:00 AM – 6:00 PM';
@@ -90,7 +92,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       _addressCtrl.text = user.address!.trim();
     }
     _loadStoreSettings();
-    _runGuestCartValidation();
     _autoApplyWelcomeCoupon();
   }
 
@@ -222,7 +223,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             feeAccra: _parseNum(settings['delivery_fee_accra']),
             freeOver: _parseNum(settings['free_delivery_over']),
           );
+      final allowGuest = _parseBool(settings['guest_checkout_enabled'], false);
       setState(() {
+        _loadingSettings = false;
+        _allowGuestCheckout = allowGuest;
         _pickupEnabled = _parseBool(settings['pickup_enabled'], true);
         if (settings['pickup_location'] is String &&
             (settings['pickup_location'] as String).trim().isNotEmpty) {
@@ -241,8 +245,21 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _paymentMethod = 'paystack';
         }
       });
+
+      final isLoggedIn = context.read<AuthProvider>().isLoggedIn;
+      if (!isLoggedIn && !allowGuest) {
+        if (mounted) context.go('/login?from=checkout');
+        return;
+      }
+      if (!isLoggedIn && allowGuest) {
+        _runGuestCartValidation();
+      }
     } catch (_) {
-      // Keep safe defaults if settings request fails
+      if (!mounted) return;
+      setState(() => _loadingSettings = false);
+      if (!context.read<AuthProvider>().isLoggedIn && !_allowGuestCheckout) {
+        context.go('/login?from=checkout');
+      }
     }
   }
 
@@ -606,6 +623,63 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     final auth = context.watch<AuthProvider>();
     final isGuest = !auth.isLoggedIn;
+
+    // Require sign-in at checkout unless guest_checkout_enabled is explicitly true in Admin Settings (matches web Checkout.jsx)
+    if (isGuest && _loadingSettings) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Checkout')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (isGuest && !_allowGuestCheckout) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () =>
+                context.canPop() ? context.pop() : context.go('/cart'),
+          ),
+          title: const Text('Checkout'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline, size: 48, color: AppColors.accent),
+                const SizedBox(height: 16),
+                Text('Sign in to Checkout',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text(
+                  'Please sign in or create an account to complete your order.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => context.go('/login?from=checkout'),
+                    child: const Text('Sign In'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => context.go('/register?from=checkout'),
+                    child: const Text('Create Account'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final cart = context.watch<CartProvider>();
     final deliveryFee = _deliveryFee(cart);
     final subtotal = _validatedSubtotal(cart, isGuest);
