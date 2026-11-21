@@ -8,7 +8,7 @@ class StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final (label, bg, fg) = _resolve(status);
+    final (label, bg, fg) = resolve(status);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -27,7 +27,7 @@ class StatusChip extends StatelessWidget {
     );
   }
 
-  static (String, Color, Color) _resolve(String status) {
+  static (String, Color, Color) resolve(String status) {
     switch (status.toLowerCase()) {
       case 'pending':
         return ('Pending', const Color(0xFFFEF3C7), const Color(0xFF92400E));
