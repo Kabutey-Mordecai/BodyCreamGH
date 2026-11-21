@@ -54,21 +54,64 @@ class ApiService {
         if (token != null) 'Authorization': 'Bearer $token',
       };
 
+  static String defaultStatusMessage(int statusCode, {int? retryAfter}) {
+    switch (statusCode) {
+      case 400:
+        return 'Invalid request. Please check your input and try again.';
+      case 401:
+        return 'Session expired. Please sign in again.';
+      case 403:
+        return 'You do not have permission to perform this action.';
+      case 404:
+        return 'The requested resource was not found.';
+      case 409:
+        return 'This action conflicts with the current state. Please refresh and try again.';
+      case 429:
+        return retryAfter != null && retryAfter > 0
+            ? 'Too many requests. Please wait $retryAfter seconds and try again.'
+            : 'Too many requests. Please wait a moment and try again.';
+      default:
+        if (statusCode >= 500) {
+          return 'Server error. Please try again shortly.';
+        }
+        return 'Request failed (HTTP $statusCode).';
+    }
+  }
+
+  /// Centralized helper to turn any thrown error (ApiException, network error, etc.)
+  /// into a clean user-facing message while preserving server messages verbatim.
+  static String formatError(Object error) {
+    if (error is ApiException) {
+      return error.message;
+    }
+    return error
+        .toString()
+        .replaceFirst(RegExp(r'^ApiException\(\d+\):\s*'), '')
+        .replaceFirst(RegExp(r'^Exception:\s*'), '');
+  }
+
   Future<dynamic> _handleResponse(http.Response res) {
     if (res.statusCode >= 200 && res.statusCode < 300) {
       if (res.body.isEmpty) return Future.value(null);
       return Future.value(jsonDecode(res.body));
     }
-    String message = 'Request failed';
     int? retryAfter = int.tryParse(res.headers['retry-after'] ?? '');
+    String? serverMessage;
     try {
-      final body = jsonDecode(res.body) as Map<String, dynamic>;
-      message = body['error'] as String? ?? body['message'] as String? ?? message;
-      retryAfter ??= int.tryParse((body['retryAfter'] ?? '').toString());
+      final body = jsonDecode(res.body);
+      if (body is Map<String, dynamic>) {
+        final rawErr = body['error'] ?? body['message'];
+        if (rawErr is String && rawErr.trim().isNotEmpty) {
+          serverMessage = rawErr.trim();
+        }
+        retryAfter ??= int.tryParse((body['retryAfter'] ?? '').toString());
+      }
     } catch (_) {}
     if (res.statusCode == 429 && retryAfter == null) {
       retryAfter = 60;
     }
+    final message = serverMessage ??
+        defaultStatusMessage(res.statusCode, retryAfter: retryAfter);
     throw ApiException(res.statusCode, message, retryAfter: retryAfter);
   }
 
@@ -195,6 +238,10 @@ class ApiService {
       }),
     );
     await _handleResponse(res);
+    // Server revokes all refresh tokens on password reset; clear local session
+    // immediately so the app returns cleanly to login without a 401 refresh loop.
+    await clearTokens();
+    onSessionExpired?.call();
   }
 
   Future<void> logout() async {
@@ -537,12 +584,18 @@ class ApiService {
     return data is Map<String, dynamic> ? data : null;
   }
 
+  /// Normalizes user-entered order numbers: strips leading '#', trims spaces, and uppercases.
+  static String normalizeOrderNumber(String raw) {
+    return raw.trim().replaceFirst(RegExp(r'^#+\s*'), '').trim().toUpperCase();
+  }
+
   Future<Map<String, dynamic>> trackOrder(String orderNumber, String email) async {
+    final normalizedOrderNumber = normalizeOrderNumber(orderNumber);
     final res = await _client.post(
       _uri('/orders/track'),
       headers: _headers(),
       body: jsonEncode({
-        'order_number': orderNumber.trim(),
+        'order_number': normalizedOrderNumber,
         'email': email.trim(),
       }),
     );
@@ -615,42 +668,6 @@ class ApiService {
       _uri('/payments/guest/initialize'),
       headers: _headers(),
       body: jsonEncode({'orderId': orderId, 'email': email.trim()}),
-    );
-    return await _handleResponse(res) as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> chargeMobileMoney({
-    required String orderId,
-    required String phone,
-    required String provider,
-    String? email,
-  }) async {
-    final token = await getAccessToken();
-    final res = await _client.post(
-      _uri('/payments/charge-momo'),
-      headers: _headers(token: token),
-      body: jsonEncode({
-        'orderId': orderId,
-        'phone': phone.trim(),
-        'provider': provider.trim().toLowerCase(),
-        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
-      }),
-    );
-    return await _handleResponse(res) as Map<String, dynamic>;
-  }
-
-  Future<Map<String, dynamic>> submitMobileMoneyOtp({
-    required String reference,
-    required String otp,
-  }) async {
-    final token = await getAccessToken();
-    final res = await _client.post(
-      _uri('/payments/submit-otp'),
-      headers: _headers(token: token),
-      body: jsonEncode({
-        'reference': reference.trim(),
-        'otp': otp.trim(),
-      }),
     );
     return await _handleResponse(res) as Map<String, dynamic>;
   }
