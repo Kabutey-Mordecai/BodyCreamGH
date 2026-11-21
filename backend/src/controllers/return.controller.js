@@ -134,18 +134,17 @@ async function finalizeReturnRequestRefund(client, returnRow, { providerId = nul
 }
 
 /**
- * Find an existing Paystack refund matching BOTH our self-generated reference
- * (via reference or merchant_note) AND exact pesewa amount.
+ * Find an existing Paystack refund matching BOTH our merchant_note RET- tag
+ * AND exact pesewa amount.
  */
 function matchPaystackRefundByRefAndAmount(refundList, expectedRef, expectedAmountPesewas) {
   if (!Array.isArray(refundList) || !expectedRef) return null;
   const refLower = String(expectedRef).toLowerCase();
   return refundList.find((r) => {
-    const rRef = String(r?.reference || '').toLowerCase();
     const rNote = String(r?.merchant_note || '').toLowerCase();
-    const refMatches = rRef === refLower || rNote.includes(refLower);
+    const noteMatches = rNote.includes(refLower);
     const amtMatches = Number(r?.amount) === expectedAmountPesewas;
-    return refMatches && amtMatches;
+    return noteMatches && amtMatches;
   }) || null;
 }
 
@@ -670,7 +669,6 @@ const approveReturnRequestById = async (req, res) => {
         transactionReference: paystackTxRef,
         amount: reserved.refund_amount,
         currency: 'GHS',
-        reference: reserved.refund_reference,
         notes: merchantNote,
       });
     } catch (paystackErr) {

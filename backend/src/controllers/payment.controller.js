@@ -817,11 +817,11 @@ async function processChargeSuccess(event) {
 //             3. orders (full order refund)
 async function findReturnRequestForWebhook(client, data) {
   const providerId = getRefundProviderId(data);
-  const refundRef = getRefundReference(data);
   const txRef = getTransactionReference(data);
   const merchantNote = typeof data?.merchant_note === 'string' ? data.merchant_note : '';
   const amountPesewas = Number.isFinite(Number(data?.amount)) ? Math.round(Number(data.amount)) : null;
 
+  // 1. Exact match by Paystack refund provider ID
   if (providerId) {
     const { rows } = await client.query(
       `SELECT * FROM return_requests WHERE refund_provider_id = $1 LIMIT 1 FOR UPDATE`,
@@ -829,13 +829,7 @@ async function findReturnRequestForWebhook(client, data) {
     );
     if (rows.length > 0) return { match: rows[0], ambiguous: false, candidates: [] };
   }
-  if (refundRef) {
-    const { rows } = await client.query(
-      `SELECT * FROM return_requests WHERE refund_reference = $1 LIMIT 1 FOR UPDATE`,
-      [refundRef]
-    );
-    if (rows.length > 0) return { match: rows[0], ambiguous: false, candidates: [] };
-  }
+  // 2. Match by our RET- tag inside documented merchant_note field
   const noteMatch = merchantNote.match(/\bRET-[0-9A-F]{12}-\d+\b/i);
   if (noteMatch) {
     const { rows } = await client.query(
