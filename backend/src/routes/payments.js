@@ -19,11 +19,19 @@ const verifyRefLimiter = makeRateLimiter(60 * 1000, 20, 'Too many verification a
   keyGenerator: (req, ip) => `${ip}:${String(req.body?.reference || '').slice(0, 100)}`,
 });
 
+// Feature-flag guard for parked direct Mobile Money endpoints (default OFF).
+const requireDirectMomoEnabled = (_req, res, next) => {
+  if (process.env.ENABLE_DIRECT_MOMO !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  return next();
+};
+
 // Webhook (/api/payments/webhook) is mounted directly in server.js BEFORE rate limiters.
 router.post('/guest/initialize', initLimiter, initializeGuestPayment);  // no auth — guest checkout
 router.post('/initialize', initLimiter, verifyToken, initializePayment);
-router.post('/charge-momo', initLimiter, optionalToken, chargeMobileMoney);
-router.post('/submit-otp', initLimiter, optionalToken, submitMobileMoneyOtp);
+router.post('/charge-momo', requireDirectMomoEnabled, initLimiter, optionalToken, chargeMobileMoney);
+router.post('/submit-otp', requireDirectMomoEnabled, initLimiter, optionalToken, submitMobileMoneyOtp);
 router.post('/verify', verifyIpLimiter, verifyRefLimiter, optionalToken, verifyPayment);
 
 module.exports = router;
