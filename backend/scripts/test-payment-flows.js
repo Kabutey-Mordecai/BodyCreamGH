@@ -129,6 +129,9 @@ function runMockQuery(sql, params = []) {
     txSnapshot = null;
     return { rows: [], rowCount: 0 };
   }
+  if (/^(SAVEPOINT|RELEASE SAVEPOINT|ROLLBACK TO SAVEPOINT)\b/i.test(q)) {
+    return { rows: [], rowCount: 0 };
+  }
   if (q === 'ROLLBACK') {
     if (txSnapshot) {
       dbState.products = txSnapshot.products;
