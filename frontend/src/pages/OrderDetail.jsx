@@ -76,11 +76,13 @@ export default function OrderDetail() {
   const [cancelSaving, setCancelSaving]     = useState(false);
   const [cancelError, setCancelError]       = useState('');
 
-  // Return request form
+  // Return request form (item-level partial returns)
   const [returnFormOpen, setReturnFormOpen] = useState(false);
   const [returnReason, setReturnReason]     = useState('');
   const [returnSaving, setReturnSaving]     = useState(false);
   const [returnError, setReturnError]       = useState('');
+  const [returnData, setReturnData]         = useState({ returns: [], returnable_items: [], within_window: true, return_window_days: 14 });
+  const [selectedReturnQty, setSelectedReturnQty] = useState({});
 
   // Review prompt state — only populated for delivered orders when auth'd
   const [reviewedIds, setReviewedIds]   = useState(new Set());
@@ -202,20 +204,46 @@ export default function OrderDetail() {
     }
   };
 
+  const loadReturns = async () => {
+    try {
+      const { data } = await ordersAPI.getReturns(id);
+      if (data) setReturnData(data);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    if (order?.status === 'delivered') loadReturns();
+  }, [id, order?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleRequestReturn = async () => {
+    const chosenItems = Object.entries(selectedReturnQty)
+      .filter(([, q]) => Number(q) > 0)
+      .map(([order_item_id, quantity]) => ({ order_item_id, quantity: Number(quantity) }));
+    if (chosenItems.length === 0) { setReturnError('Select at least one item to return.'); return; }
     if (!returnReason.trim()) { setReturnError('Please provide a reason.'); return; }
     setReturnSaving(true);
     setReturnError('');
     try {
-      await ordersAPI.requestReturn(id, returnReason.trim());
-      setOrder(prev => ({ ...prev, return_requested: true, return_request_rejected: false }));
+      await ordersAPI.createReturn(id, { items: chosenItems, reason: returnReason.trim() });
       setReturnFormOpen(false);
       setReturnReason('');
+      setSelectedReturnQty({});
+      await loadReturns();
       showToast('Return request submitted', 'success');
     } catch (err) {
       setReturnError(err.response?.data?.error || 'Could not submit request. Please try again.');
     } finally {
       setReturnSaving(false);
+    }
+  };
+
+  const handleCancelPartialReturn = async (returnId) => {
+    try {
+      await ordersAPI.cancelReturn(id, returnId);
+      await loadReturns();
+      showToast('Return request cancelled', 'success');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not cancel return request', 'error');
     }
   };
 
@@ -515,8 +543,64 @@ export default function OrderDetail() {
                 )}
               </div>
             )}
+            {returnData.returns.length > 0 && (
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {returnData.returns.map((rr) => (
+                  <div key={rr.id} style={{ border: '1px solid var(--color-border, #e5e7eb)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <strong>Return · GHS {Number(rr.refund_amount || 0).toFixed(2)}</strong>
+                      <span className="badge">{rr.status}</span>
+                    </div>
+                    <p style={{ margin: '4px 0', fontSize: '0.86rem', color: 'var(--color-muted)' }}>{rr.reason}</p>
+                    {Array.isArray(rr.items) && rr.items.length > 0 && (
+                      <ul style={{ margin: '4px 0 6px 18px', fontSize: '0.84rem' }}>
+                        {rr.items.map((it) => (
+                          <li key={it.id}>{it.product_name}{it.variant_label ? ` (${it.variant_label})` : ''} × {it.quantity}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {rr.status === 'pending' && (
+                      <button type="button" className="btn btn-outline" style={{ fontSize: '0.8rem', padding: '4px 10px' }} onClick={() => handleCancelPartialReturn(rr.id)}>
+                        Cancel return request
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {returnFormOpen && (
               <div className="od-request-form">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                  <strong style={{ fontSize: '0.9rem' }}>Select items to return:</strong>
+                  {(returnData.returnable_items || []).filter(it => Number(it.remaining_quantity) > 0).map((it) => {
+                    const qty = Number(selectedReturnQty[it.id] || 0);
+                    return (
+                      <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--color-border, #e5e7eb)', borderRadius: 8 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer', fontSize: '0.88rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={qty > 0}
+                            onChange={(e) => setSelectedReturnQty(prev => ({ ...prev, [it.id]: e.target.checked ? 1 : 0 }))}
+                          />
+                          <span>{it.product_name}{it.variant_label ? ` (${it.variant_label})` : ''} — GHS {Number(it.price_at_purchase).toFixed(2)} (max {it.remaining_quantity})</span>
+                        </label>
+                        {qty > 0 && (
+                          <input
+                            type="number"
+                            min={1}
+                            max={it.remaining_quantity}
+                            value={qty}
+                            onChange={(e) => {
+                              const v = Math.max(1, Math.min(Number(it.remaining_quantity), parseInt(e.target.value, 10) || 1));
+                              setSelectedReturnQty(prev => ({ ...prev, [it.id]: v }));
+                            }}
+                            style={{ width: 64, padding: '4px 8px' }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
                 <textarea
                   rows={3}
                   className="od-review-input od-review-textarea"
@@ -537,7 +621,7 @@ export default function OrderDetail() {
                   <button
                     className="btn btn-outline"
                     disabled={returnSaving}
-                    onClick={() => { setReturnFormOpen(false); setReturnError(''); setReturnReason(''); }}
+                    onClick={() => { setReturnFormOpen(false); setReturnError(''); setReturnReason(''); setSelectedReturnQty({}); }}
                   >
                     Cancel
                   </button>

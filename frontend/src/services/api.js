@@ -142,6 +142,9 @@ export const ordersAPI = {
   getReviewStatus: (id)     => api.get(`/orders/${id}/review-status`),
   requestCancel:   (id, reason) => api.post(`/orders/${id}/request-cancel`, { reason }),
   requestReturn:   (id, reason) => api.post(`/orders/${id}/request-return`, { reason }),
+  getReturns:      (id)         => api.get(`/orders/${id}/returns`),
+  createReturn:    (id, data)   => api.post(`/orders/${id}/returns`, data),
+  cancelReturn:    (id, retId)  => api.post(`/orders/${id}/returns/${retId}/cancel`),
 };
 
 // ── Payments ──────────────────────────────────────────────────────────────────
