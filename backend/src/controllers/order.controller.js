@@ -8,6 +8,7 @@ const CouponModel = require('../models/coupon.model');
 const { logStatusChange } = require('../utils/audit');
 const { assertTransition } = require('../utils/stateMachine');
 const { createFullRefund, fetchRefundsByTransaction } = require('../services/paystack.service');
+const { insertOrderWithUniqueNumber } = require('../utils/orderNumber');
 const logger = require('../utils/logger');
 
 function parseSettingNumber(value, fallback) {
@@ -184,19 +185,20 @@ const createOrder = async (req, res) => {
     }
 
     const orderId = uuid();
-    const orderNumber = `ORD-${Date.now()}`;
     const initialStatus = payment_method === 'pay_on_delivery' ? 'confirmed' : 'pending';
 
-    await client.query(
-      `INSERT INTO orders
-         (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
-          shipping_region, delivery_fee, coupon_code, discount_amount, notes,
-          fulfillment_method, payment_method, status, payment_status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'unpaid')`,
-      [orderId, req.user.id, orderNumber, total, shipping_address, shipping_city,
-       shipping_region, delivery_fee, appliedCouponCode, discountAmount, notes,
-       fulfillment_method, payment_method, initialStatus]
-    );
+    const orderNumber = await insertOrderWithUniqueNumber(client, async (candidate) => {
+      await client.query(
+        `INSERT INTO orders
+           (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
+            shipping_region, delivery_fee, coupon_code, discount_amount, notes,
+            fulfillment_method, payment_method, status, payment_status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'unpaid')`,
+        [orderId, req.user.id, candidate, total, shipping_address, shipping_city,
+         shipping_region, delivery_fee, appliedCouponCode, discountAmount, notes,
+         fulfillment_method, payment_method, initialStatus]
+      );
+    });
 
     if (payment_method === 'pay_on_delivery') {
       await logStatusChange(
@@ -1388,23 +1390,24 @@ const createGuestOrder = async (req, res) => {
     }
 
     const orderId = uuid();
-    const orderNumber = `ORD-${Date.now()}`;
     const initialStatus = payment_method === 'pay_on_delivery' ? 'confirmed' : 'pending';
     const guestNotes = `Phone: ${phone}${notes ? '\n' + notes : ''}`;
     const fullNotes = `Guest: ${first_name} ${last_name || ''} <${email}>\n${guestNotes}`;
 
-    await client.query(
-      `INSERT INTO orders
-         (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
-          shipping_region, delivery_fee, coupon_code, discount_amount, notes, guest_email,
-          guest_first_name, guest_last_name, guest_phone,
-          fulfillment_method, payment_method, status, payment_status)
-       VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'unpaid')`,
-      [orderId, orderNumber, total, shipping_address, shipping_city,
-       shipping_region, delivery_fee, appliedCouponCode, discountAmount, fullNotes, email,
-       first_name, last_name || null, phone,
-       fulfillment_method, payment_method, initialStatus]
-    );
+    const orderNumber = await insertOrderWithUniqueNumber(client, async (candidate) => {
+      await client.query(
+        `INSERT INTO orders
+           (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
+            shipping_region, delivery_fee, coupon_code, discount_amount, notes, guest_email,
+            guest_first_name, guest_last_name, guest_phone,
+            fulfillment_method, payment_method, status, payment_status)
+         VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'unpaid')`,
+        [orderId, candidate, total, shipping_address, shipping_city,
+         shipping_region, delivery_fee, appliedCouponCode, discountAmount, fullNotes, email,
+         first_name, last_name || null, phone,
+         fulfillment_method, payment_method, initialStatus]
+      );
+    });
 
     if (payment_method === 'pay_on_delivery') {
       await logStatusChange(
