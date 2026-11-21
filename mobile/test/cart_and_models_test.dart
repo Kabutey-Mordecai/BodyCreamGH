@@ -198,13 +198,48 @@ void main() {
     });
   });
 
-  group('AppConfig.isReleaseSafeUrl', () {
-    test('accepts public HTTPS URLs and rejects HTTP or local hosts', () {
+  group('AppConfig.isReleaseSafeUrl & validateConfig', () {
+    test('accepts public HTTPS URLs and rejects HTTP, localhost, and LAN IPs', () {
       expect(AppConfig.isReleaseSafeUrl('https://api.bodycreamgh.com/api'), isTrue);
       expect(AppConfig.isReleaseSafeUrl('http://192.168.1.153:3000/api'), isFalse);
+      expect(AppConfig.isReleaseSafeUrl('https://192.168.1.153/api'), isFalse);
       expect(AppConfig.isReleaseSafeUrl('http://10.0.2.2:3000/api'), isFalse);
+      expect(AppConfig.isReleaseSafeUrl('https://10.0.0.5/api'), isFalse);
       expect(AppConfig.isReleaseSafeUrl('https://localhost:5173'), isFalse);
       expect(AppConfig.isReleaseSafeUrl(''), isFalse);
+    });
+
+    test('validateConfig throws StateError in release mode for LAN IP', () {
+      expect(
+        () => AppConfig.validateConfig(
+          isRelease: true,
+          hasApiUrlOverride: true,
+          apiUrlOverride: 'http://192.168.1.153:3000/api',
+          hasStorefrontUrlOverride: true,
+          storefrontUrlOverride: 'https://bodycreamgh.com',
+        ),
+        throwsStateError,
+      );
+      expect(
+        () => AppConfig.validateConfig(
+          isRelease: true,
+          hasApiUrlOverride: true,
+          apiUrlOverride: 'https://192.168.1.153/api',
+          hasStorefrontUrlOverride: true,
+          storefrontUrlOverride: 'https://bodycreamgh.com',
+        ),
+        throwsStateError,
+      );
+      expect(
+        () => AppConfig.validateConfig(
+          isRelease: true,
+          hasApiUrlOverride: true,
+          apiUrlOverride: 'https://api.bodycreamgh.com/api',
+          hasStorefrontUrlOverride: true,
+          storefrontUrlOverride: 'https://bodycreamgh.com',
+        ),
+        returnsNormally,
+      );
     });
   });
 }

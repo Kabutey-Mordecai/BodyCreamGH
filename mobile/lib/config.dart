@@ -21,35 +21,53 @@ class AppConfig {
     defaultValue: 'http://localhost:5173',
   );
 
-  /// Returns true only for HTTPS URLs pointing to a non-local host.
+  /// Returns true only for HTTPS URLs pointing to a non-local, non-RFC1918 host.
   static bool isReleaseSafeUrl(String rawUrl) {
     final parsed = Uri.tryParse(rawUrl);
     if (parsed == null || parsed.scheme != 'https' || parsed.host.isEmpty) {
       return false;
     }
+    final host = parsed.host.toLowerCase();
     const localHosts = {'localhost', '127.0.0.1', '10.0.2.2', '::1'};
-    return !localHosts.contains(parsed.host.toLowerCase());
+    if (localHosts.contains(host)) return false;
+    // Reject private LAN IPv4 ranges (10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+    final privateIpv4 = RegExp(
+      r'^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)',
+    );
+    return !privateIpv4.hasMatch(host);
   }
 
   /// Fails loudly in release builds (and logs clearly in debug/profile builds) if
-  /// API_URL or STOREFRONT_URL is unset, cleartext HTTP, or localhost.
-  static void validateConfig() {
-    if (!hasApiUrl || !isReleaseSafeUrl(baseUrl)) {
-      const apiMsg =
-          'API_URL is unset or not a production HTTPS URL ("$baseUrl"). '
+  /// API_URL or STOREFRONT_URL is unset, cleartext HTTP, localhost, or a LAN IP.
+  static void validateConfig({
+    bool? isRelease,
+    bool? hasApiUrlOverride,
+    String? apiUrlOverride,
+    bool? hasStorefrontUrlOverride,
+    String? storefrontUrlOverride,
+  }) {
+    final release = isRelease ?? kReleaseMode;
+    final apiDefined = hasApiUrlOverride ?? hasApiUrl;
+    final apiUrl = apiUrlOverride ?? baseUrl;
+    final storefrontDefined = hasStorefrontUrlOverride ?? hasStorefrontUrl;
+    final sfUrl = storefrontUrlOverride ?? storefrontUrl;
+
+    if (!apiDefined || !isReleaseSafeUrl(apiUrl)) {
+      final apiMsg =
+          'API_URL is unset or not a production HTTPS URL ("$apiUrl"). '
           'Pass --dart-define=API_URL=https://api.yourdomain.com/api for release builds.';
-      if (kReleaseMode) {
+      if (release) {
         throw StateError('[AppConfig] $apiMsg');
       }
       debugPrint('[AppConfig] WARNING: $apiMsg');
     }
 
-    if (!hasStorefrontUrl || !isReleaseSafeUrl(storefrontUrl)) {
-      const msg =
-          'STOREFRONT_URL is unset or not a production HTTPS URL ("$storefrontUrl"). '
+    if (!storefrontDefined || !isReleaseSafeUrl(sfUrl)) {
+      final msg =
+          'STOREFRONT_URL is unset or not a production HTTPS URL ("$sfUrl"). '
           'Pass --dart-define=STOREFRONT_URL=https://yourdomain.com so '
           'PaymentScreen can detect Paystack callbacks.';
-      if (kReleaseMode) {
+      if (release) {
         throw StateError('[AppConfig] $msg');
       }
       debugPrint('[AppConfig] WARNING: $msg');
