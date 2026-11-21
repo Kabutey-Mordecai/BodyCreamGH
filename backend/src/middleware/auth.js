@@ -40,11 +40,26 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
-const requireAdmin = (req, res, next) => {
-  if (!req.user || req.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Admin access required' });
+const requireAdmin = async (req, res, next) => {
+  if (!req.user || !req.user.id) {
+    return res.status(401).json({ error: 'Authentication required' });
   }
-  next();
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, role, is_active FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (!user || user.is_active === false) {
+      return res.status(401).json({ error: 'This account has been deactivated.' });
+    }
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    next();
+  } catch (err) {
+    return res.status(500).json({ error: 'Authorization check failed' });
+  }
 };
 
 // Like verifyToken but never rejects — just attaches req.user if a valid,

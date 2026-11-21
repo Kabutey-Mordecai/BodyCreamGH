@@ -82,6 +82,7 @@ const tests = [
   'scripts/test-webhook-signature.js',
   'scripts/test-order-number.js',
   'scripts/test-duplicate-payment-refund.js',
+  'scripts/test-require-admin.js',
 ];
 
 for (const script of tests) {
