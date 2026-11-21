@@ -25,7 +25,7 @@ const trackOrderNumberLimiter = makeRateLimiter(
   {
     keyGenerator: (req, ip) => {
       const raw = typeof req.body?.order_number === 'string'
-        ? req.body.order_number.trim().replace(/^#+/, '').trim().toUpperCase()
+        ? req.body.order_number.trim().replace(/^#+/, '').replace(/\s+/g, '').toLowerCase()
         : '';
       return raw ? `track:ord:${raw}` : `track:ip:${ip}`;
     },
