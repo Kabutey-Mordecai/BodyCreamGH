@@ -74,14 +74,11 @@ const createReview = async (req, res) => {
       return res.status(400).json({ error: 'Rating must be between 1 and 5' });
     }
 
-    const { can_review, already_reviewed, order_id } =
+    const { already_reviewed, order_id } =
       await ReviewModel.canUserReview(req.user.id, productId);
 
     if (already_reviewed) {
       return res.status(409).json({ error: 'You have already reviewed this product' });
-    }
-    if (!can_review) {
-      return res.status(403).json({ error: 'You can only review products from delivered orders' });
     }
 
     const pool = require('../config/database');

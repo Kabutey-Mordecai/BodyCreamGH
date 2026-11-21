@@ -20,7 +20,7 @@ const ReviewModel = {
       `SELECT r.id, r.rating, r.title, r.body, r.helpful_count, r.created_at,
               u.first_name,
               LEFT(u.last_name, 1) AS last_initial,
-              TRUE AS verified_purchase
+              (r.order_id IS NOT NULL) AS verified_purchase
        FROM product_reviews r
        JOIN users u ON r.user_id = u.id
        WHERE r.product_id = $1 ${approvedWhere}
@@ -75,11 +75,13 @@ const ReviewModel = {
       [userId, productId]
     );
 
-    if (!delivered.rows.length) {
-      return { can_review: false, already_reviewed: false, order_id: null };
-    }
-
-    return { can_review: true, already_reviewed: false, order_id: delivered.rows[0].id };
+    const orderId = delivered.rows[0]?.id || null;
+    return {
+      can_review: true,
+      already_reviewed: false,
+      order_id: orderId,
+      verified_purchase: Boolean(orderId),
+    };
   },
 
   // Returns pending products from delivered orders that this user hasn't reviewed yet
@@ -117,7 +119,7 @@ const ReviewModel = {
               p.name AS product_name,
               p.image_url AS product_image,
               COALESCE(o.shipping_city, 'Accra, Ghana') AS location,
-              TRUE AS verified_purchase
+              (r.order_id IS NOT NULL) AS verified_purchase
        FROM product_reviews r
        JOIN users u ON r.user_id = u.id
        JOIN products p ON r.product_id = p.id
