@@ -1229,9 +1229,187 @@ const handleWebhook = async (req, res) => {
   }
 };
 
+// ── Native Mobile Money Charge API (MTN / Telecel / AT Money) ────────────────
+const VALID_MOMO_PROVIDERS = new Set(['mtn', 'vod', 'atl']);
+
+function normalizeGhanaMomoPhone(raw) {
+  if (typeof raw !== 'string') return null;
+  let cleaned = raw.replace(/[\s\-().]/g, '');
+  if (cleaned.startsWith('+233')) cleaned = '0' + cleaned.slice(4);
+  else if (cleaned.startsWith('233') && cleaned.length === 12) cleaned = '0' + cleaned.slice(3);
+  if (!/^0[235]\d{8}$/.test(cleaned)) return null;
+  return cleaned;
+}
+
+const chargeMobileMoney = async (req, res) => {
+  try {
+    const { orderId, phone, provider, email } = req.body || {};
+    if (typeof orderId !== 'string' || !UUID_RE.test(orderId)) {
+      return res.status(400).json({ error: 'Invalid orderId' });
+    }
+    const normProvider = typeof provider === 'string' ? provider.trim().toLowerCase() : '';
+    if (!VALID_MOMO_PROVIDERS.has(normProvider)) {
+      return res.status(400).json({ error: 'Unsupported Mobile Money network. Choose MTN, Telecel, or AT Money.' });
+    }
+    const normPhone = normalizeGhanaMomoPhone(phone);
+    if (!normPhone) {
+      return res.status(400).json({ error: 'Enter a valid 10-digit Ghana Mobile Money number (e.g. 024XXXXXXX or 055XXXXXXX).' });
+    }
+
+    const result = await withOrderInitLock(orderId, async () => {
+      let order;
+      let payerEmail;
+      let metadata;
+
+      if (req.user) {
+        order = await OrderModel.findById(orderId, req.user.id);
+        if (!order) return { status: 404, body: { error: 'Order not found' } };
+        payerEmail = req.user.email;
+        metadata = { orderId, userId: req.user.id, channel: 'mobile_money_direct', provider: normProvider };
+      } else {
+        if (typeof email !== 'string' || !email.trim()) {
+          return { status: 400, body: { error: 'Email is required for guest payment' } };
+        }
+        order = await OrderModel.findById(orderId);
+        if (
+          !order ||
+          order.user_id !== null ||
+          !order.guest_email ||
+          order.guest_email.trim().toLowerCase() !== email.trim().toLowerCase()
+        ) {
+          return { status: 404, body: { error: 'Order not found' } };
+        }
+        payerEmail = order.guest_email.trim().toLowerCase();
+        metadata = { orderId, guest: true, channel: 'mobile_money_direct', provider: normProvider };
+      }
+
+      const initError = getInitError(order);
+      if (initError) return { status: initError.status, body: { error: initError.error } };
+
+      const amountPesewas = toPesewas(order);
+      const response = await paystackAPI.post('/charge', {
+        email: payerEmail,
+        amount: amountPesewas,
+        currency: 'GHS',
+        mobile_money: {
+          phone: normPhone,
+          provider: normProvider,
+        },
+        metadata,
+      });
+
+      const tx = response.data?.data || {};
+      const reference = tx.reference;
+      if (!reference) {
+        return { status: 502, body: { error: 'Paystack did not return a payment reference.' } };
+      }
+
+      const reuseColumns = await hasReuseColumns(pool);
+      const client = await pool.connect();
+      let txOpen = false;
+      try {
+        await client.query('BEGIN');
+        txOpen = true;
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`paystack_init:${orderId}`]);
+        if (reuseColumns) {
+          await client.query(
+            `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method, currency)
+             VALUES ($1,$2,$3,'pending',$4,$5,'paystack','GHS')
+             ON CONFLICT (paystack_reference) DO NOTHING`,
+            [uuid(), orderId, order.total_amount, reference, payerEmail]
+          );
+        } else {
+          await client.query(
+            `INSERT INTO payments (id, order_id, amount, status, paystack_reference, customer_email, payment_method)
+             VALUES ($1,$2,$3,'pending',$4,$5,'paystack')
+             ON CONFLICT (paystack_reference) DO NOTHING`,
+            [uuid(), orderId, order.total_amount, reference, payerEmail]
+          );
+        }
+        await client.query('COMMIT');
+        txOpen = false;
+      } finally {
+        if (txOpen) await client.query('ROLLBACK').catch(() => {});
+        client.release();
+      }
+
+      logger.info('Paystack direct MoMo charge initiated', {
+        orderId,
+        reference,
+        provider: normProvider,
+        chargeStatus: tx.status,
+      });
+
+      return {
+        status: 200,
+        body: {
+          reference,
+          status: tx.status || 'pay_offline',
+          display_text: tx.display_text || response.data?.message || '',
+          message: response.data?.message || 'Charge initiated',
+        },
+      };
+    });
+
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    res.json(result.body);
+  } catch (error) {
+    const paystackMsg = error.response?.data?.message || error.response?.data?.data?.message;
+    const httpCode = error.response?.status;
+    logger.error('Paystack direct MoMo charge error', { err: paystackMsg || error.message });
+    if (httpCode && httpCode >= 400 && httpCode < 500 && paystackMsg) {
+      return res.status(400).json({ error: paystackMsg });
+    }
+    res.status(500).json({ error: paystackMsg || 'Failed to initiate Mobile Money payment' });
+  }
+};
+
+const submitMobileMoneyOtp = async (req, res) => {
+  try {
+    const { reference, otp } = req.body || {};
+    if (typeof reference !== 'string' || !PAYSTACK_REF_RE.test(reference.trim())) {
+      return res.status(400).json({ error: 'Invalid payment reference' });
+    }
+    const cleanOtp = typeof otp === 'string' ? otp.trim() : '';
+    if (!/^[A-Za-z0-9]{4,10}$/.test(cleanOtp)) {
+      return res.status(400).json({ error: 'Enter the verification OTP sent to your phone.' });
+    }
+
+    const { rows } = await pool.query(
+      'SELECT order_id FROM payments WHERE paystack_reference = $1 LIMIT 1',
+      [reference.trim()]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Payment reference not found' });
+    }
+
+    const response = await paystackAPI.post('/charge/submit_otp', {
+      reference: reference.trim(),
+      otp: cleanOtp,
+    });
+    const tx = response.data?.data || {};
+    res.json({
+      reference: tx.reference || reference.trim(),
+      status: tx.status || 'pay_offline',
+      display_text: tx.display_text || response.data?.message || '',
+      message: response.data?.message || 'OTP submitted',
+    });
+  } catch (error) {
+    const paystackMsg = error.response?.data?.message || error.response?.data?.data?.message;
+    const httpCode = error.response?.status;
+    logger.error('Paystack submit_otp error', { err: paystackMsg || error.message });
+    if (httpCode && httpCode >= 400 && httpCode < 500 && paystackMsg) {
+      return res.status(400).json({ error: paystackMsg });
+    }
+    res.status(500).json({ error: paystackMsg || 'Failed to submit OTP' });
+  }
+};
+
 module.exports = {
   initializePayment,
   initializeGuestPayment,
+  chargeMobileMoney,
+  submitMobileMoneyOtp,
   verifyPayment,
   handleWebhook,
   _resetReuseColumnCache,

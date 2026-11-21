@@ -3,7 +3,13 @@
 const express = require('express');
 const { verifyToken, optionalToken } = require('../middleware/auth');
 const { makeRateLimiter } = require('../middleware/rateLimit');
-const { initializePayment, initializeGuestPayment, verifyPayment } = require('../controllers/payment.controller');
+const {
+  initializePayment,
+  initializeGuestPayment,
+  chargeMobileMoney,
+  submitMobileMoneyOtp,
+  verifyPayment,
+} = require('../controllers/payment.controller');
 
 const router = express.Router();
 
@@ -16,6 +22,8 @@ const verifyRefLimiter = makeRateLimiter(60 * 1000, 20, 'Too many verification a
 // Webhook (/api/payments/webhook) is mounted directly in server.js BEFORE rate limiters.
 router.post('/guest/initialize', initLimiter, initializeGuestPayment);  // no auth — guest checkout
 router.post('/initialize', initLimiter, verifyToken, initializePayment);
+router.post('/charge-momo', initLimiter, optionalToken, chargeMobileMoney);
+router.post('/submit-otp', initLimiter, optionalToken, submitMobileMoneyOtp);
 router.post('/verify', verifyIpLimiter, verifyRefLimiter, optionalToken, verifyPayment);
 
 module.exports = router;

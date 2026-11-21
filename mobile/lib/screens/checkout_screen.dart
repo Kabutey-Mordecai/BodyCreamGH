@@ -49,12 +49,14 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressCtrl = TextEditingController();
   final _cityCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _momoPhoneCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final _couponCtrl = TextEditingController();
 
   String _selectedRegion = 'Greater Accra';
   String _fulfillmentMethod = 'delivery'; // 'delivery' | 'pickup'
-  String _paymentMethod = 'paystack'; // 'paystack' | 'pay_on_delivery'
+  String _paymentMethod = 'momo_direct'; // 'momo_direct' | 'paystack' | 'pay_on_delivery'
+  String _momoProvider = 'mtn'; // 'mtn' | 'vod' | 'atl'
 
   bool _loadingSettings = true;
   bool _allowGuestCheckout = false;
@@ -87,6 +89,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final user = context.read<AuthProvider>().user;
     if (user?.phone != null && user!.phone!.trim().isNotEmpty) {
       _phoneCtrl.text = user.phone!.trim();
+      _momoPhoneCtrl.text = user.phone!.trim();
     }
     if (user?.address != null && user!.address!.trim().isNotEmpty) {
       _addressCtrl.text = user.address!.trim();
@@ -278,6 +281,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _addressCtrl.dispose();
     _cityCtrl.dispose();
     _phoneCtrl.dispose();
+    _momoPhoneCtrl.dispose();
     _notesCtrl.dispose();
     _couponCtrl.dispose();
     super.dispose();
@@ -393,6 +397,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
     final finalTotal = _total(cart, isGuest);
 
+    final backendPaymentMethod =
+        _paymentMethod == 'pay_on_delivery' ? 'pay_on_delivery' : 'paystack';
+    final momoPhone = _momoPhoneCtrl.text.trim().isNotEmpty
+        ? _momoPhoneCtrl.text.trim()
+        : _phoneCtrl.text.trim();
+
     try {
       Map<String, dynamic> order;
       if (isGuest) {
@@ -406,7 +416,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           shippingRegion: shippingRegion,
           deliveryFee: _deliveryFee(cart),
           fulfillmentMethod: _fulfillmentMethod,
-          paymentMethod: _paymentMethod,
+          paymentMethod: backendPaymentMethod,
           notes: notesText,
           couponCode: couponCode,
         );
@@ -418,7 +428,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           shippingCity: shippingCity,
           shippingRegion: shippingRegion,
           fulfillmentMethod: _fulfillmentMethod,
-          paymentMethod: _paymentMethod,
+          paymentMethod: backendPaymentMethod,
           phone:
               _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
           notes: notesText,
@@ -429,6 +439,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       final orderId = (order['orderId'] ?? order['id']).toString();
       final orderNum = (order['orderNumber'] ?? order['order_number'] ?? orderId).toString();
+      final orderTotal =
+          double.tryParse((order['total'] ?? order['total_amount'] ?? finalTotal).toString()) ??
+              finalTotal;
 
       try {
         final prefs = await SharedPreferences.getInstance();
@@ -444,7 +457,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           _podConfirmation = {
             'orderId': orderId,
             'orderNumber': orderNum,
-            'total': order['total'] ?? order['total_amount'] ?? finalTotal,
+            'total': orderTotal,
             'fulfillment_method': _fulfillmentMethod,
             'isGuest': isGuest,
             'email': _emailCtrl.text.trim(),
@@ -454,6 +467,33 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       final guestEmail = (order['email'] ?? _emailCtrl.text.trim()).toString();
+
+      if (_paymentMethod == 'momo_direct') {
+        final charge = await ApiService.instance.chargeMobileMoney(
+          orderId: orderId,
+          phone: momoPhone,
+          provider: _momoProvider,
+          email: isGuest ? guestEmail : null,
+        );
+        final reference = (charge['reference'] ?? '').toString();
+        if (reference.isEmpty) {
+          throw Exception('Did not receive a payment reference from Paystack.');
+        }
+        if (!mounted) return;
+        context.go('/momo-payment', extra: {
+          'order_id': orderId,
+          'order_number': orderNum,
+          'amount': orderTotal,
+          'reference': reference,
+          'status': (charge['status'] ?? 'pay_offline').toString(),
+          'display_text': (charge['display_text'] ?? charge['message'] ?? '').toString(),
+          'phone': momoPhone,
+          'provider': _momoProvider,
+          if (isGuest) 'guest_email': guestEmail,
+        });
+        return;
+      }
+
       final payment = isGuest
           ? await ApiService.instance.initializeGuestPayment(
               orderId,
@@ -927,15 +967,102 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               onChanged: (v) {
                 if (v == null) return;
                 if (v == 'pay_on_delivery' && !_isPodEligible) return;
-                setState(() => _paymentMethod = v);
+                setState(() {
+                  _paymentMethod = v;
+                  if (v == 'momo_direct' &&
+                      _momoPhoneCtrl.text.trim().isEmpty &&
+                      _phoneCtrl.text.trim().isNotEmpty) {
+                    _momoPhoneCtrl.text = _phoneCtrl.text.trim();
+                  }
+                });
               },
               child: Column(
                 children: [
                   const RadioListTile<String>(
-                    value: 'paystack',
-                    title: Text('Pay Online (Paystack)'),
+                    value: 'momo_direct',
+                    title: Text('Mobile Money (Instant Prompt)'),
                     subtitle: Text(
-                        'MTN MoMo, Telecel Cash, Cards & Bank Transfer'),
+                        'MTN MoMo, Telecel Cash, AT Money — approve right on your phone'),
+                  ),
+                  if (_paymentMethod == 'momo_direct')
+                    Container(
+                      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Select Mobile Money Network',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 13),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
+                            children: [
+                              for (final opt in const [
+                                ('mtn', 'MTN MoMo'),
+                                ('vod', 'Telecel Cash'),
+                                ('atl', 'AT Money'),
+                              ])
+                                ChoiceChip(
+                                  label: Text(
+                                    opt.$2,
+                                    style: TextStyle(
+                                      color: _momoProvider == opt.$1
+                                          ? Colors.white
+                                          : AppColors.text,
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 12.5,
+                                    ),
+                                  ),
+                                  selected: _momoProvider == opt.$1,
+                                  onSelected: (_) =>
+                                      setState(() => _momoProvider = opt.$1),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _momoPhoneCtrl,
+                            keyboardType: TextInputType.phone,
+                            decoration: const InputDecoration(
+                              labelText: 'Mobile Money Number *',
+                              hintText: 'e.g. 024XXXXXXX or 055XXXXXXX',
+                              prefixIcon: Icon(Icons.phone_android_outlined),
+                            ),
+                            validator: (v) {
+                              if (_paymentMethod != 'momo_direct') return null;
+                              final raw = (v ?? '').trim().isNotEmpty
+                                  ? v!.trim()
+                                  : _phoneCtrl.text.trim();
+                              final digits =
+                                  raw.replaceAll(RegExp(r'[\s\-().]'), '');
+                              final norm = digits.startsWith('+233')
+                                  ? '0${digits.substring(4)}'
+                                  : (digits.startsWith('233') &&
+                                          digits.length == 12)
+                                      ? '0${digits.substring(3)}'
+                                      : digits;
+                              if (!RegExp(r'^0[235]\d{8}$').hasMatch(norm)) {
+                                return 'Enter a valid 10-digit Ghana MoMo number';
+                              }
+                              return null;
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  const RadioListTile<String>(
+                    value: 'paystack',
+                    title: Text('Pay with Card / Bank (Paystack)'),
+                    subtitle: Text('Visa, Mastercard, Bank Transfer & MoMo Web'),
                   ),
                   if (_podEnabled)
                     RadioListTile<String>(
@@ -1154,7 +1281,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           ? 'Checking availability…'
                           : _paymentMethod == 'pay_on_delivery'
                               ? 'Place Order — ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} (${isPickup ? 'Pay on Pickup' : 'Pay on Delivery'})'
-                              : 'Pay ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} with Paystack',
+                              : _paymentMethod == 'momo_direct'
+                                  ? 'Pay ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} with Mobile Money'
+                                  : 'Pay ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} with Paystack',
                     ),
             ),
             const SizedBox(height: 10),

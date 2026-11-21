@@ -14,6 +14,7 @@ import 'screens/checkout_screen.dart';
 import 'screens/edit_profile_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
+import 'screens/momo_payment_screen.dart';
 import 'screens/order_detail_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/payment_screen.dart';
@@ -153,6 +154,23 @@ GoRouter _buildRouter(BuildContext ctx) {
             paymentUrl: extra['url'] as String,
             orderId: extra['order_id'] as String,
             orderNumber: extra['order_number'] as String?,
+            guestEmail: extra['guest_email'] as String?,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/momo-payment',
+        builder: (_, state) {
+          final extra = state.extra as Map<String, dynamic>;
+          return MomoPaymentScreen(
+            orderId: extra['order_id'] as String,
+            orderNumber: (extra['order_number'] ?? '').toString(),
+            amount: (extra['amount'] as num?)?.toDouble() ?? 0,
+            reference: extra['reference'] as String,
+            initialStatus: (extra['status'] ?? 'pay_offline').toString(),
+            displayText: (extra['display_text'] ?? '').toString(),
+            phone: (extra['phone'] ?? '').toString(),
+            provider: (extra['provider'] ?? 'mtn').toString(),
             guestEmail: extra['guest_email'] as String?,
           );
         },

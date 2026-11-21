@@ -134,7 +134,7 @@ const sendPasswordResetEmail = async (to, resetUrl, token = null) => {
       <h2>Password Reset Request</h2>
       <p>We received a request to reset your password. Click the button below to choose a new one:</p>
       <p>
-        <a href="${escapeHtml(resetUrl)}" style="background:#000;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;display:inline-block;">
+        <a href="${resetUrl}" style="background:#000;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;display:inline-block;">
           Reset Password
         </a>
       </p>

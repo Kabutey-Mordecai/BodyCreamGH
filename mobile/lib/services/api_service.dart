@@ -565,6 +565,42 @@ class ApiService {
     return await _handleResponse(res) as Map<String, dynamic>;
   }
 
+  Future<Map<String, dynamic>> chargeMobileMoney({
+    required String orderId,
+    required String phone,
+    required String provider,
+    String? email,
+  }) async {
+    final token = await getAccessToken();
+    final res = await _client.post(
+      _uri('/payments/charge-momo'),
+      headers: _headers(token: token),
+      body: jsonEncode({
+        'orderId': orderId,
+        'phone': phone.trim(),
+        'provider': provider.trim().toLowerCase(),
+        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      }),
+    );
+    return await _handleResponse(res) as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> submitMobileMoneyOtp({
+    required String reference,
+    required String otp,
+  }) async {
+    final token = await getAccessToken();
+    final res = await _client.post(
+      _uri('/payments/submit-otp'),
+      headers: _headers(token: token),
+      body: jsonEncode({
+        'reference': reference.trim(),
+        'otp': otp.trim(),
+      }),
+    );
+    return await _handleResponse(res) as Map<String, dynamic>;
+  }
+
   Future<Map<String, dynamic>> verifyPayment(String reference) async {
     final token = await getAccessToken();
     final res = await _client.post(
