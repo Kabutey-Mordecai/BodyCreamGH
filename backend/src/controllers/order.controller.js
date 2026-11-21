@@ -1711,22 +1711,37 @@ const getReviewStatus = async (req, res) => {
 
 // POST /api/orders/track  (public — no auth)
 const trackOrder = async (req, res) => {
-  const { order_number, email } = req.body;
-  if (!order_number || !email) {
+  const rawOrderNum = typeof req.body?.order_number === 'string'
+    ? req.body.order_number.trim().replace(/^#+/, '').trim()
+    : '';
+  const rawEmail = typeof req.body?.email === 'string'
+    ? req.body.email.trim().toLowerCase()
+    : '';
+
+  if (!rawOrderNum || !rawEmail) {
     return res.status(400).json({ message: 'Order number and email are required' });
   }
 
   try {
     const { rows: orderRows } = await pool.query(
       `SELECT o.id, o.order_number, o.status, o.payment_status,
+              o.total_amount, o.delivery_fee, o.fulfillment_method,
+              o.refund_status, o.refund_amount,
               o.created_at, o.updated_at,
               o.shipping_city, o.shipping_region
        FROM orders o
        LEFT JOIN users u ON o.customer_id = u.id
-       WHERE o.order_number = $1
-         AND (LOWER(u.email) = LOWER($2) OR LOWER(o.guest_email) = LOWER($2))
+       WHERE (
+               UPPER(o.order_number) = UPPER($1)
+               OR EXISTS (
+                 SELECT 1 FROM deliveries d
+                  WHERE d.order_id = o.id
+                    AND UPPER(d.tracking_number) = UPPER($1)
+               )
+             )
+         AND (LOWER(TRIM(u.email)) = $2 OR LOWER(TRIM(o.guest_email)) = $2)
        LIMIT 1`,
-      [order_number, email]
+      [rawOrderNum, rawEmail]
     );
 
     if (!orderRows.length) {
@@ -1739,7 +1754,7 @@ const trackOrder = async (req, res) => {
 
     const [itemsResult, deliveryResult, logResult] = await Promise.all([
       pool.query(
-        `SELECT p.name, oi.variant_label, oi.quantity,
+        `SELECT oi.product_id, p.name, oi.variant_label, oi.quantity,
                 oi.price_at_purchase AS price, p.image_url
          FROM order_items oi
          JOIN products p ON oi.product_id = p.id
@@ -1763,14 +1778,20 @@ const trackOrder = async (req, res) => {
     ]);
 
     res.json({
-      order_number:    order.order_number,
-      status:          order.status,
-      payment_status:  order.payment_status,
-      created_at:      order.created_at,
-      updated_at:      order.updated_at,
-      items:           itemsResult.rows,
-      delivery:        deliveryResult.rows[0] || null,
-      status_history:  logResult.rows,
+      id:                 order.id,
+      order_number:       order.order_number,
+      status:             order.status,
+      payment_status:     order.payment_status,
+      total_amount:       order.total_amount,
+      delivery_fee:       order.delivery_fee,
+      fulfillment_method: order.fulfillment_method,
+      refund_status:      order.refund_status,
+      refund_amount:      order.refund_amount,
+      created_at:         order.created_at,
+      updated_at:         order.updated_at,
+      items:              itemsResult.rows,
+      delivery:           deliveryResult.rows[0] || null,
+      status_history:     logResult.rows,
       shipping_address: {
         city:   order.shipping_city,
         region: order.shipping_region,

@@ -12,6 +12,7 @@ const STATUS_LABELS = {
   shipped:    'Shipped',
   delivered:  'Delivered',
   cancelled:  'Cancelled',
+  refunded:   'Refunded',
 };
 
 const STATUS_COLORS = {
@@ -21,6 +22,7 @@ const STATUS_COLORS = {
   shipped:    { bg: '#e0f2fe', color: '#0369a1' },
   delivered:  { bg: '#e6f4ea', color: '#1a7a34' },
   cancelled:  { bg: '#fdecea', color: '#b71c1c' },
+  refunded:   { bg: '#e0f2fe', color: '#0369a1' },
 };
 
 function StatusBadge({ status }) {
