@@ -233,7 +233,7 @@ const getOrderReturns = async (req, res) => {
       };
     });
 
-    const deliveredRef = order.delivered_at || (order.status === 'delivered' ? order.updated_at : null);
+    const deliveredRef = order.delivered_at || null;
     const withinWindow = deliveredRef
       ? (Date.now() - new Date(deliveredRef).getTime()) <= windowDays * 24 * 60 * 60 * 1000
       : false;
@@ -301,10 +301,15 @@ const createReturnRequest = async (req, res) => {
       return res.status(409).json({ error: 'A full order refund is already in progress or completed' });
     }
 
-    // Enforce return window using delivered_at
+    // Enforce return window using orders.delivered_at (explicitly block if delivered_at is NULL)
     const windowDays = await getReturnWindowDays(client);
-    const deliveredRef = order.delivered_at || order.updated_at;
-    if (deliveredRef && (Date.now() - new Date(deliveredRef).getTime()) > windowDays * 24 * 60 * 60 * 1000) {
+    if (!order.delivered_at) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: 'Delivery date could not be verified for this order. Please contact support so an admin can process your return manually.',
+      });
+    }
+    if ((Date.now() - new Date(order.delivered_at).getTime()) > windowDays * 24 * 60 * 60 * 1000) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: `Return window of ${windowDays} days after delivery has expired` });
     }
