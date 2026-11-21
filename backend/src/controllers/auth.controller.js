@@ -67,15 +67,10 @@ function hashRefreshToken(raw) {
 }
 
 function getOtpHmacSecret() {
-  if (process.env.OTP_HMAC_SECRET) return process.env.OTP_HMAC_SECRET;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('OTP_HMAC_SECRET must be configured in production');
+  if (!process.env.OTP_HMAC_SECRET) {
+    throw new Error('OTP_HMAC_SECRET must be configured');
   }
-  if (!process.env.JWT_SECRET) {
-    throw new Error('OTP_HMAC_SECRET (or JWT_SECRET in dev) must be set');
-  }
-  // Dev-only domain-separated fallback so local dev works without extra env setup
-  return crypto.createHash('sha256').update(`dev-otp-hmac:${process.env.JWT_SECRET}`).digest('hex');
+  return process.env.OTP_HMAC_SECRET;
 }
 
 function hashOtp(otp) {

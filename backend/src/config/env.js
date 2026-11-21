@@ -23,7 +23,12 @@ const KNOWN_WEAK_JWT_SECRETS = new Set([
   'CHANGE_ME_OTP_HMAC_SECRET',
 ]);
 
-function validateProductionEnv() {
+function validateEnv() {
+  if (!process.env.OTP_HMAC_SECRET) {
+    process.stderr.write('\n[FATAL] OTP_HMAC_SECRET is not set. Set OTP_HMAC_SECRET in .env and restart.\n\n');
+    process.exit(1);
+  }
+
   if (process.env.NODE_ENV !== 'production') return;
 
   const errors = [];
@@ -64,4 +69,4 @@ function validateProductionEnv() {
   }
 }
 
-validateProductionEnv();
+validateEnv();
