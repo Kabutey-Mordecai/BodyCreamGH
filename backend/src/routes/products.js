@@ -1,5 +1,6 @@
 const express = require('express');
 const { verifyToken, optionalToken, requireAdmin } = require('../middleware/auth');
+const { makeRateLimiter } = require('../middleware/rateLimit');
 const { validateProduct } = require('../middleware/validation');
 const { getProducts, suggestProducts, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility } = require('../controllers/product.controller');
 const { getReviews, canReview, createReview, markHelpful, deleteReview } = require('../controllers/review.controller');
@@ -9,6 +10,8 @@ const {
 } = require('../controllers/variant.controller');
 
 const router = express.Router();
+const reviewWriteLimiter   = makeRateLimiter(60 * 60 * 1000, 10, 'Too many review submissions. Please try again later.');
+const reviewHelpfulLimiter = makeRateLimiter(15 * 60 * 1000, 30, 'Too many requests. Please try again later.');
 
 router.get('/admin', verifyToken, requireAdmin, getAdminProducts);
 router.get('/suggest', suggestProducts);
@@ -23,8 +26,8 @@ router.patch('/:id/toggle-visibility', verifyToken, requireAdmin, toggleProductV
 // Reviews — static route before dynamic to prevent 'can-review' matching :reviewId
 router.get('/:productId/reviews/can-review',            verifyToken, canReview);
 router.get('/:productId/reviews',                       getReviews);
-router.post('/:productId/reviews',                      verifyToken, createReview);
-router.post('/:productId/reviews/:reviewId/helpful',    verifyToken, markHelpful);
+router.post('/:productId/reviews',                      reviewWriteLimiter,   verifyToken, createReview);
+router.post('/:productId/reviews/:reviewId/helpful',    reviewHelpfulLimiter, verifyToken, markHelpful);
 router.delete('/:productId/reviews/:reviewId',          verifyToken, requireAdmin, deleteReview);
 
 // Variants — public GET (optionalToken lets admin get inactive variants too)
