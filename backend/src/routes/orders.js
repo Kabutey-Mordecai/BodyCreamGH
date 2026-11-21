@@ -18,6 +18,7 @@ const {
 const {
   getOrderReturns,
   createReturnRequest,
+  adminCreateReturnRequest,
   cancelReturnRequest,
   getAdminReturns,
   approveReturnRequestById,
@@ -64,6 +65,7 @@ router.get('/admin/requests',        verifyToken, requireAdmin, getRequests);
 router.get('/admin/export',          verifyToken, requireAdmin, exportOrders);
 // Item-level partial returns (admin) — MUST be mounted before /:orderId
 router.get('/admin/returns',                   requirePartialReturnsEnabled, verifyToken, requireAdmin, getAdminReturns);
+router.post('/admin/:orderId/returns',         requirePartialReturnsEnabled, verifyToken, requireAdmin, adminCreateReturnRequest);
 router.post('/admin/returns/:returnId/approve', requirePartialReturnsEnabled, verifyToken, requireAdmin, approveReturnRequestById);
 router.post('/admin/returns/:returnId/reject',  requirePartialReturnsEnabled, verifyToken, requireAdmin, rejectReturnRequestById);
 router.get('/:orderId', verifyToken, getOrderById);

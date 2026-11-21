@@ -52,8 +52,13 @@ export default function OrderDetail() {
   const [payments, setPayments] = useState([]);
   const [dupRefundingId, setDupRefundingId] = useState(null);
   const [partialReturns, setPartialReturns] = useState([]);
+  const [returnableItems, setReturnableItems] = useState([]);
   const [retActionId, setRetActionId] = useState(null);
   const [retOptions, setRetOptions] = useState({});
+  const [adminRetOpen, setAdminRetOpen] = useState(false);
+  const [adminRetQty, setAdminRetQty] = useState({});
+  const [adminRetReason, setAdminRetReason] = useState('');
+  const [adminRetSaving, setAdminRetSaving] = useState(false);
 
   // Delivery form state
   const [deliveryForm, setDeliveryForm] = useState({
@@ -85,8 +90,11 @@ export default function OrderDetail() {
       .then(({ data }) => setStatusLog(Array.isArray(data) ? data : []))
       .catch(() => setStatusLog([]));
     ordersAPI.getOrderReturns(id)
-      .then(({ data }) => setPartialReturns(Array.isArray(data?.returns) ? data.returns : []))
-      .catch(() => setPartialReturns([]));
+      .then(({ data }) => {
+        setPartialReturns(Array.isArray(data?.returns) ? data.returns : []);
+        setReturnableItems(Array.isArray(data?.returnable_items) ? data.returnable_items : []);
+      })
+      .catch(() => { setPartialReturns([]); setReturnableItems([]); });
   };
 
   useEffect(load, [id]);
@@ -108,6 +116,27 @@ export default function OrderDetail() {
       toast.error(err.response?.data?.error || 'Failed to refund duplicate payment');
     } finally {
       setDupRefundingId(null);
+    }
+  };
+
+  const handleAdminCreateReturn = async () => {
+    const items = Object.entries(adminRetQty)
+      .filter(([, q]) => Number(q) > 0)
+      .map(([order_item_id, quantity]) => ({ order_item_id, quantity: Number(quantity) }));
+    if (items.length === 0) return toast.error('Select at least one item');
+    if (adminRetReason.trim().length < 3) return toast.error('Enter a return reason');
+    setAdminRetSaving(true);
+    try {
+      await ordersAPI.adminCreatePartialReturn(id, { items, reason: adminRetReason.trim() });
+      toast.success('Return request created on behalf of customer');
+      setAdminRetOpen(false);
+      setAdminRetQty({});
+      setAdminRetReason('');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create return request');
+    } finally {
+      setAdminRetSaving(false);
     }
   };
 
@@ -815,12 +844,52 @@ export default function OrderDetail() {
             </div>
           )}
 
-          {partialReturns.length > 0 && (
+          {(partialReturns.length > 0 || (order.status === 'delivered' && ['paid', 'partially_refunded'].includes(order.payment_status) && returnableItems.some(i => Number(i.remaining_quantity) > 0))) && (
             <div className="card">
               <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2 className="card-title">Item Return Requests ({partialReturns.length})</h2>
+                {order.status === 'delivered' && ['paid', 'partially_refunded'].includes(order.payment_status) && returnableItems.some(i => Number(i.remaining_quantity) > 0) && (
+                  <button className="btn btn-outline btn-sm" onClick={() => setAdminRetOpen(o => !o)}>
+                    {adminRetOpen ? 'Close' : 'Create Return (Admin)'}
+                  </button>
+                )}
               </div>
               <div className="card-body">
+                {adminRetOpen && (
+                  <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border-color, #eee)' }}>
+                    <div className="muted" style={{ fontSize: '0.78rem', marginBottom: 8 }}>
+                      Creates a return on behalf of the customer (bypasses return window / missing delivered_at).
+                    </div>
+                    {returnableItems.filter(i => Number(i.remaining_quantity) > 0).map(it => {
+                      const q = Number(adminRetQty[it.id] || 0);
+                      return (
+                        <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <label style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input type="checkbox" checked={q > 0} onChange={e => setAdminRetQty(p => ({ ...p, [it.id]: e.target.checked ? 1 : 0 }))} />
+                            {it.product_name} (max {it.remaining_quantity})
+                          </label>
+                          {q > 0 && (
+                            <input
+                              type="number" min={1} max={it.remaining_quantity} value={q}
+                              onChange={e => setAdminRetQty(p => ({ ...p, [it.id]: Math.max(1, Math.min(Number(it.remaining_quantity), parseInt(e.target.value, 10) || 1)) }))}
+                              style={{ width: 56 }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <input
+                      type="text"
+                      placeholder="Return reason (required)"
+                      value={adminRetReason}
+                      onChange={e => setAdminRetReason(e.target.value)}
+                      style={{ width: '100%', marginTop: 6, marginBottom: 8 }}
+                    />
+                    <button className="btn btn-accent btn-sm" disabled={adminRetSaving} onClick={handleAdminCreateReturn}>
+                      {adminRetSaving ? 'Creating…' : 'Create Return Request'}
+                    </button>
+                  </div>
+                )}
                 {partialReturns.map((rr) => {
                   const opts = retOptions[rr.id] || { restock_items: false, include_delivery_fee: false };
                   const busy = retActionId === rr.id;

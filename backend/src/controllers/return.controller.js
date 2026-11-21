@@ -446,6 +446,135 @@ const cancelReturnRequest = async (req, res) => {
   }
 };
 
+// ── POST /api/orders/admin/:orderId/returns (admin-only, bypasses window/delivered_at) ──
+const adminCreateReturnRequest = async (req, res) => {
+  const { orderId } = req.params;
+  const adminId = req.user.id;
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+  const requestedItems = Array.isArray(req.body?.items) ? req.body.items : [];
+
+  if (!reason || reason.length < 3) {
+    return res.status(400).json({ error: 'A return reason (at least 3 characters) is required' });
+  }
+  if (requestedItems.length === 0) {
+    return res.status(400).json({ error: 'Select at least one item to return' });
+  }
+  if (requestedItems.length > MAX_RETURN_ITEMS) {
+    return res.status(400).json({ error: `Cannot return more than ${MAX_RETURN_ITEMS} distinct items in a single request` });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: orderRows } = await client.query(
+      `SELECT id, order_number, customer_id, status, payment_status, total_amount,
+              discount_amount, delivery_fee, refund_status
+         FROM orders
+        WHERE id = $1
+        FOR UPDATE`,
+      [orderId]
+    );
+    const order = orderRows[0];
+    if (!order) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    if (order.status !== 'delivered') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Returns can only be created for delivered orders' });
+    }
+    if (!['paid', 'partially_refunded'].includes(order.payment_status)) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Only paid or partially refunded orders are eligible for return' });
+    }
+    if (['pending', 'needs_attention', 'success'].includes(order.refund_status)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'A full order refund is already in progress or completed' });
+    }
+
+    const { rows: orderItems } = await client.query(
+      'SELECT id, quantity, price_at_purchase, subtotal FROM order_items WHERE order_id = $1',
+      [orderId]
+    );
+    const { rows: committedRows } = await client.query(
+      `SELECT rri.order_item_id,
+              COALESCE(SUM(rri.quantity), 0)::int AS qty,
+              COALESCE(SUM(rri.line_refund_amount), 0) AS line_sum
+         FROM return_request_items rri
+         JOIN return_requests rr ON rr.id = rri.return_request_id
+        WHERE rr.order_id = $1
+          AND rr.status = ANY($2::varchar[])
+        GROUP BY rri.order_item_id`,
+      [orderId, ACTIVE_COMMITTED_STATUSES]
+    );
+
+    const committedQtyMap = new Map();
+    let alreadyCommittedItemRefundPesewas = 0;
+    for (const r of committedRows) {
+      committedQtyMap.set(r.order_item_id, Number(r.qty));
+      alreadyCommittedItemRefundPesewas += Math.round(Number(r.line_sum) * 100);
+    }
+
+    let calc;
+    try {
+      calc = calculateReturnRefund({
+        orderItems,
+        discountAmount: order.discount_amount || 0,
+        alreadyCommittedQtyByItemId: committedQtyMap,
+        alreadyCommittedItemRefundPesewas,
+        requestedItems,
+      });
+    } catch (calcErr) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: calcErr.message });
+    }
+
+    if (calc.totalRefundPesewas <= 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Calculated refund amount must be greater than zero' });
+    }
+
+    const returnId = uuid();
+    const { rows: [createdReturn] } = await client.query(
+      `INSERT INTO return_requests
+         (id, order_id, customer_id, status, reason, admin_note, refund_amount, created_at, updated_at)
+       VALUES ($1, $2, $3, 'pending', $4, $5, $6, NOW(), NOW())
+       RETURNING *`,
+      [returnId, orderId, order.customer_id || adminId, reason, `Created on customer behalf by admin ${adminId} (window override)`, calc.totalRefundAmount]
+    );
+
+    for (const line of calc.lines) {
+      await client.query(
+        `INSERT INTO return_request_items
+           (id, return_request_id, order_item_id, quantity, unit_refund_amount, line_refund_amount)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [uuid(), returnId, line.order_item_id, line.quantity, line.unit_refund_amount, line.line_refund_amount]
+      );
+    }
+
+    await logStatusChange(
+      orderId,
+      order.status,
+      order.status,
+      `Admin ${adminId} created partial return on behalf of customer (${returnId.slice(0, 8)}, ${calc.lines.length} line(s), est. GHS ${calc.totalRefundAmount.toFixed(2)}, window override): ${reason}`,
+      client
+    );
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      message: 'Return request created by admin',
+      return_request: { ...createdReturn, items: calc.lines },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('[adminCreateReturnRequest] error', { err: err.message, orderId });
+    res.status(500).json({ error: 'Failed to create return request' });
+  } finally {
+    client.release();
+  }
+};
+
 // ── GET /api/orders/admin/returns (admin only) ────────────────────────────────
 const getAdminReturns = async (req, res) => {
   try {
@@ -834,6 +963,7 @@ const rejectReturnRequestById = async (req, res) => {
 module.exports = {
   getOrderReturns,
   createReturnRequest,
+  adminCreateReturnRequest,
   cancelReturnRequest,
   getAdminReturns,
   approveReturnRequestById,

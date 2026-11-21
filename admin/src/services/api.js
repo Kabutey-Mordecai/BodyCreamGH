@@ -142,6 +142,7 @@ export const ordersAPI = {
   approveReturnRequest:(id)                => api.post(`/orders/${id}/approve-return`),
   rejectReturnRequest: (id, data)          => api.post(`/orders/${id}/reject-return`, data),
   getOrderReturns:     (id)                => api.get(`/orders/${id}/returns`),
+  adminCreatePartialReturn: (orderId, data) => api.post(`/orders/admin/${orderId}/returns`, data),
   approvePartialReturn:(returnId, data={}) => api.post(`/orders/admin/returns/${returnId}/approve`, data),
   rejectPartialReturn: (returnId, data={}) => api.post(`/orders/admin/returns/${returnId}/reject`, data),
 };

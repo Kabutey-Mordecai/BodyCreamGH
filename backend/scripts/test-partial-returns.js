@@ -13,6 +13,7 @@ const { calculateReturnRefund } = require('../src/utils/returnMath');
 const {
   getOrderReturns,
   createReturnRequest,
+  adminCreateReturnRequest,
   cancelReturnRequest,
   approveReturnRequestById,
 } = require('../src/controllers/return.controller');
@@ -449,6 +450,17 @@ async function run() {
       }, rNullDelivered);
       assert.strictEqual(rNullDelivered.statusCode, 400, 'Return with NULL delivered_at must be explicitly blocked (400)');
       assert(String(rNullDelivered.body?.error || '').includes('Delivery date could not be verified'));
+
+      // Admin override: admin can still create a return on behalf of customer when delivered_at is NULL
+      const rAdminOverride = makeRes();
+      await adminCreateReturnRequest({
+        params: { orderId: eqOrderId },
+        user: { id: adminId, role: 'admin' },
+        body: { reason: 'Admin manual override for legacy delivered order', items: [{ order_item_id: eqItemId, quantity: 1 }] },
+      }, rAdminOverride);
+      assert.strictEqual(rAdminOverride.statusCode, 201, `Admin override return must succeed (201), got ${rAdminOverride.statusCode}`);
+      // Cancel it via DB so remaining qty is clean for the subsequent window tests
+      await pool.query(`UPDATE return_requests SET status = 'cancelled' WHERE id = $1`, [rAdminOverride.body.return_request.id]);
 
       await pool.query(`UPDATE orders SET delivered_at = NOW() - INTERVAL '20 days' WHERE id = $1`, [eqOrderId]);
       const rExpired = makeRes();
