@@ -669,17 +669,37 @@ const approveReturnRequestById = async (req, res) => {
       logger.error('[approveReturnRequestById] Paystack refund call failed', {
         err: paystackErr.message, status: paystackErr.status, returnId,
       });
-      // Mark refund_failed so admin can retry cleanly (only on definitive API failure;
-      // on network timeout, leave refund_pending for reconciliation or reference-matched retry)
+      // Mark refund_failed with the provider error message and alert admin
+      // (on network timeout, leave refund_pending for reconciliation or reference-matched retry)
       const isTimeout = paystackErr.code === 'ECONNABORTED' || paystackErr.code === 'ETIMEDOUT';
+      const errDetail = paystackErr.message || 'Paystack partial refund request failed';
       if (!isTimeout) {
         await pool.query(
-          `UPDATE return_requests SET status = 'refund_failed', updated_at = NOW() WHERE id = $1 AND status = 'refund_pending'`,
-          [returnId]
+          `UPDATE return_requests
+              SET status = 'refund_failed',
+                  admin_note = CASE
+                    WHEN admin_note IS NULL OR admin_note = '' THEN $2
+                    ELSE admin_note || E'\n' || $2
+                  END,
+                  updated_at = NOW()
+            WHERE id = $1 AND status = 'refund_pending'`,
+          [returnId, `Paystack refund error: ${errDetail}`]
+        ).catch(() => {});
+        const { notificationQueue } = require('../queues');
+        const alertKey = `ret_refund_api_err_${returnId}_${reserved.refund_attempt}`;
+        notificationQueue.add(
+          'admin-payment-alert',
+          {
+            orderId: reserved.order_id,
+            alertKey,
+            title: 'Partial return refund failed on Paystack',
+            detail: `Return ${returnId.slice(0, 8)} (ref ${reserved.refund_reference}, GHS ${Number(reserved.refund_amount).toFixed(2)}) failed: ${errDetail}`,
+          },
+          { singletonKey: alertKey }
         ).catch(() => {});
       }
       return res.status(502).json({
-        error: paystackErr.message || 'Paystack partial refund request failed',
+        error: errDetail,
       });
     }
   }

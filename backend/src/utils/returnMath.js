@@ -3,9 +3,13 @@
 /**
  * Compute integer-pesewa pro-rated refund amounts for an item-level return request.
  *
- * Rounding rule:
+ * Rounding & coupon rules:
  * - Each requested line gets its floored pro-rated share of the net items amount
  *   paid (itemsSubtotal - discount).
+ * - Coupon minimum-spend policy: we intentionally do NOT claw back a coupon
+ *   discount retroactively if a partial return brings the kept items below the
+ *   original coupon min_order_amount; each item is refunded at its pro-rated
+ *   discounted price paid.
  * - When this return request accounts for the LAST remaining returnable unit(s)
  *   on the entire order (i.e. all purchased item units have now been returned),
  *   the last requested line absorbs any positive pesewa remainder so that a

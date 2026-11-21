@@ -210,12 +210,13 @@ async function applyRefundNeedsAttention(order, paystackRefund, boss) {
 // ── Duplicate-payment refund reconciliation ───────────────────────────────────
 
 const STALE_REFUND_PENDING_MS = 48 * 60 * 60 * 1000;
+const UNMATCHED_REFUND_ALERT_MS = (parseInt(process.env.UNMATCHED_REFUND_ALERT_MINUTES, 10) || 30) * 60 * 1000;
 
 // ── Tier 1: Item-level return_requests refund reconciliation ──────────────────
 
 async function reconcileReturnRequestRefunds(boss) {
   const { finalizeReturnRequestRefund, matchPaystackRefundByRefAndAmount } = require('../controllers/return.controller');
-  let checked = 0, refunded = 0, failed = 0, staleAlerted = 0;
+  let checked = 0, refunded = 0, failed = 0, staleAlerted = 0, unmatchedAlerted = 0;
 
   const { rows: pendingReturns } = await pool.query(
     `SELECT rr.*, o.status AS order_status,
@@ -256,19 +257,20 @@ async function reconcileReturnRequestRefunds(boss) {
     }
 
     if (!paystackRefund) {
-      if (isStale48h && boss) {
-        const staleKey = `ret_refund_stale_48h_${row.id}`;
+      if (ageMs >= UNMATCHED_REFUND_ALERT_MS && boss) {
+        const unmatchedKey = `ret_refund_unmatched_${row.id}_${row.refund_attempt || 1}`;
         await boss.send(
           'notification/admin-payment-alert',
           {
             orderId: row.order_id,
-            alertKey: staleKey,
-            title: 'Partial return refund stuck >48h',
-            detail: `Return ${row.id.slice(0, 8)} (ref ${row.refund_reference || 'n/a'}, GHS ${Number(row.refund_amount).toFixed(2)}) has been refund_pending >48h with no matching Paystack refund.`,
+            alertKey: unmatchedKey,
+            title: isStale48h ? 'Partial return refund stuck >48h' : 'Partial return refund unmatched on Paystack',
+            detail: `Return ${row.id.slice(0, 8)} (ref ${row.refund_reference || 'n/a'}, GHS ${Number(row.refund_amount).toFixed(2)}) has been refund_pending for ${Math.round(ageMs / 60000)} min with no matching Paystack refund record.`,
           },
-          { retryLimit: 3, singletonKey: staleKey }
+          { retryLimit: 3, singletonKey: unmatchedKey }
         );
-        staleAlerted++;
+        unmatchedAlerted++;
+        if (isStale48h) staleAlerted++;
       }
       continue;
     }
@@ -374,7 +376,7 @@ async function reconcileReturnRequestRefunds(boss) {
     }
   }
 
-  return { checked, refunded, failed, staleAlerted };
+  return { checked, refunded, failed, staleAlerted, unmatchedAlerted };
 }
 
 // ── Tier 2: Duplicate-payment refund reconciliation ───────────────────────────
