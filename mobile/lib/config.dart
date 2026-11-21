@@ -21,20 +21,29 @@ class AppConfig {
     defaultValue: 'http://localhost:5173',
   );
 
-  /// Returns true only for HTTPS URLs pointing to a non-local, non-RFC1918 host.
+  /// Returns true only for HTTPS URLs pointing to a public, non-local host.
+  /// Rejects localhost, *.local, private IPv4 (10/8, 127/8, 169.254/16,
+  /// 172.16/12, 192.168/16), IPv6 loopback (::1), and IPv6 ULA (fc00::/7).
   static bool isReleaseSafeUrl(String rawUrl) {
     final parsed = Uri.tryParse(rawUrl);
     if (parsed == null || parsed.scheme != 'https' || parsed.host.isEmpty) {
       return false;
     }
-    final host = parsed.host.toLowerCase();
-    const localHosts = {'localhost', '127.0.0.1', '10.0.2.2', '::1'};
-    if (localHosts.contains(host)) return false;
-    // Reject private LAN IPv4 ranges (10.0.0.0/8, 127.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+    final host = parsed.host
+        .toLowerCase()
+        .replaceAll('[', '')
+        .replaceAll(']', '');
+    const localHosts = {'localhost', '127.0.0.1', '10.0.2.2', '::1', '0.0.0.0'};
+    if (localHosts.contains(host) || host.endsWith('.local')) return false;
+    // Reject private & link-local IPv4 ranges (10/8, 127/8, 169.254/16, 172.16/12, 192.168/16)
     final privateIpv4 = RegExp(
-      r'^(10\.|127\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)',
+      r'^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)',
     );
-    return !privateIpv4.hasMatch(host);
+    if (privateIpv4.hasMatch(host)) return false;
+    // Reject IPv6 ULA (fc00::/7 -> fc00::..fdff::) and link-local (fe80::/10)
+    final privateIpv6 = RegExp(r'^(fc|fd)[0-9a-f]{2}:|^fe[89ab][0-9a-f]:');
+    if (privateIpv6.hasMatch(host)) return false;
+    return true;
   }
 
   /// Fails loudly in release builds (and logs clearly in debug/profile builds) if

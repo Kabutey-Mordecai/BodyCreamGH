@@ -209,27 +209,30 @@ void main() {
       expect(AppConfig.isReleaseSafeUrl(''), isFalse);
     });
 
-    test('validateConfig throws StateError in release mode for LAN IP', () {
-      expect(
-        () => AppConfig.validateConfig(
-          isRelease: true,
-          hasApiUrlOverride: true,
-          apiUrlOverride: 'http://192.168.1.153:3000/api',
-          hasStorefrontUrlOverride: true,
-          storefrontUrlOverride: 'https://bodycreamgh.com',
-        ),
-        throwsStateError,
-      );
-      expect(
-        () => AppConfig.validateConfig(
-          isRelease: true,
-          hasApiUrlOverride: true,
-          apiUrlOverride: 'https://192.168.1.153/api',
-          hasStorefrontUrlOverride: true,
-          storefrontUrlOverride: 'https://bodycreamgh.com',
-        ),
-        throwsStateError,
-      );
+    test('validateConfig throws StateError in release mode for localhost, *.local, LAN, link-local, ::1, and fc00::/7', () {
+      const rejectedUrls = [
+        'http://192.168.1.153:3000/api',
+        'https://192.168.1.153/api',
+        'https://localhost/api',
+        'https://myhost.local/api',
+        'https://169.254.169.254/api',
+        'https://[::1]/api',
+        'https://[fc00::1]/api',
+        'https://[fd12:3456::1]/api',
+      ];
+      for (final badUrl in rejectedUrls) {
+        expect(
+          () => AppConfig.validateConfig(
+            isRelease: true,
+            hasApiUrlOverride: true,
+            apiUrlOverride: badUrl,
+            hasStorefrontUrlOverride: true,
+            storefrontUrlOverride: 'https://bodycreamgh.com',
+          ),
+          throwsStateError,
+          reason: 'Expected validateConfig to reject $badUrl in release mode',
+        );
+      }
       expect(
         () => AppConfig.validateConfig(
           isRelease: true,
