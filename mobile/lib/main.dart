@@ -186,6 +186,16 @@ GoRouter _buildRouter(BuildContext ctx) {
         },
       ),
       GoRoute(
+        path: '/orders/:id',
+        builder: (_, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          return OrderDetailScreen(
+            orderId: state.pathParameters['id']!,
+            justPaid: extra?['justPaid'] as bool? ?? false,
+          );
+        },
+      ),
+      GoRoute(
         path: '/login',
         builder: (_, state) => LoginScreen(
           isCheckoutRedirect: state.uri.queryParameters['from'] == 'checkout',

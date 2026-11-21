@@ -189,6 +189,9 @@ const sendReviewRequest = async (to, { customerName, orderNumber, orderId, items
             Review Your Order
           </a>
         </div>
+        <p style="margin-top:14px;color:#7a6e68;font-size:13px;text-align:center;">
+          Using the BodyCream GH app? Open the app → <strong>Orders</strong> → tap <strong>#${escapeHtml(orderNumber)}</strong> to rate your items directly.
+        </p>
         <p style="margin-top:28px;color:#a89f91;font-size:12px;text-align:center;">Order #${escapeHtml(orderNumber)} · Handcrafted with love in Ghana</p>
       </div>
     `,
