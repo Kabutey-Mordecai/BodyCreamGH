@@ -83,6 +83,7 @@ const tests = [
   'scripts/test-order-number.js',
   'scripts/test-duplicate-payment-refund.js',
   'scripts/test-require-admin.js',
+  'scripts/test-partial-returns.js',
 ];
 
 for (const script of tests) {
