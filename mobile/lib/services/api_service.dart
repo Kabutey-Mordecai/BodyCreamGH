@@ -565,6 +565,34 @@ class ApiService {
         ));
   }
 
+  Future<Map<String, dynamic>> getOrderReturns(String orderId) async {
+    final data = await _authed((token) => _client.get(
+          _uri('/orders/$orderId/returns'),
+          headers: _headers(token: token),
+        ));
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
+
+  Future<Map<String, dynamic>> createOrderReturn(
+    String orderId, {
+    required List<Map<String, dynamic>> items,
+    required String reason,
+  }) async {
+    final data = await _authed((token) => _client.post(
+          _uri('/orders/$orderId/returns'),
+          headers: _headers(token: token),
+          body: jsonEncode({'items': items, 'reason': reason.trim()}),
+        ));
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
+
+  Future<void> cancelOrderReturn(String orderId, String returnId) async {
+    await _authed((token) => _client.post(
+          _uri('/orders/$orderId/returns/$returnId/cancel'),
+          headers: _headers(token: token),
+        ));
+  }
+
   // ── Settings ──────────────────────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getSettings() async {

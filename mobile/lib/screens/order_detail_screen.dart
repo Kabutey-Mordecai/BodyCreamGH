@@ -208,20 +208,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _promptAction({required bool isReturn}) async {
+    if (_order == null) return;
+    if (isReturn) {
+      await _promptPartialReturn();
+      return;
+    }
     final reasonCtrl = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(isReturn ? 'Request Return' : 'Request Cancellation'),
+        title: const Text('Request Cancellation'),
         content: TextField(
           controller: reasonCtrl,
           maxLines: 3,
           maxLength: 500,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: 'Reason *',
-            hintText: isReturn
-                ? 'Please describe the reason for your return…'
-                : 'Please explain why you want to cancel this order…',
+            hintText: 'Please explain why you want to cancel this order…',
           ),
         ),
         actions: [
@@ -240,22 +243,143 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return;
     }
     try {
-      if (isReturn) {
-        await ApiService.instance
-            .requestOrderReturn(_order!.id, reasonCtrl.text);
-      } else {
-        await ApiService.instance
-            .requestOrderCancel(_order!.id, reasonCtrl.text);
-      }
+      await ApiService.instance.requestOrderCancel(_order!.id, reasonCtrl.text);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cancellation request submitted')),
+      );
+      _load();
+    } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            isReturn
-                ? 'Return request submitted'
-                : 'Cancellation request submitted',
+            e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), ''),
           ),
         ),
+      );
+    }
+  }
+
+  Future<void> _promptPartialReturn() async {
+    if (_order == null) return;
+    Map<String, dynamic> retData;
+    try {
+      retData = await ApiService.instance.getOrderReturns(_order!.id);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), ''))),
+      );
+      return;
+    }
+    if (!mounted) return;
+
+    final returnable = (retData['returnable_items'] as List<dynamic>? ?? [])
+        .whereType<Map<String, dynamic>>()
+        .where((it) => ((it['remaining_quantity'] as num?)?.toInt() ?? 0) > 0)
+        .toList();
+
+    if (returnable.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No returnable items remaining on this order.')),
+      );
+      return;
+    }
+
+    final selectedQty = <String, int>{};
+    final reasonCtrl = TextEditingController();
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Select Items to Return'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ...returnable.map((it) {
+                  final itemId = it['id'].toString();
+                  final name = (it['product_name'] ?? 'Item').toString();
+                  final maxQty = (it['remaining_quantity'] as num?)?.toInt() ?? 1;
+                  final qty = selectedQty[itemId] ?? 0;
+                  return ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Checkbox(
+                      value: qty > 0,
+                      onChanged: (v) => setDialogState(() {
+                        selectedQty[itemId] = v == true ? 1 : 0;
+                      }),
+                    ),
+                    title: Text(name, style: const TextStyle(fontSize: 13)),
+                    subtitle: Text('Max: $maxQty', style: const TextStyle(fontSize: 11)),
+                    trailing: qty > 0
+                        ? Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, size: 20),
+                                onPressed: qty > 1
+                                    ? () => setDialogState(() => selectedQty[itemId] = qty - 1)
+                                    : null,
+                              ),
+                              Text('$qty'),
+                              IconButton(
+                                icon: const Icon(Icons.add_circle_outline, size: 20),
+                                onPressed: qty < maxQty
+                                    ? () => setDialogState(() => selectedQty[itemId] = qty + 1)
+                                    : null,
+                              ),
+                            ],
+                          )
+                        : null,
+                  );
+                }),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: reasonCtrl,
+                  maxLines: 3,
+                  maxLength: 500,
+                  decoration: const InputDecoration(
+                    labelText: 'Reason *',
+                    hintText: 'Please describe the reason for your return…',
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Submit Return'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final chosen = selectedQty.entries
+        .where((e) => e.value > 0)
+        .map((e) => {'order_item_id': e.key, 'quantity': e.value})
+        .toList();
+    if (confirmed != true || chosen.isEmpty || reasonCtrl.text.trim().isEmpty || _order == null) {
+      return;
+    }
+
+    try {
+      await ApiService.instance.createOrderReturn(
+        _order!.id,
+        items: chosen,
+        reason: reasonCtrl.text,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Partial return request submitted')),
       );
       _load();
     } catch (e) {
