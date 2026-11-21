@@ -6,8 +6,35 @@ import '../config.dart';
 import '../providers/cart_provider.dart';
 import '../theme/app_theme.dart';
 
-class CartScreen extends StatelessWidget {
+class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
+
+  @override
+  State<CartScreen> createState() => _CartScreenState();
+}
+
+class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<CartProvider>().loadFromServer();
+    });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      context.read<CartProvider>().loadFromServer();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -18,6 +45,11 @@ class CartScreen extends StatelessWidget {
       appBar: AppBar(
         title: Text('Shopping Bag (${cart.itemCount})'),
         actions: [
+          IconButton(
+            tooltip: 'Sync bag',
+            icon: const Icon(Icons.refresh, size: 20),
+            onPressed: () => cart.loadFromServer(),
+          ),
           if (cart.items.isNotEmpty)
             TextButton(
               onPressed: () {

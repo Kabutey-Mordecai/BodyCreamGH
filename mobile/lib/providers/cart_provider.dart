@@ -14,6 +14,8 @@ class CartProvider extends ChangeNotifier {
   double _deliveryFeeAccra = 10.0;
   double _freeDeliveryOver = 200.0;
   String? _mergeError;
+  bool _isAuthenticated = false;
+  bool _syncing = false;
 
   List<CartItem> get items => List.unmodifiable(_items);
   int get itemCount => _items.fold(0, (sum, i) => sum + i.quantity);
@@ -95,6 +97,51 @@ class CartProvider extends ChangeNotifier {
     return idx == -1 ? 0 : _items[idx].quantity;
   }
 
+  Future<void> syncAuthState(bool isLoggedIn) async {
+    if (isLoggedIn == _isAuthenticated) return;
+    _isAuthenticated = isLoggedIn;
+    if (isLoggedIn) {
+      // Merge any local guest items (id == null) into the server cart, then load authoritative server cart
+      final guestItems = _items.where((i) => i.id == null).toList();
+      if (guestItems.isNotEmpty) {
+        for (final item in guestItems) {
+          try {
+            await ApiService.instance.addToCart(
+              item.productId,
+              item.quantity,
+              variantId: item.variantId,
+            );
+          } catch (_) {}
+        }
+      }
+      await loadFromServer();
+    } else {
+      // Clear authenticated items on logout so the next user starts clean
+      _items.clear();
+      notifyListeners();
+      _persist();
+    }
+  }
+
+  Future<void> loadFromServer() async {
+    if (!_isAuthenticated || _syncing) return;
+    _syncing = true;
+    try {
+      final raw = await ApiService.instance.getCart();
+      _items
+        ..clear()
+        ..addAll(
+          raw.whereType<Map<String, dynamic>>().map(CartItem.fromJson),
+        );
+      notifyListeners();
+      _persist();
+    } catch (_) {
+      // Keep local snapshot if offline
+    } finally {
+      _syncing = false;
+    }
+  }
+
   void add(
     Product product, {
     int quantity = 1,
@@ -120,9 +167,22 @@ class CartProvider extends ChangeNotifier {
     }
     notifyListeners();
     _persist();
+    if (_isAuthenticated) {
+      ApiService.instance
+          .addToCart(product.id, quantity, variantId: variantId)
+          .then((_) => loadFromServer())
+          .catchError((_) {});
+    }
   }
 
   void remove(String productId, {String? variantId}) {
+    final removed = _items
+        .where(
+          (i) =>
+              i.productId == productId &&
+              (variantId == null || i.variantId == variantId),
+        )
+        .toList();
     _items.removeWhere(
       (i) =>
           i.productId == productId &&
@@ -130,6 +190,15 @@ class CartProvider extends ChangeNotifier {
     );
     notifyListeners();
     _persist();
+    if (_isAuthenticated) {
+      for (final item in removed) {
+        if (item.id != null) {
+          ApiService.instance
+              .removeCartItem(item.id!)
+              .catchError((_) {});
+        }
+      }
+    }
   }
 
   void updateQuantity(String productId, int quantity, {String? variantId}) {
@@ -139,6 +208,7 @@ class CartProvider extends ChangeNotifier {
           (variantId == null || i.variantId == variantId),
     );
     if (idx == -1) return;
+    final serverId = _items[idx].id;
     if (quantity <= 0) {
       _items.removeAt(idx);
     } else {
@@ -146,6 +216,15 @@ class CartProvider extends ChangeNotifier {
     }
     notifyListeners();
     _persist();
+    if (_isAuthenticated && serverId != null) {
+      if (quantity <= 0) {
+        ApiService.instance.removeCartItem(serverId).catchError((_) {});
+      } else {
+        ApiService.instance
+            .updateCartItem(serverId, quantity)
+            .catchError((_) {});
+      }
+    }
   }
 
   /// Syncs all in-memory cart items to the server-side cart before checkout.
@@ -174,11 +253,14 @@ class CartProvider extends ChangeNotifier {
     }
   }
 
-  void clear() {
+  void clear({bool syncServer = true}) {
     _items.clear();
     _mergeError = null;
     notifyListeners();
     _persist();
+    if (_isAuthenticated && syncServer) {
+      ApiService.instance.clearCart().catchError((_) {});
+    }
   }
 
   // Builds the payload expected by POST /api/orders (validateCreateOrder)

@@ -397,11 +397,14 @@ class ApiService {
 
   // ── Cart ──────────────────────────────────────────────────────────────────
 
-  Future<Map<String, dynamic>> getCart() async {
-    return await _authed((token) => _client.get(
+  Future<List<dynamic>> getCart() async {
+    final data = await _authed((token) => _client.get(
           _uri('/cart'),
           headers: _headers(token: token),
-        )) as Map<String, dynamic>;
+        ));
+    if (data is List) return data;
+    if (data is Map && data['items'] is List) return data['items'] as List<dynamic>;
+    return [];
   }
 
   Future<void> addToCart(String productId, int quantity, {String? variantId}) async {
@@ -413,6 +416,21 @@ class ApiService {
             'quantity': quantity,
             if (variantId != null) 'variant_id': variantId,
           }),
+        ));
+  }
+
+  Future<void> updateCartItem(String cartItemId, int quantity) async {
+    await _authed((token) => _client.patch(
+          _uri('/cart/$cartItemId'),
+          headers: _headers(token: token),
+          body: jsonEncode({'quantity': quantity}),
+        ));
+  }
+
+  Future<void> removeCartItem(String cartItemId) async {
+    await _authed((token) => _client.delete(
+          _uri('/cart/$cartItemId'),
+          headers: _headers(token: token),
         ));
   }
 

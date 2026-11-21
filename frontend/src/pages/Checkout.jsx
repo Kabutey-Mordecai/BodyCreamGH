@@ -35,7 +35,7 @@ export default function Checkout() {
   const allowGuestCheckout = guest_checkout_enabled === true || guest_checkout_enabled === 'true';
 
   const [fulfillmentMethod, setFulfillmentMethod] = useState('delivery');
-  const [paymentMethod, setPaymentMethod]         = useState('momo_direct');
+  const [paymentMethod, setPaymentMethod]         = useState('paystack');
   const [momoProvider, setMomoProvider]           = useState('mtn');
   const [momoPhone, setMomoPhone]                 = useState('');
   const [momoFlow, setMomoFlow]                   = useState(null);
@@ -844,58 +844,6 @@ export default function Checkout() {
               <div className="gold-divider" style={{ margin: '0 0 16px' }} />
 
               <div className="checkout-method-grid" role="radiogroup" aria-label="Payment method">
-                <label className={`checkout-method-card${paymentMethod === 'momo_direct' ? ' is-selected' : ''}`}>
-                  <input
-                    type="radio"
-                    name="payment_method"
-                    value="momo_direct"
-                    checked={paymentMethod === 'momo_direct'}
-                    onChange={() => {
-                      setPaymentMethod('momo_direct');
-                      if (!momoPhone && form.phone) setMomoPhone(form.phone);
-                    }}
-                  />
-                  <div>
-                    <strong>Mobile Money (Instant Prompt)</strong>
-                    <span>MTN MoMo, Telecel Cash, AT Money — approve right on your phone</span>
-                  </div>
-                </label>
-
-                {paymentMethod === 'momo_direct' && (
-                  <div className="checkout-pickup-box" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div>
-                      <strong style={{ display: 'block', marginBottom: 8, fontSize: '0.88rem' }}>Select Mobile Money Network</strong>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        {[
-                          { id: 'mtn', label: 'MTN MoMo' },
-                          { id: 'vod', label: 'Telecel Cash' },
-                          { id: 'atl', label: 'AT Money' },
-                        ].map(net => (
-                          <button
-                            key={net.id}
-                            type="button"
-                            onClick={() => setMomoProvider(net.id)}
-                            className={`btn btn-sm ${momoProvider === net.id ? 'btn-primary' : 'btn-outline'}`}
-                          >
-                            {net.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
-                      <label htmlFor="momo_phone">Mobile Money Number</label>
-                      <input
-                        id="momo_phone"
-                        type="tel"
-                        value={momoPhone}
-                        onChange={e => setMomoPhone(e.target.value)}
-                        placeholder={form.phone || 'e.g. 024XXXXXXX or 055XXXXXXX'}
-                        required={paymentMethod === 'momo_direct' && !form.phone}
-                      />
-                    </div>
-                  </div>
-                )}
-
                 <label className={`checkout-method-card${paymentMethod === 'paystack' ? ' is-selected' : ''}`}>
                   <input
                     type="radio"
@@ -905,8 +853,8 @@ export default function Checkout() {
                     onChange={() => setPaymentMethod('paystack')}
                   />
                   <div>
-                    <strong>Pay with Card / Bank (Paystack)</strong>
-                    <span>Visa, Mastercard, Bank Transfer &amp; MoMo Web</span>
+                    <strong>Pay Online (Paystack)</strong>
+                    <span>MTN MoMo, Telecel Cash, Cards &amp; Bank Transfer</span>
                   </div>
                 </label>
 

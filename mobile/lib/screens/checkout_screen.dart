@@ -55,8 +55,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   String _selectedRegion = 'Greater Accra';
   String _fulfillmentMethod = 'delivery'; // 'delivery' | 'pickup'
-  String _paymentMethod = 'momo_direct'; // 'momo_direct' | 'paystack' | 'pay_on_delivery'
-  String _momoProvider = 'mtn'; // 'mtn' | 'vod' | 'atl'
+  String _paymentMethod = 'paystack'; // 'paystack' | 'pay_on_delivery'
+  final String _momoProvider = 'mtn'; // reserved for future direct MoMo UX
 
   bool _loadingSettings = true;
   bool _allowGuestCheckout = false;
@@ -967,102 +967,15 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               onChanged: (v) {
                 if (v == null) return;
                 if (v == 'pay_on_delivery' && !_isPodEligible) return;
-                setState(() {
-                  _paymentMethod = v;
-                  if (v == 'momo_direct' &&
-                      _momoPhoneCtrl.text.trim().isEmpty &&
-                      _phoneCtrl.text.trim().isNotEmpty) {
-                    _momoPhoneCtrl.text = _phoneCtrl.text.trim();
-                  }
-                });
+                setState(() => _paymentMethod = v);
               },
               child: Column(
                 children: [
                   const RadioListTile<String>(
-                    value: 'momo_direct',
-                    title: Text('Mobile Money (Instant Prompt)'),
-                    subtitle: Text(
-                        'MTN MoMo, Telecel Cash, AT Money — approve right on your phone'),
-                  ),
-                  if (_paymentMethod == 'momo_direct')
-                    Container(
-                      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.secondaryContainer,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Select Mobile Money Network',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w600, fontSize: 13),
-                          ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: [
-                              for (final opt in const [
-                                ('mtn', 'MTN MoMo'),
-                                ('vod', 'Telecel Cash'),
-                                ('atl', 'AT Money'),
-                              ])
-                                ChoiceChip(
-                                  label: Text(
-                                    opt.$2,
-                                    style: TextStyle(
-                                      color: _momoProvider == opt.$1
-                                          ? Colors.white
-                                          : AppColors.text,
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 12.5,
-                                    ),
-                                  ),
-                                  selected: _momoProvider == opt.$1,
-                                  onSelected: (_) =>
-                                      setState(() => _momoProvider = opt.$1),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _momoPhoneCtrl,
-                            keyboardType: TextInputType.phone,
-                            decoration: const InputDecoration(
-                              labelText: 'Mobile Money Number *',
-                              hintText: 'e.g. 024XXXXXXX or 055XXXXXXX',
-                              prefixIcon: Icon(Icons.phone_android_outlined),
-                            ),
-                            validator: (v) {
-                              if (_paymentMethod != 'momo_direct') return null;
-                              final raw = (v ?? '').trim().isNotEmpty
-                                  ? v!.trim()
-                                  : _phoneCtrl.text.trim();
-                              final digits =
-                                  raw.replaceAll(RegExp(r'[\s\-().]'), '');
-                              final norm = digits.startsWith('+233')
-                                  ? '0${digits.substring(4)}'
-                                  : (digits.startsWith('233') &&
-                                          digits.length == 12)
-                                      ? '0${digits.substring(3)}'
-                                      : digits;
-                              if (!RegExp(r'^0[235]\d{8}$').hasMatch(norm)) {
-                                return 'Enter a valid 10-digit Ghana MoMo number';
-                              }
-                              return null;
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  const RadioListTile<String>(
                     value: 'paystack',
-                    title: Text('Pay with Card / Bank (Paystack)'),
-                    subtitle: Text('Visa, Mastercard, Bank Transfer & MoMo Web'),
+                    title: Text('Pay Online (Paystack)'),
+                    subtitle: Text(
+                        'MTN MoMo, Telecel Cash, Cards & Bank Transfer'),
                   ),
                   if (_podEnabled)
                     RadioListTile<String>(

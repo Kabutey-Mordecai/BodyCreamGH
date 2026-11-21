@@ -38,7 +38,14 @@ class CosmeticsApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()..init()),
-        ChangeNotifierProvider(create: (_) => CartProvider()..init()),
+        ChangeNotifierProxyProvider<AuthProvider, CartProvider>(
+          create: (_) => CartProvider()..init(),
+          update: (_, auth, cart) {
+            final c = cart ?? (CartProvider()..init());
+            c.syncAuthState(auth.isLoggedIn);
+            return c;
+          },
+        ),
         ChangeNotifierProvider(create: (_) => WishlistProvider()..init()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()..init()),
       ],
