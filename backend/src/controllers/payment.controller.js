@@ -818,21 +818,23 @@ async function processChargeSuccess(event) {
 async function findReturnRequestForWebhook(client, data) {
   const providerId = getRefundProviderId(data);
   const refundRef = getRefundReference(data);
+  const txRef = getTransactionReference(data);
   const merchantNote = typeof data?.merchant_note === 'string' ? data.merchant_note : '';
+  const amountPesewas = Number.isFinite(Number(data?.amount)) ? Math.round(Number(data.amount)) : null;
 
   if (providerId) {
     const { rows } = await client.query(
       `SELECT * FROM return_requests WHERE refund_provider_id = $1 LIMIT 1 FOR UPDATE`,
       [String(providerId)]
     );
-    if (rows.length > 0) return rows[0];
+    if (rows.length > 0) return { match: rows[0], ambiguous: false, candidates: [] };
   }
   if (refundRef) {
     const { rows } = await client.query(
       `SELECT * FROM return_requests WHERE refund_reference = $1 LIMIT 1 FOR UPDATE`,
       [refundRef]
     );
-    if (rows.length > 0) return rows[0];
+    if (rows.length > 0) return { match: rows[0], ambiguous: false, candidates: [] };
   }
   const noteMatch = merchantNote.match(/\bRET-[0-9A-F]{12}-\d+\b/i);
   if (noteMatch) {
@@ -840,9 +842,36 @@ async function findReturnRequestForWebhook(client, data) {
       `SELECT * FROM return_requests WHERE UPPER(refund_reference) = UPPER($1) LIMIT 1 FOR UPDATE`,
       [noteMatch[0]]
     );
-    if (rows.length > 0) return rows[0];
+    if (rows.length > 0) return { match: rows[0], ambiguous: false, candidates: [] };
   }
-  return null;
+
+  // Fallback when neither providerId nor merchant_note matched:
+  // Match by transaction reference + exact pesewa amount, ONLY if unambiguous (exactly 1 candidate).
+  // If >1 refund_pending rows match, flag ambiguous and alert admin instead of auto-resolving.
+  if (txRef && amountPesewas !== null && amountPesewas > 0) {
+    const { rows } = await client.query(
+      `SELECT rr.*
+         FROM return_requests rr
+         JOIN orders o ON o.id = rr.order_id
+        WHERE rr.status = 'refund_pending'
+          AND ROUND(rr.refund_amount * 100)::int = $2
+          AND (
+            o.payment_reference = $1
+            OR EXISTS (
+              SELECT 1 FROM payments p
+               WHERE p.order_id = o.id
+                 AND p.paystack_reference = $1
+                 AND p.status IN ('success', 'needs_review')
+            )
+          )
+        FOR UPDATE OF rr`,
+      [txRef, amountPesewas]
+    );
+    if (rows.length === 1) return { match: rows[0], ambiguous: false, candidates: [] };
+    if (rows.length > 1) return { match: null, ambiguous: true, candidates: rows };
+  }
+
+  return { match: null, ambiguous: false, candidates: [] };
 }
 
 async function findDuplicatePaymentRefundForWebhook(client, data) {
@@ -880,8 +909,30 @@ async function completePaystackRefundFromWebhook(event) {
       return;
     }
 
-    // Tier 1: Item-level return_requests (matched strictly by refund_provider_id / refund_reference)
-    const matchedReturn = await findReturnRequestForWebhook(client, event.data || {});
+    // Tier 1: Item-level return_requests (provider_id / merchant_note / unambiguous tx+amount)
+    const { match: matchedReturn, ambiguous: ambiguousReturn, candidates: ambiguousCandidates } =
+      await findReturnRequestForWebhook(client, event.data || {});
+    if (ambiguousReturn) {
+      const orderId = ambiguousCandidates[0]?.order_id || null;
+      const candidateIds = ambiguousCandidates.map(c => c.id.slice(0, 8)).join(', ');
+      await client.query('COMMIT');
+      logger.error('Ambiguous partial return refund webhook — manual review required', {
+        eventId, orderId, candidateCount: ambiguousCandidates.length,
+      });
+      const { notificationQueue } = require('../queues');
+      const alertKey = `ambiguous_return_refund_${eventId}`;
+      notificationQueue.add(
+        'admin-payment-alert',
+        {
+          orderId,
+          alertKey,
+          title: 'Ambiguous partial return refund webhook',
+          detail: `Webhook ${event.event} matched ${ambiguousCandidates.length} equal-amount refund_pending returns (${candidateIds}) without a unique reference or merchant_note. None were auto-resolved; please reconcile manually.`,
+        },
+        { singletonKey: alertKey }
+      ).catch(() => {});
+      return;
+    }
     if (matchedReturn) {
       if (matchedReturn.status !== 'refunded') {
         const { finalizeReturnRequestRefund } = require('./return.controller');
@@ -1042,7 +1093,25 @@ async function failPaystackRefundFromWebhook(event) {
     }
 
     // Tier 1: Item-level return_requests
-    const matchedReturn = await findReturnRequestForWebhook(client, event.data || {});
+    const { match: matchedReturn, ambiguous: ambiguousReturn, candidates: ambiguousCandidates } =
+      await findReturnRequestForWebhook(client, event.data || {});
+    if (ambiguousReturn) {
+      const orderId = ambiguousCandidates[0]?.order_id || null;
+      await client.query('COMMIT');
+      const { notificationQueue } = require('../queues');
+      const alertKey = `ambiguous_return_refund_fail_${eventId}`;
+      notificationQueue.add(
+        'admin-payment-alert',
+        {
+          orderId,
+          alertKey,
+          title: 'Ambiguous partial return refund failure webhook',
+          detail: `Webhook ${event.event} matched ${ambiguousCandidates.length} equal-amount refund_pending returns without a unique identifier. Please inspect manually.`,
+        },
+        { singletonKey: alertKey }
+      ).catch(() => {});
+      return;
+    }
     if (matchedReturn) {
       if (matchedReturn.status === 'refund_pending') {
         const detail = getRefundFailureDetail(event.data);
@@ -1174,7 +1243,25 @@ async function handleRefundNeedsAttentionFromWebhook(event) {
     }
 
     // Tier 1: Item-level return_requests
-    const matchedReturn = await findReturnRequestForWebhook(client, event.data || {});
+    const { match: matchedReturn, ambiguous: ambiguousReturn, candidates: ambiguousCandidates } =
+      await findReturnRequestForWebhook(client, event.data || {});
+    if (ambiguousReturn) {
+      const orderId = ambiguousCandidates[0]?.order_id || null;
+      await client.query('COMMIT');
+      const { notificationQueue } = require('../queues');
+      const alertKey = `ambiguous_return_refund_attn_${eventId}`;
+      notificationQueue.add(
+        'admin-payment-alert',
+        {
+          orderId,
+          alertKey,
+          title: 'Ambiguous partial return needs-attention webhook',
+          detail: `Webhook ${event.event} matched ${ambiguousCandidates.length} equal-amount refund_pending returns without a unique identifier. Please inspect manually.`,
+        },
+        { singletonKey: alertKey }
+      ).catch(() => {});
+      return;
+    }
     if (matchedReturn) {
       const detail = getRefundFailureDetail(event.data);
       const { rows: [ord] } = await client.query('SELECT status FROM orders WHERE id = $1', [matchedReturn.order_id]);

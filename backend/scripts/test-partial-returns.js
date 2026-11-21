@@ -398,7 +398,19 @@ async function run() {
         [uuid(), uuid(), eqRetA, eqRetB, eqItemId]
       );
 
-      // Webhook arrives BEFORE refund_provider_id is stored, carrying our RET- ref in merchant_note
+      // ── 8a. Ambiguous webhook (2 equal-amount refund_pending rows, NO merchant_note / NO ref) ──
+      // Neither return may be auto-resolved; both must remain refund_pending.
+      const wAmb = await sendSignedWebhook({
+        event: 'refund.processed',
+        data: { id: 800888, transaction_reference: eqTxRef, status: 'processed', amount: 5000 },
+      });
+      assert.strictEqual(wAmb.statusCode, 200);
+      const { rows: [ambA] } = await pool.query('SELECT status FROM return_requests WHERE id = $1', [eqRetA]);
+      const { rows: [ambB] } = await pool.query('SELECT status FROM return_requests WHERE id = $1', [eqRetB]);
+      assert.strictEqual(ambA.status, 'refund_pending', 'Ambiguous webhook must NOT auto-resolve Return A');
+      assert.strictEqual(ambB.status, 'refund_pending', 'Ambiguous webhook must NOT auto-resolve Return B');
+
+      // ── 8b. Webhook arrives BEFORE refund_provider_id is stored, carrying our RET- ref in merchant_note ──
       const wEq = await sendSignedWebhook({
         event: 'refund.processed',
         data: { id: 800111, transaction_reference: eqTxRef, merchant_note: `Return ${eqRefA} — ok`, status: 'processed', amount: 5000 },
@@ -427,7 +439,17 @@ async function run() {
         'Expected ret_refund_unmatched alert with singletonKey for eqRetB'
       );
 
-      // ── 10. Return window enforcement: expired (20d) vs in-window (5d) ───────
+      // ── 10. Return window enforcement: NULL delivered_at (blocked), expired (20d), in-window (5d) ──
+      await pool.query(`UPDATE orders SET delivered_at = NULL WHERE id = $1`, [eqOrderId]);
+      const rNullDelivered = makeRes();
+      await createReturnRequest({
+        params: { orderId: eqOrderId },
+        user: { id: ownerId, role: 'customer' },
+        body: { reason: 'Missing delivered_at', items: [{ order_item_id: eqItemId, quantity: 1 }] },
+      }, rNullDelivered);
+      assert.strictEqual(rNullDelivered.statusCode, 400, 'Return with NULL delivered_at must be explicitly blocked (400)');
+      assert(String(rNullDelivered.body?.error || '').includes('Delivery date could not be verified'));
+
       await pool.query(`UPDATE orders SET delivered_at = NOW() - INTERVAL '20 days' WHERE id = $1`, [eqOrderId]);
       const rExpired = makeRes();
       await createReturnRequest({
