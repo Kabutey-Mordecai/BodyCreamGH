@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 import '../models/product.dart';
 import '../providers/auth_provider.dart';
+import '../providers/theme_provider.dart';
 import '../providers/wishlist_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
@@ -408,6 +409,9 @@ class _HomeScreenState extends State<HomeScreen> {
           _reviews = rawReviews.whereType<Map<String, dynamic>>().toList();
           _loading = false;
         });
+        if (settings.isNotEmpty) {
+          context.read<ThemeProvider>().applyFromSettings(settings);
+        }
         _maybeSchedulePromoPopup(settings);
       }
     } catch (_) {

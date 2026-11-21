@@ -26,25 +26,55 @@ class AppColors {
   static const Color success = Color(0xFF27AE60);
 }
 
+/// Safely parses a CSS hex color string (e.g. `#c9a55a`, `#fff`, `1c1410`).
+Color parseHexColor(String? raw, Color fallback) {
+  if (raw == null) return fallback;
+  var cleaned = raw.trim().replaceFirst('#', '');
+  if (cleaned.length == 3) {
+    cleaned = cleaned.split('').map((c) => '$c$c').join();
+  }
+  if (cleaned.length == 6) {
+    final val = int.tryParse('FF$cleaned', radix: 16);
+    if (val != null) return Color(val);
+  } else if (cleaned.length == 8) {
+    final val = int.tryParse(cleaned, radix: 16);
+    if (val != null) return Color(val);
+  }
+  return fallback;
+}
+
 class AppTheme {
   AppTheme._();
 
-  static ThemeData light() {
-    const colorScheme = ColorScheme(
+  static ThemeData light({
+    Color? primary,
+    Color? accent,
+    Color? accentDark,
+    Color? bg,
+    Color? blush,
+  }) {
+    final p = primary ?? AppColors.primary;
+    final a = accent ?? AppColors.accent;
+    final ad = accentDark ?? AppColors.accentDark;
+    final background = bg ?? AppColors.bg;
+    final blushTint = blush ?? AppColors.blush;
+    final accentLight = Color.lerp(a, Colors.white, 0.72) ?? AppColors.accentLight;
+
+    final colorScheme = ColorScheme(
       brightness: Brightness.light,
-      primary: AppColors.primary,
+      primary: p,
       onPrimary: Colors.white,
-      primaryContainer: AppColors.accentLight,
-      onPrimaryContainer: AppColors.primary,
-      secondary: AppColors.accent,
-      onSecondary: AppColors.primary,
-      secondaryContainer: AppColors.blush,
-      onSecondaryContainer: AppColors.primary,
+      primaryContainer: accentLight,
+      onPrimaryContainer: p,
+      secondary: a,
+      onSecondary: p,
+      secondaryContainer: blushTint,
+      onSecondaryContainer: p,
       error: AppColors.error,
       onError: Colors.white,
       surface: AppColors.surface,
       onSurface: AppColors.text,
-      surfaceContainerHighest: AppColors.bg,
+      surfaceContainerHighest: background,
       onSurfaceVariant: AppColors.muted,
       outline: AppColors.border,
       outlineVariant: AppColors.border,
@@ -53,7 +83,7 @@ class AppTheme {
     final base = ThemeData(
       useMaterial3: true,
       colorScheme: colorScheme,
-      scaffoldBackgroundColor: AppColors.bg,
+      scaffoldBackgroundColor: background,
     );
 
     return base.copyWith(
@@ -145,7 +175,7 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: AppColors.primary,
+          backgroundColor: p,
           foregroundColor: Colors.white,
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
@@ -161,10 +191,10 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.primary,
+          foregroundColor: p,
           minimumSize: const Size(0, 48),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 13),
-          side: const BorderSide(color: AppColors.primary, width: 1.2),
+          side: BorderSide(color: p, width: 1.2),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(6),
           ),
@@ -177,7 +207,7 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: AppColors.accentDark,
+          foregroundColor: ad,
           textStyle: const TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w600,
@@ -201,7 +231,7 @@ class AppTheme {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
-          borderSide: const BorderSide(color: AppColors.accent, width: 1.5),
+          borderSide: BorderSide(color: a, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
@@ -210,7 +240,7 @@ class AppTheme {
       ),
       chipTheme: ChipThemeData(
         backgroundColor: AppColors.surface,
-        selectedColor: AppColors.primary,
+        selectedColor: p,
         showCheckmark: false,
         side: const BorderSide(color: AppColors.border),
         shape: RoundedRectangleBorder(
@@ -221,33 +251,33 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: AppColors.surface,
         surfaceTintColor: Colors.transparent,
-        indicatorColor: AppColors.accentLight,
+        indicatorColor: accentLight,
         height: 68,
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(
             fontSize: 11.5,
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            color: selected ? AppColors.primary : AppColors.muted,
+            color: selected ? p : AppColors.muted,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return IconThemeData(
-            color: selected ? AppColors.primary : AppColors.muted,
+            color: selected ? p : AppColors.muted,
             size: 22,
           );
         }),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: AppColors.primary,
+        backgroundColor: p,
         contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13.5),
         behavior: SnackBarBehavior.floating,
         insetPadding: const EdgeInsets.fromLTRB(14, 14, 14, 76),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
       ),
-      progressIndicatorTheme: const ProgressIndicatorThemeData(
-        color: AppColors.accent,
+      progressIndicatorTheme: ProgressIndicatorThemeData(
+        color: a,
       ),
     );
   }

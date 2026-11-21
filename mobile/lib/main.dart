@@ -6,6 +6,7 @@ import 'config.dart';
 import 'main_shell.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
+import 'providers/theme_provider.dart';
 import 'providers/wishlist_provider.dart';
 import 'screens/account_screen.dart';
 import 'screens/cart_screen.dart';
@@ -21,7 +22,6 @@ import 'screens/register_screen.dart';
 import 'screens/shop_screen.dart';
 import 'screens/track_order_screen.dart';
 import 'screens/wishlist_screen.dart';
-import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -39,16 +39,37 @@ class CosmeticsApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()..init()),
         ChangeNotifierProvider(create: (_) => CartProvider()..init()),
         ChangeNotifierProvider(create: (_) => WishlistProvider()..init()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()..init()),
       ],
-      child: Builder(builder: (ctx) {
-        final router = _buildRouter(ctx);
-        return MaterialApp.router(
-          title: AppConfig.appName,
-          theme: AppTheme.light(),
-          routerConfig: router,
-          debugShowCheckedModeBanner: false,
-        );
-      }),
+      child: const _ThemedRouterApp(),
+    );
+  }
+}
+
+class _ThemedRouterApp extends StatefulWidget {
+  const _ThemedRouterApp();
+
+  @override
+  State<_ThemedRouterApp> createState() => _ThemedRouterAppState();
+}
+
+class _ThemedRouterAppState extends State<_ThemedRouterApp> {
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    _router = _buildRouter(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.watch<ThemeProvider>().themeData;
+    return MaterialApp.router(
+      title: AppConfig.appName,
+      theme: theme,
+      routerConfig: _router,
+      debugShowCheckedModeBanner: false,
     );
   }
 }

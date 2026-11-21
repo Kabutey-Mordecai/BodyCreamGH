@@ -1,8 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cosmetics_app/models/order.dart';
 import 'package:cosmetics_app/models/product.dart';
 import 'package:cosmetics_app/providers/cart_provider.dart';
+import 'package:cosmetics_app/providers/theme_provider.dart';
+import 'package:cosmetics_app/theme/app_theme.dart';
 import 'package:cosmetics_app/widgets/password_strength.dart';
 
 void main() {
@@ -160,6 +163,32 @@ void main() {
       expect(active.isTerminal, isFalse);
       expect(active.refundHint, '');
       expect(active.refundMessage, isNull);
+    });
+  });
+
+  group('ThemeProvider & parseHexColor', () {
+    test('parses 6-digit, 3-digit, and invalid hex strings safely', () {
+      expect(parseHexColor('#c9a55a', AppColors.primary), const Color(0xFFC9A55A));
+      expect(parseHexColor('#fff', AppColors.primary), const Color(0xFFFFFFFF));
+      expect(parseHexColor('not-a-color', AppColors.primary), AppColors.primary);
+      expect(parseHexColor(null, AppColors.accent), AppColors.accent);
+    });
+
+    test('applies Admin theme settings to ThemeData dynamically', () {
+      SharedPreferences.setMockInitialValues({});
+      final tp = ThemeProvider();
+      tp.applyFromSettings({
+        'theme_color_primary': '#2c1810',
+        'theme_color_accent': '#d4af37',
+        'theme_color_accent_dark': '#9c7c19',
+        'theme_color_bg': '#f5f0e6',
+        'theme_color_blush': '#faece6',
+      });
+      expect(tp.primary, const Color(0xFF2C1810));
+      expect(tp.accent, const Color(0xFFD4AF37));
+      expect(tp.themeData.scaffoldBackgroundColor, const Color(0xFFF5F0E6));
+      expect(tp.themeData.colorScheme.primary, const Color(0xFF2C1810));
+      expect(tp.themeData.colorScheme.secondary, const Color(0xFFD4AF37));
     });
   });
 }
