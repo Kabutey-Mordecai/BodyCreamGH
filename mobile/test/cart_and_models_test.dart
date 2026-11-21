@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cosmetics_app/config.dart';
 import 'package:cosmetics_app/models/order.dart';
 import 'package:cosmetics_app/models/product.dart';
 import 'package:cosmetics_app/providers/cart_provider.dart';
@@ -194,6 +195,16 @@ void main() {
       expect(tp.themeData.scaffoldBackgroundColor, const Color(0xFFF5F0E6));
       expect(tp.themeData.colorScheme.primary, const Color(0xFF2C1810));
       expect(tp.themeData.colorScheme.secondary, const Color(0xFFD4AF37));
+    });
+  });
+
+  group('AppConfig.isReleaseSafeUrl', () {
+    test('accepts public HTTPS URLs and rejects HTTP or local hosts', () {
+      expect(AppConfig.isReleaseSafeUrl('https://api.bodycreamgh.com/api'), isTrue);
+      expect(AppConfig.isReleaseSafeUrl('http://192.168.1.153:3000/api'), isFalse);
+      expect(AppConfig.isReleaseSafeUrl('http://10.0.2.2:3000/api'), isFalse);
+      expect(AppConfig.isReleaseSafeUrl('https://localhost:5173'), isFalse);
+      expect(AppConfig.isReleaseSafeUrl(''), isFalse);
     });
   });
 }

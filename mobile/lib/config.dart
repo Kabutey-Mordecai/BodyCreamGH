@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 //   Physical device:  http://192.168.x.x:3000/api
 // In production:      https://api.yourdomain.com/api
 class AppConfig {
+  static const bool hasApiUrl = bool.hasEnvironment('API_URL');
   static const String baseUrl = String.fromEnvironment(
     'API_URL',
     defaultValue: 'http://10.0.2.2:3000/api',
@@ -20,20 +21,33 @@ class AppConfig {
     defaultValue: 'http://localhost:5173',
   );
 
-  /// Fails loudly in release builds (and logs clearly in debug builds) if
-  /// STOREFRONT_URL was not configured, preventing silent Paystack callback
-  /// detection failures.
-  static void validateConfig() {
-    final parsed = Uri.tryParse(storefrontUrl);
-    final isLocalhost = parsed == null ||
-        parsed.host.isEmpty ||
-        parsed.host == 'localhost' ||
-        parsed.host == '127.0.0.1';
+  /// Returns true only for HTTPS URLs pointing to a non-local host.
+  static bool isReleaseSafeUrl(String rawUrl) {
+    final parsed = Uri.tryParse(rawUrl);
+    if (parsed == null || parsed.scheme != 'https' || parsed.host.isEmpty) {
+      return false;
+    }
+    const localHosts = {'localhost', '127.0.0.1', '10.0.2.2', '::1'};
+    return !localHosts.contains(parsed.host.toLowerCase());
+  }
 
-    if (!hasStorefrontUrl || isLocalhost) {
+  /// Fails loudly in release builds (and logs clearly in debug/profile builds) if
+  /// API_URL or STOREFRONT_URL is unset, cleartext HTTP, or localhost.
+  static void validateConfig() {
+    if (!hasApiUrl || !isReleaseSafeUrl(baseUrl)) {
+      const apiMsg =
+          'API_URL is unset or not a production HTTPS URL ("$baseUrl"). '
+          'Pass --dart-define=API_URL=https://api.yourdomain.com/api for release builds.';
+      if (kReleaseMode) {
+        throw StateError('[AppConfig] $apiMsg');
+      }
+      debugPrint('[AppConfig] WARNING: $apiMsg');
+    }
+
+    if (!hasStorefrontUrl || !isReleaseSafeUrl(storefrontUrl)) {
       const msg =
-          'STOREFRONT_URL is unset or points to localhost ("$storefrontUrl"). '
-          'Pass --dart-define=STOREFRONT_URL=<backend FRONTEND_URL> so '
+          'STOREFRONT_URL is unset or not a production HTTPS URL ("$storefrontUrl"). '
+          'Pass --dart-define=STOREFRONT_URL=https://yourdomain.com so '
           'PaymentScreen can detect Paystack callbacks.';
       if (kReleaseMode) {
         throw StateError('[AppConfig] $msg');
