@@ -30,21 +30,6 @@ export default function Login() {
   const [otpLoading, setOtpLoading] = useState(false);
   const otpRef = useRef(null);
 
-  const handleDevBypass = () => {
-    const devUser = {
-      id: 'a8fc4b52-5e9d-414c-8f55-b935dfc2b528',
-      email: 'admin@bodycreamgh.com',
-      first_name: 'Admin',
-      last_name: 'User',
-      role: 'admin',
-    };
-    // Valid signed JWT for admin@bodycreamgh.com matching local backend JWT_SECRET
-    const devToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImE4ZmM0YjUyLTVlOWQtNDE0Yy04ZjU1LWI5MzVkZmMyYjUyOCIsImVtYWlsIjoiYWRtaW5AYm9keWNyZWFtZ2guY29tIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzk1MDI0Mzk5LCJleHAiOjE4MjY1NjAzOTl9.QJLdUdevt2sp7wW7jDfHTSAnlOFcu2ozcO_i0WNOYLE';
-    localStorage.setItem('admin_token', devToken);
-    localStorage.setItem('admin_user', JSON.stringify(devUser));
-    window.location.href = from || '/';
-  };
-
   useEffect(() => {
     if (lockout <= 0) return;
     timerRef.current = setInterval(() => {
@@ -177,22 +162,6 @@ export default function Login() {
                 {loading ? 'Signing in…' : isLocked ? `Try again in ${formatCountdown(lockout)}` : 'Sign in'}
               </button>
             </form>
-
-            {import.meta.env.DEV && (
-              <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px dashed var(--ac-border, #e5e7eb)', textAlign: 'center' }}>
-                <button
-                  type="button"
-                  className="btn btn-outline btn-full"
-                  onClick={handleDevBypass}
-                  style={{ fontSize: '0.84rem', padding: '10px 14px' }}
-                >
-                  ⚡ One-Click Admin Sign In (Local Dev Mode)
-                </button>
-                <p className="muted text-xs" style={{ marginTop: 6, fontSize: '0.74rem' }}>
-                  Bypasses backend auth in development to configure Storefront, Campaigns &amp; Settings.
-                </p>
-              </div>
-            )}
           </>
         ) : (
           <>
