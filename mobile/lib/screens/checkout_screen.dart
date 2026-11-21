@@ -451,7 +451,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
       if (_paymentMethod == 'pay_on_delivery') {
         if (!mounted) return;
-        cart.clear();
+        cart.clear(syncServer: false);
         setState(() {
           _placing = false;
           _podConfirmation = {
@@ -509,7 +509,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       if (!mounted) return;
-      cart.clear();
+      cart.clear(syncServer: false);
       context.go('/payment', extra: {
         'url': authUrl,
         'order_id': orderId,

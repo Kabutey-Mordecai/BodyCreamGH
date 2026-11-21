@@ -191,12 +191,18 @@ class CartProvider extends ChangeNotifier {
     notifyListeners();
     _persist();
     if (_isAuthenticated) {
+      bool needsFullSync = false;
       for (final item in removed) {
         if (item.id != null) {
           ApiService.instance
               .removeCartItem(item.id!)
               .catchError((_) {});
+        } else {
+          needsFullSync = true;
         }
+      }
+      if (needsFullSync) {
+        syncToServer().then((_) => loadFromServer()).catchError((_) {});
       }
     }
   }
@@ -216,13 +222,17 @@ class CartProvider extends ChangeNotifier {
     }
     notifyListeners();
     _persist();
-    if (_isAuthenticated && serverId != null) {
-      if (quantity <= 0) {
-        ApiService.instance.removeCartItem(serverId).catchError((_) {});
+    if (_isAuthenticated) {
+      if (serverId != null) {
+        if (quantity <= 0) {
+          ApiService.instance.removeCartItem(serverId).catchError((_) {});
+        } else {
+          ApiService.instance
+              .updateCartItem(serverId, quantity)
+              .catchError((_) {});
+        }
       } else {
-        ApiService.instance
-            .updateCartItem(serverId, quantity)
-            .catchError((_) {});
+        syncToServer().then((_) => loadFromServer()).catchError((_) {});
       }
     }
   }

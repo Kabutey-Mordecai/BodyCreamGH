@@ -1366,7 +1366,7 @@ const chargeMobileMoney = async (req, res) => {
 
 const submitMobileMoneyOtp = async (req, res) => {
   try {
-    const { reference, otp } = req.body || {};
+    const { reference, otp, email } = req.body || {};
     if (typeof reference !== 'string' || !PAYSTACK_REF_RE.test(reference.trim())) {
       return res.status(400).json({ error: 'Invalid payment reference' });
     }
@@ -1376,11 +1376,34 @@ const submitMobileMoneyOtp = async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      'SELECT order_id FROM payments WHERE paystack_reference = $1 LIMIT 1',
+      `SELECT p.order_id, o.customer_id, o.guest_email
+         FROM payments p
+         JOIN orders o ON o.id = p.order_id
+        WHERE p.paystack_reference = $1
+        LIMIT 1`,
       [reference.trim()]
     );
-    if (rows.length === 0) {
+    const rec = rows[0];
+    if (!rec) {
       return res.status(404).json({ error: 'Payment reference not found' });
+    }
+
+    // Enforce order ownership so callers cannot interact with another user's pending charge
+    if (req.user) {
+      if (rec.customer_id !== req.user.id) {
+        return res.status(404).json({ error: 'Payment reference not found' });
+      }
+    } else {
+      if (rec.customer_id !== null) {
+        return res.status(404).json({ error: 'Payment reference not found' });
+      }
+      if (
+        typeof email === 'string' &&
+        email.trim() &&
+        (!rec.guest_email || rec.guest_email.trim().toLowerCase() !== email.trim().toLowerCase())
+      ) {
+        return res.status(404).json({ error: 'Payment reference not found' });
+      }
     }
 
     const response = await paystackAPI.post('/charge/submit_otp', {

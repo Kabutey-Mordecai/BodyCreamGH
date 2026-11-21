@@ -41,6 +41,11 @@ void main() {
       cart.remove('prod-1', variantId: 'v-250');
       expect(cart.items.length, 1);
       expect(cart.items.first.variantId, 'v-500');
+
+      cart.clear(syncServer: false);
+      expect(cart.items, isEmpty);
+      expect(cart.itemCount, 0);
+      expect(cart.subtotal, 0.0);
     });
 
     test('computes delivery fee for Accra, Nationwide, Pickup, and free-over threshold', () {
