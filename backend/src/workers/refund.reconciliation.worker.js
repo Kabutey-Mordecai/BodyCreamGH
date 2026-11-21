@@ -294,6 +294,13 @@ async function reconcileReturnRequestRefunds(boss) {
           });
           await client.query('COMMIT');
           refunded++;
+          if (boss) {
+            await boss.send(
+              'notification/return-refunded',
+              { orderId: row.order_id, returnId: row.id },
+              { retryLimit: 3, singletonKey: `return_refunded_${row.id}` }
+            ).catch(() => {});
+          }
         } else {
           await client.query('ROLLBACK');
         }

@@ -597,12 +597,48 @@ const sendOrderStatusUpdate = async (
   });
 };
 
+const sendReturnApproved = async (to, { customerName, orderNumber, refundAmount, items = [] }) => {
+  if (!isConfigured() || !to) return;
+  const rows = (items || [])
+    .map(i => `<li>${escapeHtml(i.product_name || i.name || 'Item')}${i.variant_label ? ` (${escapeHtml(i.variant_label)})` : ''} &times; ${Number(i.quantity || 1)} — GHS ${Number(i.line_refund_amount || 0).toFixed(2)}</li>`)
+    .join('');
+  await getTransporter().sendMail({
+    from: getFromAddress(),
+    to,
+    subject: `Return approved — ${orderNumber}`,
+    html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+      <h2>Return Approved</h2>
+      <p>Hi ${escapeHtml(customerName || 'Customer')},</p>
+      <p>Your return request for order <strong>${escapeHtml(orderNumber)}</strong> has been approved.</p>
+      ${rows ? `<ul>${rows}</ul>` : ''}
+      <p><strong>Refund amount:</strong> GHS ${Number(refundAmount || 0).toFixed(2)}</p>
+      <p style="color:#666;font-size:0.9em">Your refund is being processed and you will receive a confirmation once settled.</p>
+    </div>`,
+  });
+};
+
+const sendPartialRefundCompleted = async (to, { customerName, orderNumber, refundAmount, refundReference }) => {
+  if (!isConfigured() || !to) return;
+  await getTransporter().sendMail({
+    from: getFromAddress(),
+    to,
+    subject: `Refund processed — ${orderNumber}`,
+    html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
+      <h2>Partial Refund Processed</h2>
+      <p>Hi ${escapeHtml(customerName || 'Customer')},</p>
+      <p>Your refund of <strong>GHS ${Number(refundAmount || 0).toFixed(2)}</strong> for order <strong>${escapeHtml(orderNumber)}</strong> has been processed.</p>
+      ${refundReference ? `<p style="color:#666;font-size:0.9em">Reference: ${escapeHtml(refundReference)}</p>` : ''}
+    </div>`,
+  });
+};
+
 module.exports = {
   escapeHtml,
   verifyTransporter,
   sendOrderConfirmation, sendOrderStatusUpdate, sendWelcomeEmail, sendShippingNotification,
   sendPasswordResetEmail, sendReviewRequest, sendOrderCancellation, sendRefundNotification,
   sendCancelRequested, sendCancelRejected, sendReturnRequested, sendReturnRejected,
+  sendReturnApproved, sendPartialRefundCompleted,
   sendAdminNewOrder, sendAdminCancelRequest, sendAdminCancelRejected,
   sendAdminReturnRequest, sendAdminReturnRejected,
   sendAdminOrderCancelled, sendAdminOrderRefunded, sendAdminOrderShipped, sendAdminOrderDelivered,

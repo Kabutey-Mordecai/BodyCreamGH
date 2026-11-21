@@ -29,6 +29,8 @@ module.exports = async function register(boss) {
   await boss.createQueue('notification/cancel-requested');
   await boss.createQueue('notification/cancel-rejected');
   await boss.createQueue('notification/return-requested');
+  await boss.createQueue('notification/return-approved');
+  await boss.createQueue('notification/return-refunded');
   await boss.createQueue('notification/return-rejected');
   await boss.createQueue('notification/admin-payment-alert');
 
@@ -361,20 +363,23 @@ module.exports = async function register(boss) {
   await boss.work('notification/return-requested', { teamSize: 10 }, async (jobs) => {
     const job = Array.isArray(jobs) ? jobs[0] : jobs;
     if (!job?.data) return;
-    const { orderId } = job.data;
-    const eventId = `notification_return_requested_${orderId}`;
+    const { orderId, returnId } = job.data;
+    const eventId = `notification_return_requested_${returnId || orderId}`;
 
     if (await isProcessed(eventId)) {
-      logger.info('Return-requested notification already sent, skipping', { orderId });
+      logger.info('Return-requested notification already sent, skipping', { orderId, returnId });
       return;
     }
 
     const { rows } = await pool.query(
-      `SELECT o.order_number, o.return_reason,
+      `SELECT o.order_number,
+              COALESCE(rr.reason, o.return_reason) AS return_reason,
               COALESCE(u.email, o.guest_email) AS email,
               COALESCE(u.first_name, 'Customer') AS first_name
-         FROM orders o LEFT JOIN users u ON o.customer_id = u.id
-        WHERE o.id = $1`, [orderId]
+         FROM orders o
+         LEFT JOIN users u ON o.customer_id = u.id
+         LEFT JOIN return_requests rr ON rr.id = $2
+        WHERE o.id = $1`, [orderId, returnId || null]
     );
     const row = rows[0];
 
@@ -385,7 +390,7 @@ module.exports = async function register(boss) {
         customerName: row.first_name,
         orderNumber:  row.order_number,
       });
-      logger.info('Return-requested confirmation sent to customer', { orderId });
+      logger.info('Return-requested confirmation sent to customer', { orderId, returnId });
     }
 
     const admin = await getAdminEmail();
@@ -397,21 +402,93 @@ module.exports = async function register(boss) {
         customerName: row?.first_name,
         reason:       row?.return_reason,
       });
-      logger.info('Admin return-request alert sent', { orderId });
+      logger.info('Admin return-request alert sent', { orderId, returnId });
     }
 
     await markProcessed(eventId, 'notification.return-requested');
+  });
+
+  // ── Return approved (admin decision — lists approved items & amount) ─────
+  await boss.work('notification/return-approved', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
+    const { orderId, returnId } = job.data;
+    const eventId = `notification_return_approved_${returnId || orderId}`;
+
+    if (await isProcessed(eventId)) return;
+
+    const { rows } = await pool.query(
+      `SELECT o.order_number, rr.refund_amount,
+              COALESCE(u.email, o.guest_email) AS email,
+              COALESCE(u.first_name, 'Customer') AS first_name
+         FROM return_requests rr
+         JOIN orders o ON o.id = rr.order_id
+         LEFT JOIN users u ON o.customer_id = u.id
+        WHERE rr.id = $1`,
+      [returnId]
+    );
+    const row = rows[0];
+    if (row?.email) {
+      const { rows: items } = await pool.query(
+        `SELECT rri.quantity, rri.line_refund_amount, oi.variant_label, p.name AS product_name
+           FROM return_request_items rri
+           JOIN order_items oi ON oi.id = rri.order_item_id
+           JOIN products p ON p.id = oi.product_id
+          WHERE rri.return_request_id = $1`,
+        [returnId]
+      );
+      await emailService.sendReturnApproved(row.email, {
+        customerName: row.first_name,
+        orderNumber:  row.order_number,
+        refundAmount: row.refund_amount,
+        items,
+      });
+      logger.info('Return-approved email sent to customer', { orderId, returnId });
+    }
+    await markProcessed(eventId, 'notification.return-approved');
+  });
+
+  // ── Return refunded (partial refund settled) ─────────────────────────────
+  await boss.work('notification/return-refunded', { teamSize: 10 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
+    const { orderId, returnId } = job.data;
+    const eventId = `notification_return_refunded_${returnId || orderId}`;
+
+    if (await isProcessed(eventId)) return;
+
+    const { rows } = await pool.query(
+      `SELECT o.order_number, rr.refund_amount, rr.refund_reference,
+              COALESCE(u.email, o.guest_email) AS email,
+              COALESCE(u.first_name, 'Customer') AS first_name
+         FROM return_requests rr
+         JOIN orders o ON o.id = rr.order_id
+         LEFT JOIN users u ON o.customer_id = u.id
+        WHERE rr.id = $1`,
+      [returnId]
+    );
+    const row = rows[0];
+    if (row?.email) {
+      await emailService.sendPartialRefundCompleted(row.email, {
+        customerName:    row.first_name,
+        orderNumber:     row.order_number,
+        refundAmount:    row.refund_amount,
+        refundReference: row.refund_reference,
+      });
+      logger.info('Return-refunded email sent to customer', { orderId, returnId });
+    }
+    await markProcessed(eventId, 'notification.return-refunded');
   });
 
   // ── Return rejected (admin decision) ─────────────────────────────────────
   await boss.work('notification/return-rejected', { teamSize: 10 }, async (jobs) => {
     const job = Array.isArray(jobs) ? jobs[0] : jobs;
     if (!job?.data) return;
-    const { orderId } = job.data;
-    const eventId = `notification_return_rejected_${orderId}`;
+    const { orderId, returnId, reason } = job.data;
+    const eventId = `notification_return_rejected_${returnId || orderId}`;
 
     if (await isProcessed(eventId)) {
-      logger.info('Return-rejected notification already sent, skipping', { orderId });
+      logger.info('Return-rejected notification already sent, skipping', { orderId, returnId });
       return;
     }
 
@@ -430,8 +507,9 @@ module.exports = async function register(boss) {
       await emailService.sendReturnRejected(row.email, {
         customerName: row.first_name,
         orderNumber:  row.order_number,
+        reason,
       });
-      logger.info('Return-rejected notification sent to customer', { orderId });
+      logger.info('Return-rejected notification sent to customer', { orderId, returnId });
     }
 
     const admin = await getAdminEmail();
@@ -439,7 +517,7 @@ module.exports = async function register(boss) {
       logger.warn('[NOTIFICATION SKIP] Missing admin email', { orderId, event: 'return-rejected' });
     } else {
       await emailService.sendAdminReturnRejected(admin, { orderNumber: row?.order_number });
-      logger.info('Admin return-rejection confirmation sent', { orderId });
+      logger.info('Admin return-rejection confirmation sent', { orderId, returnId });
     }
 
     await markProcessed(eventId, 'notification.return-rejected');

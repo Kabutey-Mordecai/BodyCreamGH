@@ -892,6 +892,12 @@ async function completePaystackRefundFromWebhook(event) {
         });
       }
       await client.query('COMMIT');
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add(
+        'return-refunded',
+        { orderId: matchedReturn.order_id, returnId: matchedReturn.id },
+        { singletonKey: `return_refunded_${matchedReturn.id}` }
+      ).catch(() => {});
       logger.info('Paystack refund webhook matched return_request (Tier 1)', { eventId, returnId: matchedReturn.id });
       return;
     }

@@ -382,7 +382,7 @@ const createReturnRequest = async (req, res) => {
     await client.query('COMMIT');
 
     const { notificationQueue } = require('../queues');
-    notificationQueue.add('return-requested', { orderId, returnId })
+    notificationQueue.add('return-requested', { orderId, returnId }, { singletonKey: `return_requested_${returnId}` })
       .catch(err => logger.error('Failed to enqueue return-requested notification', { err: err.message, orderId, returnId }));
 
     res.status(201).json({
@@ -590,6 +590,9 @@ const approveReturnRequestById = async (req, res) => {
         notePrefix: `Manual partial return refund approved by admin ${adminId}`,
       });
       await client.query('COMMIT');
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('return-approved', { orderId: order.id, returnId }, { singletonKey: `return_approved_${returnId}` }).catch(() => {});
+      notificationQueue.add('return-refunded', { orderId: order.id, returnId }, { singletonKey: `return_refunded_${returnId}` }).catch(() => {});
       return res.json({
         message: 'Return approved and manually refunded',
         return_request: finalized.returnRequest,
@@ -728,6 +731,9 @@ const approveReturnRequestById = async (req, res) => {
         notePrefix: 'Paystack partial return refund completed',
       });
       await postClient.query('COMMIT');
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('return-approved', { orderId: locked.order_id, returnId }, { singletonKey: `return_approved_${returnId}` }).catch(() => {});
+      notificationQueue.add('return-refunded', { orderId: locked.order_id, returnId }, { singletonKey: `return_refunded_${returnId}` }).catch(() => {});
       return res.json({
         message: 'Return approved and refunded via Paystack',
         return_request: finalized.returnRequest,
@@ -746,6 +752,8 @@ const approveReturnRequestById = async (req, res) => {
       [providerId, effectiveRef, returnId]
     );
     await postClient.query('COMMIT');
+    const { notificationQueue } = require('../queues');
+    notificationQueue.add('return-approved', { orderId: locked.order_id, returnId }, { singletonKey: `return_approved_${returnId}` }).catch(() => {});
     return res.json({
       message: 'Return approved; Paystack partial refund is pending confirmation',
       return_request: pendingRow,
@@ -807,7 +815,7 @@ const rejectReturnRequestById = async (req, res) => {
     await client.query('COMMIT');
 
     const { notificationQueue } = require('../queues');
-    notificationQueue.add('return-rejected', { orderId: rr.order_id, returnId, reason })
+    notificationQueue.add('return-rejected', { orderId: rr.order_id, returnId, reason }, { singletonKey: `return_rejected_${returnId}` })
       .catch(err => logger.error('Failed to enqueue return-rejected notification', { err: err.message, orderId: rr.order_id }));
 
     res.json({ message: 'Return request rejected', return_request: updated });
