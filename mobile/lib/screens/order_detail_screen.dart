@@ -212,7 +212,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     if (isReturn) {
       // Only show item-level partial return picker when PARTIAL_RETURNS_ENABLED is on
       try {
-        final settings = await ApiService.instance.getPublicSettings();
+        final settings = await ApiService.instance.getSettings();
         final enabled = settings['partial_returns_enabled'] == true ||
             settings['partial_returns_enabled'] == 'true';
         if (enabled && mounted) {
