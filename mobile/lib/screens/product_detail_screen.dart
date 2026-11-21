@@ -21,12 +21,6 @@ const List<String> _productHighlights = [
   'Cruelty-free & dermatologist tested',
 ];
 
-const List<Map<String, String>> _pdpTrustRow = [
-  {'icon': '🚚', 'label': 'Free delivery', 'sub': 'Over GHS 200'},
-  {'icon': '✦', 'label': 'Handcrafted', 'sub': 'In small batches'},
-  {'icon': '↩', 'label': '7-day returns', 'sub': 'No questions asked'},
-];
-
 class ProductDetailScreen extends StatefulWidget {
   final String productId;
   const ProductDetailScreen({super.key, required this.productId});
@@ -172,6 +166,24 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
     tick();
     _promoTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+  }
+
+  List<Map<String, String>> get _effectivePdpTrustRow {
+    final rawThresh = _settings['free_delivery_threshold'];
+    final thresh = num.tryParse((rawThresh ?? '').toString());
+    final deliverySub = (thresh != null && thresh > 0)
+        ? 'Over GHS ${thresh % 1 == 0 ? thresh.toInt() : thresh}'
+        : 'Over GHS 200';
+    final rawDays = _settings['return_window_days'];
+    final days = int.tryParse((rawDays ?? '').toString());
+    final returnLabel = (days != null && days > 0)
+        ? '$days-day returns'
+        : '7-day returns';
+    return [
+      {'icon': '🚚', 'label': 'Free delivery', 'sub': deliverySub},
+      {'icon': '✦', 'label': 'Handcrafted', 'sub': 'In small batches'},
+      {'icon': '↩', 'label': returnLabel, 'sub': 'No questions asked'},
+    ];
   }
 
   Future<void> _loadReviews({required int page, required String sort}) async {
@@ -1071,7 +1083,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               child: Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceAround,
-                                children: _pdpTrustRow
+                                children: _effectivePdpTrustRow
                                     .map(
                                       (t) => Row(
                                         mainAxisSize: MainAxisSize.min,

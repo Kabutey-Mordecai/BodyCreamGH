@@ -39,6 +39,7 @@ class _ShopScreenState extends State<ShopScreen> {
   String _maxPrice = '';
 
   List<String> _apiCategories = const [];
+  String _storeName = 'BODYCREAM GH';
 
   List<String> get _categories {
     final set = <String>{'All'};
@@ -65,6 +66,16 @@ class _ShopScreenState extends State<ShopScreen> {
     } catch (_) {}
   }
 
+  Future<void> _fetchSettings() async {
+    try {
+      final data = await ApiService.instance.getSettings();
+      final name = data['store_name']?.toString().trim() ?? '';
+      if (mounted && name.isNotEmpty) {
+        setState(() => _storeName = name.toUpperCase());
+      }
+    } catch (_) {}
+  }
+
   @override
   void initState() {
     super.initState();
@@ -76,6 +87,7 @@ class _ShopScreenState extends State<ShopScreen> {
       _searchCtrl.text = widget.initialSearch!;
     }
     _fetchCategories();
+    _fetchSettings();
     _fetch();
   }
 
@@ -315,11 +327,11 @@ class _ShopScreenState extends State<ShopScreen> {
                     onPressed: () => Navigator.of(context).pop(),
                   ),
                   const SizedBox(width: 4),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'BODYCREAM GH',
+                      _storeName,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                         letterSpacing: 1.0,

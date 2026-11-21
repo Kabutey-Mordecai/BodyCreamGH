@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/wishlist_provider.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/whatsapp_helper.dart';
 
@@ -225,9 +226,16 @@ class AccountScreen extends StatelessWidget {
 }
 
 /// Mirrors Web Footer.jsx contact details, social links & payment badges
-class _StoreSupportAndPaymentsCard extends StatelessWidget {
+class _StoreSupportAndPaymentsCard extends StatefulWidget {
   const _StoreSupportAndPaymentsCard();
 
+  @override
+  State<_StoreSupportAndPaymentsCard> createState() =>
+      _StoreSupportAndPaymentsCardState();
+}
+
+class _StoreSupportAndPaymentsCardState
+    extends State<_StoreSupportAndPaymentsCard> {
   static const _paymentBadges = [
     '🔒 Paystack',
     '📱 MTN MoMo',
@@ -236,8 +244,40 @@ class _StoreSupportAndPaymentsCard extends StatelessWidget {
     '💵 Pay on Delivery',
   ];
 
+  Map<String, dynamic> _settings = const {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    try {
+      final data = await ApiService.instance.getSettings();
+      if (mounted) {
+        setState(() => _settings = data);
+      }
+    } catch (_) {}
+  }
+
+  String _setting(List<String> keys, String fallback) {
+    for (final k in keys) {
+      final raw = _settings[k]?.toString().trim() ?? '';
+      if (raw.isNotEmpty) return raw;
+    }
+    return fallback;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final address =
+        _setting(const ['store_address', 'pickup_location'], 'Accra, Ghana');
+    final phone = _setting(
+        const ['contact_phone', 'whatsapp_number'], '+233 24 585 2804');
+    final telDigits = phone.replaceAll(RegExp(r'[^0-9+]'), '');
+    final email = _setting(const ['contact_email'], 'hello@bodycreamgh.com');
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -254,24 +294,27 @@ class _StoreSupportAndPaymentsCard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            const Row(
+            Row(
               children: [
-                Icon(Icons.place_outlined, size: 16, color: AppColors.muted),
-                SizedBox(width: 8),
-                Text('Accra, Ghana', style: TextStyle(fontSize: 13)),
+                const Icon(Icons.place_outlined,
+                    size: 16, color: AppColors.muted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(address, style: const TextStyle(fontSize: 13)),
+                ),
               ],
             ),
             const SizedBox(height: 8),
             InkWell(
-              onTap: () => WhatsAppHelper.openUrl('tel:+233245852804'),
-              child: const Row(
+              onTap: () => WhatsAppHelper.openUrl('tel:$telDigits'),
+              child: Row(
                 children: [
-                  Icon(Icons.phone_outlined,
+                  const Icon(Icons.phone_outlined,
                       size: 16, color: AppColors.accentDark),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Text(
-                    '+233 24 585 2804',
-                    style: TextStyle(
+                    phone,
+                    style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                       color: AppColors.primary,
@@ -282,19 +325,20 @@ class _StoreSupportAndPaymentsCard extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             InkWell(
-              onTap: () =>
-                  WhatsAppHelper.openUrl('mailto:hello@bodycreamgh.com'),
-              child: const Row(
+              onTap: () => WhatsAppHelper.openUrl('mailto:$email'),
+              child: Row(
                 children: [
-                  Icon(Icons.email_outlined,
+                  const Icon(Icons.email_outlined,
                       size: 16, color: AppColors.accentDark),
-                  SizedBox(width: 8),
-                  Text(
-                    'hello@bodycreamgh.com',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      email,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.primary,
+                      ),
                     ),
                   ),
                 ],
