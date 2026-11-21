@@ -9,6 +9,19 @@ const { makeRateLimiter }             = require('../middleware/rateLimit');
 const loginLimiter          = makeRateLimiter(15 * 60 * 1000, 10, 'Too many login attempts. Please try again in 15 minutes.');
 const registerLimiter       = makeRateLimiter(60 * 60 * 1000, 5,  'Too many registrations from this address. Please try again later.');
 const forgotPasswordLimiter = makeRateLimiter(60 * 60 * 1000, 5,  'Too many password reset requests. Please try again later.');
+const forgotPasswordEmailLimiter = makeRateLimiter(
+  60 * 60 * 1000,
+  5,
+  'Too many password reset requests for this email. Please try again later.',
+  {
+    keyGenerator: (req, ip) => {
+      const email = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
+      return email ? `fp:email:${email}` : `fp:ip:${ip}`;
+    },
+  }
+);
 
 // Refresh tokens are rotated on every use; an attacker with a valid token needs
 // only one request. This limiter primarily blocks token-stuffing attempts.
@@ -36,14 +49,17 @@ const {
 } = require('../controllers/auth.controller');
 
 const router = express.Router();
+const customerController = require('../controllers/customer.controller');
 
 router.post('/register',                  registerLimiter,        validateRegister, register);
 router.post('/login',                     loginLimiter,           validateLogin,    login);
 router.post('/verify-otp',                otpLimiter,             verifyOtp);
 router.post('/refresh',                   refreshLimiter,         refresh);
 router.get ('/me',                        verifyToken,            getMe);
+router.get ('/profile',                   verifyToken,            customerController.getProfile);
+router.put ('/profile',                   verifyToken,            customerController.updateProfile);
 router.post('/logout',                    logoutLimiter,          logout);
-router.post('/forgot-password',           forgotPasswordLimiter,  forgotPassword);
+router.post('/forgot-password',           forgotPasswordLimiter,  forgotPasswordEmailLimiter, forgotPassword);
 router.get ('/verify-reset-token/:token', verifyResetTokenLimiter, verifyResetToken);
 router.post('/reset-password',            resetPasswordLimiter,   resetPassword);
 

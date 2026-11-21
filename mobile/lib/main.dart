@@ -6,9 +6,12 @@ import 'config.dart';
 import 'main_shell.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
+import 'providers/theme_provider.dart';
+import 'providers/wishlist_provider.dart';
 import 'screens/account_screen.dart';
 import 'screens/cart_screen.dart';
 import 'screens/checkout_screen.dart';
+import 'screens/edit_profile_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/order_detail_screen.dart';
@@ -17,9 +20,12 @@ import 'screens/payment_screen.dart';
 import 'screens/product_detail_screen.dart';
 import 'screens/register_screen.dart';
 import 'screens/shop_screen.dart';
+import 'screens/track_order_screen.dart';
+import 'screens/wishlist_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  AppConfig.validateConfig();
   runApp(const CosmeticsApp());
 }
 
@@ -31,46 +37,115 @@ class CosmeticsApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()..init()),
-        ChangeNotifierProvider(create: (_) => CartProvider()),
+        ChangeNotifierProxyProvider<AuthProvider, CartProvider>(
+          create: (_) => CartProvider()..init(),
+          update: (_, auth, cart) {
+            final c = cart ?? (CartProvider()..init());
+            c.syncAuthState(auth.isLoggedIn);
+            return c;
+          },
+        ),
+        ChangeNotifierProvider(create: (_) => WishlistProvider()..init()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()..init()),
       ],
-      child: Builder(builder: (ctx) {
-        final router = _buildRouter(ctx);
-        return MaterialApp.router(
-          title: AppConfig.appName,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: const Color(0xFFB5556A), // dusty rose — cosmetics brand color
-            ),
-            useMaterial3: true,
-          ),
-          routerConfig: router,
-          debugShowCheckedModeBanner: false,
-        );
-      }),
+      child: const _ThemedRouterApp(),
     );
   }
 }
 
+class _ThemedRouterApp extends StatefulWidget {
+  const _ThemedRouterApp();
+
+  @override
+  State<_ThemedRouterApp> createState() => _ThemedRouterAppState();
+}
+
+class _ThemedRouterAppState extends State<_ThemedRouterApp> {
+  late final GoRouter _router;
+
+  @override
+  void initState() {
+    super.initState();
+    _router = _buildRouter(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = context.watch<ThemeProvider>().themeData;
+    return MaterialApp.router(
+      title: AppConfig.appName,
+      theme: theme,
+      routerConfig: _router,
+      debugShowCheckedModeBanner: false,
+    );
+  }
+}
+
+final RegExp _safeDeepLinkIdPattern = RegExp(r'^[A-Za-z0-9_-]{1,100}$');
+
+String? normalizeDeepLinkPath(Uri uri) {
+  if (uri.scheme != 'cosmeticsgh') return null;
+  final host = uri.host.toLowerCase();
+  if ((host == 'orders' || host == 'order') && uri.pathSegments.length == 1) {
+    final id = uri.pathSegments.first.trim();
+    if (_safeDeepLinkIdPattern.hasMatch(id)) {
+      return '/$host/$id';
+    }
+  }
+  if (host == 'payment') {
+    return '/payment';
+  }
+  if (host == 'app' &&
+      uri.pathSegments.length == 2 &&
+      (uri.pathSegments[0] == 'orders' || uri.pathSegments[0] == 'order') &&
+      _safeDeepLinkIdPattern.hasMatch(uri.pathSegments[1])) {
+    return '/${uri.pathSegments[0]}/${uri.pathSegments[1]}';
+  }
+  return '/';
+}
+
+bool _isProtectedRoute(String path) =>
+    path.startsWith('/profile/edit') ||
+    path.startsWith('/orders/') ||
+    path.startsWith('/order/');
+
 GoRouter _buildRouter(BuildContext ctx) {
+  final authProvider = ctx.read<AuthProvider>();
   return GoRouter(
     initialLocation: '/',
-    // Redirect unauthenticated users away from protected routes
+    refreshListenable: authProvider,
     redirect: (context, state) {
       final auth = context.read<AuthProvider>();
       final isAuth = auth.isLoggedIn;
       final isInitializing = auth.status == AuthStatus.unknown;
 
-      // Wait for auth to initialise before redirecting
+      final normalized = normalizeDeepLinkPath(state.uri);
+      if (normalized != null) {
+        debugPrint('[DeepLink] ${state.uri} -> $normalized');
+        if (!isInitializing && !isAuth && _isProtectedRoute(normalized)) {
+          return '/login?redirect=${Uri.encodeComponent(normalized)}';
+        }
+        return normalized;
+      }
+
       if (isInitializing) return null;
 
-      final protectedRoutes = ['/checkout', '/orders', '/profile/edit'];
-      final isProtected = protectedRoutes.any((r) => state.matchedLocation.startsWith(r));
+      final loc = state.matchedLocation;
+      if (_isProtectedRoute(loc) && !isAuth) {
+        return '/login?redirect=${Uri.encodeComponent(state.uri.toString())}';
+      }
 
-      if (isProtected && !isAuth) return '/login';
+      if (isAuth && loc == '/login') {
+        final target = state.uri.queryParameters['redirect'];
+        if (target != null &&
+            target.startsWith('/') &&
+            !target.startsWith('//')) {
+          return target;
+        }
+      }
       return null;
     },
     routes: [
-      // Shell with bottom nav — wraps the four main tabs
       StatefulShellRoute.indexedStack(
         builder: (_, __, shell) => MainShell(navigationShell: shell),
         branches: [
@@ -78,7 +153,13 @@ GoRouter _buildRouter(BuildContext ctx) {
             GoRoute(path: '/', builder: (_, __) => const HomeScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/shop', builder: (_, __) => const ShopScreen()),
+            GoRoute(
+              path: '/shop',
+              builder: (_, state) => ShopScreen(
+                initialCategory: state.uri.queryParameters['category'],
+                initialSearch: state.uri.queryParameters['search'],
+              ),
+            ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/cart', builder: (_, __) => const CartScreen()),
@@ -87,7 +168,8 @@ GoRouter _buildRouter(BuildContext ctx) {
             GoRoute(path: '/orders', builder: (_, __) => const OrdersScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/account', builder: (_, __) => const AccountScreen()),
+            GoRoute(
+                path: '/account', builder: (_, __) => const AccountScreen()),
           ]),
         ],
       ),
@@ -96,8 +178,22 @@ GoRouter _buildRouter(BuildContext ctx) {
       GoRoute(
         path: '/product/:id',
         builder: (_, state) => ProductDetailScreen(
-          productId: int.parse(state.pathParameters['id']!),
+          productId: state.pathParameters['id']!,
         ),
+      ),
+      GoRoute(
+        path: '/wishlist',
+        builder: (_, __) => const WishlistScreen(),
+      ),
+      GoRoute(
+        path: '/track-order',
+        builder: (_, state) => TrackOrderScreen(
+          initialOrderNumber: state.uri.queryParameters['order_number'],
+        ),
+      ),
+      GoRoute(
+        path: '/profile/edit',
+        builder: (_, __) => const EditProfileScreen(),
       ),
       GoRoute(
         path: '/checkout',
@@ -109,7 +205,9 @@ GoRouter _buildRouter(BuildContext ctx) {
           final extra = state.extra as Map<String, dynamic>;
           return PaymentScreen(
             paymentUrl: extra['url'] as String,
-            orderId: extra['order_id'] as int,
+            orderId: extra['order_id'] as String,
+            orderNumber: extra['order_number'] as String?,
+            guestEmail: extra['guest_email'] as String?,
           );
         },
       ),
@@ -117,19 +215,38 @@ GoRouter _buildRouter(BuildContext ctx) {
         path: '/order/:id',
         builder: (_, state) {
           final extra = state.extra as Map<String, dynamic>?;
+          final id = state.pathParameters['id']!;
           return OrderDetailScreen(
-            orderId: int.parse(state.pathParameters['id']!),
+            key: ValueKey('order-$id'),
+            orderId: id,
+            justPaid: extra?['justPaid'] as bool? ?? false,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/orders/:id',
+        builder: (_, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          final id = state.pathParameters['id']!;
+          return OrderDetailScreen(
+            key: ValueKey('order-$id'),
+            orderId: id,
             justPaid: extra?['justPaid'] as bool? ?? false,
           );
         },
       ),
       GoRoute(
         path: '/login',
-        builder: (_, __) => const LoginScreen(),
+        builder: (_, state) => LoginScreen(
+          isCheckoutRedirect: state.uri.queryParameters['from'] == 'checkout',
+          redirectTo: state.uri.queryParameters['redirect'],
+        ),
       ),
       GoRoute(
         path: '/register',
-        builder: (_, __) => const RegisterScreen(),
+        builder: (_, state) => RegisterScreen(
+          isCheckoutRedirect: state.uri.queryParameters['from'] == 'checkout',
+        ),
       ),
     ],
   );

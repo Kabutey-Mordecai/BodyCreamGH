@@ -1,25 +1,42 @@
 # =============================================================================
-# frontend/netlify.toml — Netlify build configuration
-#
-# Netlify reads this file from the repo root automatically.
-# You need to set the "Base directory" to "frontend" in the Netlify UI, or
-# Netlify will look for this file in the repo root.
-#
-# Alternatively, set the build settings in the Netlify dashboard:
-#   Base directory:  frontend
-#   Build command:   npm run build
-#   Publish directory: frontend/dist
+# frontend/netlify.toml — Netlify build, caching, security & OG Edge config
 # =============================================================================
 
 [build]
-  # Vite outputs the production build to dist/
   publish = "dist"
   command = "npm run build"
 
+# ── Server-side Open Graph previews for WhatsApp / Instagram / Facebook ───────
+[[edge_functions]]
+  path = "/products/*"
+  function = "og-product"
+
+# ── Immutable caching for content-hashed Vite bundles ─────────────────────────
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# ── Baseline security headers for the storefront HTML & static files ──────────
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains; preload"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://api.bodycreamgh.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://checkout.paystack.com"
+
+# ── Sitemap proxy rule ────────────────────────────────────────────────────────
+[[redirects]]
+  from   = "/sitemap.xml"
+  to     = "https://api.bodycreamgh.com/api/sitemap.xml"
+  status = 200
+  force  = true
+
 # ── SPA redirect rule ─────────────────────────────────────────────────────────
-# React Router handles routing client-side. Without this rule, refreshing any
-# page other than "/" returns a 404 from Netlify's CDN because the file doesn't
-# actually exist on disk — only index.html does.
 [[redirects]]
   from   = "/*"
   to     = "/index.html"

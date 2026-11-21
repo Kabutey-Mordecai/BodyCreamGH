@@ -1,6 +1,39 @@
 /* ── Header ──────────────────────────────────── */
 .orders-header {
-  margin-bottom: 40px;
+  margin-bottom: 28px;
+}
+
+/* ── Review Prompt Banner ─────────────────────── */
+.orders-review-prompt-banner {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #fdf8ef 0%, #faf3e2 100%);
+  border: 1px solid var(--color-accent-light);
+  border-radius: var(--radius);
+  margin-bottom: 32px;
+}
+.orders-review-prompt-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+  color: var(--color-accent-dark);
+  flex-shrink: 0;
+}
+.orders-review-prompt-body {
+  flex: 1;
+}
+.orders-review-prompt-body strong {
+  display: block;
+  font-size: 0.96rem;
+  color: var(--color-primary);
+  margin-bottom: 2px;
+}
+.orders-review-prompt-body p {
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  margin: 0;
+  line-height: 1.45;
 }
 
 /* ── Empty state ─────────────────────────────── */

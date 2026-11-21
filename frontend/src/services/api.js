@@ -2,7 +2,13 @@ import axios from 'axios';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-const api = axios.create({ baseURL: API_BASE });
+const api = axios.create({
+  baseURL: API_BASE,
+  headers: {
+    'Cache-Control': 'no-cache',
+    'Pragma': 'no-cache',
+  },
+});
 
 // ── Request interceptor ───────────────────────────────────────────────────────
 api.interceptors.request.use((config) => {
@@ -101,14 +107,16 @@ export const authAPI = {
   login:            (data)    => api.post('/auth/login', data),
   logout:           (data={}) => api.post('/auth/logout', data),
   getMe:            ()        => api.get('/auth/me'),
-  forgotPassword:   (email)   => api.post('/auth/forgot-password', { email }),
-  verifyResetToken: (token)   => api.get(`/auth/verify-reset-token/${token}`),
-  resetPassword:    (data)    => api.post('/auth/reset-password', data),
+  forgotPassword:   (email)        => api.post('/auth/forgot-password', { email }),
+  verifyResetToken: (token, email) =>
+    api.get(`/auth/verify-reset-token/${encodeURIComponent(token)}`, email ? { params: { email } } : undefined),
+  resetPassword:    (data)         => api.post('/auth/reset-password', data),
 };
 
 // ── Products ──────────────────────────────────────────────────────────────────
 export const productsAPI = {
   getAll:      (params) => api.get('/products', { params }),
+  suggest:     (q)      => api.get('/products/suggest', { params: { q } }),
   getById:     (id)     => api.get(`/products/${id}`),
   getRelated:  (id)     => api.get(`/products/${id}/related`),
   getVariants: (id)     => api.get(`/products/${id}/variants`),
@@ -134,13 +142,18 @@ export const ordersAPI = {
   getReviewStatus: (id)     => api.get(`/orders/${id}/review-status`),
   requestCancel:   (id, reason) => api.post(`/orders/${id}/request-cancel`, { reason }),
   requestReturn:   (id, reason) => api.post(`/orders/${id}/request-return`, { reason }),
+  getReturns:      (id)         => api.get(`/orders/${id}/returns`),
+  createReturn:    (id, data)   => api.post(`/orders/${id}/returns`, data),
+  cancelReturn:    (id, retId)  => api.post(`/orders/${id}/returns/${retId}/cancel`),
 };
 
 // ── Payments ──────────────────────────────────────────────────────────────────
 export const paymentsAPI = {
-  initialize:      (orderId)          => api.post('/payments/initialize', { orderId }),
-  initializeGuest: (orderId, email)   => api.post('/payments/guest/initialize', { orderId, email }),
-  verify:          (reference)        => api.post('/payments/verify', { reference }),
+  initialize:      (orderId)           => api.post('/payments/initialize', { orderId }),
+  initializeGuest: (orderId, email)    => api.post('/payments/guest/initialize', { orderId, email }),
+  chargeMomo:      (data)              => api.post('/payments/charge-momo', data),
+  submitOtp:       (data)              => api.post('/payments/submit-otp', data),
+  verify:          (reference, config) => api.post('/payments/verify', { reference }, config),
 };
 
 // ── Customer profile ──────────────────────────────────────────────────────────
@@ -163,15 +176,18 @@ export const settingsAPI = {
 
 // ── Coupons ───────────────────────────────────────────────────────────────────
 export const couponsAPI = {
-  validate: (code, orderTotal) => api.post('/coupons/validate', { code, orderTotal }),
+  validate: (code, orderTotal, email) =>
+    api.post('/coupons/validate', { code, orderTotal, ...(email ? { email } : {}) }),
 };
 
 // ── Reviews ───────────────────────────────────────────────────────────────────
 export const reviewsAPI = {
-  getByProduct: (productId, params) => api.get(`/products/${productId}/reviews`, { params }),
-  canReview:    (productId)         => api.get(`/products/${productId}/reviews/can-review`),
-  create:       (productId, data)   => api.post(`/products/${productId}/reviews`, data),
-  markHelpful:  (productId, reviewId) => api.post(`/products/${productId}/reviews/${reviewId}/helpful`),
+  getByProduct:      (productId, params)   => api.get(`/products/${productId}/reviews`, { params }),
+  canReview:         (productId)           => api.get(`/products/${productId}/reviews/can-review`),
+  create:            (productId, data)     => api.post(`/products/${productId}/reviews`, data),
+  markHelpful:       (productId, reviewId) => api.post(`/products/${productId}/reviews/${reviewId}/helpful`),
+  getFeatured:       (params)              => api.get('/reviews/featured', { params }),
+  getPendingPrompts: ()                    => api.get('/reviews/pending-prompts'),
 };
 
 // ── Order tracking (public) ───────────────────────────────────────────────────
@@ -190,6 +206,7 @@ export const wishlistAPI = {
 // ── Newsletter (public) ───────────────────────────────────────────────────────
 export const newsletterAPI = {
   subscribe:   (email, name) => api.post('/newsletter/subscribe', { email, name }),
+  status:      (email)       => api.get('/newsletter/status', { params: email ? { email } : undefined }),
   unsubscribe: (token)       => api.get('/newsletter/unsubscribe', { params: { token } }),
 };
 

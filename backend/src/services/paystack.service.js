@@ -1,9 +1,10 @@
 const paystackAPI = require('../config/paystack');
 
-async function createFullRefund({ transactionReference, amount, notes }) {
+async function createFullRefund({ transactionReference, amount, notes, currency = 'GHS' }) {
   const payload = {
     transaction: transactionReference,
     amount: Math.round(parseFloat(amount) * 100),
+    currency,
   };
 
   if (notes) {
@@ -40,4 +41,9 @@ async function fetchRefundsByTransaction(transactionReference) {
   }
 }
 
-module.exports = { createFullRefund, fetchRefundById, fetchRefundsByTransaction };
+module.exports = {
+  createFullRefund,
+  createRefund: createFullRefund,
+  fetchRefundById,
+  fetchRefundsByTransaction,
+};

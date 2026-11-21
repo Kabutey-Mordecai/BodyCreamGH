@@ -21,10 +21,10 @@ const ACCOUNT_LINKS = [
 ];
 
 const INFO_LINKS = [
-  { label: 'About Us',           to: '/' },
-  { label: 'Shipping & Returns', to: '/' },
-  { label: 'Ingredients',        to: '/' },
-  { label: 'Contact Us',         to: '/' },
+  { label: 'About Us',           to: '/#our-story' },
+  { label: 'Shipping & Returns', to: '/#faq' },
+  { label: 'Ingredients',        to: '/#our-story' },
+  { label: 'FAQs',               to: '/#faq' },
   { label: 'Track your order',   to: '/track' },
 ];
 
@@ -73,25 +73,56 @@ const SOCIALS_META = [
 export default function Footer() {
   const {
     store_name,
+    store_phone,
+    store_email,
     footer_tagline,
     footer_instagram,
     footer_facebook,
     footer_whatsapp,
     footer_tiktok,
     whatsapp_number,
+    pickup_enabled,
+    pay_on_delivery_enabled,
+    back_to_top_enabled,
+    footer_payment_badges_enabled,
   } = useSettings();
+
+  const rawWa = String(whatsapp_number || '').replace(/\D/g, '');
+  const waHref = rawWa
+    ? `https://wa.me/${rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa}`
+    : (footer_whatsapp || 'https://wa.me');
+
+  const pickupEnabled = pickup_enabled !== false && pickup_enabled !== 'false';
+  const podEnabled = pay_on_delivery_enabled === true || pay_on_delivery_enabled === 'true';
+  const showBackToTop = back_to_top_enabled !== false && back_to_top_enabled !== 'false';
+  const showPaymentBadges = footer_payment_badges_enabled !== false && footer_payment_badges_enabled !== 'false';
 
   const socials = SOCIALS_META.map(s => ({
     ...s,
     href: s.label === 'Instagram' ? (footer_instagram || s.href)
         : s.label === 'Facebook'  ? (footer_facebook  || s.href)
         : s.label === 'TikTok'    ? (footer_tiktok    || s.href)
-        : s.label === 'WhatsApp'  ? (whatsapp_number ? `https://wa.me/${whatsapp_number}` : footer_whatsapp || s.href)
+        : s.label === 'WhatsApp'  ? waHref
         : s.href,
   }));
 
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
     <footer className="footer">
+
+      {/* ── Back to top strip ────────────────── */}
+      {showBackToTop && (
+        <button
+          type="button"
+          className="footer-back-to-top"
+          onClick={scrollToTop}
+        >
+          Back to top ↑
+        </button>
+      )}
 
       {/* ── Main footer body ─────────────────── */}
       <div className="footer-body">
@@ -142,18 +173,33 @@ export default function Footer() {
                   <Link to={l.to}>{l.label}</Link>
                 </li>
               ))}
+              <li>
+                <a href="http://localhost:5174" target="_blank" rel="noopener noreferrer">
+                  Admin Console ↗
+                </a>
+              </li>
             </ul>
           </div>
 
           {/* Info links */}
-          <div className="footer-col">
-            <h4 className="footer-col-head">Help</h4>
+          <div id="contact-footer" className="footer-col">
+            <h4 className="footer-col-head">Help &amp; Support</h4>
             <ul>
               {INFO_LINKS.map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>
               ))}
+              {store_phone && (
+                <li>
+                  <a href={`tel:${store_phone}`}>Call: {store_phone}</a>
+                </li>
+              )}
+              {store_email && (
+                <li>
+                  <a href={`mailto:${store_email}`}>{store_email}</a>
+                </li>
+              )}
             </ul>
           </div>
 
@@ -164,9 +210,15 @@ export default function Footer() {
       <div className="footer-bottom">
         <div className="container footer-bottom-inner">
           <p>© {YEAR} {store_name}. All rights reserved.</p>
-          <p className="footer-payment-note">
-            <span>🔒</span> Secure payments by <strong>Paystack</strong> · Cards · Mobile Money · Bank Transfer
-          </p>
+          {showPaymentBadges && (
+            <div className="footer-payment-badges" aria-label="Accepted payment and delivery methods">
+              <span className="footer-pay-pill">🔒 Paystack</span>
+              <span className="footer-pay-pill">MTN MoMo</span>
+              <span className="footer-pay-pill">Visa / Mastercard</span>
+              {pickupEnabled && <span className="footer-pay-pill">Pickup Station</span>}
+              {podEnabled && <span className="footer-pay-pill">Pay on Delivery</span>}
+            </div>
+          )}
         </div>
       </div>
 

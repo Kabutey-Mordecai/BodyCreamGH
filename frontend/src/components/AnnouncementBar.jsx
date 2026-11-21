@@ -5,7 +5,7 @@ import './AnnouncementBar.css';
 const SESSION_KEY = 'bar_dismissed';
 
 export default function AnnouncementBar({ onVisibilityChange }) {
-  const { announcement_enabled, announcement_text } = useSettings();
+  const { announcement_enabled, announcement_text, announcement_show_whatsapp, whatsapp_number } = useSettings();
   const [dismissed, setDismissed] = useState(() => !!sessionStorage.getItem(SESSION_KEY));
   const [fading, setFading] = useState(false);
 
@@ -24,6 +24,12 @@ export default function AnnouncementBar({ onVisibilityChange }) {
 
   if (!visible) return null;
 
+  const showWa = announcement_show_whatsapp !== false && announcement_show_whatsapp !== 'false';
+  const rawWa = showWa ? String(whatsapp_number || '').replace(/\D/g, '') : '';
+  const waHref = rawWa
+    ? `https://wa.me/${rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa}`
+    : '';
+
   return (
     <div className="announcement-bar" role="banner">
       <div className="announcement-bar-inner">
@@ -31,6 +37,19 @@ export default function AnnouncementBar({ onVisibilityChange }) {
 
         <p className={`announcement-msg ${fading ? 'fade-out' : 'fade-in'}`}>
           {announcement_text || 'Free delivery on orders over GHS 200 · Shop now'}
+          {waHref && (
+            <>
+              {' · '}
+              <a
+                href={waHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="announcement-wa-link"
+              >
+                Order on WhatsApp: {whatsapp_number}
+              </a>
+            </>
+          )}
         </p>
 
         <button

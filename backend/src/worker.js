@@ -6,6 +6,7 @@
 // process is the only one consuming the pg-boss connection pool.
 
 require('dotenv').config();
+require('./config/env'); // fail-fast production env validation — matches server.js
 
 const logger = require('./utils/logger');
 const pool   = require('./config/database');

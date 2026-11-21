@@ -14,6 +14,7 @@ export default function Login() {
   const location     = useLocation();
 
   const from = location.state?.from?.pathname || '/';
+  const isCheckoutRedirect = Boolean(location.state?.checkoutRedirect || from === '/checkout');
 
   const [form, setForm]       = useState({ email: '', password: '' });
   const [error, setError]     = useState('');
@@ -70,8 +71,16 @@ export default function Login() {
   return (
     <div className="auth-page">
       <div className="auth-card">
-        <h1>Welcome back</h1>
-        <p>Sign in to your account to continue shopping.</p>
+        {isCheckoutRedirect && (
+          <div className="alert alert-info" style={{ marginBottom: '20px', background: 'rgba(201, 165, 90, 0.12)', border: '1px solid rgba(201, 165, 90, 0.35)', color: '#e5c378', fontSize: '0.9rem', borderRadius: '8px', padding: '12px 16px' }}>
+            <strong>Sign in to complete your order</strong>
+            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', opacity: 0.9 }}>
+              Like Jumia &amp; Temu, your basket is safely saved and will be ready for checkout as soon as you sign in.
+            </p>
+          </div>
+        )}
+        <h1>{isCheckoutRedirect ? 'Sign in to Checkout' : 'Welcome back'}</h1>
+        <p>{isCheckoutRedirect ? 'Sign in to access your saved addresses, track your order, and complete payment.' : 'Sign in to your account to continue shopping.'}</p>
 
         {error && (
           <div className={`alert ${isLocked ? 'alert-warning' : 'alert-error'}`}>
@@ -130,7 +139,7 @@ export default function Login() {
 
         <p className="auth-footer">
           Don't have an account?{' '}
-          <Link to="/register">Create one</Link>
+          <Link to="/register" state={isCheckoutRedirect ? { from: { pathname: '/checkout' }, checkoutRedirect: true } : undefined}>Create one</Link>
         </p>
       </div>
     </div>

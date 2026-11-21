@@ -120,6 +120,7 @@ export default function Account() {
                     value={profile.first_name}
                     onChange={handleProfileChange}
                     required
+                    autoComplete="given-name"
                   />
                 </div>
                 <div className="form-group">
@@ -129,6 +130,7 @@ export default function Account() {
                     value={profile.last_name}
                     onChange={handleProfileChange}
                     required
+                    autoComplete="family-name"
                   />
                 </div>
               </div>
@@ -140,6 +142,7 @@ export default function Account() {
                   type="tel"
                   value={profile.phone}
                   onChange={handleProfileChange}
+                  autoComplete="tel"
                   placeholder="+233 XX XXX XXXX"
                 />
               </div>

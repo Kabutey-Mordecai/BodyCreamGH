@@ -4,10 +4,20 @@ const { randomUUID: uuidv4 } = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool   = require('../config/database');
 const logger = require('../utils/logger');
+const { bustCache } = require('./product.controller');
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (e) {
+  logger.warn('Sharp module not available, falling back to raw image storage');
+}
 
 // ── Image upload constants ────────────────────────────────────────────────────
 const MAX_IMAGES_PER_PRODUCT = 8;
 const UPLOAD_DIR = path.join(__dirname, '..', '..', 'uploads', 'products');
+const MEDIA_DIR  = path.join(__dirname, '..', '..', 'uploads', 'media');
+fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+fs.mkdirSync(MEDIA_DIR,  { recursive: true });
 
 const MIME_EXT_MAP = {
   'image/jpeg': '.jpg',
@@ -42,10 +52,10 @@ async function deleteFileSafe(filename) {
 const getDashboard = async (req, res) => {
   try {
     const [revenue, orders, customers, products, recentOrdersResult, todayRevenueResult, lowStockResult] = await Promise.all([
-      pool.query(`SELECT COALESCE(SUM(total_amount), 0) AS total_revenue FROM orders WHERE payment_status = 'paid'`),
-      pool.query('SELECT COUNT(*) FROM orders'),
-      pool.query(`SELECT COUNT(*) FROM users WHERE role = 'customer'`),
-      pool.query('SELECT COUNT(*) FROM products'),
+      pool.query(`SELECT COALESCE(SUM(total_amount - COALESCE(refund_amount, 0)), 0) AS total_revenue FROM orders WHERE payment_status IN ('paid', 'partially_refunded')`),
+      pool.query(`SELECT COUNT(*) AS total_orders, COUNT(*) FILTER (WHERE payment_status IN ('paid', 'partially_refunded')) AS paid_orders FROM orders`),
+      pool.query(`SELECT COUNT(*) AS total_customers FROM users WHERE role = 'customer'`),
+      pool.query('SELECT COUNT(*) AS total_products FROM products'),
       pool.query(`
         SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status, o.created_at,
                COALESCE(u.first_name || ' ' || u.last_name, u.first_name, u.email, o.guest_email, 'Guest') AS customer_name,
@@ -56,24 +66,26 @@ const getDashboard = async (req, res) => {
          LIMIT 10
       `),
       pool.query(`
-        SELECT COALESCE(SUM(total_amount), 0) AS today_revenue
+        SELECT COALESCE(SUM(total_amount - COALESCE(refund_amount, 0)), 0) AS today_revenue
           FROM orders
-         WHERE payment_status = 'paid' AND DATE(created_at) = CURRENT_DATE
+         WHERE payment_status IN ('paid', 'partially_refunded') AND DATE(created_at) = CURRENT_DATE
       `),
       pool.query(`SELECT COUNT(*) AS low_stock_count FROM products WHERE stock_quantity <= 5`),
     ]);
 
     const totalRevenue = parseFloat(revenue.rows[0].total_revenue);
-    const totalOrders  = parseInt(orders.rows[0].count);
+    const totalOrders  = parseInt(orders.rows[0].total_orders, 10);
+    const paidOrders   = parseInt(orders.rows[0].paid_orders, 10);
 
     res.json({
       totalRevenue,
       totalOrders,
-      totalCustomers:  customers.rows[0].count,
-      totalProducts:   products.rows[0].count,
+      paidOrders,
+      totalCustomers:  parseInt(customers.rows[0].total_customers, 10),
+      totalProducts:   parseInt(products.rows[0].total_products, 10),
       todayRevenue:    parseFloat(todayRevenueResult.rows[0].today_revenue),
-      avgOrderValue:   totalOrders > 0 ? Math.round((totalRevenue / totalOrders) * 100) / 100 : 0,
-      lowStockCount:   parseInt(lowStockResult.rows[0].low_stock_count),
+      avgOrderValue:   paidOrders > 0 ? Math.round((totalRevenue / paidOrders) * 100) / 100 : 0,
+      lowStockCount:   parseInt(lowStockResult.rows[0].low_stock_count, 10),
       recentOrders:    recentOrdersResult.rows,
     });
   } catch (error) {
@@ -88,16 +100,16 @@ const getAnalytics = async (req, res) => {
     let whereClause, params;
 
     if (from && to) {
-      whereClause = `WHERE payment_status = 'paid' AND DATE(created_at) BETWEEN $1::date AND $2::date`;
+      whereClause = `WHERE payment_status IN ('paid', 'partially_refunded') AND DATE(created_at) BETWEEN $1::date AND $2::date`;
       params = [from, to];
     } else {
       const d = Math.min(365, Math.max(1, parseInt(days) || 30));
-      whereClause = `WHERE payment_status = 'paid' AND created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
+      whereClause = `WHERE payment_status IN ('paid', 'partially_refunded') AND created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
       params = [d];
     }
 
     const { rows } = await pool.query(`
-      SELECT DATE(created_at) AS date, COUNT(*) AS orders, SUM(total_amount) AS revenue
+      SELECT DATE(created_at) AS date, COUNT(*) AS orders, SUM(total_amount - COALESCE(refund_amount, 0)) AS revenue
         FROM orders
         ${whereClause}
        GROUP BY DATE(created_at)
@@ -223,23 +235,42 @@ const uploadProductImages = async (req, res) => {
       });
     }
 
-    // Count check passed — write buffers to disk
+    // Count check passed — optimize with Sharp and write buffers to disk
     const insertRows = [];
     for (let i = 0; i < req.files.length; i++) {
-      const file     = req.files[i];
-      const ext      = MIME_EXT_MAP[file.mimetype];
-      const filename = `${uuidv4()}${ext}`;
+      const file = req.files[i];
+
+      let outputBuffer = file.buffer;
+      let finalMime    = file.mimetype;
+      let finalExt     = MIME_EXT_MAP[file.mimetype] || '.jpg';
+      let finalSize    = file.size;
+
+      if (sharp && file.mimetype !== 'image/svg+xml') {
+        try {
+          outputBuffer = await sharp(file.buffer)
+            .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+            .webp({ quality: 85 })
+            .toBuffer();
+          finalMime = 'image/webp';
+          finalExt  = '.webp';
+          finalSize = outputBuffer.length;
+        } catch (sharpErr) {
+          logger.warn('Sharp image processing error, using original buffer', { err: sharpErr.message });
+        }
+      }
+
+      const filename = `${uuidv4()}${finalExt}`;
       const url      = `/uploads/products/${filename}`;
 
-      await fs.promises.writeFile(path.join(UPLOAD_DIR, filename), file.buffer);
+      await fs.promises.writeFile(path.join(UPLOAD_DIR, filename), outputBuffer);
       writtenFiles.push(filename);
 
       insertRows.push({
         filename,
         url,
         original_name: file.originalname,
-        mime_type:     file.mimetype,
-        size_bytes:    file.size,
+        mime_type:     finalMime,
+        size_bytes:    finalSize,
         sort_order:    existingCount + i,
         is_primary:    existingCount === 0 && i === 0,
       });
@@ -256,6 +287,7 @@ const uploadProductImages = async (req, res) => {
     }
 
     await client.query('COMMIT');
+    bustCache();
     res.json({ images: await getProductImages(productId) });
 
   } catch (err) {
@@ -321,6 +353,7 @@ const deleteProductImage = async (req, res) => {
 
     await client.query('COMMIT');
     await deleteFileSafe(filename);
+    bustCache();
 
     res.json({ images: await getProductImages(productId) });
 
@@ -386,6 +419,7 @@ const reorderProductImages = async (req, res) => {
     }
 
     await client.query('COMMIT');
+    bustCache();
     res.json({ images: await getProductImages(productId) });
 
   } catch (err) {
@@ -432,6 +466,7 @@ const setPrimaryProductImage = async (req, res) => {
     );
 
     await client.query('COMMIT');
+    bustCache();
     res.json({ images: await getProductImages(productId) });
 
   } catch (err) {
@@ -440,6 +475,53 @@ const setPrimaryProductImage = async (req, res) => {
     res.status(500).json({ error: 'Failed to set primary image' });
   } finally {
     client.release();
+  }
+};
+
+// ── Generic Media Upload (Banners, Logos, Promo Popups, Features) ────────────
+
+const uploadGenericMedia = async (req, res) => {
+  try {
+    const file = req.file || (req.files && req.files[0]);
+    if (!file) {
+      return res.status(400).json({ error: 'No image file provided' });
+    }
+
+    let outputBuffer = file.buffer;
+    let finalMime    = file.mimetype;
+    let finalExt     = MIME_EXT_MAP[file.mimetype] || '.jpg';
+    let finalSize    = file.size;
+
+    if (sharp && file.mimetype !== 'image/svg+xml') {
+      try {
+        outputBuffer = await sharp(file.buffer)
+          .resize({ width: 1920, height: 1920, fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 85 })
+          .toBuffer();
+        finalMime = 'image/webp';
+        finalExt  = '.webp';
+        finalSize = outputBuffer.length;
+      } catch (sharpErr) {
+        logger.warn('Sharp image processing error, using original buffer', { err: sharpErr.message });
+      }
+    }
+
+    const filename = `${uuidv4()}${finalExt}`;
+    await fs.promises.writeFile(path.join(MEDIA_DIR, filename), outputBuffer);
+
+    const url = `/uploads/media/${filename}`;
+    res.status(201).json({
+      url,
+      filename,
+      size_bytes:    finalSize,
+      mime_type:     finalMime,
+      original_name: file.originalname,
+      message:       'Media uploaded successfully',
+    });
+
+  } catch (err) {
+    logger.error('uploadGenericMedia error', { err: err.message });
+    res.status(500).json({ error: 'Failed to upload media file' });
   }
 };
 
@@ -462,20 +544,23 @@ const getFinancials = async (req, res) => {
     const [summaryResult, dailyResult, pendingResult] = await Promise.all([
       pool.query(`
         SELECT
-          COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) AS gross_revenue,
-          COALESCE(SUM(CASE WHEN refund_status = 'success' THEN refund_amount ELSE 0 END), 0) AS total_refunded,
-          COUNT(CASE WHEN payment_status = 'paid' THEN 1 END)::int AS paid_orders,
-          COUNT(CASE WHEN refund_status = 'success' THEN 1 END)::int AS refunded_orders
+          COALESCE(SUM(CASE WHEN payment_status IN ('paid', 'partially_refunded', 'refunded') THEN total_amount ELSE 0 END), 0) AS gross_revenue,
+          COALESCE(SUM(CASE WHEN refund_status = 'success' OR payment_status IN ('partially_refunded', 'refunded') THEN COALESCE(refund_amount, 0) ELSE 0 END), 0) AS total_refunded,
+          COUNT(CASE WHEN payment_status IN ('paid', 'partially_refunded', 'refunded') THEN 1 END)::int AS paid_orders,
+          COUNT(CASE WHEN refund_status = 'success' OR payment_status IN ('partially_refunded', 'refunded') THEN 1 END)::int AS refunded_orders
         FROM orders WHERE TRUE ${dateFilter}
       `, params),
       pool.query(`
         SELECT DATE(created_at) AS date,
-               COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) AS revenue,
-               COALESCE(SUM(CASE WHEN refund_status = 'success' THEN refund_amount ELSE 0 END), 0) AS refunded
+               COALESCE(SUM(CASE WHEN payment_status IN ('paid', 'partially_refunded', 'refunded') THEN total_amount ELSE 0 END), 0) AS revenue,
+               COALESCE(SUM(CASE WHEN refund_status = 'success' OR payment_status IN ('partially_refunded', 'refunded') THEN COALESCE(refund_amount, 0) ELSE 0 END), 0) AS refunded
           FROM orders WHERE TRUE ${dateFilter}
          GROUP BY DATE(created_at) ORDER BY date ASC
       `, params),
-      pool.query(`SELECT COALESCE(SUM(refund_amount), 0) AS pending_refunds FROM orders WHERE refund_status = 'pending'`),
+      pool.query(`
+        SELECT COALESCE((SELECT SUM(refund_amount) FROM orders WHERE refund_status = 'pending'), 0)
+             + COALESCE((SELECT SUM(refund_amount) FROM return_requests WHERE status = 'refund_pending'), 0) AS pending_refunds
+      `),
     ]);
 
     const s            = summaryResult.rows[0];
@@ -582,6 +667,7 @@ module.exports = {
   deactivateAdminAccount,
   activateAdminAccount,
   uploadProductImages,
+  uploadGenericMedia,
   deleteProductImage,
   reorderProductImages,
   setPrimaryProductImage,

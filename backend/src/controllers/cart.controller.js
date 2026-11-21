@@ -38,6 +38,10 @@ const addItem = async (req, res) => {
   try {
     const { product_id, quantity = 1, variant_id } = req.body;
     if (!product_id) return res.status(400).json({ error: 'product_id is required' });
+    const qty = parseInt(quantity, 10);
+    if (isNaN(qty) || qty < 1 || qty > 100) {
+      return res.status(400).json({ error: 'Quantity must be an integer between 1 and 100' });
+    }
 
     await client.query('BEGIN');
 
@@ -93,17 +97,18 @@ const addItem = async (req, res) => {
       stockToCheck = productRows[0].stock_quantity;
     }
 
-    // Check existing cart quantity for this exact product + variant combination
+    // Check existing cart quantity for this exact product + variant combination (with row lock)
     const { rows: existing } = await client.query(
       `SELECT id, quantity FROM cart_items
         WHERE customer_id = $1
           AND product_id  = $2
-          AND (variant_id = $3 OR (variant_id IS NULL AND $3::uuid IS NULL))`,
+          AND (variant_id = $3 OR (variant_id IS NULL AND $3::uuid IS NULL))
+        FOR UPDATE`,
       [req.user.id, product_id, variant_id || null]
     );
 
     const currentQty  = existing.length ? existing[0].quantity : 0;
-    const newTotalQty = currentQty + quantity;
+    const newTotalQty = currentQty + qty;
 
     if (newTotalQty > stockToCheck) {
       await client.query('ROLLBACK');
@@ -119,7 +124,7 @@ const addItem = async (req, res) => {
       await client.query(
         `INSERT INTO cart_items (id, customer_id, product_id, quantity, variant_id, variant_label)
          VALUES ($1,$2,$3,$4,$5,$6)`,
-        [uuid(), req.user.id, product_id, quantity, variant_id || null, variantLabel]
+        [uuid(), req.user.id, product_id, qty, variant_id || null, variantLabel]
       );
     }
 
@@ -138,7 +143,10 @@ const updateItem = async (req, res) => {
   const client = await pool.connect();
   try {
     const { quantity } = req.body;
-    if (!quantity || quantity < 1) return res.status(400).json({ error: 'Quantity must be at least 1' });
+    const qty = parseInt(quantity, 10);
+    if (isNaN(qty) || qty < 1 || qty > 100) {
+      return res.status(400).json({ error: 'Quantity must be an integer between 1 and 100' });
+    }
 
     await client.query('BEGIN');
 
@@ -159,14 +167,14 @@ const updateItem = async (req, res) => {
       return res.status(404).json({ error: 'Cart item not found' });
     }
 
-    if (quantity > rows[0].stock_quantity) {
+    if (qty > rows[0].stock_quantity) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'Insufficient stock' });
     }
 
     await client.query(
       'UPDATE cart_items SET quantity = $1 WHERE id = $2 AND customer_id = $3',
-      [quantity, req.params.cartItemId, req.user.id]
+      [qty, req.params.cartItemId, req.user.id]
     );
 
     await client.query('COMMIT');
@@ -249,7 +257,7 @@ const validateGuestCart = async (req, res) => {
     let variantMap = {};
     if (variantIds.length > 0) {
       const { rows: variants } = await pool.query(
-        `SELECT id, price, stock_quantity FROM product_variants WHERE id = ANY($1)`,
+        `SELECT id, product_id, price, stock_quantity, is_active FROM product_variants WHERE id = ANY($1)`,
         [variantIds]
       );
       variantMap = Object.fromEntries(variants.map(v => [v.id, v]));
@@ -261,6 +269,14 @@ const validateGuestCart = async (req, res) => {
       if (!p) {
         valid = false;
         return { product_id: item.product_id, quantity: item.quantity, available: false, error: 'Product no longer available' };
+      }
+
+      if (item.variant_id) {
+        const v = variantMap[item.variant_id];
+        if (!v || v.product_id !== item.product_id || !v.is_active) {
+          valid = false;
+          return { product_id: item.product_id, variant_id: item.variant_id, quantity: item.quantity, available: false, error: 'Selected variant is not available' };
+        }
       }
 
       const effectiveStock = item.variant_id && variantMap[item.variant_id]

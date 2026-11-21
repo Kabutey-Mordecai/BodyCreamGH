@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { ordersAPI, deliveriesAPI, reviewsAPI } from '../services/api';
+import { useEffect, useState, useRef } from 'react';
+import { useParams, useSearchParams, Link } from 'react-router-dom';
+import { ordersAPI, deliveriesAPI, reviewsAPI, paymentsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../context/ToastContext';
 import StarRating from '../components/StarRating';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { isSafePaystackCheckoutUrl } from '../utils/safePaystackUrl';
 import './OrderDetail.css';
 
 const ORDER_STATUS_STEPS = [
@@ -42,10 +45,11 @@ function isTerminalOrder(order) {
 
 function getRefundMessage(order) {
   if (!order) return null;
-  if (order.status === 'cancelled' && order.payment_status === 'paid' && (order.refund_status || 'not_requested') === 'not_requested') {
+  if (order.status === 'cancelled' && ['paid', 'payment_review'].includes(order.payment_status) && (order.refund_status || 'not_requested') === 'not_requested') {
     return 'This order was cancelled. A refund may be pending.';
   }
   if (order.refund_status === 'pending') return 'Refund pending';
+  if (order.refund_status === 'needs_attention') return 'Refund needs additional details - please contact support';
   if (order.refund_status === 'failed') return 'Refund failed - contact support';
   if (order.status === 'refunded' || order.refund_status === 'success') return 'Refunded';
   return null;
@@ -53,7 +57,9 @@ function getRefundMessage(order) {
 
 export default function OrderDetail() {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const settings = useSettings();
   const { showToast } = useToast();
 
   const [order, setOrder]         = useState(null);
@@ -62,6 +68,9 @@ export default function OrderDetail() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState('');
   const [retryCount, setRetryCount] = useState(0);
+  const [retryingPay, setRetryingPay]     = useState(false);
+  const [retryPayError, setRetryPayError] = useState('');
+  const retryPayLock = useRef(false);
 
   // Cancel request form
   const [cancelFormOpen, setCancelFormOpen] = useState(false);
@@ -69,11 +78,14 @@ export default function OrderDetail() {
   const [cancelSaving, setCancelSaving]     = useState(false);
   const [cancelError, setCancelError]       = useState('');
 
-  // Return request form
+  // Return request form (item-level partial returns)
   const [returnFormOpen, setReturnFormOpen] = useState(false);
   const [returnReason, setReturnReason]     = useState('');
   const [returnSaving, setReturnSaving]     = useState(false);
   const [returnError, setReturnError]       = useState('');
+  const [returnData, setReturnData]         = useState({ returns: [], returnable_items: [], within_window: true, return_window_days: 14 });
+  const [selectedReturnQty, setSelectedReturnQty] = useState({});
+  const partialReturnsEnabled = settings?.partial_returns_enabled === true || settings?.partial_returns_enabled === 'true';
 
   // Review prompt state — only populated for delivered orders when auth'd
   const [reviewedIds, setReviewedIds]   = useState(new Set());
@@ -132,6 +144,20 @@ export default function OrderDetail() {
       .finally(() => setLoading(false));
   }, [id, retryCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-scroll to review prompt if arrived via review link (e.g. from post-delivery email)
+  useEffect(() => {
+    if (!loading && order?.status === 'delivered' && (searchParams.get('review') === '1' || window.location.hash === '#reviews')) {
+      const timer = setTimeout(() => {
+        const targetProd = searchParams.get('product');
+        const targetEl = targetProd
+          ? document.getElementById(`review-card-${targetProd}`) || document.querySelector('.od-review-section')
+          : document.querySelector('.od-review-section');
+        if (targetEl) targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 250);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, order, searchParams]);
+
   const updateReviewForm = (productId, field, value) =>
     setReviewForms(prev => ({
       ...prev,
@@ -181,20 +207,94 @@ export default function OrderDetail() {
     }
   };
 
+  const loadReturns = async () => {
+    try {
+      const { data } = await ordersAPI.getReturns(id);
+      if (data) setReturnData(data);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => {
+    if (order?.status === 'delivered' && partialReturnsEnabled) loadReturns();
+  }, [id, order?.status, partialReturnsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleRequestReturn = async () => {
+    if (!partialReturnsEnabled) {
+      if (!returnReason.trim()) { setReturnError('Please provide a reason.'); return; }
+      setReturnSaving(true);
+      setReturnError('');
+      try {
+        await ordersAPI.requestReturn(id, returnReason.trim());
+        setOrder(prev => ({ ...prev, return_requested: true, return_request_rejected: false }));
+        setReturnFormOpen(false);
+        setReturnReason('');
+        showToast('Return request submitted', 'success');
+      } catch (err) {
+        setReturnError(err.response?.data?.error || 'Could not submit request. Please try again.');
+      } finally {
+        setReturnSaving(false);
+      }
+      return;
+    }
+    const chosenItems = Object.entries(selectedReturnQty)
+      .filter(([, q]) => Number(q) > 0)
+      .map(([order_item_id, quantity]) => ({ order_item_id, quantity: Number(quantity) }));
+    if (chosenItems.length === 0) { setReturnError('Select at least one item to return.'); return; }
     if (!returnReason.trim()) { setReturnError('Please provide a reason.'); return; }
     setReturnSaving(true);
     setReturnError('');
     try {
-      await ordersAPI.requestReturn(id, returnReason.trim());
-      setOrder(prev => ({ ...prev, return_requested: true, return_request_rejected: false }));
+      await ordersAPI.createReturn(id, { items: chosenItems, reason: returnReason.trim() });
       setReturnFormOpen(false);
       setReturnReason('');
+      setSelectedReturnQty({});
+      await loadReturns();
       showToast('Return request submitted', 'success');
     } catch (err) {
       setReturnError(err.response?.data?.error || 'Could not submit request. Please try again.');
     } finally {
       setReturnSaving(false);
+    }
+  };
+
+  const handleCancelPartialReturn = async (returnId) => {
+    try {
+      await ordersAPI.cancelReturn(id, returnId);
+      await loadReturns();
+      showToast('Return request cancelled', 'success');
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Could not cancel return request', 'error');
+    }
+  };
+
+  const handleRetryPayment = async () => {
+    if (!order || retryPayLock.current) return;
+    retryPayLock.current = true;
+    let redirecting = false;
+    setRetryPayError('');
+    setRetryingPay(true);
+
+    try {
+      const { data } = await paymentsAPI.initialize(order.id);
+      if (!isSafePaystackCheckoutUrl(data?.authorization_url)) {
+        throw new Error('Invalid payment redirect URL received. Please try again.');
+      }
+      try {
+        sessionStorage.removeItem('pending_guest_payment');
+        sessionStorage.setItem(
+          'pending_auth_payment',
+          JSON.stringify({ orderId: order.id, orderNumber: order.order_number || '' })
+        );
+      } catch { /* ignore storage errors */ }
+      redirecting = true;
+      window.location.assign(data.authorization_url);
+    } catch (err) {
+      setRetryPayError(err.response?.data?.error || err.message || 'Could not start payment. Please try again.');
+    } finally {
+      if (!redirecting) {
+        retryPayLock.current = false;
+        setRetryingPay(false);
+      }
     }
   };
 
@@ -260,9 +360,23 @@ export default function OrderDetail() {
         <div className="order-detail-header">
           <div>
             <span className="section-label">Order Receipt</span>
-            <h1 className="page-title" style={{ marginBottom: '6px' }}>
-              Order #{orderNum}
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: '6px' }}>
+              <h1 className="page-title" style={{ margin: 0 }}>
+                Order #{orderNum}
+              </h1>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={(e) => {
+                  navigator.clipboard?.writeText(orderNum).catch(() => {});
+                  const btn = e.currentTarget;
+                  btn.textContent = '✓ Copied';
+                  setTimeout(() => { btn.textContent = 'Copy #'; }, 2000);
+                }}
+              >
+                Copy #
+              </button>
+            </div>
             <p className="order-detail-date">
               Placed on{' '}
               {new Date(order.created_at).toLocaleDateString('en-GB', {
@@ -274,6 +388,29 @@ export default function OrderDetail() {
             {order.status}
           </span>
         </div>
+
+        {/* ── Payment pending banner (authenticated retry) ── */}
+        {user && order.payment_method === 'paystack' && ['unpaid', 'pending'].includes(order.payment_status) && ['pending', 'confirmed'].includes(order.status) && (
+          <section className="order-state-banner order-state-banner--info" role="status" aria-live="polite">
+            <div>
+              <h2>Payment Pending</h2>
+              <p>Your order is reserved, but online payment has not been completed yet.</p>
+              {retryPayError && (
+                <p className="od-review-error" role="alert" style={{ marginTop: '8px' }}>{retryPayError}</p>
+              )}
+              <button
+                type="button"
+                className="btn btn-accent"
+                style={{ marginTop: '12px' }}
+                disabled={retryingPay}
+                aria-busy={retryingPay}
+                onClick={handleRetryPayment}
+              >
+                {retryingPay ? 'Redirecting to Paystack…' : `Pay ${money(order.total_amount)} Now`}
+              </button>
+            </div>
+          </section>
+        )}
 
         {order.status === 'cancelled' && (
           <section className="order-state-banner order-state-banner--cancelled">
@@ -389,7 +526,7 @@ export default function OrderDetail() {
 
         {/* ── Return request banner/form ────────────────── */}
         {user && order.status === 'delivered' &&
-          order.payment_status === 'paid' &&
+          ['paid', 'partially_refunded'].includes(order.payment_status) &&
           (!order.refund_status || order.refund_status === 'not_requested') && (
           <section className="order-state-banner order-state-banner--info">
             {order.return_requested && !order.return_request_rejected ? (
@@ -426,8 +563,66 @@ export default function OrderDetail() {
                 )}
               </div>
             )}
+            {partialReturnsEnabled && returnData.returns.length > 0 && (
+              <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {returnData.returns.map((rr) => (
+                  <div key={rr.id} style={{ border: '1px solid var(--color-border, #e5e7eb)', borderRadius: 8, padding: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                      <strong>Return · GHS {Number(rr.refund_amount || 0).toFixed(2)}</strong>
+                      <span className="badge">{rr.status}</span>
+                    </div>
+                    <p style={{ margin: '4px 0', fontSize: '0.86rem', color: 'var(--color-muted)' }}>{rr.reason}</p>
+                    {Array.isArray(rr.items) && rr.items.length > 0 && (
+                      <ul style={{ margin: '4px 0 6px 18px', fontSize: '0.84rem' }}>
+                        {rr.items.map((it) => (
+                          <li key={it.id}>{it.product_name}{it.variant_label ? ` (${it.variant_label})` : ''} × {it.quantity}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {rr.status === 'pending' && (
+                      <button type="button" className="btn btn-outline" style={{ fontSize: '0.8rem', padding: '4px 10px' }} onClick={() => handleCancelPartialReturn(rr.id)}>
+                        Cancel return request
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
             {returnFormOpen && (
               <div className="od-request-form">
+                {partialReturnsEnabled && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
+                  <strong style={{ fontSize: '0.9rem' }}>Select items to return:</strong>
+                  {(returnData.returnable_items || []).filter(it => Number(it.remaining_quantity) > 0).map((it) => {
+                    const qty = Number(selectedReturnQty[it.id] || 0);
+                    return (
+                      <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--color-border, #e5e7eb)', borderRadius: 8 }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer', fontSize: '0.88rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={qty > 0}
+                            onChange={(e) => setSelectedReturnQty(prev => ({ ...prev, [it.id]: e.target.checked ? 1 : 0 }))}
+                          />
+                          <span>{it.product_name}{it.variant_label ? ` (${it.variant_label})` : ''} — GHS {Number(it.price_at_purchase).toFixed(2)} (max {it.remaining_quantity})</span>
+                        </label>
+                        {qty > 0 && (
+                          <input
+                            type="number"
+                            min={1}
+                            max={it.remaining_quantity}
+                            value={qty}
+                            onChange={(e) => {
+                              const v = Math.max(1, Math.min(Number(it.remaining_quantity), parseInt(e.target.value, 10) || 1));
+                              setSelectedReturnQty(prev => ({ ...prev, [it.id]: v }));
+                            }}
+                            style={{ width: 64, padding: '4px 8px' }}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                )}
                 <textarea
                   rows={3}
                   className="od-review-input od-review-textarea"
@@ -448,7 +643,7 @@ export default function OrderDetail() {
                   <button
                     className="btn btn-outline"
                     disabled={returnSaving}
-                    onClick={() => { setReturnFormOpen(false); setReturnError(''); setReturnReason(''); }}
+                    onClick={() => { setReturnFormOpen(false); setReturnError(''); setReturnReason(''); setSelectedReturnQty({}); }}
                   >
                     Cancel
                   </button>
@@ -680,9 +875,25 @@ export default function OrderDetail() {
                 const form = reviewForms[pid] || { rating: 0, title: '', body: '' };
 
                 return (
-                  <div key={pid || i} className={`od-review-card ${done ? 'od-review-card--done' : ''}`}>
-                    <div className="od-review-product">
-                      <span className="od-review-product-name">{item.name || item.product_name}</span>
+                  <div
+                    key={pid || i}
+                    id={`review-card-${pid}`}
+                    className={`od-review-card ${done ? 'od-review-card--done' : ''}`}
+                    style={searchParams.get('product') === String(pid) ? { border: '2px solid var(--color-accent)', boxShadow: '0 0 0 3px rgba(201,165,90,0.15)' } : {}}
+                  >
+                    <div className="od-review-product" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {item.image_url && (
+                          <img src={resolveImageUrl(item.image_url)} alt={item.name} style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--color-border)' }} />
+                        )}
+                        <div>
+                          <span className="od-review-product-name">{item.name || item.product_name}</span>
+                          <span style={{ fontSize: '0.8rem', color: 'var(--color-muted)', display: 'block' }}>GHS {parseFloat(item.price_at_purchase || item.price || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <span className="verified-badge-pill" style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-accent-dark)', background: 'var(--color-accent-light)', padding: '3px 8px', borderRadius: 999 }}>
+                        ✓ Verified Purchase
+                      </span>
                     </div>
 
                     {done ? (

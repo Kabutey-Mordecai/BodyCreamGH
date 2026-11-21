@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ordersAPI } from '../services/api';
+import { ordersAPI, reviewsAPI } from '../services/api';
 import './Orders.css';
 
 function getDateLabel(dateStr) {
@@ -31,7 +31,7 @@ function groupOrders(orders) {
 }
 
 function refundHint(order) {
-  if (order.status === 'cancelled' && order.payment_status === 'paid' && (order.refund_status || 'not_requested') === 'not_requested') {
+  if (order.status === 'cancelled' && ['paid', 'payment_review'].includes(order.payment_status) && (order.refund_status || 'not_requested') === 'not_requested') {
     return 'Refund may be pending';
   }
   if (order.refund_status === 'pending') return 'Refund pending';
@@ -41,12 +41,13 @@ function refundHint(order) {
 }
 
 export default function Orders() {
-  const [orders, setOrders]         = useState([]);
-  const [pagination, setPagination] = useState(null);
-  const [page, setPage]             = useState(1);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
-  const [retryCount, setRetryCount] = useState(0);
+  const [orders, setOrders]                 = useState([]);
+  const [pendingPrompts, setPendingPrompts] = useState([]);
+  const [pagination, setPagination]         = useState(null);
+  const [page, setPage]                     = useState(1);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState('');
+  const [retryCount, setRetryCount]         = useState(0);
 
   useEffect(() => {
     setLoading(true);
@@ -59,7 +60,21 @@ export default function Orders() {
       })
       .catch(() => setError('Failed to load orders. Please check your connection.'))
       .finally(() => setLoading(false));
+
+    reviewsAPI.getPendingPrompts()
+      .then(({ data }) => setPendingPrompts(data.prompts || []))
+      .catch(() => setPendingPrompts([]));
   }, [page, retryCount]);
+
+  const [copiedNum, setCopiedNum] = useState('');
+
+  const handleCopyOrderNum = (e, num) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard?.writeText(num).catch(() => {});
+    setCopiedNum(num);
+    setTimeout(() => setCopiedNum(prev => (prev === num ? '' : prev)), 2000);
+  };
 
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
 
@@ -79,6 +94,28 @@ export default function Orders() {
                 : `You've placed ${orders.length} order${orders.length === 1 ? '' : 's'} with us.`}
           </p>
         </div>
+
+        {/* ── Pending review prompt banner for delivered orders ── */}
+        {pendingPrompts.length > 0 && (
+          <div className="orders-review-prompt-banner card">
+            <div className="orders-review-prompt-icon">⭐</div>
+            <div className="orders-review-prompt-body">
+              <strong>Your opinion matters!</strong>
+              <p>
+                You recently received <strong>{pendingPrompts[0].product_name}</strong>
+                {pendingPrompts.length > 1 ? ` and ${pendingPrompts.length - 1} other item${pendingPrompts.length > 2 ? 's' : ''}` : ''}.
+                Please share your honest review to help fellow shoppers!
+              </p>
+            </div>
+            <Link
+              to={`/orders/${pendingPrompts[0].order_id}?product=${pendingPrompts[0].product_id}&review=1`}
+              className="btn btn-accent btn-sm"
+              style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              Review Items →
+            </Link>
+          </div>
+        )}
 
         {error && (
           <div className="alert alert-error" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
@@ -120,7 +157,26 @@ export default function Orders() {
                       <div className="order-row-main">
                         <div className="order-row-id">
                           <span className="section-label" style={{ marginBottom: 4 }}>Order</span>
-                          <span className="order-number">#{orderNum}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span className="order-number">#{orderNum}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleCopyOrderNum(e, orderNum)}
+                              title="Copy order number"
+                              style={{
+                                background: 'none',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 4,
+                                padding: '2px 7px',
+                                fontSize: '0.72rem',
+                                cursor: 'pointer',
+                                color: copiedNum === orderNum ? 'var(--color-accent-dark)' : 'var(--color-muted)',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {copiedNum === orderNum ? '✓ Copied' : 'Copy'}
+                            </button>
+                          </span>
                         </div>
                         <div className="order-row-date">
                           <span className="order-meta-label">Placed on</span>
@@ -143,6 +199,11 @@ export default function Orders() {
                           <span className={`badge badge-${order.status}`}>
                             {order.status}
                           </span>
+                          {order.status === 'delivered' && (
+                            <span className="badge badge-review-cta" style={{ background: 'var(--color-accent)', color: '#fff', fontWeight: 600 }}>
+                              ⭐ Review
+                            </span>
+                          )}
                           {hint && (
                             <span className={`badge ${
                               hint === 'Refunded' || order.refund_status === 'success'

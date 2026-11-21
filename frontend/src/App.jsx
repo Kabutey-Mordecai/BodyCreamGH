@@ -1,65 +1,120 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
-import { useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
+import WhatsAppFloat from './components/WhatsAppFloat';
 import ProtectedRoute from './components/ProtectedRoute';
+import ErrorBoundary from './components/ErrorBoundary';
+import Home from './pages/Home';
 
 function ScrollToTop() {
-  const { pathname } = useLocation();
-  useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  const { pathname, hash } = useLocation();
+  useEffect(() => {
+    if (hash) {
+      const id = hash.slice(1);
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth' });
+        return;
+      }
+    }
+    window.scrollTo(0, 0);
+  }, [pathname, hash]);
   return null;
 }
 
-import Home            from './pages/Home';
-import Shop            from './pages/Shop';
-import ProductPage     from './pages/ProductPage';
-import Cart            from './pages/Cart';
-import Checkout        from './pages/Checkout';
-import Login           from './pages/Login';
-import Register        from './pages/Register';
-import ForgotPassword  from './pages/ForgotPassword';
-import ResetPassword   from './pages/ResetPassword';
-import PaymentCallback from './pages/PaymentCallback';
-import Account         from './pages/Account';
-import Orders          from './pages/Orders';
-import OrderDetail     from './pages/OrderDetail';
-import Wishlist        from './pages/Wishlist';
-import Unsubscribe     from './pages/Unsubscribe';
-import TrackOrder      from './pages/TrackOrder';
+function PageFallback() {
+  return (
+    <div className="container" style={{ padding: '64px 24px', textAlign: 'center', color: 'var(--color-muted)' }}>
+      Loading…
+    </div>
+  );
+}
+
+// Route-level code splitting keeps the initial storefront JS lean on mobile networks.
+const Shop            = lazy(() => import('./pages/Shop'));
+const ProductPage     = lazy(() => import('./pages/ProductPage'));
+const Cart            = lazy(() => import('./pages/Cart'));
+const Checkout        = lazy(() => import('./pages/Checkout'));
+const Login           = lazy(() => import('./pages/Login'));
+const Register        = lazy(() => import('./pages/Register'));
+const ForgotPassword  = lazy(() => import('./pages/ForgotPassword'));
+const ResetPassword   = lazy(() => import('./pages/ResetPassword'));
+const PaymentCallback = lazy(() => import('./pages/PaymentCallback'));
+const Account         = lazy(() => import('./pages/Account'));
+const Orders          = lazy(() => import('./pages/Orders'));
+const OrderDetail     = lazy(() => import('./pages/OrderDetail'));
+const Wishlist        = lazy(() => import('./pages/Wishlist'));
+const Unsubscribe     = lazy(() => import('./pages/Unsubscribe'));
+const TrackOrder      = lazy(() => import('./pages/TrackOrder'));
+
+function RouteFade({ children }) {
+  const { pathname } = useLocation();
+  return <div key={pathname} className="page-transition">{children}</div>;
+}
+
+function AdminRedirect() {
+  useEffect(() => {
+    window.location.href = 'http://localhost:5174';
+  }, []);
+  return (
+    <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+      <h2>Opening Admin Console…</h2>
+      <p style={{ marginTop: 12, color: 'var(--color-muted)' }}>
+        Redirecting to port 5174. If not redirected automatically,{' '}
+        <a href="http://localhost:5174" style={{ color: 'var(--color-accent-dark)', fontWeight: 600 }}>click here to enter Admin</a>.
+      </p>
+    </div>
+  );
+}
 
 export default function App() {
   return (
-    <div className="app">
-      <ScrollToTop />
-      <Navigation />
+    <ErrorBoundary>
+      <div className="app">
+        <ScrollToTop />
+        <Navigation />
 
-      <main className="main-content">
-        <Routes>
-          {/* Public routes — anyone can visit these */}
-          <Route path="/"                    element={<Home />} />
-          <Route path="/shop"                element={<Shop />} />
-          <Route path="/products/:id"        element={<ProductPage />} />
-          <Route path="/login"               element={<Login />} />
-          <Route path="/register"            element={<Register />} />
-          <Route path="/forgot-password"     element={<ForgotPassword />} />
-          <Route path="/reset-password"      element={<ResetPassword />} />
-          <Route path="/unsubscribe"         element={<Unsubscribe />} />
-          <Route path="/track"               element={<TrackOrder />} />
+        <main className="main-content">
+          <Suspense fallback={<PageFallback />}>
+            <RouteFade>
+            <Routes>
+              {/* Public routes — anyone can visit these */}
+              <Route path="/"                    element={<Home />} />
+              <Route path="/shop"                element={<Shop />} />
+              <Route path="/products/:id"        element={<ProductPage />} />
+              <Route path="/login"               element={<Login />} />
+              <Route path="/register"            element={<Register />} />
+              <Route path="/forgot-password"     element={<ForgotPassword />} />
+              <Route path="/reset-password"      element={<ResetPassword />} />
+              <Route path="/unsubscribe"         element={<Unsubscribe />} />
+              <Route path="/track"               element={<TrackOrder />} />
+              <Route path="/track-order"         element={<TrackOrder />} />
 
-          {/* Payment callback — visited after Paystack redirects back */}
-          <Route path="/payment/callback"    element={<PaymentCallback />} />
+              {/* Payment callback — visited after Paystack redirects back */}
+              <Route path="/payment/callback"    element={<ErrorBoundary><PaymentCallback /></ErrorBoundary>} />
 
-          {/* Protected routes — redirect to /login if not authenticated */}
-          <Route path="/cart"       element={<Cart />} />
-          <Route path="/checkout"   element={<Checkout />} />
-          <Route path="/account"    element={<ProtectedRoute><Account /></ProtectedRoute>} />
-          <Route path="/orders"     element={<ProtectedRoute><Orders /></ProtectedRoute>} />
-          <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
-          <Route path="/wishlist"   element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
-        </Routes>
-      </main>
+              {/* Cart & checkout (guest + authenticated) */}
+              <Route path="/cart"       element={<Cart />} />
+              <Route path="/checkout"   element={<ErrorBoundary><Checkout /></ErrorBoundary>} />
 
-      <Footer />
-    </div>
+              {/* Admin Portal Redirect (port 5174 in dev) */}
+              <Route path="/admin"      element={<AdminRedirect />} />
+              <Route path="/admin/*"    element={<AdminRedirect />} />
+
+              {/* Protected routes — redirect to /login if not authenticated */}
+              <Route path="/account"    element={<ProtectedRoute><Account /></ProtectedRoute>} />
+              <Route path="/orders"     element={<ProtectedRoute><Orders /></ProtectedRoute>} />
+              <Route path="/orders/:id" element={<ProtectedRoute><OrderDetail /></ProtectedRoute>} />
+              <Route path="/wishlist"   element={<ProtectedRoute><Wishlist /></ProtectedRoute>} />
+            </Routes>
+            </RouteFade>
+          </Suspense>
+        </main>
+
+        <Footer />
+        <WhatsAppFloat />
+      </div>
+    </ErrorBoundary>
   );
 }

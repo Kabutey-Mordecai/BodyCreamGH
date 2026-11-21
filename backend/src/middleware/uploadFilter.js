@@ -103,4 +103,48 @@ function uploadMiddleware(req, res, next) {
   });
 }
 
-module.exports = { uploadMiddleware, MAX_FILES_PER_REQUEST };
+// ── Single Media Upload Middleware (Generic Banners, Logos, Promos) ───────────
+const singleUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5 MB per file
+    files: 1,
+  },
+  fileFilter: (_req, file, cb) => {
+    if (!ALLOWED_MIMES.includes(file.mimetype)) {
+      return cb(new Error('Only JPG, PNG, and WebP images are allowed'));
+    }
+    cb(null, true);
+  },
+});
+
+function uploadSingleMediaMiddleware(req, res, next) {
+  singleUpload.any()(req, res, (err) => {
+    if (err) {
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(413).json({ error: 'Image file too large. Maximum size is 5 MB.' });
+        }
+        if (err.code === 'LIMIT_FILE_COUNT') {
+          return res.status(400).json({ error: 'Too many files. Only 1 image can be uploaded here.' });
+        }
+      }
+      return res.status(400).json({ error: err.message });
+    }
+
+    const file = req.file || (req.files && req.files[0]);
+    if (!file) {
+      return res.status(400).json({ error: 'No image file uploaded.' });
+    }
+
+    const magicError = verifyMagicBytes(file);
+    if (magicError) {
+      return res.status(400).json({ error: magicError });
+    }
+
+    req.file = file;
+    next();
+  });
+}
+
+module.exports = { uploadMiddleware, uploadSingleMediaMiddleware, MAX_FILES_PER_REQUEST };

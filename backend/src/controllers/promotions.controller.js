@@ -1,6 +1,7 @@
 'use strict';
 
 const pool   = require('../config/database');
+const { bustCache } = require('./product.controller');
 const logger = require('../utils/logger');
 
 // ── Public ────────────────────────────────────────────────────────────────────
@@ -16,6 +17,7 @@ const getActivePromotions = async (req, res) => {
          AND ends_at   >= NOW()
        ORDER BY created_at DESC`
     );
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.json(rows);
   } catch (err) {
     logger.error('Get active promotions error', { err: err.message });
@@ -84,6 +86,7 @@ const createPromotion = async (req, res) => {
         category || null, product_id || null, starts_at, ends_at,
       ]
     );
+    bustCache();
     res.status(201).json(rows[0]);
   } catch (err) {
     logger.error('Create promotion error', { err: err.message });
@@ -123,6 +126,7 @@ const updatePromotion = async (req, res) => {
       ]
     );
     if (rowCount === 0) return res.status(404).json({ error: 'Promotion not found.' });
+    bustCache();
     res.json(rows[0]);
   } catch (err) {
     logger.error('Update promotion error', { err: err.message });
@@ -139,6 +143,7 @@ const togglePromotion = async (req, res) => {
       [id]
     );
     if (rowCount === 0) return res.status(404).json({ error: 'Promotion not found.' });
+    bustCache();
     res.json({ id: rows[0].id, is_active: rows[0].is_active });
   } catch (err) {
     logger.error('Toggle promotion error', { err: err.message });
@@ -151,6 +156,7 @@ const deletePromotion = async (req, res) => {
   try {
     const { rowCount } = await pool.query('DELETE FROM promotions WHERE id = $1', [id]);
     if (rowCount === 0) return res.status(404).json({ error: 'Promotion not found.' });
+    bustCache();
     res.json({ success: true });
   } catch (err) {
     logger.error('Delete promotion error', { err: err.message });

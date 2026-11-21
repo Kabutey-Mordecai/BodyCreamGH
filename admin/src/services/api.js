@@ -94,6 +94,11 @@ export const adminAPI = {
   createAdminAccount:     (data)   => api.post('/admin/accounts', data),
   deactivateAdminAccount: (id)     => api.patch(`/admin/accounts/${id}/deactivate`),
   activateAdminAccount:   (id)     => api.patch(`/admin/accounts/${id}/activate`),
+  uploadMedia: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/admin/media/upload', formData);
+  },
 };
 
 // ── Products ──────────────────────────────────────────────────────────
@@ -128,11 +133,18 @@ export const ordersAPI = {
   updateStatus:        (id, status, note)  => api.patch(`/orders/${id}/status`, { status, note }),
   cancelOrder:         (id, reason)        => api.post(`/orders/${id}/cancel`, { reason }),
   refundOrder:         (id, data)          => api.post(`/orders/${id}/refund`, data),
+  refundDuplicatePayment: (orderId, paymentId, data = {}) =>
+    api.post(`/orders/${orderId}/payments/${paymentId}/refund-duplicate`, data),
+  markPaid:            (id, note)          => api.post(`/orders/${id}/mark-paid`, { note }),
   getStatusLog:        (id)                => api.get(`/orders/${id}/log`),
   approveCancelRequest:(id)                => api.post(`/orders/${id}/approve-cancel`),
-  rejectCancelRequest: (id)                => api.post(`/orders/${id}/reject-cancel`),
+  rejectCancelRequest: (id, data)          => api.post(`/orders/${id}/reject-cancel`, data),
   approveReturnRequest:(id)                => api.post(`/orders/${id}/approve-return`),
-  rejectReturnRequest: (id)                => api.post(`/orders/${id}/reject-return`),
+  rejectReturnRequest: (id, data)          => api.post(`/orders/${id}/reject-return`, data),
+  getOrderReturns:     (id)                => api.get(`/orders/${id}/returns`),
+  adminCreatePartialReturn: (orderId, data) => api.post(`/orders/admin/${orderId}/returns`, data),
+  approvePartialReturn:(returnId, data={}) => api.post(`/orders/admin/returns/${returnId}/approve`, data),
+  rejectPartialReturn: (returnId, data={}) => api.post(`/orders/admin/returns/${returnId}/reject`, data),
 };
 
 // ── Inventory ─────────────────────────────────────────────────────────
@@ -168,9 +180,11 @@ export const couponsAPI = {
 
 // ── Deliveries ────────────────────────────────────────────────────────
 export const deliveriesAPI = {
-  getByOrder: (orderId)              => api.get(`/deliveries/order/${orderId}`),
-  create:     (data)                 => api.post('/deliveries', data),
-  update:     (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
+  getByOrder:      (orderId)              => api.get(`/deliveries/order/${orderId}`),
+  create:          (data)                 => api.post('/deliveries', data),
+  update:          (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
+  simulateAdvance: (trackingNumber)       => api.post(`/deliveries/simulate/advance/${trackingNumber}`),
+  simulateFull:    (trackingNumber, delay) => api.post(`/deliveries/simulate/full/${trackingNumber}${delay ? `?delay=${delay}` : ''}`),
 };
 
 // ── Product variants ──────────────────────────────────────────────────────────

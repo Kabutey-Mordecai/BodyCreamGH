@@ -17,13 +17,32 @@ const register = async (req, res) => {
     const { email, password, first_name, last_name, phone } = req.body;
 
     const existing = await UserModel.findByEmail(email);
-    if (existing) return res.status(400).json({ error: 'Email already registered' });
+    if (existing) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
 
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = uuid();
+    const customerId = uuid();
 
-    await UserModel.create(userId, { email, passwordHash, first_name, last_name, phone });
-    await CustomerModel.create(userId, phone);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        'INSERT INTO users (id, email, password_hash, first_name, last_name, phone, role) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+        [userId, email, passwordHash, first_name, last_name, phone, 'customer']
+      );
+      await client.query(
+        'INSERT INTO customers (id, user_id, phone) VALUES ($1, $2, $3)',
+        [customerId, userId, phone]
+      );
+      await client.query('COMMIT');
+    } catch (txErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txErr;
+    } finally {
+      client.release();
+    }
 
     sendWelcomeEmail(email, first_name).catch(err => logger.error('sendWelcomeEmail error', { err: err.message }));
 
@@ -48,15 +67,10 @@ function hashRefreshToken(raw) {
 }
 
 function getOtpHmacSecret() {
-  if (process.env.OTP_HMAC_SECRET) return process.env.OTP_HMAC_SECRET;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('OTP_HMAC_SECRET must be configured in production');
+  if (!process.env.OTP_HMAC_SECRET) {
+    throw new Error('OTP_HMAC_SECRET must be configured');
   }
-  if (!process.env.JWT_SECRET) {
-    throw new Error('OTP_HMAC_SECRET (or JWT_SECRET in dev) must be set');
-  }
-  // Dev-only domain-separated fallback so local dev works without extra env setup
-  return crypto.createHash('sha256').update(`dev-otp-hmac:${process.env.JWT_SECRET}`).digest('hex');
+  return process.env.OTP_HMAC_SECRET;
 }
 
 function hashOtp(otp) {
@@ -128,6 +142,10 @@ const login = async (req, res) => {
 
       sendOtpEmail(user.email, { firstName: user.first_name, otp })
         .catch(err => logger.error('Failed to send OTP email', { recipient: user.email, err: err.message }));
+
+      if (process.env.NODE_ENV === 'development') {
+        logger.info(`Development Admin OTP: ${otp}`);
+      }
 
       logger.info('Admin MFA challenge issued', { userId: user.id });
       return res.json({ mfa_required: true, mfa_token: mfaToken });
@@ -342,6 +360,16 @@ const logout = async (req, res) => {
 // Always returns the same message whether the email exists or not (prevents
 // attackers from discovering which emails are registered).
 
+const MAX_RESET_PIN_ATTEMPTS = 5;
+
+function hashResetPin(pin) {
+  return hashOtp(`reset:${String(pin).trim()}`);
+}
+
+function verifyResetPinHash(submittedPin, storedHash) {
+  return verifyOtpHash(`reset:${String(submittedPin).trim()}`, storedHash);
+}
+
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -356,19 +384,20 @@ const forgotPassword = async (req, res) => {
         [user.id]
       );
 
-      const token = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      const pin = crypto.randomInt(100000, 1000000).toString(); // 6-digit PIN
+      const pinHash = hashResetPin(pin);
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
       await pool.query(
-        `INSERT INTO password_reset_tokens (id, user_id, token, expires_at)
-         VALUES ($1, $2, $3, $4)`,
-        [uuid(), user.id, token, expiresAt]
+        `INSERT INTO password_reset_tokens (id, user_id, token, expires_at, attempts)
+         VALUES ($1, $2, $3, $4, 0)`,
+        [uuid(), user.id, pinHash, expiresAt]
       );
 
-      const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${token}`;
-      sendPasswordResetEmail(user.email, resetUrl).catch(err =>
+      const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${pin}&email=${encodeURIComponent(user.email)}`;
+      sendPasswordResetEmail(user.email, resetUrl, pin).catch(err =>
         // Log the failure with the recipient address so SMTP issues are
-        // diagnosable in production logs. Never log the token or the reset URL.
+        // diagnosable in production logs. Never log the PIN or the reset URL.
         logger.error('Password reset email failed to send', {
           recipient: user.email,
           err:       err.message,
@@ -388,18 +417,59 @@ const forgotPassword = async (req, res) => {
 
 const verifyResetToken = async (req, res) => {
   try {
-    const { token } = req.params;
+    const token = String(req.params.token || '').trim();
+    const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+    const genericErr = { valid: false, error: 'This code is invalid or has expired.' };
+
+    if (!token) return res.status(400).json(genericErr);
+
+    if (email) {
+      // Look up the latest active PIN for this email and compare in constant time
+      const { rows } = await pool.query(
+        `SELECT prt.id, prt.token, prt.attempts
+           FROM password_reset_tokens prt
+           JOIN users u ON u.id = prt.user_id
+          WHERE LOWER(u.email) = $1 AND prt.used = false AND prt.expires_at > NOW()
+          ORDER BY prt.created_at DESC
+          LIMIT 1`,
+        [email]
+      );
+      if (rows.length === 0) return res.status(400).json(genericErr);
+
+      const record = rows[0];
+      if ((record.attempts || 0) >= MAX_RESET_PIN_ATTEMPTS) {
+        await pool.query('UPDATE password_reset_tokens SET used = true WHERE id = $1', [record.id]);
+        return res.status(400).json(genericErr);
+      }
+
+      if (!verifyResetPinHash(token, record.token)) {
+        await pool.query(
+          `UPDATE password_reset_tokens
+              SET attempts = COALESCE(attempts, 0) + 1,
+                  used = CASE WHEN COALESCE(attempts, 0) + 1 >= $2 THEN true ELSE used END
+            WHERE id = $1`,
+          [record.id, MAX_RESET_PIN_ATTEMPTS]
+        );
+        return res.status(400).json(genericErr);
+      }
+
+      return res.json({ valid: true });
+    }
+
+    // Fallback for web link without ?email= parameter: look up by keyed HMAC hash
+    const pinHash = hashResetPin(token);
     const { rows } = await pool.query(
-      `SELECT id FROM password_reset_tokens
-       WHERE token = $1 AND used = false AND expires_at > NOW()`,
-      [token]
+      `SELECT id, token, attempts FROM password_reset_tokens
+        WHERE token = $1 AND used = false AND expires_at > NOW() AND COALESCE(attempts, 0) < $2
+        LIMIT 1`,
+      [pinHash, MAX_RESET_PIN_ATTEMPTS]
     );
-    if (rows.length === 0) {
-      return res.status(400).json({ valid: false, error: 'This link is invalid or has expired.' });
+    if (rows.length === 0 || !verifyResetPinHash(token, rows[0].token)) {
+      return res.status(400).json(genericErr);
     }
     res.json({ valid: true });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to verify token' });
+    res.status(500).json({ error: 'Failed to verify code' });
   }
 };
 
@@ -407,10 +477,13 @@ const verifyResetToken = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    const { token, new_password } = req.body;
+    const { token, new_password, email } = req.body;
+    const cleanToken = typeof token === 'string' ? token.trim() : '';
+    const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
+    const genericErr = { error: 'This code is invalid or has expired.' };
 
-    if (!token || !new_password) {
-      return res.status(400).json({ error: 'Token and new password are required' });
+    if (!cleanToken || !new_password) {
+      return res.status(400).json({ error: 'Reset code and new password are required' });
     }
     if (new_password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -425,21 +498,49 @@ const resetPassword = async (req, res) => {
       await client.query('BEGIN');
 
       // FOR UPDATE locks the reset token row for the duration of this transaction.
-      // A concurrent request with the same token blocks here until we commit
-      // (used = true → their query returns 0 rows) or roll back (they proceed).
-      const { rows } = await client.query(
-        `SELECT * FROM password_reset_tokens
-         WHERE token = $1 AND used = false AND expires_at > NOW()
-         FOR UPDATE`,
-        [token]
-      );
-
-      if (rows.length === 0) {
-        await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'This link is invalid or has expired.' });
+      let resetRecord = null;
+      if (cleanEmail) {
+        const { rows } = await client.query(
+          `SELECT prt.* FROM password_reset_tokens prt
+           JOIN users u ON u.id = prt.user_id
+           WHERE LOWER(u.email) = $1 AND prt.used = false AND prt.expires_at > NOW()
+           ORDER BY prt.created_at DESC
+           LIMIT 1
+           FOR UPDATE OF prt`,
+          [cleanEmail]
+        );
+        if (rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json(genericErr);
+        }
+        const candidate = rows[0];
+        if ((candidate.attempts || 0) >= MAX_RESET_PIN_ATTEMPTS || !verifyResetPinHash(cleanToken, candidate.token)) {
+          await client.query(
+            `UPDATE password_reset_tokens
+                SET attempts = COALESCE(attempts, 0) + 1,
+                    used = CASE WHEN COALESCE(attempts, 0) + 1 >= $2 THEN true ELSE used END
+              WHERE id = $1`,
+            [candidate.id, MAX_RESET_PIN_ATTEMPTS]
+          );
+          await client.query('COMMIT');
+          return res.status(400).json(genericErr);
+        }
+        resetRecord = candidate;
+      } else {
+        const pinHash = hashResetPin(cleanToken);
+        const { rows } = await client.query(
+          `SELECT * FROM password_reset_tokens
+           WHERE token = $1 AND used = false AND expires_at > NOW() AND COALESCE(attempts, 0) < $2
+           LIMIT 1
+           FOR UPDATE`,
+          [pinHash, MAX_RESET_PIN_ATTEMPTS]
+        );
+        if (rows.length === 0 || !verifyResetPinHash(cleanToken, rows[0].token)) {
+          await client.query('ROLLBACK');
+          return res.status(400).json(genericErr);
+        }
+        resetRecord = rows[0];
       }
-
-      const resetRecord = rows[0];
 
       // Update the password.
       await client.query(
@@ -473,4 +574,9 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, login, verifyOtp, refresh, getMe, logout, forgotPassword, verifyResetToken, resetPassword };
+module.exports = {
+  register, login, verifyOtp, refresh, getMe, logout,
+  forgotPassword, verifyResetToken, resetPassword,
+  _hashResetPin: hashResetPin,
+  _verifyResetPinHash: verifyResetPinHash,
+};

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { trackingAPI } from '../services/api';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const ORDER_STATUSES = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
 
@@ -11,6 +12,7 @@ const STATUS_LABELS = {
   shipped:    'Shipped',
   delivered:  'Delivered',
   cancelled:  'Cancelled',
+  refunded:   'Refunded',
 };
 
 const STATUS_COLORS = {
@@ -20,6 +22,7 @@ const STATUS_COLORS = {
   shipped:    { bg: '#e0f2fe', color: '#0369a1' },
   delivered:  { bg: '#e6f4ea', color: '#1a7a34' },
   cancelled:  { bg: '#fdecea', color: '#b71c1c' },
+  refunded:   { bg: '#e0f2fe', color: '#0369a1' },
 };
 
 function StatusBadge({ status }) {
@@ -232,7 +235,7 @@ export default function TrackOrder() {
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       {item.image_url && (
                         <img
-                          src={item.image_url}
+                          src={resolveImageUrl(item.image_url)}
                           alt={item.name}
                           style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8, flexShrink: 0 }}
                           onError={e => { e.currentTarget.style.display = 'none'; }}

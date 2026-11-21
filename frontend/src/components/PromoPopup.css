@@ -1,0 +1,219 @@
+/* ═══════════════════════════════════════════════════════════════
+   FLOATING PROMO POPUP WIDGET (Jumia Ghana Pattern)
+   Non-blocking, persistent bottom-left corner floating widget.
+   Stays in place as the user scrolls without dimming or blocking the page.
+   ═══════════════════════════════════════════════════════════════ */
+
+.promo-floating-widget {
+  position: fixed;
+  bottom: 24px;
+  left: 24px;
+  z-index: 999;
+  width: 350px;
+  max-width: calc(100vw - 32px);
+  background: #0d0a08;
+  border: 1px solid rgba(201, 165, 90, 0.4);
+  border-radius: 12px;
+  box-shadow:
+    0 16px 40px -8px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.08),
+    0 4px 18px rgba(201, 165, 90, 0.2);
+  animation: promoSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  user-select: none;
+}
+
+.promo-floating-widget.is-closing {
+  animation: promoSlideOut 0.25s ease forwards;
+  pointer-events: none;
+}
+
+/* Close button - high contrast circular button inside top-right corner */
+.promo-floating-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 10;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #ffffff;
+  color: #111111;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.promo-floating-close:hover {
+  transform: scale(1.12);
+  background: #f5f0ea;
+}
+.promo-floating-close:active {
+  transform: scale(0.92);
+}
+
+/* Clickable Link Container */
+.promo-floating-link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.promo-floating-card-inner {
+  display: grid;
+  grid-template-columns: 1.25fr 0.95fr;
+  align-items: center;
+  min-height: 140px;
+  padding: 14px 12px 14px 18px;
+  gap: 10px;
+  position: relative;
+}
+
+/* Body / Text side */
+.promo-floating-body {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  z-index: 2;
+}
+
+.promo-floating-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #c9a55a;
+  margin-bottom: 6px;
+}
+
+.promo-floating-title {
+  font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #ffffff;
+  margin: 0 0 6px 0;
+  letter-spacing: -0.01em;
+}
+
+.promo-floating-highlight {
+  display: block;
+  font-size: 1rem;
+  background: linear-gradient(135deg, #f59e0b, #ea580c);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 800;
+}
+
+.promo-floating-subtext {
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+}
+
+/* Visual / Product Image */
+.promo-floating-visual {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 114px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: radial-gradient(circle, rgba(201, 165, 90, 0.14) 0%, rgba(0,0,0,0) 70%);
+}
+
+.promo-floating-img {
+  max-width: 100%;
+  max-height: 114px;
+  object-fit: contain;
+  transition: transform 0.3s ease;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.6));
+}
+
+.promo-floating-link:hover .promo-floating-img {
+  transform: scale(1.06);
+}
+
+/* Discount sticker (Jumia style purple circle) */
+.promo-floating-discount-badge {
+  position: absolute;
+  bottom: 4px;
+  left: 2px;
+  transform: rotate(-10deg);
+  background: linear-gradient(135deg, #4f46e5 0%, #312e81 100%);
+  color: #ffffff;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  animation: promoBadgePulse 2.8s ease-in-out infinite;
+}
+
+.promo-floating-discount-badge .discount-tag {
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* Animations */
+@keyframes promoSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes promoSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px) scale(0.92);
+  }
+}
+
+@keyframes promoBadgePulse {
+  0%, 100% { transform: rotate(-10deg) scale(1); }
+  50% { transform: rotate(-8deg) scale(1.08); }
+}
+
+/* Mobile adjustments */
+@media (max-width: 480px) {
+  .promo-floating-widget {
+    bottom: 16px;
+    left: 16px;
+    width: calc(100vw - 32px);
+  }
+  .promo-floating-card-inner {
+    min-height: 125px;
+    padding: 12px 10px 12px 14px;
+  }
+  .promo-floating-title {
+    font-size: 1.02rem;
+  }
+  .promo-floating-visual {
+    height: 96px;
+  }
+}

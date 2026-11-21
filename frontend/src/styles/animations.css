@@ -1,0 +1,180 @@
+/* ============================================================================
+   BODYCREAM GH — LUXURY MOTION SYSTEM
+   GPU-composited (transform + opacity only) for 60fps mobile performance.
+   Automatically respects OS `prefers-reduced-motion` and Admin `no-animations`.
+   ============================================================================ */
+
+/* ── 1. Scroll-triggered reveals ─────────────────────────────── */
+.reveal {
+  opacity: 0;
+  transition:
+    opacity 0.65s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+.reveal--up    { transform: translateY(24px); }
+.reveal--left  { transform: translateX(-28px); }
+.reveal--right { transform: translateX(28px); }
+.reveal--scale { transform: scale(0.96); }
+
+.reveal--visible {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+/* ── 2. Hero editorial entrance (LCP-safe: bg img starts at opacity 1) ── */
+@keyframes bcHeroBgSettle {
+  from { transform: scale(1.06); }
+  to   { transform: scale(1); }
+}
+@keyframes bcHeroFadeUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.hero-bg-img {
+  animation: bcHeroBgSettle 1.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.hero-content .hero-label {
+  animation: bcHeroFadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) 0.05s both;
+}
+.hero-content h1 {
+  animation: bcHeroFadeUp 0.72s cubic-bezier(0.22, 1, 0.36, 1) 0.14s both;
+}
+.hero-content > p {
+  animation: bcHeroFadeUp 0.72s cubic-bezier(0.22, 1, 0.36, 1) 0.24s both;
+}
+.hero-content .searchbar--hero {
+  animation: bcHeroFadeUp 0.72s cubic-bezier(0.22, 1, 0.36, 1) 0.34s both;
+}
+.hero-content .hero-actions {
+  animation: bcHeroFadeUp 0.72s cubic-bezier(0.22, 1, 0.36, 1) 0.44s both;
+}
+
+/* ── 3. Luxury gold sheen sweep on primary accent buttons ────── */
+.btn-accent {
+  position: relative;
+  overflow: hidden;
+}
+.btn-accent::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: -110%;
+  width: 65%;
+  height: 100%;
+  background: linear-gradient(
+    110deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.28) 50%,
+    transparent 100%
+  );
+  transform: skewX(-18deg);
+  transition: left 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+}
+.btn-accent:hover:not(:disabled)::before {
+  left: 145%;
+}
+
+/* ── 4. Cart badge spring pop & quick-add feedback ───────────── */
+@keyframes bcCartPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.42); }
+  72%  { transform: scale(0.92); }
+  100% { transform: scale(1); }
+}
+.cart-badge--pop {
+  animation: bcCartPop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes bcQuickAddPop {
+  0%   { transform: scale(0.88); }
+  50%  { transform: scale(1.14); }
+  100% { transform: scale(1); }
+}
+.quick-add-btn.is-added {
+  animation: bcQuickAddPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ── 5. Smooth FAQ accordion open ────────────────────────────── */
+@keyframes bcFaqReveal {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.home-faq-item[open] .home-faq-a {
+  animation: bcFaqReveal 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── 6. Subtle tactile hover lifts on cards & trust icons ────── */
+.testimonial-card {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.28s ease;
+}
+.testimonial-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.cat-card {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.3s ease;
+}
+.cat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.gallery-item img {
+  transition: transform 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.gallery-item:hover img {
+  transform: scale(1.06);
+}
+
+/* ── 7. Floating WhatsApp gentle breathing ring ──────────────── */
+@keyframes bcWaPulse {
+  0%   { box-shadow: 0 8px 24px rgba(20, 16, 12, 0.24), 0 0 0 0 rgba(29, 122, 70, 0.45); }
+  70%  { box-shadow: 0 8px 24px rgba(20, 16, 12, 0.24), 0 0 0 12px rgba(29, 122, 70, 0); }
+  100% { box-shadow: 0 8px 24px rgba(20, 16, 12, 0.24), 0 0 0 0 rgba(29, 122, 70, 0); }
+}
+.whatsapp-float {
+  animation: bcWaPulse 2.8s ease-out infinite;
+}
+.whatsapp-float:hover {
+  animation: none;
+}
+
+/* ── 8. Subtle page route transition ─────────────────────────── */
+@keyframes bcPageEnter {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.page-transition {
+  animation: bcPageEnter 0.24s ease-out;
+}
+
+/* ── 9. Reduced-motion & Admin kill-switch ───────────────────── */
+html.no-animations *,
+html.no-animations *::before,
+html.no-animations *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+html.no-animations .reveal {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

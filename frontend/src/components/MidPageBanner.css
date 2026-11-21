@@ -1,0 +1,418 @@
+/* ═══════════════════════════════════════════════════════════════
+   MID-PAGE CAMPAIGN & TRUST BANNER (Realistic JS Page-Flip Book)
+   Powered by StPageFlip for realistic paper physics, corner curls,
+   canvas mesh shadow rendering, and 100% Admin Panel control.
+   ═══════════════════════════════════════════════════════════════ */
+
+.mid-banner-section {
+  padding: 48px 0 24px;
+}
+
+.mid-banner-card-wrapper {
+  position: relative;
+}
+
+/* Outer Luxury Hardcover Frame */
+.mid-banner-book-frame {
+  position: relative;
+  border-radius: 20px;
+  background: #14110f;
+  border: 1px solid rgba(201, 165, 90, 0.4);
+  box-shadow:
+    0 24px 60px -12px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  height: var(--mid-banner-height, 620px);
+  min-height: var(--mid-banner-height, 620px);
+  max-height: var(--mid-banner-height, 620px);
+  user-select: none;
+}
+
+/* Container where PageFlip mounts */
+.mid-banner-book-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* Hidden container before PageFlip clones / mounts pages */
+.book-spread-wrapper {
+  display: contents;
+}
+
+/* Individual Book Pages */
+.book-page {
+  background: #18120e;
+  overflow: hidden;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
+.book-page-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  box-sizing: border-box;
+}
+
+/* Left Page: Editorial Story Content */
+.book-page.page-left {
+  background: linear-gradient(135deg, #18120e 0%, #201712 100%);
+  border-right: 1px solid rgba(0, 0, 0, 0.4);
+}
+
+.book-page.page-left .mid-banner-content {
+  padding: 38px 48px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+/* Right Page: Product Photography */
+.book-page.page-right {
+  background: #14110f;
+  border-left: 1px solid rgba(0, 0, 0, 0.6);
+  position: relative;
+}
+
+.book-page.page-right .mid-banner-visual {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #14110f;
+}
+
+/* Ambient blurred backdrop so photos of any aspect ratio or height blend seamlessly */
+.mid-banner-visual-ambient {
+  position: absolute;
+  inset: -20px;
+  background-size: cover;
+  background-position: center;
+  filter: blur(28px) brightness(0.65);
+  opacity: 0.55;
+  transform: scale(1.15);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mid-banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  position: relative;
+  z-index: 2;
+  transition: transform 0.35s ease;
+}
+
+/* When image_fit is set to contain: full product visibility, zero cropping, fits any height photo */
+.mid-banner-img.fit-contain {
+  object-fit: contain;
+  max-width: 92%;
+  max-height: 92%;
+  margin: auto;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.5));
+}
+
+/* Subtle book crease shadow along spine */
+.mid-banner-spine-shadow {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40px;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.2) 50%, transparent 100%);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.mid-banner-shine {
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(201, 165, 90, 0.12) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* Typography & Badges */
+.mid-banner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e5c378;
+  background: rgba(201, 165, 90, 0.15);
+  border: 1px solid rgba(201, 165, 90, 0.35);
+  padding: 3px 10px;
+  border-radius: 9999px;
+  margin-bottom: 12px;
+}
+
+.mid-banner-badge .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+.mid-banner-title {
+  font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
+  font-size: clamp(1.5rem, 2.4vw, 2.1rem);
+  font-weight: 700;
+  line-height: 1.18;
+  color: #ffffff;
+  margin: 0 0 10px 0;
+  letter-spacing: -0.01em;
+}
+
+.mid-banner-highlight {
+  display: inline-block;
+  color: #c9a55a;
+  background: linear-gradient(135deg, #f5d78e, #c9a55a);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.mid-banner-sub {
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.78);
+  margin: 0 0 20px 0;
+  max-width: 490px;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.mid-banner-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.mid-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  padding: 10px 24px;
+  font-size: 0.86rem;
+  border-radius: 8px;
+  text-decoration: none;
+  background: linear-gradient(135deg, #c9a55a 0%, #b89347 100%);
+  color: #14110f;
+  box-shadow: 0 4px 14px -2px rgba(201, 165, 90, 0.4);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mid-banner-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px -2px rgba(201, 165, 90, 0.6);
+}
+
+/* Navigation Arrows (Prev / Next) */
+.mid-banner-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 25;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(20, 16, 14, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(201, 165, 90, 0.35);
+  color: #e5c378;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+}
+
+.mid-banner-arrow:hover {
+  background: #c9a55a;
+  color: #14110f;
+  border-color: #c9a55a;
+  transform: translateY(-50%) scale(1.08);
+}
+
+.mid-banner-arrow:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.mid-banner-arrow-prev {
+  left: 16px;
+}
+
+.mid-banner-arrow-next {
+  right: 16px;
+}
+
+/* Bottom Progress Pill Indicators & Page Counter */
+.mid-banner-nav {
+  position: absolute;
+  bottom: 18px;
+  left: 48px;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mid-banner-page-pill {
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #e5c378;
+  background: rgba(20, 16, 14, 0.9);
+  border: 1px solid rgba(201, 165, 90, 0.35);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  text-transform: uppercase;
+}
+
+.mid-banner-dots {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mid-banner-dot {
+  position: relative;
+  width: 26px;
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  overflow: hidden;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.mid-banner-dot:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.mid-banner-dot.active {
+  width: 40px;
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.mid-banner-dot .dot-fill {
+  position: absolute;
+  inset: 0;
+  background: #c9a55a;
+  border-radius: 9999px;
+  transform: scaleX(0);
+  transform-origin: left;
+}
+
+.mid-banner-dot.active .dot-fill {
+  animation: progressFill linear forwards;
+}
+
+@keyframes progressFill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   StPageFlip Core Canvas & Layout Styles (Essential for 3D physics)
+   ═══════════════════════════════════════════════════════════════ */
+
+.stf__parent {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  transform: translateZ(0);
+  -ms-touch-action: pan-y;
+  touch-action: pan-y;
+  margin: 0 auto;
+}
+
+.sft__wrapper {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.stf__parent canvas {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  left: 0;
+  top: 0;
+}
+
+.stf__block {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  perspective: 2000px;
+}
+
+.stf__item {
+  display: none;
+  position: absolute;
+  transform-style: preserve-3d;
+}
+
+.stf__outerShadow,
+.stf__innerShadow,
+.stf__hardShadow,
+.stf__hardInnerShadow {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .mid-banner-book-frame {
+    height: auto;
+    min-height: auto;
+    max-height: none;
+    border-radius: 16px;
+  }
+
+  .book-page.page-left .mid-banner-content {
+    padding: 32px 20px 48px;
+  }
+
+  .mid-banner-nav {
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 14px;
+    gap: 8px;
+  }
+
+  .mid-banner-arrow {
+    display: none;
+  }
+}

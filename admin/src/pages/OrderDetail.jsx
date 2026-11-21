@@ -6,6 +6,7 @@ import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import { printInvoice } from '../utils/printInvoice';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 // Fulfilment flow is strictly forward-moving. Skipping to "delivered" is allowed
 // if the merchant updates late (e.g. phone-confirmed pickups).
@@ -16,10 +17,11 @@ const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
 
 function refundLabel(order) {
   if (!order) return null;
-  if (order.status === 'cancelled' && order.payment_status === 'paid' && (order.refund_status || 'not_requested') === 'not_requested') {
+  if (order.status === 'cancelled' && ['paid', 'payment_review'].includes(order.payment_status) && (order.refund_status || 'not_requested') === 'not_requested') {
     return { status: 'refund_owed', cls: 'badge-warning', label: 'Refund owed' };
   }
   if (order.refund_status === 'pending') return { status: 'pending', cls: 'badge-warning', label: 'Refund pending' };
+  if (order.refund_status === 'needs_attention') return { status: 'needs_attention', cls: 'badge-warning', label: 'Needs attention' };
   if (order.refund_status === 'failed') return { status: 'failed', cls: 'badge-danger', label: 'Refund failed' };
   if (order.refund_status === 'success') return { status: 'success', cls: 'badge-success', label: 'Refunded' };
   return { status: order.refund_status || 'not_requested', cls: 'badge-neutral', label: 'No refund requested' };
@@ -46,6 +48,17 @@ export default function OrderDetail() {
   const [refundSaving, setRefundSaving] = useState(false);
 
   const [requestActionSaving, setRequestActionSaving] = useState(false);
+  const [markPaidSaving, setMarkPaidSaving] = useState(false);
+  const [payments, setPayments] = useState([]);
+  const [dupRefundingId, setDupRefundingId] = useState(null);
+  const [partialReturns, setPartialReturns] = useState([]);
+  const [returnableItems, setReturnableItems] = useState([]);
+  const [retActionId, setRetActionId] = useState(null);
+  const [retOptions, setRetOptions] = useState({});
+  const [adminRetOpen, setAdminRetOpen] = useState(false);
+  const [adminRetQty, setAdminRetQty] = useState({});
+  const [adminRetReason, setAdminRetReason] = useState('');
+  const [adminRetSaving, setAdminRetSaving] = useState(false);
 
   // Delivery form state
   const [deliveryForm, setDeliveryForm] = useState({
@@ -68,6 +81,7 @@ export default function OrderDetail() {
     ordersAPI.getById(id)
       .then(({ data }) => {
         setOrder(data?.order ? { ...data.order, items: data.items || [] } : data);
+        setPayments(Array.isArray(data?.payments) ? data.payments : []);
       })
       .catch(() => toast.error('Failed to load order'))
       .finally(() => setLoading(false));
@@ -75,6 +89,12 @@ export default function OrderDetail() {
     ordersAPI.getStatusLog(id)
       .then(({ data }) => setStatusLog(Array.isArray(data) ? data : []))
       .catch(() => setStatusLog([]));
+    ordersAPI.getOrderReturns(id)
+      .then(({ data }) => {
+        setPartialReturns(Array.isArray(data?.returns) ? data.returns : []);
+        setReturnableItems(Array.isArray(data?.returnable_items) ? data.returnable_items : []);
+      })
+      .catch(() => { setPartialReturns([]); setReturnableItems([]); });
   };
 
   useEffect(load, [id]);
@@ -82,6 +102,75 @@ export default function OrderDetail() {
   useEffect(() => {
     settingsAPI.getAll().then(({ data }) => setStore(data)).catch(() => {});
   }, []);
+
+  const handleRefundDuplicate = async (payment) => {
+    if (!window.confirm(`Refund duplicate Paystack payment ${payment.paystack_reference} (GHS ${Number(payment.amount || 0).toFixed(2)})?`)) {
+      return;
+    }
+    setDupRefundingId(payment.id);
+    try {
+      await ordersAPI.refundDuplicatePayment(id, payment.id);
+      toast.success(`Duplicate payment ${payment.paystack_reference} refunded`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to refund duplicate payment');
+    } finally {
+      setDupRefundingId(null);
+    }
+  };
+
+  const handleAdminCreateReturn = async () => {
+    const items = Object.entries(adminRetQty)
+      .filter(([, q]) => Number(q) > 0)
+      .map(([order_item_id, quantity]) => ({ order_item_id, quantity: Number(quantity) }));
+    if (items.length === 0) return toast.error('Select at least one item');
+    if (adminRetReason.trim().length < 3) return toast.error('Enter a return reason');
+    setAdminRetSaving(true);
+    try {
+      await ordersAPI.adminCreatePartialReturn(id, { items, reason: adminRetReason.trim() });
+      toast.success('Return request created on behalf of customer');
+      setAdminRetOpen(false);
+      setAdminRetQty({});
+      setAdminRetReason('');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to create return request');
+    } finally {
+      setAdminRetSaving(false);
+    }
+  };
+
+  const handleApprovePartialReturn = async (rr) => {
+    const opts = retOptions[rr.id] || { restock_items: false, include_delivery_fee: false };
+    const isRetry = rr.status === 'refund_failed';
+    if (!window.confirm(`${isRetry ? 'Retry refund' : 'Approve & refund'} GHS ${Number(rr.refund_amount || 0).toFixed(2)} for this return request?`)) {
+      return;
+    }
+    setRetActionId(rr.id);
+    try {
+      const { data } = await ordersAPI.approvePartialReturn(rr.id, isRetry ? {} : opts);
+      toast.success(data?.message || 'Return refund submitted');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to process return refund');
+    } finally {
+      setRetActionId(null);
+    }
+  };
+
+  const handleRejectPartialReturn = async (rr) => {
+    const reason = window.prompt('Reason for rejecting this return request (optional):') ?? '';
+    setRetActionId(rr.id);
+    try {
+      await ordersAPI.rejectPartialReturn(rr.id, { reason });
+      toast.success('Return request rejected');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to reject return request');
+    } finally {
+      setRetActionId(null);
+    }
+  };
 
   const changeStatus = async (next, note = '') => {
     setSaving(true);
@@ -130,6 +219,25 @@ export default function OrderDetail() {
     }
   };
 
+  const handleAdvanceSimulation = async () => {
+    if (!delivery?.tracking_number) return;
+    setDeliverySaving(true);
+    try {
+      const { data } = await deliveriesAPI.simulateAdvance(delivery.tracking_number);
+      if (data.alreadyDelivered) {
+        toast.info('Shipment is already delivered');
+      } else {
+        toast.success(`Courier advanced: ${data.from} → ${data.to}`);
+      }
+      loadDelivery();
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Simulation failed');
+    } finally {
+      setDeliverySaving(false);
+    }
+  };
+
   const handleCancelOrder = async () => {
     setCancelSaving(true);
     setCancelError('');
@@ -150,12 +258,18 @@ export default function OrderDetail() {
     setRefundSaving(true);
     setRefundError('');
     try {
-      await ordersAPI.refundOrder(id, {
+      const res = await ordersAPI.refundOrder(id, {
         method: refundForm.method,
         reference: refundForm.reference || undefined,
         notes: refundForm.notes || undefined,
       });
-      toast.success(refundForm.method === 'manual' ? 'Refund marked complete' : 'Paystack refund requested');
+      const fallbackMsg = refundForm.method === 'manual' ? 'Refund marked complete' : 'Paystack refund requested';
+      const msg = res.data?.message || fallbackMsg;
+      if (res.status === 202 || res.data?.order?.refund_status === 'needs_attention') {
+        toast.info(msg);
+      } else {
+        toast.success(msg);
+      }
       setRefundOpen(false);
       setRefundForm({ method: 'paystack', reference: '', notes: '' });
       load();
@@ -179,6 +293,19 @@ export default function OrderDetail() {
     }
   };
 
+  const handleMarkPaid = async () => {
+    setMarkPaidSaving(true);
+    try {
+      await ordersAPI.markPaid(id);
+      toast.success('Order marked as paid (Cash/MoMo collected)');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to mark order as paid');
+    } finally {
+      setMarkPaidSaving(false);
+    }
+  };
+
   if (loading) return <div className="spinner" />;
   if (!order) {
     return (
@@ -192,15 +319,18 @@ export default function OrderDetail() {
   const currentIdx = STATUS_FLOW.indexOf(order.status);
   const canShowStatusFlow = currentIdx >= 0;
   const canCancel = CANCELLABLE_STATUSES.includes(order.status);
-  const canRefund = order.payment_status === 'paid' &&
+  const canRefund = ['paid', 'payment_review'].includes(order.payment_status) &&
     REFUNDABLE_STATUSES.includes(order.status) &&
-    !['pending', 'success'].includes(order.refund_status);
+    !['pending', 'needs_attention', 'success'].includes(order.refund_status);
+  const canMarkPaid = order.payment_method === 'pay_on_delivery' &&
+    !['paid', 'partially_refunded', 'refunded'].includes(order.payment_status) &&
+    !['cancelled', 'refunded'].includes(order.status);
   const refundInfo = refundLabel(order);
   const subtotal = (order.items || []).reduce((s, it) => s + Number(it.subtotal || (it.price_at_purchase * it.quantity) || 0), 0);
 
-  // Phone from user profile; delivery phone is stored in notes as "Phone: 233..."
-  const phoneFromNotes = order.notes?.match(/^Phone:\s*(.+?)(\n|$)/i)?.[1]?.trim();
-  const displayPhone = order.customer_phone || phoneFromNotes;
+  // Phone from user profile or guest order fields; fallback to notes
+  const phoneFromNotes = order.notes?.match(/(?:^|\n)Phone:\s*(.+?)(\n|$)/i)?.[1]?.trim();
+  const displayPhone = order.customer_phone || order.guest_phone || phoneFromNotes;
 
   return (
     <div>
@@ -241,27 +371,40 @@ export default function OrderDetail() {
               {STATUS_FLOW.map((s, i) => {
                 const done = i <= currentIdx;
                 const isCurrent = i === currentIdx;
+                const label = order.fulfillment_method === 'pickup'
+                  ? (s === 'shipped' ? 'Ready for Pickup' : s === 'delivered' ? 'Picked Up' : s)
+                  : s;
                 return (
                   <div key={s} className={`track-step ${done ? 'done' : ''} ${isCurrent ? 'current' : ''}`}>
                     <div className="track-dot">{done ? '✓' : i + 1}</div>
-                    <div className="track-label">{s}</div>
+                    <div className="track-label">{label}</div>
                   </div>
                 );
               })}
             </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-              {STATUS_FLOW.map((s, i) => (
-                <button
-                  key={s}
-                  className={`btn btn-sm ${i === currentIdx + 1 ? 'btn-accent' : 'btn-outline'}`}
-                  disabled={saving || i !== currentIdx + 1}
-                  onClick={() => setPendingStatus(s)}
-                  style={{ textTransform: 'capitalize' }}
-                >
-                  Mark as {s}
-                </button>
-              ))}
+              {STATUS_FLOW.map((s, i) => {
+                const isNext = i === currentIdx + 1;
+                const canDirectDeliver = s === 'delivered' && currentIdx >= 1 && currentIdx < 4;
+                const enabled = isNext || canDirectDeliver;
+
+                const btnLabel = order.fulfillment_method === 'pickup'
+                  ? (s === 'shipped' ? 'Mark Ready for Pickup' : s === 'delivered' ? 'Mark Picked Up' : `Mark as ${s}`)
+                  : `Mark as ${s}`;
+
+                return (
+                  <button
+                    key={s}
+                    className={`btn btn-sm ${isNext || canDirectDeliver ? 'btn-accent' : 'btn-outline'}`}
+                    disabled={saving || !enabled}
+                    onClick={() => setPendingStatus(s)}
+                    style={{ textTransform: 'capitalize' }}
+                  >
+                    {btnLabel}
+                  </button>
+                );
+              })}
               {canCancel && (
                 <button
                   className="btn btn-sm btn-outline"
@@ -270,6 +413,15 @@ export default function OrderDetail() {
                   onClick={() => setCancelOpen(true)}
                 >
                   Cancel order
+                </button>
+              )}
+              {canMarkPaid && (
+                <button
+                  className="btn btn-sm btn-accent"
+                  disabled={markPaidSaving}
+                  onClick={handleMarkPaid}
+                >
+                  {markPaidSaving ? 'Updating…' : '✓ Mark Paid (Cash/MoMo)'}
                 </button>
               )}
               {canRefund && (
@@ -341,46 +493,67 @@ export default function OrderDetail() {
         </div>
       )}
 
-      {/* ── Return request pending banner ───────────────────────── */}
-      {order.return_requested && !order.return_request_rejected && order.status === 'delivered' && (
-        <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--ac-info, #5ba4cf)' }}>
-          <div className="card-body">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  ↩ Customer requested a return
+      {/* ── Return request banner ───────────────────────── */}
+      {order.return_requested && !order.return_request_rejected && order.status === 'delivered' && (() => {
+        const returnDecided = order.refund_status === 'pending' || order.refund_status === 'success';
+        return (
+          <div
+            className="card"
+            style={{
+              marginBottom: 16,
+              borderLeft: returnDecided
+                ? '3px solid var(--ac-success, #27ae60)'
+                : '3px solid var(--ac-info, #5ba4cf)',
+            }}
+          >
+            <div className="card-body">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {returnDecided
+                      ? (order.refund_status === 'success'
+                          ? '✓ Return approved — refund completed'
+                          : '✓ Return approved — refund pending with Paystack')
+                      : '↩ Customer requested a return'}
+                  </div>
+                  {order.return_reason && (
+                    <div className="muted text-sm" style={{ maxWidth: 480 }}>
+                      Reason: {order.return_reason}
+                    </div>
+                  )}
+                  {order.return_requested_at && (
+                    <div className="muted text-sm">
+                      Requested {new Date(order.return_requested_at).toLocaleString('en-GH')}
+                    </div>
+                  )}
                 </div>
-                {order.return_reason && (
-                  <div className="muted text-sm" style={{ maxWidth: 480 }}>
-                    Reason: {order.return_reason}
+                {returnDecided ? (
+                  <span className="badge badge-info" style={{ alignSelf: 'center' }}>
+                    {order.refund_status === 'success' ? 'Refunded' : 'Approved · Refund Pending'}
+                  </span>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      className="btn btn-sm btn-accent"
+                      disabled={requestActionSaving}
+                      onClick={() => handleRequestAction('approveReturnRequest', 'Return approved & refund initiated')}
+                    >
+                      Approve & refund
+                    </button>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      disabled={requestActionSaving}
+                      onClick={() => handleRequestAction('rejectReturnRequest', 'Return request rejected')}
+                    >
+                      Reject
+                    </button>
                   </div>
                 )}
-                {order.return_requested_at && (
-                  <div className="muted text-sm">
-                    Requested {new Date(order.return_requested_at).toLocaleString('en-GH')}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  className="btn btn-sm btn-accent"
-                  disabled={requestActionSaving}
-                  onClick={() => handleRequestAction('approveReturnRequest', 'Return approved & refund initiated')}
-                >
-                  Approve & refund
-                </button>
-                <button
-                  className="btn btn-sm btn-outline"
-                  disabled={requestActionSaving}
-                  onClick={() => handleRequestAction('rejectReturnRequest', 'Return request rejected')}
-                >
-                  Reject
-                </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }} className="od-grid">
 
@@ -401,13 +574,48 @@ export default function OrderDetail() {
                 {(order.items || []).map(it => (
                   <tr key={it.id}>
                     <td>
-                      <Link to={`/products/${it.product_id}`} className="cell-primary">
-                        {it.product_name || it.name}
-                      </Link>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div style={{
+                          width: 42, height: 42, borderRadius: 'var(--ac-radius, 6px)',
+                          background: 'var(--ac-surface-2)', border: '1px solid var(--ac-border)',
+                          overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                          {it.image_url ? (
+                            <img
+                              src={resolveImageUrl(it.image_url)}
+                              alt={it.product_name || it.name}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              onError={e => { e.currentTarget.style.display = 'none'; }}
+                            />
+                          ) : (
+                            <span style={{ fontSize: '0.65rem', color: 'var(--ac-text-muted)' }}>No img</span>
+                          )}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <Link to={`/products/${it.product_id}`} className="cell-primary" style={{ display: 'block', lineHeight: 1.3 }}>
+                            {it.product_name || it.name}
+                          </Link>
+                          {it.variant_label && (
+                            <div style={{
+                              display: 'inline-block',
+                              fontSize: '0.72rem',
+                              fontWeight: 500,
+                              color: 'var(--ac-text-muted)',
+                              background: 'var(--ac-surface-2)',
+                              border: '1px solid var(--ac-border)',
+                              borderRadius: '4px',
+                              padding: '1px 6px',
+                              marginTop: 4,
+                            }}>
+                              {it.variant_label}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </td>
-                    <td className="cell-right">{it.quantity}</td>
-                    <td className="cell-right cell-muted">{fmt(it.price_at_purchase || it.price)}</td>
-                    <td className="cell-right cell-primary">{fmt(it.subtotal || (it.price_at_purchase * it.quantity))}</td>
+                    <td className="cell-right" style={{ verticalAlign: 'middle' }}>{it.quantity}</td>
+                    <td className="cell-right cell-muted" style={{ verticalAlign: 'middle' }}>{fmt(it.price_at_purchase || it.price)}</td>
+                    <td className="cell-right cell-primary" style={{ verticalAlign: 'middle' }}>{fmt(it.subtotal || (it.price_at_purchase * it.quantity))}</td>
                   </tr>
                 ))}
               </tbody>
@@ -418,9 +626,15 @@ export default function OrderDetail() {
                 <span className="muted">Subtotal</span>
                 <span>{fmt(subtotal)}</span>
               </div>
+              {Number(order.discount_amount) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.88rem', color: 'var(--ac-success)' }}>
+                  <span>Discount {order.coupon_code ? `(${order.coupon_code})` : ''}</span>
+                  <span>- {fmt(order.discount_amount)}</span>
+                </div>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.88rem' }}>
                 <span className="muted">Delivery</span>
-                <span>{fmt(order.delivery_fee)}</span>
+                <span>{Number(order.delivery_fee) === 0 ? 'Free' : fmt(order.delivery_fee)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 2px', borderTop: '1px solid var(--ac-border)', marginTop: 6, fontWeight: 600 }}>
                 <span>Total</span>
@@ -433,32 +647,111 @@ export default function OrderDetail() {
         {/* Customer + shipping */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div className="card">
-            <div className="card-header"><h2 className="card-title">Customer</h2></div>
-            <div className="card-body">
-              <div style={{ fontSize: '0.92rem', marginBottom: 4 }}>
-                {order.first_name || order.customer_name || '—'} {order.last_name || ''}
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 className="card-title">Customer</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {order.customer_id && (
+                  <Link
+                    to={`/customers/${order.customer_id}`}
+                    style={{ fontSize: '0.78rem', color: 'var(--ac-primary)', textDecoration: 'none', fontWeight: 500 }}
+                  >
+                    View Profile &rarr;
+                  </Link>
+                )}
+                {order.is_guest && (
+                  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: '#3b2d1d', color: '#e5c378', border: '1px solid rgba(201,165,90,0.3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Guest Checkout
+                  </span>
+                )}
               </div>
-              {order.email && <div className="text-sm muted" style={{ marginBottom: 2 }}>{order.email}</div>}
-              {displayPhone && <div className="text-sm muted">{displayPhone}</div>}
+            </div>
+            <div className="card-body">
+              <div style={{ fontSize: '0.96rem', fontWeight: 600, marginBottom: 4 }}>
+                {order.customer_id ? (
+                  <Link to={`/customers/${order.customer_id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                    {order.first_name || order.customer_name || '—'} {order.last_name || ''}
+                  </Link>
+                ) : (
+                  <>{order.first_name || order.customer_name || '—'} {order.last_name || ''}</>
+                )}
+              </div>
+              {order.email && (
+                <div className="text-sm muted" style={{ marginBottom: 4 }}>
+                  <a href={`mailto:${order.email}`} style={{ color: 'inherit', textDecoration: 'underline' }}>
+                    ✉️ {order.email}
+                  </a>
+                </div>
+              )}
+              {displayPhone && (
+                <div className="text-sm" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+                  <span>📞 {displayPhone}</span>
+                  <a
+                    href={`https://wa.me/${displayPhone.replace(/[^0-9]/g, '')}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="badge"
+                    style={{ fontSize: '0.7rem', padding: '2px 7px', textDecoration: 'none', background: '#25D366', color: '#fff', fontWeight: 600, borderRadius: '4px' }}
+                  >
+                    WhatsApp
+                  </a>
+                  <a
+                    href={`tel:${displayPhone}`}
+                    className="badge badge-neutral"
+                    style={{ fontSize: '0.7rem', padding: '2px 7px', textDecoration: 'none', borderRadius: '4px' }}
+                  >
+                    Call
+                  </a>
+                </div>
+              )}
             </div>
           </div>
 
           <div className="card">
-            <div className="card-header"><h2 className="card-title">Shipping</h2></div>
+            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 className="card-title">{order.fulfillment_method === 'pickup' ? 'Pickup Station' : 'Shipping'}</h2>
+              {order.fulfillment_method === 'pickup' ? (
+                <span className="badge badge-accent" style={{ fontSize: '0.72rem' }}>Pickup Station</span>
+              ) : (
+                <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>Door Delivery</span>
+              )}
+            </div>
             <div className="card-body">
-              <div style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
-                {order.shipping_address && <div>{order.shipping_address}</div>}
-                {(order.shipping_city || order.shipping_region) && (
-                  <div>{order.shipping_city}{order.shipping_region ? `, ${order.shipping_region}` : ''}</div>
-                )}
-                {!order.shipping_address && !order.shipping_city && <div className="muted">Not provided</div>}
-              </div>
+              {order.fulfillment_method === 'pickup' ? (
+                <div style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 600, color: 'var(--ac-text)' }}>
+                    📍 East Legon Station (Accra)
+                  </div>
+                  <div className="muted" style={{ fontSize: '0.84rem', marginTop: 2 }}>
+                    {order.shipping_address || 'Opposite A&C Mall, Boundary Road, East Legon'}
+                  </div>
+                  {(order.shipping_city || order.shipping_region) && (
+                    <div className="muted" style={{ fontSize: '0.84rem' }}>
+                      {order.shipping_city || 'Accra'}{order.shipping_region ? `, ${order.shipping_region}` : ''}
+                    </div>
+                  )}
+                  <div style={{ marginTop: 8, padding: '6px 10px', background: 'var(--ac-surface-sunken)', borderRadius: 4, fontSize: '0.8rem', color: 'var(--ac-text-muted)' }}>
+                    Customer will collect in person. Ensure ID matches customer name.
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
+                  {order.shipping_address && <div>{order.shipping_address}</div>}
+                  {(order.shipping_city || order.shipping_region) && (
+                    <div>{order.shipping_city}{order.shipping_region ? `, ${order.shipping_region}` : ''}</div>
+                  )}
+                  {!order.shipping_address && !order.shipping_city && <div className="muted">Not provided</div>}
+                </div>
+              )}
             </div>
           </div>
 
           <div className="card">
             <div className="card-header"><h2 className="card-title">Payment</h2></div>
             <div className="card-body">
+              <div style={{ fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span className="muted">Method</span>
+                <span>{order.payment_method === 'pay_on_delivery' ? 'Pay on Delivery' : 'Paystack'}</span>
+              </div>
               <div style={{ fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                 <span className="muted">Status</span><StatusBadge status={order.payment_status} />
               </div>
@@ -467,6 +760,16 @@ export default function OrderDetail() {
                   <div className="muted text-xs">Reference</div>
                   <div className="mono" style={{ wordBreak: 'break-all' }}>{order.payment_reference}</div>
                 </div>
+              )}
+              {canMarkPaid && (
+                <button
+                  className="btn btn-accent btn-sm"
+                  style={{ width: '100%', marginTop: 12 }}
+                  onClick={handleMarkPaid}
+                  disabled={markPaidSaving}
+                >
+                  {markPaidSaving ? 'Updating…' : 'Mark Paid (Cash/MoMo Collected)'}
+                </button>
               )}
             </div>
           </div>
@@ -510,6 +813,146 @@ export default function OrderDetail() {
             </div>
           </div>
 
+          {payments.some(p => p.status === 'duplicate') && (
+            <div className="card" style={{ borderColor: 'var(--color-danger, #c0392b)' }}>
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 className="card-title">Duplicate Payments</h2>
+                <span className="badge badge-danger">Action Required</span>
+              </div>
+              <div className="card-body">
+                <p className="muted" style={{ fontSize: '0.84rem', marginTop: 0 }}>
+                  These extra Paystack charges were flagged as duplicates on an already-paid order. Refunding them does not cancel the order.
+                </p>
+                {payments.filter(p => p.status === 'duplicate').map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--border-color, #eee)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="mono" style={{ fontSize: '0.82rem', wordBreak: 'break-all' }}>{p.paystack_reference}</div>
+                      <div className="muted" style={{ fontSize: '0.8rem' }}>
+                        {p.currency || 'GHS'} {Number(p.amount || 0).toFixed(2)} · {p.created_at ? new Date(p.created_at).toLocaleString('en-GH') : ''}
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      disabled={dupRefundingId === p.id}
+                      onClick={() => handleRefundDuplicate(p)}
+                    >
+                      {dupRefundingId === p.id ? 'Refunding…' : 'Refund duplicate'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {(partialReturns.length > 0 || (order.status === 'delivered' && ['paid', 'partially_refunded'].includes(order.payment_status) && returnableItems.some(i => Number(i.remaining_quantity) > 0))) && (
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 className="card-title">Item Return Requests ({partialReturns.length})</h2>
+                {order.status === 'delivered' && ['paid', 'partially_refunded'].includes(order.payment_status) && returnableItems.some(i => Number(i.remaining_quantity) > 0) && (
+                  <button className="btn btn-outline btn-sm" onClick={() => setAdminRetOpen(o => !o)}>
+                    {adminRetOpen ? 'Close' : 'Create Return (Admin)'}
+                  </button>
+                )}
+              </div>
+              <div className="card-body">
+                {adminRetOpen && (
+                  <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border-color, #eee)' }}>
+                    <div className="muted" style={{ fontSize: '0.78rem', marginBottom: 8 }}>
+                      Creates a return on behalf of the customer (bypasses return window / missing delivered_at).
+                    </div>
+                    {returnableItems.filter(i => Number(i.remaining_quantity) > 0).map(it => {
+                      const q = Number(adminRetQty[it.id] || 0);
+                      return (
+                        <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                          <label style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input type="checkbox" checked={q > 0} onChange={e => setAdminRetQty(p => ({ ...p, [it.id]: e.target.checked ? 1 : 0 }))} />
+                            {it.product_name} (max {it.remaining_quantity})
+                          </label>
+                          {q > 0 && (
+                            <input
+                              type="number" min={1} max={it.remaining_quantity} value={q}
+                              onChange={e => setAdminRetQty(p => ({ ...p, [it.id]: Math.max(1, Math.min(Number(it.remaining_quantity), parseInt(e.target.value, 10) || 1)) }))}
+                              style={{ width: 56 }}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                    <input
+                      type="text"
+                      placeholder="Return reason (required)"
+                      value={adminRetReason}
+                      onChange={e => setAdminRetReason(e.target.value)}
+                      style={{ width: '100%', marginTop: 6, marginBottom: 8 }}
+                    />
+                    <button className="btn btn-accent btn-sm" disabled={adminRetSaving} onClick={handleAdminCreateReturn}>
+                      {adminRetSaving ? 'Creating…' : 'Create Return Request'}
+                    </button>
+                  </div>
+                )}
+                {partialReturns.map((rr) => {
+                  const opts = retOptions[rr.id] || { restock_items: false, include_delivery_fee: false };
+                  const busy = retActionId === rr.id;
+                  return (
+                    <div key={rr.id} style={{ padding: '12px 0', borderTop: '1px solid var(--border-color, #eee)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <strong>GHS {Number(rr.refund_amount || 0).toFixed(2)}</strong>
+                        <span className={`badge ${rr.status === 'refunded' ? 'badge-success' : rr.status === 'refund_failed' || rr.status === 'rejected' ? 'badge-danger' : 'badge-warning'}`}>
+                          {rr.status}
+                        </span>
+                      </div>
+                      <div className="muted" style={{ fontSize: '0.82rem', marginTop: 4 }}>{rr.reason}</div>
+                      {Array.isArray(rr.items) && rr.items.length > 0 && (
+                        <ul style={{ margin: '6px 0 8px 18px', fontSize: '0.82rem' }}>
+                          {rr.items.map((it) => (
+                            <li key={it.id}>
+                              {it.product_name}{it.variant_label ? ` (${it.variant_label})` : ''} × {it.quantity} — GHS {Number(it.line_refund_amount || 0).toFixed(2)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {rr.status === 'pending' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                          <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={opts.restock_items}
+                              onChange={(e) => setRetOptions(prev => ({ ...prev, [rr.id]: { ...opts, restock_items: e.target.checked } }))}
+                            />
+                            Restock returned items (unopened / sealed only)
+                          </label>
+                          {Number(order.delivery_fee || 0) > 0 && (
+                            <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={opts.include_delivery_fee}
+                                onChange={(e) => setRetOptions(prev => ({ ...prev, [rr.id]: { ...opts, include_delivery_fee: e.target.checked } }))}
+                              />
+                              Include delivery fee (+GHS {Number(order.delivery_fee).toFixed(2)})
+                            </label>
+                          )}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                            <button className="btn btn-accent btn-sm" disabled={busy} onClick={() => handleApprovePartialReturn(rr)}>
+                              {busy ? 'Processing…' : 'Approve & Refund'}
+                            </button>
+                            <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => handleRejectPartialReturn(rr)}>
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {rr.status === 'refund_failed' && (
+                        <button className="btn btn-danger btn-sm" style={{ marginTop: 8 }} disabled={busy} onClick={() => handleApprovePartialReturn(rr)}>
+                          {busy ? 'Retrying…' : 'Retry Paystack Refund'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {order.notes && (
             <div className="card">
               <div className="card-header"><h2 className="card-title">Notes</h2></div>
@@ -519,120 +962,208 @@ export default function OrderDetail() {
             </div>
           )}
 
-          {/* ── Delivery management ──────────────────── */}
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">Delivery</h2>
-              {delivery && <StatusBadge status={delivery.status} />}
+          {/* ── Delivery management / Pickup Station Fulfilment ──────────────────── */}
+          {order.fulfillment_method === 'pickup' ? (
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 className="card-title">Pickup Station Fulfilment</h2>
+                <StatusBadge status={order.status === 'shipped' ? 'ready_for_pickup' : order.status} />
+              </div>
+              <div className="card-body">
+                <div style={{ fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="muted">Station</span>
+                    <span style={{ fontWeight: 500 }}>{store.pickup_location || 'East Legon Station (Accra)'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="muted">Pickup Status</span>
+                    <span style={{ fontWeight: 600 }}>
+                      {order.status === 'delivered' ? 'Picked Up / Completed' :
+                       order.status === 'shipped' ? 'Ready for Pickup' :
+                       order.status === 'processing' ? 'Processing at Station' :
+                       order.status === 'confirmed' ? 'Confirmed (Awaiting Packing)' :
+                       order.status === 'cancelled' ? 'Cancelled' :
+                       order.status === 'refunded' ? 'Refunded' : 'Pending Confirmation'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span className="muted">Fulfillment Type</span>
+                    <span>Self-Pickup</span>
+                  </div>
+                </div>
+
+                {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {order.status === 'pending' ? (
+                      <button
+                        type="button"
+                        className="btn btn-accent btn-sm"
+                        style={{ width: '100%' }}
+                        onClick={() => changeStatus('confirmed', 'Pickup order confirmed by admin')}
+                        disabled={saving}
+                      >
+                        {saving ? 'Updating…' : '✓ Confirm Pickup Order'}
+                      </button>
+                    ) : (
+                      <>
+                        {order.status !== 'shipped' && (
+                          <button
+                            type="button"
+                            className="btn btn-accent btn-sm"
+                            style={{ width: '100%' }}
+                            onClick={() => changeStatus('shipped', 'Order marked ready for pickup by admin')}
+                            disabled={saving}
+                          >
+                            {saving ? 'Updating…' : '📦 Mark Ready for Pickup'}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="btn btn-success btn-sm"
+                          style={{ width: '100%' }}
+                          onClick={() => changeStatus('delivered', 'Order picked up by customer')}
+                          disabled={saving}
+                        >
+                          {saving ? 'Updating…' : '✓ Confirm Customer Picked Up'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+                {order.status === 'delivered' && (
+                  <div style={{ padding: '8px 12px', background: 'var(--ac-surface-sunken)', borderRadius: 4, color: 'var(--ac-success)', fontSize: '0.85rem', textAlign: 'center', fontWeight: 500 }}>
+                    ✓ Order has been collected by the customer.
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="card-body">
-              {delivery ? (
-                /* Existing delivery — show info + allow status/detail update */
-                <form onSubmit={handleUpdateDelivery}>
-                  <div style={{ fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                    {delivery.delivery_partner && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span className="muted">Courier</span>
-                        <span>{delivery.delivery_partner}</span>
-                      </div>
-                    )}
-                    {delivery.tracking_number && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span className="muted">Tracking #</span>
-                        <span className="mono">{delivery.tracking_number}</span>
-                      </div>
-                    )}
-                    {delivery.estimated_delivery && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span className="muted">Est. delivery</span>
-                        <span>{new Date(delivery.estimated_delivery).toLocaleDateString('en-GH')}</span>
-                      </div>
-                    )}
-                    {delivery.driver_phone && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span className="muted">Driver phone</span>
-                        <span>{delivery.driver_phone}</span>
-                      </div>
-                    )}
-                  </div>
+          ) : (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">Delivery</h2>
+                {delivery && <StatusBadge status={delivery.status} />}
+              </div>
+              <div className="card-body">
+                {delivery ? (
+                  /* Existing delivery — show info + allow status/detail update */
+                  <form onSubmit={handleUpdateDelivery}>
+                    <div style={{ fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                      {delivery.delivery_partner && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span className="muted">Courier</span>
+                          <span>{delivery.delivery_partner}</span>
+                        </div>
+                      )}
+                      {delivery.tracking_number && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span className="muted">Tracking #</span>
+                          <span className="mono">{delivery.tracking_number}</span>
+                        </div>
+                      )}
+                      {delivery.estimated_delivery && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span className="muted">Est. delivery</span>
+                          <span>{new Date(delivery.estimated_delivery).toLocaleDateString('en-GH')}</span>
+                        </div>
+                      )}
+                      {delivery.driver_phone && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <span className="muted">Driver phone</span>
+                          <span>{delivery.driver_phone}</span>
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: '0.8rem' }}>Update status</label>
-                    <select
-                      value={deliveryStatus}
-                      onChange={e => setDeliveryStatus(e.target.value)}
-                      style={{ width: '100%' }}
-                    >
-                      <option value="pending">Pending</option>
-                      <option value="in_transit">In transit</option>
-                      <option value="out_for_delivery">Out for delivery</option>
-                      <option value="delivered">Delivered</option>
-                    </select>
-                  </div>
+                    <div className="form-group" style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: '0.8rem' }}>Update status</label>
+                      <select
+                        value={deliveryStatus}
+                        onChange={e => setDeliveryStatus(e.target.value)}
+                        style={{ width: '100%' }}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="in_transit">In transit</option>
+                        <option value="out_for_delivery">Out for delivery</option>
+                        <option value="delivered">Delivered</option>
+                      </select>
+                    </div>
 
-                  <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label style={{ fontSize: '0.8rem' }}>Tracking # (update)</label>
-                    <input
-                      type="text"
-                      placeholder={delivery.tracking_number || 'e.g. GH-12345'}
-                      value={deliveryForm.tracking_number}
-                      onChange={e => setDeliveryForm(f => ({ ...f, tracking_number: e.target.value }))}
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="btn btn-accent btn-sm"
-                    style={{ width: '100%' }}
-                    disabled={deliverySaving}
-                  >
-                    {deliverySaving ? 'Saving…' : 'Save changes'}
-                  </button>
-                </form>
-              ) : (
-                /* No delivery yet — create one */
-                <form onSubmit={handleCreateDelivery}>
-                  <p className="muted text-sm" style={{ marginBottom: 12 }}>
-                    No delivery record yet. Creating one will mark this order as <strong>shipped</strong> and notify the customer.
-                  </p>
-
-                  {[
-                    { name: 'delivery_partner',   label: 'Courier / delivery company', placeholder: 'e.g. DHL, Fedex GH, SkyNet' },
-                    { name: 'tracking_number',    label: 'Tracking number',            placeholder: 'e.g. GH-123456789' },
-                    { name: 'driver_phone',       label: 'Driver phone (optional)',     placeholder: '+233 XX XXX XXXX' },
-                  ].map(f => (
-                    <div className="form-group" key={f.name} style={{ marginBottom: 10 }}>
-                      <label style={{ fontSize: '0.8rem' }}>{f.label}</label>
+                    <div className="form-group" style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: '0.8rem' }}>Tracking # (update)</label>
                       <input
                         type="text"
-                        placeholder={f.placeholder}
-                        value={deliveryForm[f.name]}
-                        onChange={e => setDeliveryForm(prev => ({ ...prev, [f.name]: e.target.value }))}
+                        placeholder={delivery.tracking_number || 'e.g. GH-12345'}
+                        value={deliveryForm.tracking_number}
+                        onChange={e => setDeliveryForm(f => ({ ...f, tracking_number: e.target.value }))}
                       />
                     </div>
-                  ))}
 
-                  <div className="form-group" style={{ marginBottom: 12 }}>
-                    <label style={{ fontSize: '0.8rem' }}>Estimated delivery date (optional)</label>
-                    <input
-                      type="date"
-                      value={deliveryForm.estimated_delivery}
-                      onChange={e => setDeliveryForm(f => ({ ...f, estimated_delivery: e.target.value }))}
-                    />
-                  </div>
+                    <button
+                      type="submit"
+                      className="btn btn-accent btn-sm"
+                      style={{ width: '100%' }}
+                      disabled={deliverySaving}
+                    >
+                      {deliverySaving ? 'Saving…' : 'Save changes'}
+                    </button>
 
-                  <button
-                    type="submit"
-                    className="btn btn-accent btn-sm"
-                    style={{ width: '100%' }}
-                    disabled={deliverySaving}
-                  >
-                    {deliverySaving ? 'Creating…' : 'Create delivery & mark shipped'}
-                  </button>
-                </form>
-              )}
+                    {delivery.tracking_number && delivery.status !== 'delivered' && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ width: '100%', marginTop: 8, fontSize: '0.8rem' }}
+                        disabled={deliverySaving}
+                        onClick={handleAdvanceSimulation}
+                      >
+                        ⚡ Advance Courier Stage (Simulation)
+                      </button>
+                    )}
+                  </form>
+                ) : (
+                  /* No delivery yet — create one */
+                  <form onSubmit={handleCreateDelivery}>
+                    <p className="muted text-sm" style={{ marginBottom: 12 }}>
+                      No delivery record yet. Creating one will mark this order as <strong>shipped</strong> and notify the customer.
+                    </p>
+
+                    {[
+                      { name: 'delivery_partner',   label: 'Courier / delivery company', placeholder: 'e.g. DHL, Fedex GH, SkyNet' },
+                      { name: 'tracking_number',    label: 'Tracking number',            placeholder: 'e.g. GH-123456789' },
+                      { name: 'driver_phone',       label: 'Driver phone (optional)',     placeholder: '+233 XX XXX XXXX' },
+                    ].map(f => (
+                      <div className="form-group" key={f.name} style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: '0.8rem' }}>{f.label}</label>
+                        <input
+                          type="text"
+                          placeholder={f.placeholder}
+                          value={deliveryForm[f.name]}
+                          onChange={e => setDeliveryForm(prev => ({ ...prev, [f.name]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+
+                    <div className="form-group" style={{ marginBottom: 12 }}>
+                      <label style={{ fontSize: '0.8rem' }}>Estimated delivery date (optional)</label>
+                      <input
+                        type="date"
+                        value={deliveryForm.estimated_delivery}
+                        onChange={e => setDeliveryForm(f => ({ ...f, estimated_delivery: e.target.value }))}
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="btn btn-accent btn-sm"
+                      style={{ width: '100%' }}
+                      disabled={deliverySaving}
+                    >
+                      {deliverySaving ? 'Creating…' : 'Create delivery & mark shipped'}
+                    </button>
+                  </form>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 

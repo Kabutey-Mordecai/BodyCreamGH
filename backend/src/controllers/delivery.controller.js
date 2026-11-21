@@ -36,8 +36,12 @@ const createDelivery = async (req, res) => {
     const existing = await DeliveryModel.findByOrderId(order_id);
     if (existing) return res.status(400).json({ error: 'Delivery already exists for this order' });
 
-    // Auto-generate tracking number if not provided
-    const finalTracking = tracking_number?.trim() || generateTrackingNumber();
+    const courierMode = (process.env.COURIER_MODE || (process.env.NODE_ENV === 'production' ? 'manual' : 'mock')).trim().toLowerCase();
+    const providedTracking = typeof tracking_number === 'string' ? tracking_number.trim() : '';
+    if (courierMode === 'manual' && !providedTracking) {
+      return res.status(400).json({ error: 'tracking_number is required when COURIER_MODE=manual' });
+    }
+    const finalTracking = providedTracking || generateTrackingNumber();
 
     const deliveryId = await DeliveryModel.create({
       orderId:          order_id,
@@ -192,7 +196,7 @@ const updateDelivery = async (req, res) => {
         if (orderRows.length) {
           const { status: orderFrom, order_number: orderNumber } = orderRows[0];
           await pool.query(
-            `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1`,
+            `UPDATE orders SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW() WHERE id = $1`,
             [prev.order_id]
           );
           await logStatusChange(prev.order_id, orderFrom, 'delivered', `Delivered. Tracking: ${tn}`);

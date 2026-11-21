@@ -4,6 +4,7 @@ import { wishlistAPI } from '../services/api';
 import { useWishlist } from '../context/WishlistContext';
 import { useCart } from '../context/CartContext';
 import StarRating from '../components/StarRating';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const PLACEHOLDER_IMG = 'https://placehold.co/400x400?text=No+Image';
 
@@ -73,7 +74,7 @@ export default function Wishlist() {
                 <Link to={`/products/${item.product_id}`} style={{ display: 'block', position: 'relative' }}>
                   <div style={{ aspectRatio: '1/1', overflow: 'hidden', background: 'var(--color-blush)' }}>
                     <img
-                      src={item.image_url || PLACEHOLDER_IMG}
+                      src={resolveImageUrl(item.image_url) || PLACEHOLDER_IMG}
                       alt={item.name}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     />

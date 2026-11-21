@@ -79,7 +79,7 @@ module.exports = {
     else if (sort === 'price_high') orderBy = 'ORDER BY p.price DESC';
     else if (sort === 'name_asc')   orderBy = 'ORDER BY p.name ASC';
     else if (sort === 'name_desc')  orderBy = 'ORDER BY p.name DESC';
-    else if (sort === 'top_rated')  orderBy = 'ORDER BY avg_rating DESC NULLS LAST';
+    else if (sort === 'top_rated')  orderBy = 'ORDER BY COALESCE(ROUND(AVG(r.rating)::numeric, 1), p.avg_rating, 0) DESC, p.id DESC';
 
     const selectSql = `
       SELECT p.*,
@@ -208,7 +208,7 @@ module.exports = {
 
   update: async (id, {
     name, price, compare_at_price, cost, category, brand,
-    description, image_url, stock_quantity,
+    description, image_url, stock_quantity, sku,
     ingredients, usage_instructions, is_active,
   }) => {
     await pool.query(
@@ -216,14 +216,14 @@ module.exports = {
        SET name=$1, price=$2, compare_at_price=$3, cost=$4,
            category=$5, brand=$6, description=$7, image_url=$8,
            stock_quantity=$9, ingredients=$10, usage_instructions=$11,
-           is_active=$12, updated_at=NOW()
-       WHERE id=$13`,
+           is_active=$12, sku=COALESCE($13, sku), updated_at=NOW()
+       WHERE id=$14`,
       [
         name, price,
         compare_at_price != null && compare_at_price !== '' ? Number(compare_at_price) : null,
         cost, category, brand, description, image_url,
         stock_quantity, ingredients, usage_instructions,
-        is_active !== false, id,
+        is_active !== false, (sku !== undefined && sku !== null && String(sku).trim() !== '') ? String(sku).trim() : null, id,
       ]
     );
   },

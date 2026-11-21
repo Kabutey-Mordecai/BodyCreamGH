@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
-import { ordersAPI, paymentsAPI, couponsAPI, cartAPI } from '../services/api';
+import { ordersAPI, paymentsAPI, couponsAPI, cartAPI, newsletterAPI } from '../services/api';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { isSafePaystackCheckoutUrl } from '../utils/safePaystackUrl';
 import './Checkout.css';
 
 // Ghana's 16 administrative regions — shown in a select rather than a free text input
@@ -15,10 +17,26 @@ const GHANA_REGIONS = [
 ];
 
 export default function Checkout() {
-  const { cart, cartTotal, clearLocalCart, isGuest } = useCart();
-  const { user } = useAuth();
-  const { delivery_fee_flat, delivery_fee_accra, free_delivery_over } = useSettings();
+  const { cart, cartTotal, clearLocalCart, isGuest, loading: cartLoading } = useCart();
+  const { user, loading: authLoading } = useAuth();
+  const {
+    delivery_fee_flat,
+    delivery_fee_accra,
+    free_delivery_over,
+    pickup_enabled,
+    pickup_location,
+    pickup_hours,
+    pay_on_delivery_enabled,
+    pay_on_delivery_accra_only,
+    guest_checkout_enabled,
+  } = useSettings();
   const navigate = useNavigate();
+
+  const allowGuestCheckout = guest_checkout_enabled === true || guest_checkout_enabled === 'true';
+
+  const [fulfillmentMethod, setFulfillmentMethod] = useState('delivery');
+  const [paymentMethod, setPaymentMethod]         = useState('paystack');
+  const [podConfirmation, setPodConfirmation]     = useState(null);
 
   const [form, setForm] = useState({
     // Guest-only fields
@@ -34,6 +52,7 @@ export default function Checkout() {
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const submittingRef         = useRef(false);
 
   // Coupon state
   const [couponInput, setCouponInput]       = useState('');
@@ -46,24 +65,110 @@ export default function Checkout() {
   const [validating, setValidating]               = useState(false);
   const [validationFetchError, setValidationFetchError] = useState('');
 
-  // Pre-flight: validate guest cart against backend on mount (bypasses stale localStorage prices)
+  // Pre-fill phone number from authenticated user's profile
   useEffect(() => {
-    if (!isGuest || cart.length === 0) return;
+    if (user?.phone && !form.phone) {
+      setForm(prev => ({ ...prev, phone: prev.phone || user.phone }));
+    }
+  }, [user?.phone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-apply / re-validate first-order newsletter welcome discount (handles guest email changes)
+  const welcomeCheckSeq = useRef(0);
+  const couponRef = useRef(coupon);
+  useEffect(() => { couponRef.current = coupon; }, [coupon]);
+
+  useEffect(() => {
+    if (cart.length === 0) return;
+    let savedEmail = '';
+    try { savedEmail = localStorage.getItem('bc_newsletter_email') || ''; } catch {}
+    const typedGuestEmail = isGuest ? form.email.trim() : '';
+    const emailToCheck = isGuest ? (typedGuestEmail || savedEmail) : (user?.email || savedEmail);
+    if (!emailToCheck || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailToCheck)) return;
+
+    const seq = ++welcomeCheckSeq.current;
+    const delay = isGuest && typedGuestEmail ? 450 : 0;
+
+    const timer = setTimeout(() => {
+      const baseTotal = cartTotal + (
+        fulfillmentMethod === 'pickup'
+          ? 0
+          : ((Number(free_delivery_over) || 0) > 0 && cartTotal >= (Number(free_delivery_over) || 0))
+            ? 0
+            : (form.region === 'Greater Accra' ? (Number(delivery_fee_accra) || 10) : (Number(delivery_fee_flat) || 15))
+      );
+
+      newsletterAPI.status(emailToCheck)
+        .then(async ({ data }) => {
+          if (seq !== welcomeCheckSeq.current) return;
+          const activeCoupon = couponRef.current;
+          const welcomeCode = (data?.couponCode || '').toUpperCase();
+
+          if (data?.hasPlacedOrder) {
+            try {
+              localStorage.setItem('bc_first_order_done', 'true');
+              localStorage.removeItem('bc_welcome_coupon');
+            } catch {}
+            const isActiveWelcome = activeCoupon && (
+              activeCoupon.autoWelcome ||
+              (welcomeCode && (activeCoupon.code || '').toUpperCase() === welcomeCode)
+            );
+            if (isActiveWelcome) {
+              setCoupon(null);
+              setCouponError('Welcome discount is valid on your first order only.');
+            }
+          } else if (data?.eligibleForWelcomeDiscount && data?.couponCode && !activeCoupon) {
+            const { data: cv } = await couponsAPI.validate(data.couponCode, baseTotal, emailToCheck);
+            if (seq !== welcomeCheckSeq.current) return;
+            if (cv?.valid) {
+              setCoupon({ code: cv.code, discountAmount: cv.discountAmount, type: cv.type, value: cv.value, autoWelcome: true });
+              setCouponError('');
+            }
+          }
+        })
+        .catch(() => {});
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [cart.length, isGuest, user?.email, form.email]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pre-flight: validate guest cart against backend on mount (only when guest checkout is allowed)
+  useEffect(() => {
+    if (!isGuest || !allowGuestCheckout || cart.length === 0) return;
     setValidating(true);
     setValidationFetchError('');
     cartAPI.validateGuest(
-      cart.map(i => ({ product_id: i.product_id, quantity: i.quantity }))
+      cart.map(i => ({ product_id: i.product_id, quantity: i.quantity, variant_id: i.variant_id || null }))
     )
       .then(({ data }) => setValidation(data))
       .catch(() => setValidationFetchError('Could not check item availability. Please try again.'))
       .finally(() => setValidating(false));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [allowGuestCheckout]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const pickupEnabled = pickup_enabled !== false && pickup_enabled !== 'false';
+  const podEnabled    = pay_on_delivery_enabled === true || pay_on_delivery_enabled === 'true';
+  const podAccraOnly  = pay_on_delivery_accra_only !== false && pay_on_delivery_accra_only !== 'false';
+
+  const isAccra   = form.region === 'Greater Accra';
+  const podEligible = podEnabled && (!podAccraOnly || fulfillmentMethod === 'pickup' || isAccra);
+
+  useEffect(() => {
+    if (!pickupEnabled && fulfillmentMethod === 'pickup') {
+      setFulfillmentMethod('delivery');
+    }
+  }, [pickupEnabled, fulfillmentMethod]);
+
+  useEffect(() => {
+    if (!podEligible && paymentMethod === 'pay_on_delivery') {
+      setPaymentMethod('paystack');
+    }
+  }, [podEligible, paymentMethod]);
 
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     if (cart.length === 0) return setError('Your cart is empty.');
 
     // Guest-only submit guards — keep authenticated path untouched
@@ -74,67 +179,130 @@ export default function Checkout() {
       return setError('Some items in your cart are unavailable. Please review your cart and remove unavailable items.');
     }
 
+    submittingRef.current = true;
+    let redirecting = false;
     setError('');
     setLoading(true);
 
     try {
-      let orderId, email;
+      const isPickup = fulfillmentMethod === 'pickup';
+      const shippingAddress = isPickup
+        ? `Pickup: ${pickup_location || 'East Legon, Accra'}`
+        : form.delivery_address;
+      const shippingCity   = isPickup ? 'Accra' : form.city;
+      const shippingRegion = isPickup ? 'Greater Accra' : form.region;
+      const backendPaymentMethod = paymentMethod === 'pay_on_delivery' ? 'pay_on_delivery' : 'paystack';
 
+      let order;
       if (isGuest) {
-        // Guest checkout — send items array directly
-        const { data: order } = await ordersAPI.createGuest({
-          email:            form.email,
-          first_name:       form.first_name,
-          last_name:        form.last_name,
-          phone:            form.phone,
-          shipping_address: form.delivery_address,
-          shipping_city:    form.city,
-          shipping_region:  form.region,
-          notes:            form.notes,
-          delivery_fee:     deliveryFee,
-          coupon_code:      coupon?.code || undefined,
-          items: cart.map(i => ({ product_id: i.product_id, quantity: i.quantity })),
+        const res = await ordersAPI.createGuest({
+          email:              form.email,
+          first_name:         form.first_name,
+          last_name:          form.last_name,
+          phone:              form.phone,
+          fulfillment_method: fulfillmentMethod,
+          payment_method:     backendPaymentMethod,
+          shipping_address:   shippingAddress,
+          shipping_city:      shippingCity,
+          shipping_region:    shippingRegion,
+          notes:              form.notes,
+          delivery_fee:       deliveryFee,
+          coupon_code:        coupon?.code || undefined,
+          items: cart.map(i => ({
+            product_id: i.product_id,
+            quantity:   i.quantity,
+            ...(i.variant_id ? { variant_id: i.variant_id, variant_label: i.variant_label } : {}),
+          })),
         });
-        orderId = order.orderId;
-        email   = order.email;
-
-        const { data: payment } = await paymentsAPI.initializeGuest(orderId, email);
-        await clearLocalCart();
-        window.location.href = payment.authorization_url;
+        order = res.data;
       } else {
-        // Authenticated checkout — cart is on the server
-        const { data: order } = await ordersAPI.create({
-          shipping_address: form.delivery_address,
-          shipping_city:    form.city,
-          shipping_region:  form.region,
+        const res = await ordersAPI.create({
+          fulfillment_method: fulfillmentMethod,
+          payment_method:     backendPaymentMethod,
+          shipping_address:   shippingAddress,
+          shipping_city:      shippingCity,
+          shipping_region:    shippingRegion,
           notes: form.phone
             ? `Phone: ${form.phone}${form.notes ? '\n' + form.notes : ''}`
             : form.notes,
           delivery_fee: deliveryFee,
           coupon_code:  coupon?.code || undefined,
         });
-        orderId = order.orderId;
-
-        const { data: payment } = await paymentsAPI.initialize(orderId);
-        await clearLocalCart();
-        window.location.href = payment.authorization_url;
+        order = res.data;
       }
+
+      try {
+        localStorage.setItem('bc_first_order_done', 'true');
+        localStorage.removeItem('bc_welcome_coupon');
+      } catch {}
+
+      if (paymentMethod === 'pay_on_delivery') {
+        await clearLocalCart();
+        if (isGuest) {
+          setPodConfirmation({
+            orderId:            order.orderId,
+            orderNumber:        order.orderNumber,
+            total:              order.total,
+            fulfillment_method: fulfillmentMethod,
+            email:              form.email,
+          });
+        } else {
+          navigate(`/orders/${order.orderId}`);
+        }
+        return;
+      }
+
+      const { data: payment } = isGuest
+        ? await paymentsAPI.initializeGuest(order.orderId, order.email)
+        : await paymentsAPI.initialize(order.orderId);
+      if (!isSafePaystackCheckoutUrl(payment?.authorization_url)) {
+        throw new Error('Invalid payment redirect URL received. Please try again.');
+      }
+      try {
+        if (isGuest) {
+          sessionStorage.removeItem('pending_auth_payment');
+          sessionStorage.setItem('pending_guest_payment', JSON.stringify({
+            orderId: order.orderId,
+            orderNumber: order.orderNumber || '',
+            email: order.email || form.email,
+          }));
+        } else {
+          sessionStorage.removeItem('pending_guest_payment');
+          sessionStorage.setItem(
+            'pending_auth_payment',
+            JSON.stringify({ orderId: order.orderId, orderNumber: order.orderNumber || '' })
+          );
+        }
+      } catch { /* ignore storage quota errors */ }
+      redirecting = true;
+      window.location.assign(payment.authorization_url);
     } catch (err) {
-      setError(err.response?.data?.error || 'Checkout failed. Please try again.');
+      setError(err.response?.data?.error || err.message || 'Checkout failed. Please try again.');
     } finally {
-      setLoading(false);
+      if (!redirecting) {
+        submittingRef.current = false;
+        setLoading(false);
+      }
     }
   };
 
-  const isAccra   = form.region === 'Greater Accra';
   const feeFlat   = Number(delivery_fee_flat)  || 15;
   const feeAccra  = Number(delivery_fee_accra) || 10;
   const freeOver  = Number(free_delivery_over) || 0;
-  const deliveryFee = (freeOver > 0 && cartTotal >= freeOver)
+  const deliveryFee = fulfillmentMethod === 'pickup'
     ? 0
-    : isAccra ? feeAccra : feeFlat;
+    : (freeOver > 0 && cartTotal >= freeOver)
+      ? 0
+      : isAccra ? feeAccra : feeFlat;
   const subtotalPlusDelivery = cartTotal + deliveryFee;
-  const discountAmount = coupon?.discountAmount || 0;
+  const discountAmount = coupon
+    ? (coupon.type === 'percentage' && Number(coupon.value) > 0
+      ? Math.min(
+          subtotalPlusDelivery,
+          Math.round((subtotalPlusDelivery * Number(coupon.value) / 100) * 100) / 100
+        )
+      : (Number(coupon.discountAmount) || 0))
+    : 0;
   const orderTotal = Math.max(0, subtotalPlusDelivery - discountAmount);
 
   // For guests with successful validation, use backend-verified prices for the displayed total.
@@ -152,7 +320,8 @@ export default function Checkout() {
     setCouponError('');
     setCouponLoading(true);
     try {
-      const { data } = await couponsAPI.validate(code, subtotalPlusDelivery);
+      const emailToCheck = isGuest ? form.email.trim() : user?.email;
+      const { data } = await couponsAPI.validate(code, subtotalPlusDelivery, emailToCheck);
       setCoupon({ code: data.code, discountAmount: data.discountAmount, type: data.type, value: data.value });
       setCouponInput('');
     } catch (err) {
@@ -162,6 +331,56 @@ export default function Checkout() {
       setCouponLoading(false);
     }
   };
+
+  if (podConfirmation) {
+    return (
+      <div className="page-section">
+        <div className="container" style={{ maxWidth: 560, textAlign: 'center', padding: '60px 16px' }}>
+          <div className="checkout-section" style={{ alignItems: 'center', textAlign: 'center' }}>
+            <span className="section-label">Order Confirmed</span>
+            <h1 className="page-title" style={{ marginBottom: 4 }}>Thank you!</h1>
+            <p style={{ color: 'var(--color-muted)', margin: 0 }}>
+              Order <strong>{podConfirmation.orderNumber}</strong> has been confirmed.
+            </p>
+            <p style={{ fontSize: '0.92rem', margin: '8px 0 0' }}>
+              Total due on {podConfirmation.fulfillment_method === 'pickup' ? 'pickup' : 'delivery'}:{' '}
+              <strong>GHS {Number(podConfirmation.total || 0).toFixed(2)}</strong> (Cash or Mobile Money).
+            </p>
+            {podConfirmation.fulfillment_method === 'pickup' && (
+              <div className="checkout-pickup-box" style={{ width: '100%', textAlign: 'left' }}>
+                <strong>Pickup Station</strong>
+                <p>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</p>
+                {pickup_hours && <p className="checkout-pickup-hours">Hours: {pickup_hours}</p>}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
+              <Link to="/track" className="btn btn-accent">Track Your Order</Link>
+              <Link to="/shop" className="btn btn-outline">Continue Shopping</Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Require sign in / account creation at checkout (Jumia / Temu flow) unless guest checkout is explicitly enabled in Admin
+  if (authLoading) {
+    return <div className="spinner" style={{ marginTop: '80px' }} />;
+  }
+
+  if (!user && !allowGuestCheckout) {
+    return (
+      <Navigate
+        to="/login"
+        state={{ from: { pathname: '/checkout' }, checkoutRedirect: true }}
+        replace
+      />
+    );
+  }
+
+  if (cartLoading) {
+    return <div className="spinner" style={{ marginTop: '80px' }} />;
+  }
 
   if (cart.length === 0) {
     return (
@@ -220,6 +439,7 @@ export default function Checkout() {
                       value={form.first_name}
                       onChange={handleChange}
                       required
+                      autoComplete="given-name"
                       placeholder="Ama"
                     />
                   </div>
@@ -231,6 +451,7 @@ export default function Checkout() {
                       type="text"
                       value={form.last_name}
                       onChange={handleChange}
+                      autoComplete="family-name"
                       placeholder="Mensah"
                     />
                   </div>
@@ -245,6 +466,7 @@ export default function Checkout() {
                     value={form.email}
                     onChange={handleChange}
                     required
+                    autoComplete="email"
                     placeholder="ama@example.com"
                   />
                 </div>
@@ -252,53 +474,102 @@ export default function Checkout() {
             )}
 
             <div className="checkout-section">
-              <h2>Delivery Details</h2>
+              <h2>Delivery Method</h2>
               <div className="gold-divider" style={{ margin: '0 0 24px' }} />
 
-              {error && <div className="alert alert-error">{error}</div>}
+              {error && <div className="alert alert-error" role="alert">{error}</div>}
 
-              <div className="form-group">
-                <label htmlFor="delivery_address">Street address</label>
-                <input
-                  id="delivery_address"
-                  name="delivery_address"
-                  type="text"
-                  value={form.delivery_address}
-                  onChange={handleChange}
-                  required
-                  placeholder="e.g. 12 Oxford Street"
-                />
-              </div>
+              {pickupEnabled && (
+                <div className="checkout-method-grid" role="radiogroup" aria-label="Fulfillment method">
+                  <label className={`checkout-method-card${fulfillmentMethod === 'delivery' ? ' is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="fulfillment_method"
+                      value="delivery"
+                      checked={fulfillmentMethod === 'delivery'}
+                      onChange={() => setFulfillmentMethod('delivery')}
+                    />
+                    <div>
+                      <strong>Doorstep Delivery</strong>
+                      <span>
+                        Accra: GHS {feeAccra.toFixed(2)} · Nationwide: GHS {feeFlat.toFixed(2)}
+                        {freeOver > 0 ? ` (Free over GHS ${freeOver})` : ''}
+                      </span>
+                    </div>
+                  </label>
+                  <label className={`checkout-method-card${fulfillmentMethod === 'pickup' ? ' is-selected' : ''}`}>
+                    <input
+                      type="radio"
+                      name="fulfillment_method"
+                      value="pickup"
+                      checked={fulfillmentMethod === 'pickup'}
+                      onChange={() => setFulfillmentMethod('pickup')}
+                    />
+                    <div>
+                      <strong>Pickup Station — Free</strong>
+                      <span>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</span>
+                    </div>
+                  </label>
+                </div>
+              )}
 
-              <div className="checkout-row">
-                <div className="form-group">
-                  <label htmlFor="city">City</label>
-                  <input
-                    id="city"
-                    name="city"
-                    type="text"
-                    value={form.city}
-                    onChange={handleChange}
-                    required
-                    placeholder="e.g. Accra"
-                  />
+              {fulfillmentMethod === 'pickup' ? (
+                <div className="checkout-pickup-box">
+                  <strong>Pickup Location</strong>
+                  <p>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</p>
+                  {pickup_hours && (
+                    <p className="checkout-pickup-hours">Pickup hours: {pickup_hours}</p>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label htmlFor="region">Region</label>
-                  <select
-                    id="region"
-                    name="region"
-                    value={form.region}
-                    onChange={handleChange}
-                    required
-                  >
-                    <option value="" disabled>Select a region</option>
-                    {GHANA_REGIONS.map(r => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="delivery_address">Street address</label>
+                    <input
+                      id="delivery_address"
+                      name="delivery_address"
+                      type="text"
+                      value={form.delivery_address}
+                      onChange={handleChange}
+                      required
+                      autoComplete="street-address"
+                      placeholder="e.g. 12 Oxford Street"
+                    />
+                  </div>
+
+                  <div className="checkout-row">
+                    <div className="form-group">
+                      <label htmlFor="city">City</label>
+                      <input
+                        id="city"
+                        name="city"
+                        type="text"
+                        value={form.city}
+                        onChange={handleChange}
+                        required
+                        autoComplete="address-level2"
+                        placeholder="e.g. Accra"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="region">Region</label>
+                      <select
+                        id="region"
+                        name="region"
+                        value={form.region}
+                        onChange={handleChange}
+                        required
+                        autoComplete="address-level1"
+                      >
+                        <option value="" disabled>Select a region</option>
+                        {GHANA_REGIONS.map(r => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <div className="form-group">
                 <label htmlFor="phone">Phone number</label>
@@ -309,6 +580,7 @@ export default function Checkout() {
                   value={form.phone}
                   onChange={handleChange}
                   required
+                  autoComplete="tel"
                   placeholder="+233 XX XXX XXXX"
                 />
               </div>
@@ -321,8 +593,51 @@ export default function Checkout() {
                   value={form.notes}
                   onChange={handleChange}
                   rows={3}
-                  placeholder="Any special instructions for delivery?"
+                  placeholder={fulfillmentMethod === 'pickup' ? 'Preferred pickup time or notes?' : 'Any special instructions for delivery?'}
                 />
+              </div>
+            </div>
+
+            {/* ── Payment method ──────────────────────── */}
+            <div className="checkout-section">
+              <h2>Payment Method</h2>
+              <div className="gold-divider" style={{ margin: '0 0 16px' }} />
+
+              <div className="checkout-method-grid" role="radiogroup" aria-label="Payment method">
+                <label className={`checkout-method-card${paymentMethod === 'paystack' ? ' is-selected' : ''}`}>
+                  <input
+                    type="radio"
+                    name="payment_method"
+                    value="paystack"
+                    checked={paymentMethod === 'paystack'}
+                    onChange={() => setPaymentMethod('paystack')}
+                  />
+                  <div>
+                    <strong>Pay Online (Paystack)</strong>
+                    <span>MTN MoMo, Telecel Cash, Cards &amp; Bank Transfer</span>
+                  </div>
+                </label>
+
+                {podEnabled && (
+                  <label className={`checkout-method-card${paymentMethod === 'pay_on_delivery' ? ' is-selected' : ''}${!podEligible ? ' is-disabled' : ''}`}>
+                    <input
+                      type="radio"
+                      name="payment_method"
+                      value="pay_on_delivery"
+                      checked={paymentMethod === 'pay_on_delivery'}
+                      disabled={!podEligible}
+                      onChange={() => setPaymentMethod('pay_on_delivery')}
+                    />
+                    <div>
+                      <strong>{fulfillmentMethod === 'pickup' ? 'Pay on Pickup' : 'Pay on Delivery'}</strong>
+                      <span>
+                        {podEligible
+                          ? 'Pay with Cash or Mobile Money when your order arrives'
+                          : 'Available for Greater Accra deliveries or Store Pickup only'}
+                      </span>
+                    </div>
+                  </label>
+                )}
               </div>
             </div>
 
@@ -332,14 +647,14 @@ export default function Checkout() {
               <div className="gold-divider" style={{ margin: '0 0 16px' }} />
 
               {coupon ? (
-                <div className="coupon-applied">
+                <div className="coupon-applied" role="status">
                   <div>
                     <span className="coupon-tag">{coupon.code}</span>
                     <span className="coupon-desc">
                       {coupon.type === 'percentage'
                         ? `${coupon.value}% off`
                         : `GHS ${coupon.value} off`}
-                      {' '}— saving GHS {coupon.discountAmount.toFixed(2)}
+                      {' '}— saving GHS {discountAmount.toFixed(2)}
                     </span>
                   </div>
                   <button
@@ -371,12 +686,13 @@ export default function Checkout() {
                   </button>
                 </div>
               )}
-              {couponError && <p className="coupon-error">{couponError}</p>}
+              {couponError && <p className="coupon-error" role="alert">{couponError}</p>}
             </div>
 
             <button
               type="submit"
               className="btn btn-accent btn-full checkout-submit"
+              aria-busy={loading}
               disabled={
                 loading ||
                 cart.length === 0 ||
@@ -388,14 +704,17 @@ export default function Checkout() {
                 ? 'Checking availability…'
                 : loading
                 ? 'Processing…'
+                : paymentMethod === 'pay_on_delivery'
+                ? `Place Order — GHS ${validatedOrderTotal.toFixed(2)} (${fulfillmentMethod === 'pickup' ? 'Pay on Pickup' : 'Pay on Delivery'})`
                 : `Pay GHS ${validatedOrderTotal.toFixed(2)} with Paystack`}
             </button>
 
             <div className="checkout-note">
-              <span className="checkout-lock">🔒</span>
+              <span className="checkout-lock" aria-hidden="true">🔒</span>
               <span>
-                You'll be redirected to Paystack's secure payment page.
-                Cards, mobile money, and bank transfers are accepted.
+                {paymentMethod === 'pay_on_delivery'
+                  ? 'Your order will be confirmed immediately. Pay in cash or Mobile Money upon receipt.'
+                  : "You'll be redirected to Paystack's secure payment page. Cards, mobile money, and bank transfers are accepted."}
               </span>
             </div>
           </form>
@@ -425,7 +744,7 @@ export default function Checkout() {
             <ul className="checkout-items">
               {cart.map(item => {
                 const v = isGuest
-                  ? validation?.items?.find(vi => vi.product_id === item.product_id)
+                  ? validation?.items?.find(vi => vi.product_id === item.product_id && (vi.variant_id || null) === (item.variant_id || null))
                   : null;
                 const isUnavailable = Boolean(v && !v.available);
                 const displayPrice = parseFloat(v?.price ?? item.price);
@@ -437,7 +756,7 @@ export default function Checkout() {
                   >
                     <div className="checkout-item-thumb">
                       <img
-                        src={item.image_url || 'https://placehold.co/80x80?text=?'}
+                        src={resolveImageUrl(item.image_url) || 'https://placehold.co/80x80?text=?'}
                         alt={item.name}
                       />
                       <span className="checkout-item-badge">{item.quantity}</span>
@@ -462,16 +781,18 @@ export default function Checkout() {
                 <span>GHS {validatedSubtotal.toFixed(2)}</span>
               </div>
               <div className="summary-row">
-                <span>Delivery</span>
-                <span>{form.region
-                  ? (deliveryFee === 0 ? 'Free' : `GHS ${deliveryFee.toFixed(2)}`)
-                  : 'Select region'}
+                <span>{fulfillmentMethod === 'pickup' ? 'Pickup Station' : 'Delivery'}</span>
+                <span>{fulfillmentMethod === 'pickup'
+                  ? 'Free'
+                  : form.region
+                    ? (deliveryFee === 0 ? 'Free' : `GHS ${deliveryFee.toFixed(2)}`)
+                    : 'Select region'}
                 </span>
               </div>
               {coupon && (
                 <div className="summary-row" style={{ color: 'var(--color-accent-dark)' }}>
                   <span>Discount ({coupon.code})</span>
-                  <span>− GHS {coupon.discountAmount.toFixed(2)}</span>
+                  <span>− GHS {discountAmount.toFixed(2)}</span>
                 </div>
               )}
               <div className="summary-row summary-total">

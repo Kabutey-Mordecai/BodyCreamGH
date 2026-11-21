@@ -1,0 +1,7 @@
+{
+  "name": "bodycreamgh-monorepo",
+  "private": true,
+  "scripts": {
+    "test": "node backend/scripts/run-all-tests.js"
+  }
+}

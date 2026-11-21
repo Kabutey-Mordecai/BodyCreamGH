@@ -1,5 +1,6 @@
 const InventoryModel = require('../models/inventory.model');
 const ProductModel = require('../models/product.model');
+const { bustCache } = require('./product.controller');
 
 const getInventory = async (req, res) => {
   try {
@@ -21,10 +22,12 @@ const restockProduct = async (req, res) => {
     if (!product) return res.status(404).json({ error: 'Product not found' });
 
     await InventoryModel.adjustStock(product_id, parseInt(quantity), 'restock', notes || null);
+    bustCache();
 
     res.json({ message: `Restocked ${quantity} units of "${product.name}"` });
   } catch (error) {
-    console.error('Restock error:', error);
+    const logger = require('../utils/logger');
+    logger.error('Restock error', { err: error.message });
     res.status(500).json({ error: 'Failed to restock product' });
   }
 };
@@ -68,10 +71,12 @@ const adjustInventory = async (req, res) => {
     }
 
     await InventoryModel.adjustStock(productId, change, reason || (change > 0 ? 'restock' : 'adjustment'), notes || null);
+    bustCache();
 
     res.json({ ok: true, new_stock: newStock });
   } catch (error) {
-    console.error('Inventory adjust error:', error);
+    const logger = require('../utils/logger');
+    logger.error('Inventory adjust error', { err: error.message });
     res.status(500).json({ error: 'Failed to adjust inventory' });
   }
 };

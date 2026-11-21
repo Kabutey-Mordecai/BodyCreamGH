@@ -47,7 +47,9 @@ async function resolveRecipients(segment) {
 module.exports = async function register(boss) {
   await boss.createQueue('newsletter/send-campaign');
 
-  await boss.work('newsletter/send-campaign', { teamSize: 1 }, async (job) => {
+  await boss.work('newsletter/send-campaign', { teamSize: 1 }, async (jobs) => {
+    const job = Array.isArray(jobs) ? jobs[0] : jobs;
+    if (!job?.data) return;
     const { campaign_id } = job.data;
 
     const { rows: campaignRows } = await pool.query(

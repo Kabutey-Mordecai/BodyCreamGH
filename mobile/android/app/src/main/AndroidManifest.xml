@@ -5,7 +5,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <application
-        android:label="Cosmetics GH"
+        android:label="BodyCream GH"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="false">
@@ -29,14 +29,15 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
 
-            <!-- Deep-link scheme so Paystack callback can re-open the app.
-                 Must match the callback URL registered in the Paystack dashboard.
-                 Example: cosmeticsgh://payment/callback -->
+            <!-- Deep-link scheme so Paystack callback and order/review links can open the app.
+                 Examples: cosmeticsgh://payment/callback, cosmeticsgh://order/<id> -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="cosmeticsgh" android:host="payment"/>
+                <data android:scheme="cosmeticsgh" android:host="order"/>
+                <data android:scheme="cosmeticsgh" android:host="orders"/>
             </intent-filter>
         </activity>
 
@@ -44,5 +45,10 @@
         <meta-data
             android:name="io.flutter.embedding.android.SplashScreenDrawable"
             android:resource="@drawable/launch_background"/>
+
+        <!-- Required by Flutter v2 Android embedding -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2"/>
     </application>
 </manifest>

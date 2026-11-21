@@ -90,7 +90,7 @@ export default function VariantManager({ productId }) {
   };
 
   const handleTypeInputKeyDown = (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); commitTypeInput(); }
+    if (e.key === 'Enter' && !e.nativeEvent?.isComposing) { e.preventDefault(); commitTypeInput(); }
     if (e.key === ',' )    { e.preventDefault(); commitTypeInput(); }
     if (e.key === 'Backspace' && !typeInput && typeValues.length) {
       setTypeValues(prev => prev.slice(0, -1));

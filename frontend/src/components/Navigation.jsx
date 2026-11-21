@@ -1,22 +1,13 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { useSettings } from '../context/SettingsContext';
 import { useWishlist } from '../context/WishlistContext';
 import AnnouncementBar from './AnnouncementBar';
+import SearchBar from './SearchBar';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './Navigation.css';
-
-// Resolve relative /uploads/... logo URLs against the backend origin (same
-// approach used by ProductPage / ProductImageGallery).
-const _apiUrl = import.meta.env.VITE_API_URL || '';
-function resolveLogoUrl(url) {
-  if (!url || url.startsWith('http') || url.startsWith('data:')) return url;
-  if (_apiUrl.startsWith('http')) {
-    try { return `${new URL(_apiUrl).origin}${url}`; } catch { /* fall through */ }
-  }
-  return url;
-}
 
 export default function Navigation() {
   const { user, logout }            = useAuth();
@@ -25,10 +16,21 @@ export default function Navigation() {
   const { savedIds }      = useWishlist() || { savedIds: new Set() };
   const navigate          = useNavigate();
   const [menuOpen, setMenuOpen]   = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [badgePop, setBadgePop]   = useState(false);
+  const prevCartCount             = useRef(cartCount);
   const [barVisible, setBarVisible] = useState(
     () => !sessionStorage.getItem('bar_dismissed')
   );
+
+  useEffect(() => {
+    if (cartCount > prevCartCount.current) {
+      setBadgePop(true);
+      const t = setTimeout(() => setBadgePop(false), 450);
+      prevCartCount.current = cartCount;
+      return () => clearTimeout(t);
+    }
+    prevCartCount.current = cartCount;
+  }, [cartCount]);
 
   const handleLogout = async () => {
     await logout();
@@ -36,15 +38,6 @@ export default function Navigation() {
   };
 
   const closeMenu = () => setMenuOpen(false);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    const q = searchQuery.trim();
-    if (!q) return;
-    navigate(`/shop?search=${encodeURIComponent(q)}`);
-    setSearchQuery('');
-    closeMenu();
-  };
 
   const handleBarVisibility = useCallback((visible) => {
     setBarVisible(visible);
@@ -65,7 +58,7 @@ export default function Navigation() {
           >
             {logo_url ? (
               <img
-                src={resolveLogoUrl(logo_url)}
+                src={resolveImageUrl(logo_url)}
                 alt={store_name}
                 className="nav-logo-img"
                 onError={e => {
@@ -85,21 +78,7 @@ export default function Navigation() {
           </Link>
 
           {/* Search bar — desktop (hidden on mobile via CSS) */}
-          <form className="nav-search" onSubmit={handleSearch}>
-            <svg className="nav-search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-              <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            </svg>
-            <input
-              type="search"
-              placeholder="Search products…"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="nav-search-input"
-              aria-label="Search products"
-            />
-            <button type="submit" className="nav-search-btn">Search</button>
-          </form>
+          <SearchBar variant="nav" placeholder="Search products…" onNavigate={closeMenu} />
 
           {/* Hamburger — mobile only */}
           <button
@@ -114,21 +93,7 @@ export default function Navigation() {
           <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
             {/* Mobile search — appears at top of hamburger dropdown */}
             <li className="nav-search-mobile-wrap">
-              <form className="nav-search nav-search--mobile" onSubmit={handleSearch}>
-                <svg className="nav-search-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.5"/>
-                  <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-                </svg>
-                <input
-                  type="search"
-                  placeholder="Search products…"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="nav-search-input"
-                  aria-label="Search products"
-                />
-                <button type="submit" className="nav-search-btn">Search</button>
-              </form>
+              <SearchBar variant="mobile" placeholder="Search products…" onNavigate={closeMenu} />
             </li>
 
             <li><NavLink to="/"     end onClick={closeMenu}>Home</NavLink></li>
@@ -139,7 +104,10 @@ export default function Navigation() {
               <NavLink to="/cart" className="nav-cart" onClick={closeMenu}>
                 Cart
                 {cartCount > 0 && (
-                  <span className="cart-badge" aria-label={`${cartCount} items`}>
+                  <span
+                    className={`cart-badge${badgePop ? ' cart-badge--pop' : ''}`}
+                    aria-label={`${cartCount} items`}
+                  >
                     {cartCount}
                   </span>
                 )}

@@ -3,6 +3,7 @@
 const { randomUUID: uuid } = require('crypto');
 const pool         = require('../config/database');
 const emailService = require('../services/email.service');
+const CouponModel  = require('../models/coupon.model');
 const logger       = require('../utils/logger');
 
 // ── Shared segment helpers ────────────────────────────────────────────────────
@@ -41,18 +42,34 @@ const subscribe = async (req, res) => {
   }
 
   try {
+    const normalizedEmail = email.toLowerCase().trim();
     const { rows: existing } = await pool.query(
       `SELECT id, status, unsubscribe_token FROM newsletter_subscribers WHERE email = $1`,
-      [email.toLowerCase().trim()]
+      [normalizedEmail]
     );
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
+    // Ensure welcome coupon exists in DB and check if customer has already placed a first order
+    const { config: welcomeCfg } = await CouponModel.ensureWelcomeCouponExists(pool);
+    const discountText = welcomeCfg.discountText || '10% off';
+    const couponCode   = welcomeCfg.code || 'WELCOME10';
+    const hasPriorOrder = await CouponModel.hasCustomerPlacedOrder(
+      { email: normalizedEmail },
+      pool
+    );
+
     if (existing.length > 0) {
       const sub = existing[0];
       if (sub.status === 'active') {
-        // Already active — return success silently (no duplicate welcome email)
-        return res.json({ success: true, message: 'Subscribed successfully' });
+        return res.json({
+          success: true,
+          message: 'Subscribed successfully',
+          couponCode: hasPriorOrder ? null : couponCode,
+          discountText: hasPriorOrder ? null : discountText,
+          discountPercent: welcomeCfg.percent,
+          isFirstOrderEligible: !hasPriorOrder,
+        });
       }
       // Previously unsubscribed — re-activate
       await pool.query(
@@ -62,8 +79,15 @@ const subscribe = async (req, res) => {
         [sub.id]
       );
       const unsubscribeUrl = `${frontendUrl}/unsubscribe?token=${sub.unsubscribe_token}`;
-      emailService.sendNewsletterWelcome(email, { name, unsubscribeUrl }).catch(() => {});
-      return res.json({ success: true, message: 'Subscribed successfully' });
+      emailService.sendNewsletterWelcome(email, { name, unsubscribeUrl, discountText, couponCode }).catch(() => {});
+      return res.json({
+        success: true,
+        message: 'Subscribed successfully',
+        couponCode: hasPriorOrder ? null : couponCode,
+        discountText: hasPriorOrder ? null : discountText,
+        discountPercent: welcomeCfg.percent,
+        isFirstOrderEligible: !hasPriorOrder,
+      });
     }
 
     // New subscriber
@@ -71,16 +95,81 @@ const subscribe = async (req, res) => {
     await pool.query(
       `INSERT INTO newsletter_subscribers (email, name, unsubscribe_token, source)
        VALUES ($1, $2, $3, 'storefront')`,
-      [email.toLowerCase().trim(), name || null, token]
+      [normalizedEmail, name || null, token]
     );
 
     const unsubscribeUrl = `${frontendUrl}/unsubscribe?token=${token}`;
-    emailService.sendNewsletterWelcome(email, { name, unsubscribeUrl }).catch(() => {});
+    emailService.sendNewsletterWelcome(email, { name, unsubscribeUrl, discountText, couponCode }).catch(() => {});
 
-    res.status(201).json({ success: true, message: 'Subscribed successfully' });
+    res.status(201).json({
+      success: true,
+      message: 'Subscribed successfully',
+      couponCode: hasPriorOrder ? null : couponCode,
+      discountText: hasPriorOrder ? null : discountText,
+      discountPercent: welcomeCfg.percent,
+      isFirstOrderEligible: !hasPriorOrder,
+    });
   } catch (err) {
     logger.error('Newsletter subscribe error', { err: err.message });
     res.status(500).json({ error: 'Subscription failed. Please try again.' });
+  }
+};
+
+// ── Public: check newsletter & first-order welcome discount eligibility ──────
+const getSubscriptionStatus = async (req, res) => {
+  try {
+    let resolvedEmail = typeof req.query.email === 'string' && req.query.email.trim()
+      ? req.query.email.trim().toLowerCase()
+      : null;
+    const customerId = req.user?.id || null;
+
+    if (!resolvedEmail && customerId) {
+      const { rows } = await pool.query('SELECT email FROM users WHERE id = $1', [customerId]);
+      if (rows[0]?.email) resolvedEmail = rows[0].email.toLowerCase().trim();
+    }
+
+    const { config: welcomeCfg } = await CouponModel.ensureWelcomeCouponExists(pool);
+
+    if (!resolvedEmail && !customerId) {
+      return res.json({
+        subscribed: false,
+        hasPlacedOrder: false,
+        shouldHideBar: false,
+        eligibleForWelcomeDiscount: false,
+        couponCode: null,
+        discountText: welcomeCfg.discountText,
+        discountPercent: welcomeCfg.percent,
+      });
+    }
+
+    let subscribed = false;
+    if (resolvedEmail) {
+      const { rows: subRows } = await pool.query(
+        `SELECT status FROM newsletter_subscribers WHERE LOWER(email) = $1 LIMIT 1`,
+        [resolvedEmail]
+      );
+      subscribed = subRows[0]?.status === 'active';
+    }
+
+    const hasPlacedOrder = await CouponModel.hasCustomerPlacedOrder(
+      { customerId, email: resolvedEmail },
+      pool
+    );
+
+    const eligibleForWelcomeDiscount = subscribed && !hasPlacedOrder;
+
+    res.json({
+      subscribed,
+      hasPlacedOrder,
+      shouldHideBar: subscribed || hasPlacedOrder,
+      eligibleForWelcomeDiscount,
+      couponCode: eligibleForWelcomeDiscount ? welcomeCfg.code : null,
+      discountText: welcomeCfg.discountText,
+      discountPercent: welcomeCfg.percent,
+    });
+  } catch (err) {
+    logger.error('Get newsletter status error', { err: err.message });
+    res.status(500).json({ error: 'Failed to check subscription status.' });
   }
 };
 
@@ -379,7 +468,7 @@ const getCampaignById = async (req, res) => {
 };
 
 module.exports = {
-  subscribe, unsubscribe,
+  subscribe, unsubscribe, getSubscriptionStatus,
   getSubscribers, deleteSubscriber, importSubscribers,
   getPreviewCount, createCampaign, sendCampaign,
   getCampaignStatus, getCampaigns, getCampaignById,

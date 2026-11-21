@@ -62,7 +62,7 @@ const getCustomerById = async (req, res) => {
     const { rows } = await pool.query(
       `SELECT u.id, u.email, u.first_name, u.last_name, u.phone, u.created_at,
               COUNT(o.id) AS order_count,
-              COALESCE(SUM(o.total_amount) FILTER (WHERE o.payment_status = 'paid'), 0) AS total_spent
+              COALESCE(SUM(o.total_amount - COALESCE(o.refund_amount, 0)) FILTER (WHERE o.payment_status IN ('paid', 'partially_refunded')), 0) AS total_spent
        FROM users u
        LEFT JOIN orders o ON o.customer_id = u.id
        WHERE u.id = $1 AND u.role = 'customer'
