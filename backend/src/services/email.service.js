@@ -1,15 +1,28 @@
 const nodemailer = require('nodemailer');
 
 // Single transporter instance reused across all sends.
-// requireTLS forces STARTTLS upgrade on port 587 (Gmail requires it).
+// Env-configurable for Gmail, AWS SES, Resend, Brevo, or any SMTP provider:
+//   SMTP_HOST, SMTP_PORT (default 587), SMTP_SECURE ('true' for port 465),
+//   SMTP_REQUIRE_TLS (default 'true' when not secure), SMTP_USER, SMTP_PASS,
+//   EMAIL_FROM (e.g. "BodyCream GH <orders@yourdomain.com>"; required for SES/Resend/Brevo
+//   where SMTP_USER is an API key or IAM username rather than a From address).
 let _transporter = null;
+function getFromAddress() {
+  const configured = (process.env.EMAIL_FROM || '').trim();
+  if (configured) return configured;
+  return `BodyCream GH <${(process.env.SMTP_USER || '').trim()}>`;
+}
+
 function getTransporter() {
   if (!_transporter) {
+    const port = parseInt(process.env.SMTP_PORT, 10) || 587;
+    const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+    const requireTLS = process.env.SMTP_REQUIRE_TLS !== 'false' && !secure;
     _transporter = nodemailer.createTransport({
-      host:       process.env.SMTP_HOST,
-      port:       parseInt(process.env.SMTP_PORT) || 587,
-      secure:     false,
-      requireTLS: true,
+      host: process.env.SMTP_HOST,
+      port,
+      secure,
+      requireTLS,
       auth: {
         user: (process.env.SMTP_USER || '').trim(),
         pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
@@ -72,7 +85,7 @@ const sendOrderConfirmation = async (to, { orderNumber, total, items = [] }) => 
     .join('');
 
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Order Confirmed – ${orderNumber}`,
     html: `
@@ -92,7 +105,7 @@ const sendWelcomeEmail = async (to, firstName) => {
   if (!isConfigured() || !to) return;
 
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: 'Welcome to our store!',
     html: `<h2>Welcome${firstName ? `, ${escapeHtml(firstName)}` : ''}!</h2>
@@ -104,7 +117,7 @@ const sendShippingNotification = async (to, { orderNumber, trackingNumber, deliv
   if (!isConfigured() || !to) return;
 
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Your order ${orderNumber} has shipped!`,
     html: `
@@ -127,7 +140,7 @@ const sendPasswordResetEmail = async (to, resetUrl, token = null) => {
   }
 
   await getTransporter().sendMail({
-    from: `BodyCream GH <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: extractedToken ? `Your password reset code: ${extractedToken}` : 'Reset your password',
     html: `
@@ -170,7 +183,7 @@ const sendReviewRequest = async (to, { customerName, orderNumber, orderId, items
     .join('');
 
   await getTransporter().sendMail({
-    from: `BodyCream GH <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Your order #${orderNumber} has arrived — how did we do?`,
     html: `
@@ -202,7 +215,7 @@ const sendOrderCancellation = async (to, { customerName, orderNumber }) => {
   if (!isConfigured() || !to) return;
 
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Your order ${orderNumber} has been cancelled`,
     html: `
@@ -220,7 +233,7 @@ const sendRefundNotification = async (to, { customerName, orderNumber, total }) 
   if (!isConfigured() || !to) return;
 
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Refund processed for order ${orderNumber}`,
     html: `
@@ -239,7 +252,7 @@ const sendRefundNotification = async (to, { customerName, orderNumber, total }) 
 const sendCancelRequested = async (to, { customerName, orderNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Cancellation request received for order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -254,7 +267,7 @@ const sendCancelRequested = async (to, { customerName, orderNumber }) => {
 const sendCancelRejected = async (to, { customerName, orderNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Cancellation request not approved — order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -269,7 +282,7 @@ const sendCancelRejected = async (to, { customerName, orderNumber }) => {
 const sendReturnRequested = async (to, { customerName, orderNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Return request received for order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -284,7 +297,7 @@ const sendReturnRequested = async (to, { customerName, orderNumber }) => {
 const sendReturnRejected = async (to, { customerName, orderNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Return request not approved — order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -301,7 +314,7 @@ const sendReturnRejected = async (to, { customerName, orderNumber }) => {
 const sendAdminNewOrder = async (to, { orderNumber, total, customerName }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `New order received — ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -316,7 +329,7 @@ const sendAdminNewOrder = async (to, { orderNumber, total, customerName }) => {
 const sendAdminCancelRequest = async (to, { orderNumber, customerName, reason }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Action needed: cancellation request for order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -331,7 +344,7 @@ const sendAdminCancelRequest = async (to, { orderNumber, customerName, reason })
 const sendAdminCancelRejected = async (to, { orderNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Cancellation request rejected — order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -345,7 +358,7 @@ const sendAdminCancelRejected = async (to, { orderNumber }) => {
 const sendAdminReturnRequest = async (to, { orderNumber, customerName, reason }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Action needed: return request for order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -360,7 +373,7 @@ const sendAdminReturnRequest = async (to, { orderNumber, customerName, reason })
 const sendAdminReturnRejected = async (to, { orderNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Return request rejected — order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -374,7 +387,7 @@ const sendAdminReturnRejected = async (to, { orderNumber }) => {
 const sendAdminOrderCancelled = async (to, { orderNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Order cancelled — ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -387,7 +400,7 @@ const sendAdminOrderCancelled = async (to, { orderNumber }) => {
 const sendAdminOrderRefunded = async (to, { orderNumber, total }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Refund processed — order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -400,7 +413,7 @@ const sendAdminOrderRefunded = async (to, { orderNumber, total }) => {
 const sendAdminOrderShipped = async (to, { orderNumber, trackingNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Order shipped — ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -414,7 +427,7 @@ const sendAdminOrderShipped = async (to, { orderNumber, trackingNumber }) => {
 const sendAdminOrderDelivered = async (to, { orderNumber }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `Order delivered — ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -483,7 +496,7 @@ const sendNewsletterEmail = async (to, { subject, bodyHtml, bodyText, unsubscrib
 const sendOtpEmail = async (to, { firstName, otp }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: 'Your admin login verification code',
     html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto">
@@ -500,7 +513,7 @@ const sendOtpEmail = async (to, { firstName, otp }) => {
 const sendAdminPaymentAlert = async (to, { orderNumber, title, detail }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
-    from: `Cosmetics Store <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject: `[Payment Alert] ${title} — order ${orderNumber}`,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto">
@@ -569,7 +582,7 @@ const sendOrderStatusUpdate = async (
     : '';
 
   await getTransporter().sendMail({
-    from: `BodyCream GH <${process.env.SMTP_USER}>`,
+    from: getFromAddress(),
     to,
     subject,
     html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1c1410;">
