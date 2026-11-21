@@ -53,7 +53,7 @@ async function advanceShipment(trackingNumber) {
       if (orderRows.length) {
         const { status: orderFrom, order_number: orderNumber } = orderRows[0];
         await pool.query(
-          `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1`,
+          `UPDATE orders SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW() WHERE id = $1`,
           [shipment.order_id]
         );
         await logStatusChange(shipment.order_id, orderFrom, 'delivered', `Courier delivered. Tracking: ${trackingNumber}`);

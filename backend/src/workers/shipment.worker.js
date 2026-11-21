@@ -40,7 +40,7 @@ async function handleDelivered(boss, orderId) {
       // directly from 'processing' → 'delivered' without an explicit 'shipped'
       // step, which is valid for the mock flow.
       await client.query(
-        `UPDATE orders SET status = 'delivered', updated_at = NOW() WHERE id = $1`, [orderId]
+        `UPDATE orders SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW() WHERE id = $1`, [orderId]
       );
       await client.query(
         `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)

@@ -54,7 +54,14 @@ module.exports = {
   },
 
   updateStatus: async (id, status) => {
-    await pool.query('UPDATE orders SET status=$1, updated_at=NOW() WHERE id=$2', [status, id]);
+    await pool.query(
+      `UPDATE orders
+          SET status = $1,
+              delivered_at = CASE WHEN $1 = 'delivered' THEN COALESCE(delivered_at, NOW()) ELSE delivered_at END,
+              updated_at = NOW()
+        WHERE id = $2`,
+      [status, id]
+    );
   },
 
   markPaid: async (id, reference) => {
