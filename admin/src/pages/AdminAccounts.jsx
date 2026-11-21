@@ -3,7 +3,7 @@ import { adminAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 
-const EMPTY_FORM = { email: '', password: '', first_name: '', last_name: '' };
+const EMPTY_FORM = { email: '', password: '', first_name: '', last_name: '', role: 'admin' };
 
 export default function AdminAccounts() {
   const { user: me } = useAuth();
@@ -103,6 +103,16 @@ export default function AdminAccounts() {
               <div className="form-group">
                 <label>Password (min. 8 characters)</label>
                 <input name="password" type="password" autoComplete="new-password" value={form.password} onChange={handleChange} required minLength={8} />
+              </div>
+              <div className="form-group">
+                <label>Role</label>
+                <select name="role" value={form.role} onChange={handleChange}>
+                  <option value="admin">Admin (Full Access)</option>
+                  <option value="super_admin">Super Admin</option>
+                  <option value="fulfillment">Fulfillment / Dispatch</option>
+                  <option value="support">Customer Support</option>
+                  <option value="marketing">Marketing / Promos</option>
+                </select>
               </div>
               <div style={{ gridColumn: '1/-1' }}>
                 {formError && <p style={{ color: 'var(--ac-danger)', fontSize: '0.85rem', marginBottom: 10 }}>{formError}</p>}

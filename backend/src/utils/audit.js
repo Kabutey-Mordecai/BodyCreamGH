@@ -13,4 +13,34 @@ async function logStatusChange(orderId, fromStatus, toStatus, note = null, clien
   });
 }
 
-module.exports = { logStatusChange };
+async function logAdminAction({
+  actorId = null,
+  actorEmail = null,
+  action,
+  resourceType,
+  resourceId = null,
+  details = {},
+  ip = null,
+} = {}) {
+  try {
+    await pool.query(
+      `INSERT INTO admin_audit_logs
+         (id, actor_id, actor_email, action, resource_type, resource_id, details_json, ip_address)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+      [
+        uuid(),
+        actorId,
+        actorEmail,
+        action,
+        resourceType,
+        resourceId ? String(resourceId) : null,
+        JSON.stringify(details || {}),
+        ip,
+      ]
+    );
+  } catch (err) {
+    logger.error('logAdminAction error', { err: err.message, action, resourceType });
+  }
+}
+
+module.exports = { logStatusChange, logAdminAction };

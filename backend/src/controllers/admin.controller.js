@@ -541,7 +541,7 @@ const getFinancials = async (req, res) => {
       params = [d];
     }
 
-    const [summaryResult, dailyResult, pendingResult] = await Promise.all([
+    const [summaryResult, dailyResult, pendingResult, cogsResult, paystackResult] = await Promise.all([
       pool.query(`
         SELECT
           COALESCE(SUM(CASE WHEN payment_status IN ('paid', 'partially_refunded', 'refunded') THEN total_amount ELSE 0 END), 0) AS gross_revenue,
@@ -561,22 +561,49 @@ const getFinancials = async (req, res) => {
         SELECT COALESCE((SELECT SUM(refund_amount) FROM orders WHERE refund_status = 'pending'), 0)
              + COALESCE((SELECT SUM(refund_amount) FROM return_requests WHERE status = 'refund_pending'), 0) AS pending_refunds
       `),
+      pool.query(`
+        SELECT COALESCE(SUM(oi.quantity * COALESCE(p.cost, 0)), 0) AS estimated_cogs
+          FROM order_items oi
+          JOIN orders o ON o.id = oi.order_id
+          JOIN products p ON p.id = oi.product_id
+         WHERE o.payment_status IN ('paid', 'partially_refunded')
+           ${dateFilter.replace(/created_at/g, 'o.created_at')}
+      `, params),
+      pool.query(`
+        SELECT COALESCE(SUM(total_amount), 0) AS paystack_volume
+          FROM orders
+         WHERE payment_status IN ('paid', 'partially_refunded', 'refunded')
+           AND COALESCE(payment_method, 'paystack') = 'paystack'
+           ${dateFilter}
+      `, params),
     ]);
 
-    const s            = summaryResult.rows[0];
-    const grossRevenue = parseFloat(s.gross_revenue);
+    const s             = summaryResult.rows[0];
+    const grossRevenue  = parseFloat(s.gross_revenue);
     const totalRefunded = parseFloat(s.total_refunded);
-    const paidOrders   = s.paid_orders;
+    const netRevenue    = grossRevenue - totalRefunded;
+    const paidOrders    = s.paid_orders;
     const refundedOrders = s.refunded_orders;
+    const estimatedCogs = parseFloat(cogsResult.rows[0]?.estimated_cogs || 0);
+    const grossProfit   = Math.round((netRevenue - estimatedCogs) * 100) / 100;
+    const grossMarginPct = netRevenue > 0 ? Math.round((grossProfit / netRevenue) * 10000) / 100 : 0;
+    const paystackFees  = Math.round(parseFloat(paystackResult.rows[0]?.paystack_volume || 0) * 0.0195 * 100) / 100;
+    // Ghana standard VAT (15%) + NHIL (2.5%) + GETFund (2.5%) = 20% tax-inclusive slice
+    const taxEstimate   = Math.round((netRevenue - netRevenue / 1.2) * 100) / 100;
 
     res.json({
-      gross_revenue:   grossRevenue,
-      total_refunded:  totalRefunded,
-      net_revenue:     grossRevenue - totalRefunded,
-      avg_order_value: paidOrders > 0 ? Math.round((grossRevenue / paidOrders) * 100) / 100 : 0,
-      refund_rate:     paidOrders > 0 ? Math.round((refundedOrders / paidOrders) * 10000) / 100 : 0,
-      pending_refunds: parseFloat(pendingResult.rows[0].pending_refunds),
-      daily_series:    dailyResult.rows,
+      gross_revenue:           grossRevenue,
+      total_refunded:          totalRefunded,
+      net_revenue:             netRevenue,
+      estimated_cogs:          estimatedCogs,
+      gross_profit:            grossProfit,
+      gross_margin_pct:        grossMarginPct,
+      estimated_paystack_fees: paystackFees,
+      statutory_tax_estimate:  taxEstimate,
+      avg_order_value:         paidOrders > 0 ? Math.round((grossRevenue / paidOrders) * 100) / 100 : 0,
+      refund_rate:             paidOrders > 0 ? Math.round((refundedOrders / paidOrders) * 10000) / 100 : 0,
+      pending_refunds:         parseFloat(pendingResult.rows[0].pending_refunds),
+      daily_series:            dailyResult.rows,
     });
   } catch (error) {
     logger.error('Financials error', { err: error.message });
@@ -586,12 +613,16 @@ const getFinancials = async (req, res) => {
 
 // ── Admin accounts ────────────────────────────────────────────────────────────
 
+const ALLOWED_ADMIN_ROLES = ['admin', 'super_admin', 'fulfillment', 'support', 'marketing'];
+
 const getAdminAccounts = async (req, res) => {
   try {
     const { rows } = await pool.query(`
-      SELECT id, email, first_name, last_name, is_active, last_login_at, created_at
-        FROM users WHERE role = 'admin' ORDER BY created_at ASC
-    `);
+      SELECT id, email, first_name, last_name, role, is_active, last_login_at, created_at
+        FROM users
+       WHERE role = ANY($1::text[])
+       ORDER BY created_at ASC
+    `, [ALLOWED_ADMIN_ROLES]);
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch admin accounts' });
@@ -600,13 +631,14 @@ const getAdminAccounts = async (req, res) => {
 
 const createAdminAccount = async (req, res) => {
   try {
-    const { email, password, first_name, last_name } = req.body;
+    const { email, password, first_name, last_name, role = 'admin' } = req.body;
     if (!email || !password || !first_name) {
       return res.status(400).json({ error: 'email, password, and first_name are required' });
     }
     if (password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
+    const safeRole = ALLOWED_ADMIN_ROLES.includes(role) ? role : 'admin';
 
     const { rows: existing } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.length) return res.status(409).json({ error: 'Email already registered' });
@@ -615,14 +647,41 @@ const createAdminAccount = async (req, res) => {
     const id = uuidv4();
     await pool.query(
       `INSERT INTO users (id, email, password_hash, first_name, last_name, role, is_active)
-       VALUES ($1, $2, $3, $4, $5, 'admin', true)`,
-      [id, email, passwordHash, first_name, last_name || null]
+       VALUES ($1, $2, $3, $4, $5, $6, true)`,
+      [id, email, passwordHash, first_name, last_name || null, safeRole]
     );
-    res.status(201).json({ id, message: 'Admin account created' });
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'admin.account.create',
+      resourceType: 'user',
+      resourceId: id,
+      details: { email, role: safeRole },
+      ip: req.ip,
+    });
+    res.status(201).json({ id, role: safeRole, message: 'Admin account created' });
   } catch (err) {
     if (err.code === '23505') return res.status(409).json({ error: 'Email already registered' });
     logger.error('createAdminAccount error', { err: err.message });
     res.status(500).json({ error: 'Failed to create admin account' });
+  }
+};
+
+const getAuditLogs = async (req, res) => {
+  try {
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 50));
+    const { rows } = await pool.query(
+      `SELECT id, actor_id, actor_email, action, resource_type, resource_id, details_json, ip_address, created_at
+         FROM admin_audit_logs
+        ORDER BY created_at DESC
+        LIMIT $1`,
+      [limit]
+    );
+    res.json({ logs: rows });
+  } catch (err) {
+    logger.error('getAuditLogs error', { err: err.message });
+    res.status(500).json({ error: 'Failed to load audit logs' });
   }
 };
 
@@ -666,6 +725,7 @@ module.exports = {
   createAdminAccount,
   deactivateAdminAccount,
   activateAdminAccount,
+  getAuditLogs,
   uploadProductImages,
   uploadGenericMedia,
   deleteProductImage,

@@ -3,7 +3,7 @@ const { verifyToken, requireAdmin }                    = require('../middleware/
 const { uploadMiddleware, uploadSingleMediaMiddleware } = require('../middleware/uploadFilter');
 const {
   getDashboard, getAnalytics, getFinancials, getTopProducts, getInventoryOverview, getAllCustomers,
-  getAdminAccounts, createAdminAccount, deactivateAdminAccount, activateAdminAccount,
+  getAdminAccounts, createAdminAccount, deactivateAdminAccount, activateAdminAccount, getAuditLogs,
   uploadProductImages, uploadGenericMedia, deleteProductImage, reorderProductImages, setPrimaryProductImage,
 } = require('../controllers/admin.controller');
 const {
@@ -39,6 +39,7 @@ router.get('/accounts',                       verifyToken, requireAdmin, getAdmi
 router.post('/accounts',                      verifyToken, requireAdmin, createAdminAccount);
 router.patch('/accounts/:id/deactivate',      verifyToken, requireAdmin, deactivateAdminAccount);
 router.patch('/accounts/:id/activate',        verifyToken, requireAdmin, activateAdminAccount);
+router.get('/audit-logs',                     verifyToken, requireAdmin, getAuditLogs);
 
 // ── Product & General media image routes ──────────────────────────────────────
 router.post(

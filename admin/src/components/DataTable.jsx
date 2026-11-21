@@ -19,7 +19,7 @@ export default function DataTable({
   }
 
   return (
-    <div className="data-table-scroll">
+    <div tabIndex={0} role="region" aria-label="Data table" className="data-table-scroll data-table-container">
       <table className="data-table">
         <thead>
           <tr>
@@ -42,7 +42,7 @@ export default function DataTable({
               onClick={() => onRowClick && onRowClick(row)}
             >
               {columns.map(c => (
-                <td key={c.key} className={c.className}>
+                <td key={c.key} data-label={c.label} className={c.className}>
                   {c.render ? c.render(row) : row[c.key]}
                 </td>
               ))}

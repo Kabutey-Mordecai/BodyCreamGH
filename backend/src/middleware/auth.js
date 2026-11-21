@@ -40,26 +40,37 @@ const verifyToken = async (req, res, next) => {
   }
 };
 
+const ADMIN_ROLES = new Set(['admin', 'super_admin', 'fulfillment', 'support', 'marketing']);
+
 const requireAdmin = async (req, res, next) => {
   if (!req.user || !req.user.id) {
     return res.status(401).json({ error: 'Authentication required' });
   }
   try {
     const { rows } = await pool.query(
-      'SELECT id, role, is_active FROM users WHERE id = $1',
+      'SELECT id, email, role, is_active FROM users WHERE id = $1',
       [req.user.id]
     );
     const user = rows[0];
     if (!user || user.is_active === false) {
       return res.status(401).json({ error: 'This account has been deactivated.' });
     }
-    if (user.role !== 'admin') {
+    if (!ADMIN_ROLES.has(user.role)) {
       return res.status(403).json({ error: 'Admin access required' });
     }
+    req.userRole = user.role;
+    req.userEmail = user.email;
     next();
   } catch (err) {
     return res.status(500).json({ error: 'Authorization check failed' });
   }
+};
+
+const requireRoles = (...allowed) => (req, res, next) => {
+  if (!req.userRole || !allowed.includes(req.userRole)) {
+    return res.status(403).json({ error: 'Insufficient role permissions' });
+  }
+  next();
 };
 
 // Like verifyToken but never rejects — just attaches req.user if a valid,
@@ -76,4 +87,4 @@ const optionalToken = async (req, res, next) => {
   next();
 };
 
-module.exports = { verifyToken, requireAdmin, optionalToken };
+module.exports = { verifyToken, requireAdmin, requireRoles, ADMIN_ROLES, optionalToken };
