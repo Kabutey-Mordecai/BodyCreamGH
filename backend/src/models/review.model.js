@@ -70,11 +70,25 @@ const ReviewModel = {
   // Returns { can_review, already_reviewed, order_id }
   canUserReview: async (userId, productId) => {
     const existing = await pool.query(
-      `SELECT id FROM product_reviews WHERE user_id = $1 AND product_id = $2`,
+      `SELECT id, is_approved, is_rejected
+       FROM product_reviews
+       WHERE user_id = $1 AND product_id = $2
+       LIMIT 1`,
       [userId, productId]
     );
     if (existing.rows.length > 0) {
-      return { can_review: false, already_reviewed: true, order_id: null };
+      const row = existing.rows[0];
+      const review_status = row.is_approved
+        ? 'approved'
+        : row.is_rejected
+          ? 'rejected'
+          : 'pending';
+      return {
+        can_review: false,
+        already_reviewed: true,
+        review_status,
+        order_id: null,
+      };
     }
 
     const delivered = await pool.query(

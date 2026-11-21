@@ -160,4 +160,137 @@ void main() {
       expect(find.byType(SnackBar), findsNothing);
     },
   );
+
+  for (final expectedStatus in ['approved', 'pending']) {
+    testWidgets(
+      '409 duplicate review refetches can-review and shows $expectedStatus wording',
+      (tester) async {
+        int canReviewCalls = 0;
+
+        final mockClient = MockClient((req) async {
+          final path = req.url.path;
+          if (path.endsWith('/api/products/prod-1') && req.method == 'GET') {
+            return http.Response(
+              jsonEncode({
+                'product': {
+                  'id': 'prod-1',
+                  'name': 'Shea Body Butter',
+                  'description': 'Rich Ghanaian shea butter.',
+                  'price': 85.0,
+                  'stock_quantity': 12,
+                  'is_active': true,
+                  'category_name': 'Body Care',
+                  'images': [],
+                  'variants': [],
+                },
+              }),
+              200,
+            );
+          }
+          if (path.endsWith('/api/products/prod-1/reviews') &&
+              req.method == 'GET') {
+            return http.Response(
+              jsonEncode({
+                'reviews': [],
+                'average_rating': 0,
+                'total_reviews': 0,
+              }),
+              200,
+            );
+          }
+          if (path.endsWith('/api/products/prod-1/can-review') &&
+              req.method == 'GET') {
+            canReviewCalls += 1;
+            if (canReviewCalls == 1) {
+              return http.Response(
+                jsonEncode({'can_review': true, 'already_reviewed': false}),
+                200,
+              );
+            }
+            return http.Response(
+              jsonEncode({
+                'can_review': false,
+                'already_reviewed': true,
+                'review_status': expectedStatus,
+              }),
+              200,
+            );
+          }
+          if (path.endsWith('/api/products') && req.method == 'GET') {
+            return http.Response(jsonEncode({'products': []}), 200);
+          }
+          if (path.endsWith('/api/products/prod-1/reviews') &&
+              req.method == 'POST') {
+            return http.Response(
+              jsonEncode({'error': 'You have already reviewed this product'}),
+              409,
+            );
+          }
+          return http.Response(jsonEncode({'error': 'Unexpected $path'}), 404);
+        });
+
+        ApiService.instance.configureForTesting(
+          client: mockClient,
+          accessToken: 'test-token',
+        );
+
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              ChangeNotifierProvider<AuthProvider>(
+                create: (_) => _LoggedInAuthProvider(),
+              ),
+              ChangeNotifierProvider<CartProvider>(create: (_) => CartProvider()),
+              ChangeNotifierProvider<WishlistProvider>(
+                create: (_) => WishlistProvider(),
+              ),
+            ],
+            child: const MaterialApp(
+              home: ProductDetailScreen(productId: 'prod-1'),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        final writeBtn = find.byIcon(Icons.rate_review_outlined);
+        await tester.scrollUntilVisible(
+          writeBtn,
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(writeBtn);
+        await tester.pumpAndSettle();
+
+        final submitBtn = find.descendant(
+          of: find.byType(BottomSheet),
+          matching: find.byType(FilledButton),
+        );
+        await tester.tap(submitBtn);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(BottomSheet), findsNothing);
+        expect(
+          find.text('You have already reviewed this product'),
+          findsOneWidget,
+        );
+        if (expectedStatus == 'approved') {
+          expect(
+            find.text('✓ You have already reviewed this product.'),
+            findsOneWidget,
+          );
+          expect(
+            find.textContaining('awaiting approval'),
+            findsNothing,
+          );
+        } else {
+          expect(
+            find.text(
+              '✓ Your review has been submitted and is awaiting approval.',
+            ),
+            findsOneWidget,
+          );
+        }
+      },
+    );
+  }
 }

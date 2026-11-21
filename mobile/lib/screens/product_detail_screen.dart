@@ -473,15 +473,27 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 if (e.statusCode == 409) {
                                   Navigator.pop(ctx);
                                   if (mounted) {
-                                    setState(() {
-                                      _canReviewData = {
-                                        'can_review': false,
-                                        'already_reviewed': true,
-                                      };
-                                    });
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text(e.message)),
                                     );
+                                    final refreshed = await ApiService.instance
+                                        .canReviewProduct(widget.productId)
+                                        .catchError(
+                                          (_) => <String, dynamic>{
+                                            'can_review': false,
+                                            'already_reviewed': true,
+                                          },
+                                        );
+                                    if (mounted) {
+                                      setState(() {
+                                        _canReviewData = refreshed.isNotEmpty
+                                            ? refreshed
+                                            : {
+                                                'can_review': false,
+                                                'already_reviewed': true,
+                                              };
+                                      });
+                                    }
                                   }
                                   return;
                                 }
@@ -1170,11 +1182,17 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
                             if (auth.isLoggedIn && _canReviewData != null) ...[
                               if (_canReviewData!['already_reviewed'] == true)
-                                const Padding(
-                                  padding: EdgeInsets.only(top: 6),
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 6),
                                   child: Text(
-                                    '✓ Your review has been submitted and is awaiting approval.',
-                                    style: TextStyle(
+                                    _canReviewData!['review_status'] ==
+                                            'approved'
+                                        ? '✓ You have already reviewed this product.'
+                                        : _canReviewData!['review_status'] ==
+                                                'rejected'
+                                            ? 'You have already submitted a review for this product.'
+                                            : '✓ Your review has been submitted and is awaiting approval.',
+                                    style: const TextStyle(
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w600,
                                       color: AppColors.accentDark,
