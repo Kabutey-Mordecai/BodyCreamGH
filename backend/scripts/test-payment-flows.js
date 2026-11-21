@@ -612,6 +612,10 @@ function runMockQuery(sql, params = []) {
     return { rows, rowCount: rows.length };
   }
 
+  if (q.includes('FROM return_requests') || q.includes("WHERE p.paystack_reference = $1 AND p.status = 'refund_pending'")) {
+    return { rows: [], rowCount: 0 };
+  }
+
   throw new Error(`Unhandled mock SQL query: ${q}`);
 }
 

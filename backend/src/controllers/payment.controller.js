@@ -811,6 +811,56 @@ async function processChargeSuccess(event) {
   }
 }
 
+// ── 3-Tier Refund Webhook Precedence Helpers ──────────────────────────────────
+// Precedence: 1. return_requests (partial/item returns)
+//             2. payments (status = 'refund_pending', duplicate-payment refunds)
+//             3. orders (full order refund)
+async function findReturnRequestForWebhook(client, data) {
+  const providerId = getRefundProviderId(data);
+  const refundRef = getRefundReference(data);
+  const merchantNote = typeof data?.merchant_note === 'string' ? data.merchant_note : '';
+
+  if (providerId) {
+    const { rows } = await client.query(
+      `SELECT * FROM return_requests WHERE refund_provider_id = $1 LIMIT 1 FOR UPDATE`,
+      [String(providerId)]
+    );
+    if (rows.length > 0) return rows[0];
+  }
+  if (refundRef) {
+    const { rows } = await client.query(
+      `SELECT * FROM return_requests WHERE refund_reference = $1 LIMIT 1 FOR UPDATE`,
+      [refundRef]
+    );
+    if (rows.length > 0) return rows[0];
+  }
+  const noteMatch = merchantNote.match(/\bRET-[0-9A-F]{12}-\d+\b/i);
+  if (noteMatch) {
+    const { rows } = await client.query(
+      `SELECT * FROM return_requests WHERE UPPER(refund_reference) = UPPER($1) LIMIT 1 FOR UPDATE`,
+      [noteMatch[0]]
+    );
+    if (rows.length > 0) return rows[0];
+  }
+  return null;
+}
+
+async function findDuplicatePaymentRefundForWebhook(client, data) {
+  const txRef = getTransactionReference(data);
+  if (!txRef) return null;
+  const { rows } = await client.query(
+    `SELECT p.*, o.status AS order_status
+       FROM payments p
+       JOIN orders o ON o.id = p.order_id
+      WHERE p.paystack_reference = $1
+        AND p.status = 'refund_pending'
+      LIMIT 1
+      FOR UPDATE OF p`,
+    [txRef]
+  );
+  return rows[0] || null;
+}
+
 // ── refund.processed ───────────────────────────────────────────────────────────
 // Applies the refund to the order inside a single transaction that also claims
 // the event. Throws on failure so the caller can return 500 for Paystack retry.
@@ -830,6 +880,44 @@ async function completePaystackRefundFromWebhook(event) {
       return;
     }
 
+    // Tier 1: Item-level return_requests (matched strictly by refund_provider_id / refund_reference)
+    const matchedReturn = await findReturnRequestForWebhook(client, event.data || {});
+    if (matchedReturn) {
+      if (matchedReturn.status !== 'refunded') {
+        const { finalizeReturnRequestRefund } = require('./return.controller');
+        await finalizeReturnRequestRefund(client, matchedReturn, {
+          providerId: getRefundProviderId(event.data),
+          refundReference: getRefundReference(event.data),
+          notePrefix: 'Paystack partial return refund processed via webhook',
+        });
+      }
+      await client.query('COMMIT');
+      logger.info('Paystack refund webhook matched return_request (Tier 1)', { eventId, returnId: matchedReturn.id });
+      return;
+    }
+
+    // Tier 2: Duplicate-payment refund (payments.status = 'refund_pending')
+    const matchedDupPayment = await findDuplicatePaymentRefundForWebhook(client, event.data || {});
+    if (matchedDupPayment) {
+      const providerId = getRefundProviderId(event.data);
+      const amountNum = Number(matchedDupPayment.amount) || 0;
+      await client.query(
+        `UPDATE payments SET status = 'refunded', updated_at = NOW() WHERE id = $1`,
+        [matchedDupPayment.id]
+      );
+      await logStatusChange(
+        matchedDupPayment.order_id,
+        matchedDupPayment.order_status,
+        matchedDupPayment.order_status,
+        `Duplicate payment refund processed via webhook (ref ${matchedDupPayment.paystack_reference}, ${matchedDupPayment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${providerId || 'n/a'})`,
+        client
+      );
+      await client.query('COMMIT');
+      logger.info('Paystack refund webhook matched duplicate payment (Tier 2)', { eventId, paymentId: matchedDupPayment.id });
+      return;
+    }
+
+    // Tier 3: Full order refund
     const order = await findRefundOrderForUpdate(client, event.data || {});
     if (!order) {
       await client.query('COMMIT');
@@ -947,6 +1035,63 @@ async function failPaystackRefundFromWebhook(event) {
       return;
     }
 
+    // Tier 1: Item-level return_requests
+    const matchedReturn = await findReturnRequestForWebhook(client, event.data || {});
+    if (matchedReturn) {
+      if (matchedReturn.status === 'refund_pending') {
+        const detail = getRefundFailureDetail(event.data);
+        await client.query(
+          `UPDATE return_requests
+              SET status = 'refund_failed',
+                  refund_provider_id = COALESCE(refund_provider_id, $1),
+                  admin_note = COALESCE(admin_note || E'\n', '') || $2,
+                  updated_at = NOW()
+            WHERE id = $3`,
+          [getRefundProviderId(event.data) ? String(getRefundProviderId(event.data)) : null, `Paystack refund failed: ${detail}`, matchedReturn.id]
+        );
+        const { rows: [ord] } = await client.query('SELECT status FROM orders WHERE id = $1', [matchedReturn.order_id]);
+        if (ord) {
+          await logStatusChange(
+            matchedReturn.order_id,
+            ord.status,
+            ord.status,
+            `Partial return refund failed on Paystack (return ${matchedReturn.id.slice(0, 8)}): ${detail}`,
+            client
+          );
+        }
+      }
+      await client.query('COMMIT');
+      logger.warn('Paystack refund.failed matched return_request (Tier 1)', { eventId, returnId: matchedReturn.id });
+      return;
+    }
+
+    // Tier 2: Duplicate-payment refund (payments.status = 'refund_pending')
+    const matchedDupPayment = await findDuplicatePaymentRefundForWebhook(client, event.data || {});
+    if (matchedDupPayment) {
+      const detail = getRefundFailureDetail(event.data);
+      await client.query(
+        `UPDATE payments SET status = 'duplicate', updated_at = NOW() WHERE id = $1`,
+        [matchedDupPayment.id]
+      );
+      await logStatusChange(
+        matchedDupPayment.order_id,
+        matchedDupPayment.order_status,
+        matchedDupPayment.order_status,
+        `Duplicate payment refund failed via webhook (ref ${matchedDupPayment.paystack_reference}): ${detail} — reverted to duplicate`,
+        client
+      );
+      await client.query('COMMIT');
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('admin-payment-alert', {
+        orderId: matchedDupPayment.order_id,
+        alertKey: eventId,
+        title: 'Duplicate payment refund failed',
+        detail: `Duplicate payment ${matchedDupPayment.paystack_reference} refund failed (${detail}) and was reverted to duplicate.`,
+      }).catch(() => {});
+      return;
+    }
+
+    // Tier 3: Full order refund
     const order = await findRefundOrderForUpdate(client, event.data || {});
     if (!order) {
       await client.query('COMMIT');
@@ -1022,6 +1167,47 @@ async function handleRefundNeedsAttentionFromWebhook(event) {
       return;
     }
 
+    // Tier 1: Item-level return_requests
+    const matchedReturn = await findReturnRequestForWebhook(client, event.data || {});
+    if (matchedReturn) {
+      const detail = getRefundFailureDetail(event.data);
+      const { rows: [ord] } = await client.query('SELECT status FROM orders WHERE id = $1', [matchedReturn.order_id]);
+      if (ord) {
+        await logStatusChange(
+          matchedReturn.order_id,
+          ord.status,
+          ord.status,
+          `Partial return refund needs attention (return ${matchedReturn.id.slice(0, 8)}): ${detail}`,
+          client
+        );
+      }
+      await client.query('COMMIT');
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('admin-payment-alert', {
+        orderId: matchedReturn.order_id,
+        alertKey: eventId,
+        title: 'Partial return refund needs attention',
+        detail: `Return ${matchedReturn.id.slice(0, 8)} requires customer account details (${detail}).`,
+      }).catch(() => {});
+      return;
+    }
+
+    // Tier 2: Duplicate-payment refund
+    const matchedDupPayment = await findDuplicatePaymentRefundForWebhook(client, event.data || {});
+    if (matchedDupPayment) {
+      const detail = getRefundFailureDetail(event.data);
+      await client.query('COMMIT');
+      const { notificationQueue } = require('../queues');
+      notificationQueue.add('admin-payment-alert', {
+        orderId: matchedDupPayment.order_id,
+        alertKey: eventId,
+        title: 'Duplicate payment refund needs attention',
+        detail: `Duplicate payment ${matchedDupPayment.paystack_reference} refund needs attention (${detail}).`,
+      }).catch(() => {});
+      return;
+    }
+
+    // Tier 3: Full order refund
     const order = await findRefundOrderForUpdate(client, event.data || {});
     if (!order) {
       await client.query('COMMIT');

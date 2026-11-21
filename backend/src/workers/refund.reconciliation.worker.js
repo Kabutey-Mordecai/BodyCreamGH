@@ -211,6 +211,174 @@ async function applyRefundNeedsAttention(order, paystackRefund, boss) {
 
 const STALE_REFUND_PENDING_MS = 48 * 60 * 60 * 1000;
 
+// ── Tier 1: Item-level return_requests refund reconciliation ──────────────────
+
+async function reconcileReturnRequestRefunds(boss) {
+  const { finalizeReturnRequestRefund, matchPaystackRefundByRefAndAmount } = require('../controllers/return.controller');
+  let checked = 0, refunded = 0, failed = 0, staleAlerted = 0;
+
+  const { rows: pendingReturns } = await pool.query(
+    `SELECT rr.*, o.status AS order_status,
+            (SELECT p.paystack_reference
+               FROM payments p
+              WHERE p.order_id = rr.order_id
+                AND p.payment_method = 'paystack'
+                AND p.status IN ('success', 'needs_review')
+              ORDER BY CASE WHEN p.status = 'success' THEN 1 ELSE 2 END, p.updated_at DESC
+              LIMIT 1) AS tx_reference
+       FROM return_requests rr
+       JOIN orders o ON o.id = rr.order_id
+      WHERE rr.status = 'refund_pending'
+        AND rr.refund_method = 'paystack'
+      ORDER BY rr.updated_at ASC
+      LIMIT $1`,
+    [BATCH_LIMIT]
+  );
+
+  for (const row of pendingReturns) {
+    checked++;
+    const amountPesewas = Math.round(Number(row.refund_amount) * 100);
+    const ageMs = row.updated_at ? Date.now() - new Date(row.updated_at).getTime() : 0;
+    const isStale48h = ageMs > STALE_REFUND_PENDING_MS;
+
+    let paystackRefund = null;
+    try {
+      if (row.refund_provider_id) {
+        paystackRefund = await fetchRefundById(row.refund_provider_id);
+      }
+      if (!paystackRefund && row.tx_reference && row.refund_reference) {
+        const list = await fetchRefundsByTransaction(row.tx_reference);
+        paystackRefund = matchPaystackRefundByRefAndAmount(list, row.refund_reference, amountPesewas);
+      }
+    } catch (err) {
+      logger.error('Return refund reconciliation: Paystack API error', { returnId: row.id, err: err.message });
+      continue;
+    }
+
+    if (!paystackRefund) {
+      if (isStale48h && boss) {
+        const staleKey = `ret_refund_stale_48h_${row.id}`;
+        await boss.send(
+          'notification/admin-payment-alert',
+          {
+            orderId: row.order_id,
+            alertKey: staleKey,
+            title: 'Partial return refund stuck >48h',
+            detail: `Return ${row.id.slice(0, 8)} (ref ${row.refund_reference || 'n/a'}, GHS ${Number(row.refund_amount).toFixed(2)}) has been refund_pending >48h with no matching Paystack refund.`,
+          },
+          { retryLimit: 3, singletonKey: staleKey }
+        );
+        staleAlerted++;
+      }
+      continue;
+    }
+
+    const status = String(paystackRefund.status || '').toLowerCase();
+    const providerId = paystackRefund.id ? String(paystackRefund.id) : null;
+
+    if (status === 'processed') {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rows: [locked] } = await client.query(
+          `SELECT * FROM return_requests WHERE id = $1 AND status = 'refund_pending' FOR UPDATE`,
+          [row.id]
+        );
+        if (locked) {
+          await finalizeReturnRequestRefund(client, locked, {
+            providerId,
+            refundReference: row.refund_reference,
+            notePrefix: 'Paystack partial return refund confirmed via reconciliation',
+          });
+          await client.query('COMMIT');
+          refunded++;
+        } else {
+          await client.query('ROLLBACK');
+        }
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        logger.error('Return refund reconciliation: error marking refunded', { returnId: row.id, err: err.message });
+      } finally {
+        client.release();
+      }
+    } else if (status === 'failed') {
+      const client = await pool.connect();
+      let didFail = false;
+      try {
+        await client.query('BEGIN');
+        const { rowCount } = await client.query(
+          `UPDATE return_requests
+              SET status = 'refund_failed',
+                  refund_provider_id = COALESCE(refund_provider_id, $1),
+                  updated_at = NOW()
+            WHERE id = $2 AND status = 'refund_pending'`,
+          [providerId, row.id]
+        );
+        if (rowCount > 0) {
+          await logStatusChange(
+            row.order_id,
+            row.order_status,
+            row.order_status,
+            `Partial return refund failed on Paystack (return ${row.id.slice(0, 8)}, ref ${row.refund_reference || 'n/a'}) — retry available`,
+            client
+          );
+          await client.query('COMMIT');
+          didFail = true;
+          failed++;
+        } else {
+          await client.query('ROLLBACK');
+        }
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+      } finally {
+        client.release();
+      }
+      if (didFail && boss) {
+        const failKey = `ret_refund_failed_${row.id}_${providerId || row.refund_attempt}`;
+        await boss.send(
+          'notification/admin-payment-alert',
+          {
+            orderId: row.order_id,
+            alertKey: failKey,
+            title: 'Partial return refund failed',
+            detail: `Paystack refund for return ${row.id.slice(0, 8)} (GHS ${Number(row.refund_amount).toFixed(2)}) failed. Retry from Admin Order Detail.`,
+          },
+          { retryLimit: 3, singletonKey: failKey }
+        );
+      }
+    } else if (status === 'needs-attention' && boss) {
+      const attnKey = `ret_refund_needs_attention_${row.id}_${providerId || 'na'}`;
+      await boss.send(
+        'notification/admin-payment-alert',
+        {
+          orderId: row.order_id,
+          alertKey: attnKey,
+          title: 'Partial return refund needs attention',
+          detail: `Paystack refund #${providerId || 'n/a'} for return ${row.id.slice(0, 8)} requires customer account details.`,
+        },
+        { retryLimit: 3, singletonKey: attnKey }
+      );
+    } else if (isStale48h && boss) {
+      const staleKey = `ret_refund_stale_48h_${row.id}`;
+      await boss.send(
+        'notification/admin-payment-alert',
+        {
+          orderId: row.order_id,
+          alertKey: staleKey,
+          title: 'Partial return refund stuck >48h',
+          detail: `Return ${row.id.slice(0, 8)} (GHS ${Number(row.refund_amount).toFixed(2)}, provider status: ${status}) has been refund_pending >48h.`,
+        },
+        { retryLimit: 3, singletonKey: staleKey }
+      );
+      staleAlerted++;
+    }
+  }
+
+  return { checked, refunded, failed, staleAlerted };
+}
+
+// ── Tier 2: Duplicate-payment refund reconciliation ───────────────────────────
+
 async function reconcileDuplicatePaymentRefunds(boss) {
   let checked = 0, refunded = 0, reverted = 0, staleAlerted = 0;
 
@@ -455,8 +623,9 @@ module.exports = async function register(boss) {
         }
       }
 
+      const returnStats = await reconcileReturnRequestRefunds(boss);
       const dupStats = await reconcileDuplicatePaymentRefunds(boss);
-      logger.info('Refund reconciliation complete', { checked, updated, failed, unmatched, duplicateRefunds: dupStats });
+      logger.info('Refund reconciliation complete', { checked, updated, failed, unmatched, returnRefunds: returnStats, duplicateRefunds: dupStats });
     } catch (err) {
       logger.error('Refund reconciliation error', { err: err.message });
       throw err;
@@ -474,4 +643,5 @@ module.exports = async function register(boss) {
   logger.info('Refund reconciliation worker registered (every 30 min)');
 };
 
+module.exports.reconcileReturnRequestRefunds = reconcileReturnRequestRefunds;
 module.exports.reconcileDuplicatePaymentRefunds = reconcileDuplicatePaymentRefunds;
