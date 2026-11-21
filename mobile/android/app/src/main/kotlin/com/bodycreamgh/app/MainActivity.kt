@@ -1,4 +1,4 @@
-package com.example.cosmetics_app
+package com.bodycreamgh.app
 
 import io.flutter.embedding.android.FlutterActivity
 

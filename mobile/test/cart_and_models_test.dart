@@ -200,7 +200,7 @@ void main() {
 
   group('AppConfig.isReleaseSafeUrl & validateConfig', () {
     test('accepts public HTTPS URLs and rejects HTTP, localhost, and LAN IPs', () {
-      expect(AppConfig.isReleaseSafeUrl('https://api.bodycreamgh.com/api'), isTrue);
+      expect(AppConfig.isReleaseSafeUrl('https://api.example.com/api'), isTrue);
       expect(AppConfig.isReleaseSafeUrl('http://192.168.1.153:3000/api'), isFalse);
       expect(AppConfig.isReleaseSafeUrl('https://192.168.1.153/api'), isFalse);
       expect(AppConfig.isReleaseSafeUrl('http://10.0.2.2:3000/api'), isFalse);
@@ -227,7 +227,7 @@ void main() {
             hasApiUrlOverride: true,
             apiUrlOverride: badUrl,
             hasStorefrontUrlOverride: true,
-            storefrontUrlOverride: 'https://bodycreamgh.com',
+            storefrontUrlOverride: 'https://shop.example.com',
           ),
           throwsStateError,
           reason: 'Expected validateConfig to reject $badUrl in release mode',
@@ -237,9 +237,9 @@ void main() {
         () => AppConfig.validateConfig(
           isRelease: true,
           hasApiUrlOverride: true,
-          apiUrlOverride: 'https://api.bodycreamgh.com/api',
+          apiUrlOverride: 'https://api.example.com/api',
           hasStorefrontUrlOverride: true,
-          storefrontUrlOverride: 'https://bodycreamgh.com',
+          storefrontUrlOverride: 'https://shop.example.com',
         ),
         returnsNormally,
       );
