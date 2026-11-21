@@ -21,6 +21,13 @@ class TrackOrderScreen extends StatefulWidget {
   final String? initialOrderNumber;
   const TrackOrderScreen({super.key, this.initialOrderNumber});
 
+  static String? validateOrderNumber(String? value) {
+    if (value == null || ApiService.normalizeOrderNumber(value).isEmpty) {
+      return 'Enter your order number';
+    }
+    return null;
+  }
+
   @override
   State<TrackOrderScreen> createState() => _TrackOrderScreenState();
 }
@@ -177,10 +184,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
                             prefixIcon: Icon(Icons.tag),
                           ),
                           textCapitalization: TextCapitalization.characters,
-                          validator: (v) => v == null ||
-                                  ApiService.normalizeOrderNumber(v).isEmpty
-                              ? 'Enter your order number'
-                              : null,
+                          validator: TrackOrderScreen.validateOrderNumber,
                         ),
                         const SizedBox(height: 14),
                         TextFormField(

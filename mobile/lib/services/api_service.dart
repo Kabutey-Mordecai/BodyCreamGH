@@ -19,8 +19,16 @@ class ApiService {
   static final ApiService instance = ApiService._();
 
   final _storage = const FlutterSecureStorage();
-  final _client = http.Client();
+  http.Client _client = http.Client();
+  String? _testAccessToken;
   Future<String?>? _refreshInFlight;
+
+  /// Test hook allowing widget/unit tests to inject an in-memory [http.Client]
+  /// (e.g. `MockClient`) and bypass `FlutterSecureStorage` platform channels.
+  void configureForTesting({http.Client? client, String? accessToken}) {
+    if (client != null) _client = client;
+    _testAccessToken = accessToken;
+  }
 
   /// Optional callback invoked when stored tokens can no longer be refreshed,
   /// so AuthProvider can immediately transition out of the authenticated state.
@@ -28,7 +36,8 @@ class ApiService {
 
   // ── Token management ──────────────────────────────────────────────────────
 
-  Future<String?> getAccessToken() => _storage.read(key: 'access_token');
+  Future<String?> getAccessToken() async =>
+      _testAccessToken ?? await _storage.read(key: 'access_token');
   Future<String?> getRefreshToken() => _storage.read(key: 'refresh_token');
 
   Future<void> saveTokens(String access, String refresh) async {
@@ -90,11 +99,9 @@ class ApiService {
         .replaceFirst(RegExp(r'^Exception:\s*'), '');
   }
 
-  Future<dynamic> _handleResponse(http.Response res) {
-    if (res.statusCode >= 200 && res.statusCode < 300) {
-      if (res.body.isEmpty) return Future.value(null);
-      return Future.value(jsonDecode(res.body));
-    }
+  /// Parses a non-2xx [http.Response] into an [ApiException], reading `Retry-After`
+  /// from response headers (or body fallback) and preserving server error messages.
+  static ApiException parseErrorResponse(http.Response res) {
     int? retryAfter = int.tryParse(res.headers['retry-after'] ?? '');
     String? serverMessage;
     try {
@@ -112,7 +119,15 @@ class ApiService {
     }
     final message = serverMessage ??
         defaultStatusMessage(res.statusCode, retryAfter: retryAfter);
-    throw ApiException(res.statusCode, message, retryAfter: retryAfter);
+    return ApiException(res.statusCode, message, retryAfter: retryAfter);
+  }
+
+  Future<dynamic> _handleResponse(http.Response res) {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      if (res.body.isEmpty) return Future.value(null);
+      return Future.value(jsonDecode(res.body));
+    }
+    throw parseErrorResponse(res);
   }
 
   // Sends request with the access token; if it gets a 401, refreshes and retries once.
@@ -239,9 +254,16 @@ class ApiService {
     );
     await _handleResponse(res);
     // Server revokes all refresh tokens on password reset; clear local session
-    // immediately so the app returns cleanly to login without a 401 refresh loop.
+    // and only fire onSessionExpired if a token existed before the reset so a
+    // logged-out reset on LoginScreen never triggers a redundant redirect.
+    final hadToken = _testAccessToken != null ||
+        (await _storage.read(key: 'access_token')) != null ||
+        (await _storage.read(key: 'refresh_token')) != null;
+    _testAccessToken = null;
     await clearTokens();
-    onSessionExpired?.call();
+    if (hadToken) {
+      onSessionExpired?.call();
+    }
   }
 
   Future<void> logout() async {
