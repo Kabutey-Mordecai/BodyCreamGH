@@ -81,21 +81,61 @@ class _ThemedRouterAppState extends State<_ThemedRouterApp> {
   }
 }
 
+String? normalizeDeepLinkPath(Uri uri) {
+  if (uri.scheme != 'cosmeticsgh') return null;
+  final host = uri.host.toLowerCase();
+  if ((host == 'orders' || host == 'order') && uri.pathSegments.isNotEmpty) {
+    final id = uri.pathSegments.first.trim();
+    if (id.isNotEmpty) return '/$host/$id';
+  }
+  if (host == 'payment') {
+    return '/payment';
+  }
+  if (host == 'app' && uri.path.startsWith('/')) {
+    return uri.path;
+  }
+  return '/';
+}
+
+bool _isProtectedRoute(String path) =>
+    path.startsWith('/profile/edit') ||
+    path.startsWith('/orders/') ||
+    path.startsWith('/order/');
+
 GoRouter _buildRouter(BuildContext ctx) {
+  final authProvider = ctx.read<AuthProvider>();
   return GoRouter(
     initialLocation: '/',
+    refreshListenable: authProvider,
     redirect: (context, state) {
       final auth = context.read<AuthProvider>();
       final isAuth = auth.isLoggedIn;
       final isInitializing = auth.status == AuthStatus.unknown;
 
+      final normalized = normalizeDeepLinkPath(state.uri);
+      if (normalized != null) {
+        debugPrint('[DeepLink] ${state.uri} -> $normalized');
+        if (!isInitializing && !isAuth && _isProtectedRoute(normalized)) {
+          return '/login?redirect=${Uri.encodeComponent(normalized)}';
+        }
+        return normalized;
+      }
+
       if (isInitializing) return null;
 
-      final protectedRoutes = ['/profile/edit'];
-      final isProtected =
-          protectedRoutes.any((r) => state.matchedLocation.startsWith(r));
+      final loc = state.matchedLocation;
+      if (_isProtectedRoute(loc) && !isAuth) {
+        return '/login?redirect=${Uri.encodeComponent(state.uri.toString())}';
+      }
 
-      if (isProtected && !isAuth) return '/login';
+      if (isAuth && loc == '/login') {
+        final target = state.uri.queryParameters['redirect'];
+        if (target != null &&
+            target.startsWith('/') &&
+            !target.startsWith('//')) {
+          return target;
+        }
+      }
       return null;
     },
     routes: [
@@ -188,6 +228,7 @@ GoRouter _buildRouter(BuildContext ctx) {
         path: '/login',
         builder: (_, state) => LoginScreen(
           isCheckoutRedirect: state.uri.queryParameters['from'] == 'checkout',
+          redirectTo: state.uri.queryParameters['redirect'],
         ),
       ),
       GoRoute(

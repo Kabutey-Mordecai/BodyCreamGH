@@ -9,7 +9,12 @@ import '../widgets/password_strength.dart';
 
 class LoginScreen extends StatefulWidget {
   final bool isCheckoutRedirect;
-  const LoginScreen({super.key, this.isCheckoutRedirect = false});
+  final String? redirectTo;
+  const LoginScreen({
+    super.key,
+    this.isCheckoutRedirect = false,
+    this.redirectTo,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -82,7 +87,10 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!mounted) return;
     setState(() => _loading = false);
     if (ok) {
-      if (widget.isCheckoutRedirect) {
+      final target = widget.redirectTo;
+      if (target != null && target.startsWith('/') && !target.startsWith('//')) {
+        context.go(target);
+      } else if (widget.isCheckoutRedirect) {
         context.go('/checkout');
       } else {
         _goBack();
