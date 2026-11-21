@@ -81,17 +81,21 @@ class _ThemedRouterAppState extends State<_ThemedRouterApp> {
   }
 }
 
+final RegExp _safeDeepLinkIdPattern = RegExp(r'^[A-Za-z0-9_-]{1,100}$');
+
 String? normalizeDeepLinkPath(Uri uri) {
   if (uri.scheme != 'cosmeticsgh') return null;
   final host = uri.host.toLowerCase();
-  if ((host == 'orders' || host == 'order') && uri.pathSegments.isNotEmpty) {
+  if ((host == 'orders' || host == 'order') && uri.pathSegments.length == 1) {
     final id = uri.pathSegments.first.trim();
-    if (id.isNotEmpty) return '/$host/$id';
+    if (_safeDeepLinkIdPattern.hasMatch(id)) {
+      return '/$host/$id';
+    }
   }
   if (host == 'payment') {
     return '/payment';
   }
-  if (host == 'app' && uri.path.startsWith('/')) {
+  if (host == 'app' && uri.path.startsWith('/') && !uri.path.contains('..')) {
     return uri.path;
   }
   return '/';
