@@ -4,29 +4,57 @@ class ProductVariant {
   final String id;
   final String label;
   final double price;
+  final double? compareAtPrice;
   final int stockQuantity;
+  final String? optionTypeName;
 
   const ProductVariant({
     required this.id,
     required this.label,
     required this.price,
+    this.compareAtPrice,
     required this.stockQuantity,
+    this.optionTypeName,
   });
 
   bool get inStock => stockQuantity > 0;
 
   factory ProductVariant.fromJson(Map<String, dynamic> json, {double fallbackPrice = 0}) {
-    final rawLabel = json['label'] ??
+    String? optionLabel;
+    String? optionTypeName;
+    final rawOptionValues = json['option_values'];
+    if (rawOptionValues is List && rawOptionValues.isNotEmpty) {
+      final parts = <String>[];
+      final types = <String>{};
+      for (final ov in rawOptionValues) {
+        if (ov is Map) {
+          final v = ov['value']?.toString().trim() ?? '';
+          final t = ov['option_type_name']?.toString().trim() ?? '';
+          if (v.isNotEmpty) parts.add(v);
+          if (t.isNotEmpty) types.add(t);
+        }
+      }
+      if (parts.isNotEmpty) optionLabel = parts.join(' / ');
+      if (types.length == 1) optionTypeName = types.first;
+    }
+
+    final rawLabel = optionLabel ??
+        json['label'] ??
         json['name'] ??
         json['variant_label'] ??
         json['size'] ??
         json['sku'] ??
         'Standard';
+    final rawCompare = json['compare_at_price'];
+    final parsedCompare =
+        rawCompare != null ? double.tryParse(rawCompare.toString()) : null;
     return ProductVariant(
       id: (json['id'] ?? '').toString(),
       label: rawLabel.toString(),
       price: double.tryParse((json['price'] ?? fallbackPrice).toString()) ?? fallbackPrice,
+      compareAtPrice: (parsedCompare != null && parsedCompare > 0) ? parsedCompare : null,
       stockQuantity: int.tryParse((json['stock_quantity'] ?? json['stock'] ?? 10).toString()) ?? 10,
+      optionTypeName: optionTypeName,
     );
   }
 
@@ -34,7 +62,9 @@ class ProductVariant {
         'id': id,
         'label': label,
         'price': price,
+        if (compareAtPrice != null) 'compare_at_price': compareAtPrice,
         'stock_quantity': stockQuantity,
+        if (optionTypeName != null) 'option_type_name': optionTypeName,
       };
 }
 
@@ -55,6 +85,8 @@ class Product {
   final double? averageRating;
   final int reviewCount;
   final List<ProductVariant> variants;
+  final bool hasVariants;
+  final double? minPrice;
 
   const Product({
     required this.id,
@@ -73,6 +105,8 @@ class Product {
     this.averageRating,
     this.reviewCount = 0,
     this.variants = const [],
+    this.hasVariants = false,
+    this.minPrice,
   });
 
   bool get inStock => stockQuantity > 0;
@@ -180,6 +214,10 @@ class Product {
       averageRating: rawRating != null ? double.tryParse(rawRating.toString()) : null,
       reviewCount: int.tryParse(json['review_count']?.toString() ?? '0') ?? 0,
       variants: parsedVariants,
+      hasVariants: json['has_variants'] == true || parsedVariants.isNotEmpty,
+      minPrice: json['min_price'] != null
+          ? double.tryParse(json['min_price'].toString())
+          : null,
     );
   }
 

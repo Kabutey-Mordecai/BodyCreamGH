@@ -275,8 +275,8 @@ class _ProductCardState extends State<ProductCard> {
                   Row(
                     children: [
                       Text(
-                        product.variants.isNotEmpty
-                            ? 'From ${AppConfig.currencySymbol}${product.price.toStringAsFixed(2)}'
+                        (product.hasVariants || product.variants.isNotEmpty)
+                            ? 'From ${AppConfig.currencySymbol}${(product.minPrice ?? product.price).toStringAsFixed(2)}'
                             : '${AppConfig.currencySymbol}${product.price.toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: AppColors.primary,
@@ -347,7 +347,7 @@ class _ProductCardState extends State<ProductCard> {
                             ),
                             child: const Text('Sold Out'),
                           )
-                        : product.variants.isNotEmpty
+                        : (product.hasVariants || product.variants.isNotEmpty)
                             ? OutlinedButton(
                                 onPressed: widget.onTap,
                                 style: OutlinedButton.styleFrom(

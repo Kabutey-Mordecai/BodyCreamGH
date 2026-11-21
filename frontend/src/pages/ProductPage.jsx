@@ -126,15 +126,23 @@ export default function ProductPage() {
     productsAPI.getVariants(id)
       .then(({ data }) => {
         setVariantData(data);
-        // Pre-select first available value for each option type
+        // Pre-select first available in-stock value for each option type
         const init = {};
         data.option_types.forEach(t => {
-          const firstAvailable = (t.values || []).find(v =>
-            data.variants.some(vr =>
-              vr.is_active &&
-              vr.option_values.some(ov => ov.option_value_id === v.id)
-            )
-          );
+          const firstAvailable =
+            (t.values || []).find(v =>
+              data.variants.some(vr =>
+                vr.is_active &&
+                vr.stock_quantity > 0 &&
+                vr.option_values.some(ov => ov.option_value_id === v.id)
+              )
+            ) ||
+            (t.values || []).find(v =>
+              data.variants.some(vr =>
+                vr.is_active &&
+                vr.option_values.some(ov => ov.option_value_id === v.id)
+              )
+            );
           if (firstAvailable) init[t.id] = firstAvailable.id;
         });
         setSelectedOptions(init);
@@ -568,10 +576,17 @@ export default function ProductPage() {
                 {variantData.option_types.map(optType => (
                   <div key={optType.id} className="pdp-variant-group">
                     <div className="pdp-variant-label">
-                      {optType.name}
-                      {selectedOptions[optType.id] && (
-                        <span className="pdp-variant-selected-val">
-                          {' — '}{(optType.values || []).find(v => v.id === selectedOptions[optType.id])?.value}
+                      <span>
+                        VARIATION AVAILABLE · {optType.name}
+                        {selectedOptions[optType.id] && (
+                          <span className="pdp-variant-selected-val">
+                            {' — '}{(optType.values || []).find(v => v.id === selectedOptions[optType.id])?.value}
+                          </span>
+                        )}
+                      </span>
+                      {selectedVariant && (
+                        <span className="pdp-variant-selected-price">
+                          GHS {parseFloat(selectedVariant.price).toFixed(2)}
                         </span>
                       )}
                     </div>
@@ -580,12 +595,14 @@ export default function ProductPage() {
                         const isSelected = selectedOptions[optType.id] === val.id;
                         const hasStock   = variantData.variants.some(v =>
                           v.is_active &&
+                          v.stock_quantity > 0 &&
                           v.option_values.some(ov => ov.option_value_id === val.id)
                         );
                         return (
                           <button
                             key={val.id}
                             type="button"
+                            disabled={!hasStock}
                             className={`pdp-variant-btn${isSelected ? ' pdp-variant-btn--selected' : ''}${!hasStock ? ' pdp-variant-btn--oos' : ''}`}
                             onClick={() => setSelectedOptions(prev => ({ ...prev, [optType.id]: val.id }))}
                           >

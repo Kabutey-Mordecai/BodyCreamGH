@@ -114,7 +114,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         setState(() {
           _product = product;
           _variants = variants;
-          _selectedVariant = variants.isNotEmpty ? variants.first : null;
+          _selectedVariant = variants.isNotEmpty
+              ? variants.firstWhere(
+                  (v) => v.inStock,
+                  orElse: () => variants.first,
+                )
+              : null;
           _related = rawRelated
               .whereType<Map<String, dynamic>>()
               .map(Product.fromJson)
@@ -830,29 +835,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             ],
 
                             // Price + sale strikethrough + stock chip
-                            Row(
-                              children: [
-                                Text(
-                                  '${AppConfig.currencySymbol}${_effectivePrice.toStringAsFixed(2)}',
-                                  style: const TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w800,
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                                if (_product!.originalPrice != null &&
-                                    _product!.originalPrice! >
-                                        _effectivePrice) ...[
-                                  const SizedBox(width: 10),
-                                  Text(
-                                    '${AppConfig.currencySymbol}${_product!.originalPrice!.toStringAsFixed(2)}',
-                                    style: const TextStyle(
-                                      fontSize: 15,
-                                      color: AppColors.muted,
-                                      decoration: TextDecoration.lineThrough,
+                            Builder(
+                              builder: (context) {
+                                final double? comparePrice =
+                                    _selectedVariant != null
+                                        ? _selectedVariant!.compareAtPrice
+                                        : _product!.originalPrice;
+                                return Row(
+                                  children: [
+                                    Text(
+                                      '${AppConfig.currencySymbol}${_effectivePrice.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w800,
+                                        color: AppColors.primary,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                    if (comparePrice != null &&
+                                        comparePrice > _effectivePrice) ...[
+                                      const SizedBox(width: 10),
+                                      Text(
+                                        '${AppConfig.currencySymbol}${comparePrice.toStringAsFixed(2)}',
+                                        style: const TextStyle(
+                                          fontSize: 15,
+                                          color: AppColors.muted,
+                                          decoration:
+                                              TextDecoration.lineThrough,
+                                        ),
+                                      ),
+                                    ],
                                 const Spacer(),
                                 Container(
                                   padding: const EdgeInsets.symmetric(
@@ -885,6 +896,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   ),
                                 ),
                               ],
+                            );
+                              },
                             ),
 
                             // Delivery Estimate
@@ -908,45 +921,90 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               ),
                             ],
 
-                            // Variant selector (size / scent)
+                            // Variant selector (Jumia-style boxed variations with live price)
                             if (_variants.isNotEmpty) ...[
                               const SizedBox(height: 18),
-                              const Text(
-                                'SELECT SIZE / VARIANT',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 1.2,
-                                  color: AppColors.muted,
-                                ),
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _variants.first.optionTypeName != null
+                                        ? 'VARIATION AVAILABLE · ${_variants.first.optionTypeName!.toUpperCase()}'
+                                        : 'VARIATION AVAILABLE',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 1.1,
+                                      color: AppColors.muted,
+                                    ),
+                                  ),
+                                  if (_selectedVariant != null)
+                                    Text(
+                                      '${_selectedVariant!.label} · ${AppConfig.currencySymbol}${_selectedVariant!.price.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: AppColors.accentDark,
+                                      ),
+                                    ),
+                                ],
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 10),
                               Wrap(
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: _variants.map((v) {
                                   final selected = _selectedVariant?.id == v.id;
-                                  return ChoiceChip(
-                                    showCheckmark: false,
-                                    label: Text(
-                                      '${v.label} · ${AppConfig.currencySymbol}${v.price.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                        color: selected
-                                            ? Colors.white
-                                            : AppColors.text,
-                                        fontWeight: selected
-                                            ? FontWeight.w700
-                                            : FontWeight.w500,
-                                        fontSize: 12.5,
-                                      ),
-                                    ),
-                                    selected: selected,
-                                    onSelected: v.inStock
-                                        ? (_) => setState(() {
+                                  final inStock = v.inStock;
+                                  return InkWell(
+                                    onTap: inStock
+                                        ? () => setState(() {
                                               _selectedVariant = v;
                                               _quantity = 1;
                                             })
                                         : null,
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Container(
+                                      constraints:
+                                          const BoxConstraints(minWidth: 62),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 14, vertical: 9),
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? AppColors.primary
+                                            : AppColors.surface,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                          color: selected
+                                              ? AppColors.primary
+                                              : inStock
+                                                  ? AppColors.border
+                                                  : AppColors.border
+                                                      .withValues(alpha: 0.55),
+                                          width: selected ? 1.5 : 1,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        v.label,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          color: selected
+                                              ? Colors.white
+                                              : inStock
+                                                  ? AppColors.text
+                                                  : AppColors.muted
+                                                      .withValues(alpha: 0.55),
+                                          fontWeight: selected
+                                              ? FontWeight.w700
+                                              : FontWeight.w500,
+                                          fontSize: 13,
+                                          decoration: inStock
+                                              ? TextDecoration.none
+                                              : TextDecoration.lineThrough,
+                                        ),
+                                      ),
+                                    ),
                                   );
                                 }).toList(),
                               ),
