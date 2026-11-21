@@ -605,6 +605,13 @@ function runMockQuery(sql, params = []) {
     return { rows: [{ ...o }], rowCount: 1 };
   }
 
+  if (q.includes("FROM payments p JOIN orders o ON o.id = p.order_id WHERE p.status = 'refund_pending'")) {
+    const rows = [...dbState.payments.values()]
+      .filter(p => p.status === 'refund_pending' && p.payment_method === 'paystack' && p.paystack_reference)
+      .map(p => ({ ...p, order_status: dbState.orders.get(p.order_id)?.status || 'confirmed' }));
+    return { rows, rowCount: rows.length };
+  }
+
   throw new Error(`Unhandled mock SQL query: ${q}`);
 }
 
