@@ -150,9 +150,10 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-              'If that email is registered, a reset link has been sent to your inbox.'),
+              'Reset token sent! Check your email and paste the token below.'),
         ),
       );
+      await _openTokenResetDialog();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
