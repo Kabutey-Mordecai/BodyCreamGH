@@ -58,6 +58,47 @@ class _ShopScreenState extends State<ShopScreen> {
     return set.toList();
   }
 
+  static const int _maxInlineCategories = 6;
+
+  List<String> get _visibleInlineCategories {
+    final all = _categories;
+    if (all.length <= _maxInlineCategories) return all;
+    final visible = <String>[all.first];
+    if (_selectedCategory != null &&
+        _selectedCategory!.trim().isNotEmpty &&
+        _selectedCategory != 'All' &&
+        !all.take(_maxInlineCategories - 1).contains(_selectedCategory)) {
+      visible.add(_selectedCategory!);
+    }
+    for (final cat in all.skip(1)) {
+      if (visible.length >= _maxInlineCategories - 1) break;
+      if (!visible.contains(cat)) visible.add(cat);
+    }
+    return visible;
+  }
+
+  Future<void> _openCategoryPickerSheet() async {
+    final allCategories = _categories;
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => _CategoryPickerSheet(
+        categories: allCategories,
+        selectedCategory: _selectedCategory,
+      ),
+    );
+    if (!mounted || picked == null) return;
+    setState(() {
+      _selectedCategory = picked == 'All' ? null : picked;
+      _page = 1;
+    });
+    _fetch();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -329,32 +370,59 @@ class _ShopScreenState extends State<ShopScreen> {
           // Category chips
           SizedBox(
             height: 40,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              itemCount: _categories.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (_, i) {
-                final cat = _categories[i];
-                final selected = cat == (_selectedCategory ?? 'All');
-                return FilterChip(
-                  showCheckmark: false,
-                  label: Text(
-                    cat,
-                    style: TextStyle(
-                      color: selected ? Colors.white : AppColors.text,
-                      fontWeight:
-                          selected ? FontWeight.w700 : FontWeight.w500,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                  selected: selected,
-                  onSelected: (_) {
-                    setState(() {
-                      _selectedCategory = cat == 'All' ? null : cat;
-                      _page = 1;
-                    });
-                    _fetch();
+            child: Builder(
+              builder: (_) {
+                final inlineCats = _visibleInlineCategories;
+                final hasMore = _categories.length > _maxInlineCategories;
+                final itemCount = inlineCats.length + (hasMore ? 1 : 0);
+                return ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  itemCount: itemCount,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    if (hasMore && i == 1) {
+                      return ActionChip(
+                        key: const ValueKey('more-categories-chip'),
+                        avatar: const Icon(
+                          Icons.grid_view_rounded,
+                          size: 15,
+                          color: AppColors.text,
+                        ),
+                        label: Text(
+                          'All (${_categories.length - 1}) ▾',
+                          style: const TextStyle(
+                            color: AppColors.text,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 12.5,
+                          ),
+                        ),
+                        onPressed: _openCategoryPickerSheet,
+                      );
+                    }
+                    final catIdx = hasMore && i > 1 ? i - 1 : i;
+                    final cat = inlineCats[catIdx];
+                    final selected = cat == (_selectedCategory ?? 'All');
+                    return FilterChip(
+                      showCheckmark: false,
+                      label: Text(
+                        cat,
+                        style: TextStyle(
+                          color: selected ? Colors.white : AppColors.text,
+                          fontWeight:
+                              selected ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: 12.5,
+                        ),
+                      ),
+                      selected: selected,
+                      onSelected: (_) {
+                        setState(() {
+                          _selectedCategory = cat == 'All' ? null : cat;
+                          _page = 1;
+                        });
+                        _fetch();
+                      },
+                    );
                   },
                 );
               },
@@ -616,6 +684,139 @@ class _ShopScreenState extends State<ShopScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CategoryPickerSheet extends StatefulWidget {
+  final List<String> categories;
+  final String? selectedCategory;
+
+  const _CategoryPickerSheet({
+    required this.categories,
+    required this.selectedCategory,
+  });
+
+  @override
+  State<_CategoryPickerSheet> createState() => _CategoryPickerSheetState();
+}
+
+class _CategoryPickerSheetState extends State<_CategoryPickerSheet> {
+  final _searchCtrl = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _query.isEmpty
+        ? widget.categories
+        : widget.categories
+            .where((c) => c.toLowerCase().contains(_query))
+            .toList();
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      minChildSize: 0.4,
+      maxChildSize: 0.9,
+      expand: false,
+      builder: (_, scrollCtrl) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            16,
+            16,
+            MediaQuery.of(context).viewInsets.bottom + 16,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Browse Categories (${widget.categories.length - 1})',
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                  ),
+                  if (widget.selectedCategory != null)
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, 'All'),
+                      child: const Text('Clear'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                key: const ValueKey('category-search-field'),
+                controller: _searchCtrl,
+                decoration: InputDecoration(
+                  hintText: 'Search categories...',
+                  prefixIcon: const Icon(Icons.search, size: 20),
+                  isDense: true,
+                  suffixIcon: _query.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() => _query = '');
+                          },
+                        )
+                      : null,
+                ),
+                onChanged: (v) =>
+                    setState(() => _query = v.trim().toLowerCase()),
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: filtered.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No matching categories',
+                          style: TextStyle(color: AppColors.muted),
+                        ),
+                      )
+                    : ListView.separated(
+                        controller: scrollCtrl,
+                        itemCount: filtered.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (_, i) {
+                          final cat = filtered[i];
+                          final isSelected =
+                              cat == (widget.selectedCategory ?? 'All');
+                          return ListTile(
+                            dense: true,
+                            title: Text(
+                              cat,
+                              style: TextStyle(
+                                fontWeight: isSelected
+                                    ? FontWeight.w700
+                                    : FontWeight.w500,
+                                color: isSelected
+                                    ? AppColors.accentDark
+                                    : AppColors.text,
+                              ),
+                            ),
+                            trailing: isSelected
+                                ? const Icon(
+                                    Icons.check,
+                                    size: 18,
+                                    color: AppColors.accentDark,
+                                  )
+                                : null,
+                            onTap: () => Navigator.pop(context, cat),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
