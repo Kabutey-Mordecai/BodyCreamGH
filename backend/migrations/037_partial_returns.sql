@@ -5,11 +5,16 @@
 ALTER TABLE orders
   ADD COLUMN IF NOT EXISTS delivered_at TIMESTAMP;
 
--- Backfill delivered_at for already-delivered orders
-UPDATE orders
-   SET delivered_at = updated_at
- WHERE status = 'delivered'
-   AND delivered_at IS NULL;
+-- Backfill delivered_at ONLY from order_status_log (leave NULL if no delivered log row exists; never guess from updated_at)
+UPDATE orders o
+   SET delivered_at = (
+         SELECT MIN(osl.created_at)
+           FROM order_status_log osl
+          WHERE osl.order_id = o.id
+            AND osl.to_status = 'delivered'
+       )
+ WHERE o.status = 'delivered'
+   AND o.delivered_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS return_requests (
   id                   UUID PRIMARY KEY,
