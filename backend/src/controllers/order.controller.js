@@ -650,6 +650,16 @@ const cancelOrder = async (req, res) => {
       return res.status(400).json({ error: `Cannot cancel order with status "${order.status}"` });
     }
 
+    const { rows: activeReturns } = await client.query(
+      `SELECT 1 FROM return_requests WHERE order_id = $1 AND status IN ('pending', 'refund_pending') LIMIT 1`,
+      [order.id]
+    );
+    if (activeReturns.length > 0) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(409).json({ error: 'Cannot cancel order while a return request is pending or refunding' });
+    }
+
     let stockRestored = order.stock_restored;
     if (!stockRestored) {
       const { rows: items } = await client.query(
@@ -742,7 +752,7 @@ function getRefundEligibilityError(order) {
   if (order.refund_status === 'success') {
     return { status: 409, message: 'Order already refunded' };
   }
-  if (!['paid', 'payment_review'].includes(order.payment_status)) {
+  if (!['paid', 'payment_review', 'partially_refunded'].includes(order.payment_status)) {
     return { status: 400, message: 'Only paid or payment_review orders can be refunded' };
   }
   if (!['cancelled', 'delivered'].includes(order.status)) {
@@ -797,7 +807,7 @@ const refundOrder = async (req, res) => {
       transactionStarted = true;
 
       const { rows } = await client.query(
-        `SELECT id, status, payment_status, refund_status, total_amount, payment_reference
+        `SELECT id, status, payment_status, refund_status, total_amount, refund_amount, payment_reference
            FROM orders
           WHERE id = $1
           FOR UPDATE`,
@@ -811,6 +821,16 @@ const refundOrder = async (req, res) => {
         return res.status(404).json({ error: 'Order not found' });
       }
 
+      const { rows: activeReturns } = await client.query(
+        `SELECT 1 FROM return_requests WHERE order_id = $1 AND status IN ('pending', 'refund_pending') LIMIT 1`,
+        [order.id]
+      );
+      if (activeReturns.length > 0) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(409).json({ error: 'Cannot issue full refund while an item return request is pending or refunding' });
+      }
+
       const eligibilityError = getRefundEligibilityError(order);
       if (eligibilityError) {
         await client.query('ROLLBACK');
@@ -821,6 +841,13 @@ const refundOrder = async (req, res) => {
       const matchedTx = await findPaystackTransaction(client, order);
       const orderTotal = parseFloat(order.total_amount);
       const paidAmount = matchedTx?.amount != null && Number.isFinite(matchedTx.amount) && matchedTx.amount > 0 ? matchedTx.amount : orderTotal;
+      const alreadyRefunded = Math.max(0, parseFloat(order.refund_amount || 0));
+      const remainingRefund = Math.round((paidAmount - alreadyRefunded) * 100) / 100;
+      if (remainingRefund <= 0) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(400).json({ error: 'Order has already been fully refunded' });
+      }
       const refundAmount = Math.round(paidAmount * 100) / 100;
 
       const { rows: updatedRows } = await client.query(
@@ -896,7 +923,7 @@ const refundOrder = async (req, res) => {
     reserveTransactionStarted = true;
 
     const { rows } = await reserveClient.query(
-      `SELECT id, status, payment_status, refund_status, total_amount, payment_reference
+      `SELECT id, status, payment_status, refund_status, total_amount, refund_amount, payment_reference
          FROM orders
         WHERE id = $1
         FOR UPDATE`,
@@ -908,6 +935,16 @@ const refundOrder = async (req, res) => {
       await reserveClient.query('ROLLBACK');
       reserveTransactionStarted = false;
       return res.status(404).json({ error: 'Order not found' });
+    }
+
+    const { rows: activeReturns } = await reserveClient.query(
+      `SELECT 1 FROM return_requests WHERE order_id = $1 AND status IN ('pending', 'refund_pending') LIMIT 1`,
+      [order.id]
+    );
+    if (activeReturns.length > 0) {
+      await reserveClient.query('ROLLBACK');
+      reserveTransactionStarted = false;
+      return res.status(409).json({ error: 'Cannot issue full refund while an item return request is pending or refunding' });
     }
 
     const eligibilityError = getRefundEligibilityError(order);
@@ -927,7 +964,14 @@ const refundOrder = async (req, res) => {
 
     const orderTotal = parseFloat(order.total_amount);
     const paidAmount = matchedTx?.amount != null && Number.isFinite(matchedTx.amount) && matchedTx.amount > 0 ? matchedTx.amount : orderTotal;
-    refundAmount = Math.round(paidAmount * 100) / 100;
+    const alreadyRefunded = Math.max(0, parseFloat(order.refund_amount || 0));
+    refundAmount = Math.round((paidAmount - alreadyRefunded) * 100) / 100;
+    if (refundAmount <= 0) {
+      await reserveClient.query('ROLLBACK');
+      reserveTransactionStarted = false;
+      return res.status(400).json({ error: 'Order has already been fully refunded' });
+    }
+    const cumulativeRefundAmount = Math.round((alreadyRefunded + refundAmount) * 100) / 100;
 
     const { rows: reservedRows } = await reserveClient.query(
       `UPDATE orders
@@ -938,7 +982,7 @@ const refundOrder = async (req, res) => {
               updated_at = NOW()
         WHERE id = $3
         RETURNING *`,
-      [refundAmount, notes || null, order.id]
+      [cumulativeRefundAmount, notes || null, order.id]
     );
 
     await reserveClient.query('COMMIT');
@@ -1553,6 +1597,14 @@ const requestReturn = async (req, res) => {
     }
     if (order.return_requested && !order.return_request_rejected) {
       return res.status(409).json({ error: 'Return already requested' });
+    }
+
+    const { rows: activeReturns } = await pool.query(
+      `SELECT 1 FROM return_requests WHERE order_id = $1 AND status IN ('pending', 'refund_pending') LIMIT 1`,
+      [orderId]
+    );
+    if (activeReturns.length > 0) {
+      return res.status(409).json({ error: 'An item-level return request is already pending or refunding for this order' });
     }
 
     await pool.query(

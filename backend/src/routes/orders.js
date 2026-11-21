@@ -15,9 +15,23 @@ const {
   approveReturnRequest, rejectReturnRequest,
   trackOrder,
 } = require('../controllers/order.controller');
+const {
+  getOrderReturns,
+  createReturnRequest,
+  cancelReturnRequest,
+  getAdminReturns,
+  approveReturnRequestById,
+  rejectReturnRequestById,
+} = require('../controllers/return.controller');
 
 const router = express.Router();
 const trackLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many tracking requests. Please try again later.');
+const returnCreateLimiter = makeRateLimiter(15 * 60 * 1000, 10, 'Too many return requests. Please try again later.', {
+  keyGenerator: (req, ip) => `ret:create:${req.user?.id || ip}`,
+});
+const returnCancelLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many return cancellation requests. Please try again later.', {
+  keyGenerator: (req, ip) => `ret:cancel:${req.user?.id || ip}`,
+});
 const trackOrderNumberLimiter = makeRateLimiter(
   15 * 60 * 1000,
   10,
@@ -42,7 +56,16 @@ router.get('/admin/all',              verifyToken, requireAdmin, getAllOrders);
 router.get('/admin/requests/counts', verifyToken, requireAdmin, getRequestCounts);
 router.get('/admin/requests',        verifyToken, requireAdmin, getRequests);
 router.get('/admin/export',          verifyToken, requireAdmin, exportOrders);
+// Item-level partial returns (admin) — MUST be mounted before /:orderId
+router.get('/admin/returns',                   verifyToken, requireAdmin, getAdminReturns);
+router.post('/admin/returns/:returnId/approve', verifyToken, requireAdmin, approveReturnRequestById);
+router.post('/admin/returns/:returnId/reject',  verifyToken, requireAdmin, rejectReturnRequestById);
 router.get('/:orderId', verifyToken, getOrderById);
+
+// Item-level partial returns (logged-in customer owner or admin for GET)
+router.get('/:orderId/returns',                    verifyToken, getOrderReturns);
+router.post('/:orderId/returns',                   verifyToken, returnCreateLimiter, createReturnRequest);
+router.post('/:orderId/returns/:returnId/cancel',  verifyToken, returnCancelLimiter, cancelReturnRequest);
 
 // Admin-only fulfilment actions
 router.post('/:orderId/cancel',    verifyToken, requireAdmin, validateCancelOrder,  cancelOrder);
