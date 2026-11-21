@@ -344,7 +344,16 @@ export default function Requests() {
               key: 'actions',
               label: '',
               className: 'cell-right',
-              render: r => (
+              render: r => {
+                const alreadyApproved = r.refund_status === 'pending' || r.refund_status === 'success';
+                if (alreadyApproved) {
+                  return (
+                    <span className="badge badge-info">
+                      {r.refund_status === 'success' ? 'Refunded' : 'Approved · Refund Pending'}
+                    </span>
+                  );
+                }
+                return (
                 <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
                   <button
                     className="btn btn-sm btn-outline"
@@ -363,7 +372,8 @@ export default function Requests() {
                     Reject
                   </button>
                 </div>
-              ),
+                );
+              },
             },
           ]}
         />

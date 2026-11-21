@@ -407,46 +407,67 @@ export default function OrderDetail() {
         </div>
       )}
 
-      {/* ── Return request pending banner ───────────────────────── */}
-      {order.return_requested && !order.return_request_rejected && order.status === 'delivered' && (
-        <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--ac-info, #5ba4cf)' }}>
-          <div className="card-body">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  ↩ Customer requested a return
+      {/* ── Return request banner ───────────────────────── */}
+      {order.return_requested && !order.return_request_rejected && order.status === 'delivered' && (() => {
+        const returnDecided = order.refund_status === 'pending' || order.refund_status === 'success';
+        return (
+          <div
+            className="card"
+            style={{
+              marginBottom: 16,
+              borderLeft: returnDecided
+                ? '3px solid var(--ac-success, #27ae60)'
+                : '3px solid var(--ac-info, #5ba4cf)',
+            }}
+          >
+            <div className="card-body">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                    {returnDecided
+                      ? (order.refund_status === 'success'
+                          ? '✓ Return approved — refund completed'
+                          : '✓ Return approved — refund pending with Paystack')
+                      : '↩ Customer requested a return'}
+                  </div>
+                  {order.return_reason && (
+                    <div className="muted text-sm" style={{ maxWidth: 480 }}>
+                      Reason: {order.return_reason}
+                    </div>
+                  )}
+                  {order.return_requested_at && (
+                    <div className="muted text-sm">
+                      Requested {new Date(order.return_requested_at).toLocaleString('en-GH')}
+                    </div>
+                  )}
                 </div>
-                {order.return_reason && (
-                  <div className="muted text-sm" style={{ maxWidth: 480 }}>
-                    Reason: {order.return_reason}
+                {returnDecided ? (
+                  <span className="badge badge-info" style={{ alignSelf: 'center' }}>
+                    {order.refund_status === 'success' ? 'Refunded' : 'Approved · Refund Pending'}
+                  </span>
+                ) : (
+                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                    <button
+                      className="btn btn-sm btn-accent"
+                      disabled={requestActionSaving}
+                      onClick={() => handleRequestAction('approveReturnRequest', 'Return approved & refund initiated')}
+                    >
+                      Approve & refund
+                    </button>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      disabled={requestActionSaving}
+                      onClick={() => handleRequestAction('rejectReturnRequest', 'Return request rejected')}
+                    >
+                      Reject
+                    </button>
                   </div>
                 )}
-                {order.return_requested_at && (
-                  <div className="muted text-sm">
-                    Requested {new Date(order.return_requested_at).toLocaleString('en-GH')}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  className="btn btn-sm btn-accent"
-                  disabled={requestActionSaving}
-                  onClick={() => handleRequestAction('approveReturnRequest', 'Return approved & refund initiated')}
-                >
-                  Approve & refund
-                </button>
-                <button
-                  className="btn btn-sm btn-outline"
-                  disabled={requestActionSaving}
-                  onClick={() => handleRequestAction('rejectReturnRequest', 'Return request rejected')}
-                >
-                  Reject
-                </button>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }} className="od-grid">
 

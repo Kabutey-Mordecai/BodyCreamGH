@@ -394,10 +394,12 @@ const getRequestCounts = async (req, res) => {
         COUNT(*) FILTER (
           WHERE cancel_requested = true AND cancel_request_rejected = false
             AND status NOT IN ('cancelled', 'refunded')
+            AND COALESCE(refund_status, 'not_requested') NOT IN ('pending', 'success')
         ) AS cancel_count,
         COUNT(*) FILTER (
           WHERE return_requested = true AND return_request_rejected = false
             AND status NOT IN ('cancelled', 'refunded')
+            AND COALESCE(refund_status, 'not_requested') NOT IN ('pending', 'success')
         ) AS return_count,
         COUNT(*) FILTER (WHERE status = 'pending') AS pending_orders
       FROM orders
@@ -420,11 +422,11 @@ const getRequests = async (req, res) => {
     }
 
     const where = type === 'cancel'
-      ? `WHERE o.cancel_requested = true AND o.cancel_request_rejected = false AND o.status NOT IN ('cancelled', 'refunded')`
-      : `WHERE o.return_requested = true AND o.return_request_rejected = false AND o.status NOT IN ('cancelled', 'refunded')`;
+      ? `WHERE o.cancel_requested = true AND o.cancel_request_rejected = false AND o.status NOT IN ('cancelled', 'refunded') AND COALESCE(o.refund_status, 'not_requested') NOT IN ('pending', 'success')`
+      : `WHERE o.return_requested = true AND o.return_request_rejected = false AND o.status NOT IN ('cancelled', 'refunded') AND COALESCE(o.refund_status, 'not_requested') NOT IN ('pending', 'success')`;
 
     const { rows } = await pool.query(`
-      SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status,
+      SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status, o.refund_status,
              o.fulfillment_method, o.payment_method, o.customer_id,
              o.cancel_reason, o.cancel_requested_at,
              o.return_reason, o.return_requested_at,
