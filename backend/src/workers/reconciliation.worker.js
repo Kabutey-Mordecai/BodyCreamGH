@@ -369,8 +369,15 @@ module.exports = async function register(boss) {
     }
   });
 
-  // Schedule AFTER work is registered so the queue exists
-  await boss.schedule('reconcile', '*/10 * * * *', {});
+  // Schedule AFTER work is registered so the queue exists.
+  // Explicit retry/backoff: transient DNS/network blips retry twice with exponential
+  // backoff (60s -> 120s) without piling up against the next 10-minute cron tick.
+  await boss.schedule('reconcile', '*/10 * * * *', {}, {
+    retryLimit: 2,
+    retryDelay: 60,
+    retryBackoff: true,
+    expireInSeconds: 300,
+  });
 
   logger.info('Reconciliation worker registered (every 10 min)');
 };

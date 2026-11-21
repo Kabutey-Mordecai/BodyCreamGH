@@ -301,7 +301,12 @@ module.exports = async function register(boss) {
   });
 
   // Schedule after work is registered so the queue exists before the first fire.
-  await boss.schedule('reconcile/refunds', '*/30 * * * *', {});
+  await boss.schedule('reconcile/refunds', '*/30 * * * *', {}, {
+    retryLimit: 2,
+    retryDelay: 120,
+    retryBackoff: true,
+    expireInSeconds: 300,
+  });
 
   logger.info('Refund reconciliation worker registered (every 30 min)');
 };
