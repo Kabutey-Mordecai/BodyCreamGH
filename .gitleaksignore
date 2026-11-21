@@ -1,0 +1,2 @@
+# Synthetic sentinel string used solely by the Paystack ENOTFOUND redaction test
+6ee47fbec54d5de42a4d8215df731536397723cd:backend/scripts/test-reconcile-error-sanitization.js:generic-api-key:26
