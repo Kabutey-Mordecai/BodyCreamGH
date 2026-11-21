@@ -20,6 +20,7 @@ const {
 const { refundOrder, requestReturn } = require('../src/controllers/order.controller');
 const { handleWebhook } = require('../src/controllers/payment.controller');
 const { reconcileReturnRequestRefunds } = require('../src/workers/refund.reconciliation.worker');
+const { requireAdmin } = require('../src/middleware/auth');
 
 const ALLOWED_POST_REFUND_KEYS = new Set([
   'transaction',
@@ -40,6 +41,17 @@ function assertDocumentedRefundRequestBody(payload) {
   }
   assert(typeof payload.transaction === 'string' && payload.transaction.length > 0, 'POST /refund requires transaction');
 }
+
+// Self-test: verify assertDocumentedRefundRequestBody FAILS on any key outside
+// {transaction, amount, currency, customer_note, merchant_note}
+assert.throws(
+  () => assertDocumentedRefundRequestBody({ transaction: 'tx_1', amount: 1000, reference: 'RET-1' }),
+  /must NOT include undocumented "reference" key/
+);
+assert.throws(
+  () => assertDocumentedRefundRequestBody({ transaction: 'tx_1', amount: 1000, undocumented_field: 'x' }),
+  /contains undocumented key "undocumented_field"/
+);
 
 function makeRes() {
   return {
@@ -518,7 +530,23 @@ async function run() {
       assert.strictEqual(rNullDelivered.statusCode, 400, 'Return with NULL delivered_at must be explicitly blocked (400)');
       assert(String(rNullDelivered.body?.error || '').includes('Delivery date could not be verified'));
 
-      // Admin override: admin can still create a return on behalf of customer when delivered_at is NULL
+      // Non-admin must receive 403 Forbidden (both via requireAdmin middleware and controller guard)
+      const rNonAdminMw = makeRes();
+      let mwNextCalled = false;
+      await requireAdmin({ user: { id: ownerId, role: 'customer' } }, rNonAdminMw, () => { mwNextCalled = true; });
+      assert.strictEqual(rNonAdminMw.statusCode, 403, 'requireAdmin must reject non-admin customer with 403');
+      assert.strictEqual(mwNextCalled, false);
+
+      const rNonAdminCtrl = makeRes();
+      await adminCreateReturnRequest({
+        params: { orderId: eqOrderId },
+        user: { id: ownerId, role: 'customer' },
+        body: { reason: 'Customer trying admin endpoint', items: [{ order_item_id: eqItemId, quantity: 1 }] },
+      }, rNonAdminCtrl);
+      assert.strictEqual(rNonAdminCtrl.statusCode, 403, 'adminCreateReturnRequest must reject non-admin with 403');
+
+      // Admin override: admin can still create a return on behalf of customer when delivered_at is NULL,
+      // and approving it uses the exact same refund_pending write-before-Paystack flow
       const rAdminOverride = makeRes();
       await adminCreateReturnRequest({
         params: { orderId: eqOrderId },
@@ -526,8 +554,54 @@ async function run() {
         body: { reason: 'Admin manual override for legacy delivered order', items: [{ order_item_id: eqItemId, quantity: 1 }] },
       }, rAdminOverride);
       assert.strictEqual(rAdminOverride.statusCode, 201, `Admin override return must succeed (201), got ${rAdminOverride.statusCode}`);
-      // Cancel it via DB so remaining qty is clean for the subsequent window tests
-      await pool.query(`UPDATE return_requests SET status = 'cancelled' WHERE id = $1`, [rAdminOverride.body.return_request.id]);
+      const adminCreatedRetId = rAdminOverride.body.return_request.id;
+      assert.strictEqual(rAdminOverride.body.return_request.status, 'pending');
+
+      let adminRetStatusDuringCall = null;
+      let adminRetRefDuringCall = null;
+      paystackAPI.defaults.adapter = async (config) => {
+        if (config.method === 'post' && config.url === '/refund') {
+          const body = JSON.parse(config.data);
+          assertDocumentedRefundRequestBody(body);
+          const { rows: [inFlight] } = await pool.query(
+            'SELECT status, refund_reference FROM return_requests WHERE id = $1',
+            [adminCreatedRetId]
+          );
+          adminRetStatusDuringCall = inFlight?.status;
+          adminRetRefDuringCall = inFlight?.refund_reference;
+          return {
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+            config,
+            data: {
+              status: true,
+              data: {
+                id: 800199,
+                status: 'pending',
+                amount: body.amount,
+                currency: 'GHS',
+                merchant_note: body.merchant_note || '',
+                customer_note: '',
+              },
+            },
+          };
+        }
+        throw new Error(`Unexpected call: ${config.method} ${config.url}`);
+      };
+      const rApproveAdminCreated = makeRes();
+      await approveReturnRequestById({
+        params: { returnId: adminCreatedRetId },
+        user: { id: adminId, role: 'admin' },
+        body: { method: 'paystack' },
+      }, rApproveAdminCreated);
+      assert.strictEqual(rApproveAdminCreated.statusCode, 200);
+      assert.strictEqual(adminRetStatusDuringCall, 'refund_pending', 'Admin-created return must write refund_pending BEFORE Paystack call');
+      assert(adminRetRefDuringCall && adminRetRefDuringCall.startsWith('RET-'), 'Admin-created return must write RET- ref BEFORE Paystack call');
+      assert.strictEqual(rApproveAdminCreated.body.return_request.status, 'refund_pending');
+      assert.strictEqual(rApproveAdminCreated.body.return_request.refund_provider_id, '800199');
+      // Mark cancelled via DB so remaining qty is clean for the subsequent window tests
+      await pool.query(`UPDATE return_requests SET status = 'cancelled' WHERE id = $1`, [adminCreatedRetId]);
 
       await pool.query(`UPDATE orders SET delivered_at = NOW() - INTERVAL '20 days' WHERE id = $1`, [eqOrderId]);
       const rExpired = makeRes();

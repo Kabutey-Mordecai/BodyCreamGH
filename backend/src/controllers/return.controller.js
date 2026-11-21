@@ -449,6 +449,9 @@ const cancelReturnRequest = async (req, res) => {
 
 // ── POST /api/orders/admin/:orderId/returns (admin-only, bypasses window/delivered_at) ──
 const adminCreateReturnRequest = async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
   const { orderId } = req.params;
   const adminId = req.user.id;
   const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
@@ -976,7 +979,8 @@ const approveReturnRequestById = async (req, res) => {
 
     const { rows: [pendingRow] } = await postClient.query(
       `UPDATE return_requests
-          SET refund_provider_id = COALESCE(refund_provider_id, $1),
+          SET status = 'refund_pending',
+              refund_provider_id = COALESCE(refund_provider_id, $1),
               refund_reference = $2,
               updated_at = NOW()
         WHERE id = $3
