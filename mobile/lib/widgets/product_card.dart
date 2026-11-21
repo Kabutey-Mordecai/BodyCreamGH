@@ -115,6 +115,7 @@ class _ProductCardState extends State<ProductCard> {
                             imageUrl: product.imageUrl!,
                             fit: BoxFit.cover,
                             width: double.infinity,
+                            memCacheWidth: 400,
                             placeholder: (_, __) => const ColoredBox(
                               color: AppColors.blush,
                               child: Center(

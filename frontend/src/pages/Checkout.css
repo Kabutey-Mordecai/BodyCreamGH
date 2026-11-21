@@ -326,3 +326,18 @@
   font-weight: 500;
   margin-top: 2px;
 }
+
+.checkout-field-hint {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--color-muted);
+  margin-bottom: 4px;
+}
+
+.checkout-form :is(input, select, textarea):user-invalid {
+  border-color: var(--color-error, #c0392b);
+}
+
+.checkout-form :is(input, select, textarea):user-valid {
+  border-color: var(--color-success, #27ae60);
+}

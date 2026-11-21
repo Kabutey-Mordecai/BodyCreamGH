@@ -280,6 +280,8 @@ class CartProvider extends ChangeNotifier {
     required String shippingRegion,
     String fulfillmentMethod = 'delivery',
     String paymentMethod = 'paystack',
+    String? ghanaPostGps,
+    String? deliveryLandmark,
     String? phone,
     String? notes,
     String? couponCode,
@@ -295,6 +297,10 @@ class CartProvider extends ChangeNotifier {
       'shipping_address': shippingAddress,
       'shipping_city': shippingCity,
       'shipping_region': shippingRegion,
+      if (ghanaPostGps != null && ghanaPostGps.trim().isNotEmpty)
+        'ghana_post_gps': ghanaPostGps.trim().toUpperCase(),
+      if (deliveryLandmark != null && deliveryLandmark.trim().isNotEmpty)
+        'delivery_landmark': deliveryLandmark.trim(),
       if (combinedNotes.isNotEmpty) 'notes': combinedNotes,
       if (couponCode != null && couponCode.isNotEmpty) 'coupon_code': couponCode,
     };
@@ -311,6 +317,8 @@ class CartProvider extends ChangeNotifier {
     required double deliveryFee,
     String fulfillmentMethod = 'delivery',
     String paymentMethod = 'paystack',
+    String? ghanaPostGps,
+    String? deliveryLandmark,
     String? notes,
     String? couponCode,
   }) {
@@ -325,6 +333,10 @@ class CartProvider extends ChangeNotifier {
       'shipping_city': shippingCity,
       'shipping_region': shippingRegion,
       'delivery_fee': deliveryFee,
+      if (ghanaPostGps != null && ghanaPostGps.trim().isNotEmpty)
+        'ghana_post_gps': ghanaPostGps.trim().toUpperCase(),
+      if (deliveryLandmark != null && deliveryLandmark.trim().isNotEmpty)
+        'delivery_landmark': deliveryLandmark.trim(),
       if (notes != null && notes.isNotEmpty) 'notes': notes,
       if (couponCode != null && couponCode.isNotEmpty) 'coupon_code': couponCode,
       'items': _items

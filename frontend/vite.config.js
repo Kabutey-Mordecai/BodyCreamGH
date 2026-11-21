@@ -6,6 +6,24 @@ import react from '@vitejs/plugin-react';
 // on DigitalOcean — set VITE_API_URL in your Netlify env vars instead.
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react-router')
+          ) {
+            return 'react-vendor';
+          }
+          if (id.includes('node_modules/axios/')) {
+            return 'http-vendor';
+          }
+        },
+      },
+    },
+  },
   server: {
     proxy: {
       '/api': {

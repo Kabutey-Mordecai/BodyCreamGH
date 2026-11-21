@@ -14,9 +14,11 @@ const ACCOUNT_LINKS = [
 
 const INFO_LINKS = [
   { label: 'About Us',           to: '/#our-story' },
-  { label: 'Shipping & Returns', to: '/#faq' },
-  { label: 'Ingredients',        to: '/#our-story' },
-  { label: 'FAQs',               to: '/#faq' },
+  { label: 'Shipping Policy',    to: '/shipping-policy' },
+  { label: 'Refund & Returns',   to: '/refund-policy' },
+  { label: 'Privacy Policy',     to: '/privacy-policy' },
+  { label: 'Terms & Conditions', to: '/terms' },
+  { label: 'Contact Us',         to: '/contact' },
   { label: 'Track your order',   to: '/track' },
 ];
 

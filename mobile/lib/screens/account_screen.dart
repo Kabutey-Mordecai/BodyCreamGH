@@ -382,7 +382,88 @@ class _StoreSupportAndPaymentsCardState
                   )
                   .toList(),
             ),
+            const SizedBox(height: 14),
+            const Divider(),
+            const SizedBox(height: 10),
+            const Text(
+              'LEGAL & STORE POLICIES',
+              style: TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1.2,
+                color: AppColors.muted,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                _policyButton(
+                  context,
+                  'Privacy Policy',
+                  'We collect only the contact and delivery details required to fulfill your orders under the Ghana Data Protection Act, 2012 (Act 843). Card and Mobile Money payments are processed securely by Paystack.',
+                ),
+                _policyButton(
+                  context,
+                  'Terms & Conditions',
+                  'All prices are in GHS. Unpaid Paystack orders expire after 30 minutes to release reserved stock. Products are formulated for external cosmetic use only.',
+                ),
+                _policyButton(
+                  context,
+                  'Refund Policy',
+                  'Returns are accepted within 7 days of delivery for wrong, damaged, or unopened sealed items. Opened skincare products cannot be returned for hygiene reasons unless defective.',
+                ),
+                _policyButton(
+                  context,
+                  'Shipping Policy',
+                  'Greater Accra deliveries arrive in 1–2 business days; nationwide orders arrive in 3–5 business days. Providing your GhanaPostGPS code and nearest landmark speeds up dispatch.',
+                ),
+              ],
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _policyButton(BuildContext context, String title, String body) {
+    return TextButton(
+      style: TextButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        minimumSize: Size.zero,
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: () => showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (ctx) => Padding(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: Theme.of(ctx).textTheme.titleLarge),
+              const SizedBox(height: 10),
+              Text(
+                body,
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: AppColors.muted,
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        ),
+      ),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: AppColors.accentDark,
         ),
       ),
     );

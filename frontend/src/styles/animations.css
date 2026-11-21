@@ -131,17 +131,27 @@
   transform: scale(1.06);
 }
 
-/* ── 7. Floating WhatsApp gentle breathing ring ──────────────── */
+/* ── 7. Floating WhatsApp gentle breathing ring (GPU-composited) ── */
 @keyframes bcWaPulse {
-  0%   { box-shadow: 0 8px 24px rgba(20, 16, 12, 0.24), 0 0 0 0 rgba(29, 122, 70, 0.45); }
-  70%  { box-shadow: 0 8px 24px rgba(20, 16, 12, 0.24), 0 0 0 12px rgba(29, 122, 70, 0); }
-  100% { box-shadow: 0 8px 24px rgba(20, 16, 12, 0.24), 0 0 0 0 rgba(29, 122, 70, 0); }
+  0%   { transform: scale(1); opacity: 0.45; }
+  70%  { transform: scale(1.32); opacity: 0; }
+  100% { transform: scale(1); opacity: 0; }
 }
 .whatsapp-float {
+  position: fixed;
+}
+.whatsapp-float::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid rgba(29, 122, 70, 0.55);
+  pointer-events: none;
   animation: bcWaPulse 2.8s ease-out infinite;
 }
-.whatsapp-float:hover {
+.whatsapp-float:hover::after {
   animation: none;
+  opacity: 0;
 }
 
 /* ── 8. Subtle page route transition ─────────────────────────── */

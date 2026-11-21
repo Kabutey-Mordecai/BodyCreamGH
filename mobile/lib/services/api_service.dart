@@ -1,7 +1,24 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../config.dart';
+
+class _TimeoutClient extends http.BaseClient {
+  final http.Client _inner;
+  final Duration timeout;
+  _TimeoutClient(this._inner, {this.timeout = const Duration(seconds: 15)});
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    return _inner.send(request).timeout(
+          timeout,
+          onTimeout: () => throw TimeoutException(
+            'Request timed out. Please check your internet connection and try again.',
+          ),
+        );
+  }
+}
 
 // Thrown for all non-2xx API responses so callers can show the server message.
 class ApiException implements Exception {
@@ -19,7 +36,7 @@ class ApiService {
   static final ApiService instance = ApiService._();
 
   final _storage = const FlutterSecureStorage();
-  http.Client _client = http.Client();
+  http.Client _client = _TimeoutClient(http.Client());
   String? _testAccessToken;
   Future<String?>? _refreshInFlight;
 

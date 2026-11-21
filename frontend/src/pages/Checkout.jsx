@@ -44,11 +44,13 @@ export default function Checkout() {
     last_name:  '',
     email:      '',
     // Delivery fields — shown for everyone
-    delivery_address: '',
-    city:             '',
-    region:           '',
-    phone:            '',
-    notes:            '',
+    delivery_address:  '',
+    city:              '',
+    region:            '',
+    ghana_post_gps:    '',
+    delivery_landmark: '',
+    phone:             '',
+    notes:             '',
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
@@ -205,6 +207,8 @@ export default function Checkout() {
           shipping_address:   shippingAddress,
           shipping_city:      shippingCity,
           shipping_region:    shippingRegion,
+          ...(form.ghana_post_gps.trim() ? { ghana_post_gps: form.ghana_post_gps.trim().toUpperCase() } : {}),
+          ...(form.delivery_landmark.trim() ? { delivery_landmark: form.delivery_landmark.trim() } : {}),
           notes:              form.notes,
           delivery_fee:       deliveryFee,
           coupon_code:        coupon?.code || undefined,
@@ -222,6 +226,8 @@ export default function Checkout() {
           shipping_address:   shippingAddress,
           shipping_city:      shippingCity,
           shipping_region:    shippingRegion,
+          ...(form.ghana_post_gps.trim() ? { ghana_post_gps: form.ghana_post_gps.trim().toUpperCase() } : {}),
+          ...(form.delivery_landmark.trim() ? { delivery_landmark: form.delivery_landmark.trim() } : {}),
           notes: form.phone
             ? `Phone: ${form.phone}${form.notes ? '\n' + form.notes : ''}`
             : form.notes,
@@ -566,6 +572,38 @@ export default function Checkout() {
                           <option key={r} value={r}>{r}</option>
                         ))}
                       </select>
+                    </div>
+                  </div>
+
+                  <div className="checkout-row">
+                    <div className="form-group">
+                      <label htmlFor="ghana_post_gps">GhanaPostGPS Code (optional)</label>
+                      <span id="gps-hint" className="checkout-field-hint">Format: GA-183-9024</span>
+                      <input
+                        id="ghana_post_gps"
+                        name="ghana_post_gps"
+                        type="text"
+                        value={form.ghana_post_gps}
+                        onChange={handleChange}
+                        pattern="^[A-Za-z]{2}-\d{3,4}-\d{4}$"
+                        autoComplete="postal-code"
+                        aria-describedby="gps-hint"
+                        placeholder="e.g. GA-183-9024"
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label htmlFor="delivery_landmark">Nearest Landmark (optional)</label>
+                      <span id="landmark-hint" className="checkout-field-hint">Helps the rider find you faster</span>
+                      <input
+                        id="delivery_landmark"
+                        name="delivery_landmark"
+                        type="text"
+                        maxLength={300}
+                        value={form.delivery_landmark}
+                        onChange={handleChange}
+                        aria-describedby="landmark-hint"
+                        placeholder="e.g. Opposite Shell station, green gate"
+                      />
                     </div>
                   </div>
                 </>

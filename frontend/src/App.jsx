@@ -33,6 +33,7 @@ function PageFallback() {
 
 // Route-level code splitting keeps the initial storefront JS lean on mobile networks.
 const Shop            = lazy(() => import('./pages/Shop'));
+const PolicyPage      = lazy(() => import('./pages/PolicyPage'));
 const ProductPage     = lazy(() => import('./pages/ProductPage'));
 const Cart            = lazy(() => import('./pages/Cart'));
 const Checkout        = lazy(() => import('./pages/Checkout'));
@@ -90,6 +91,11 @@ export default function App() {
               <Route path="/unsubscribe"         element={<Unsubscribe />} />
               <Route path="/track"               element={<TrackOrder />} />
               <Route path="/track-order"         element={<TrackOrder />} />
+              <Route path="/privacy-policy"      element={<PolicyPage type="privacy" />} />
+              <Route path="/terms"               element={<PolicyPage type="terms" />} />
+              <Route path="/refund-policy"       element={<PolicyPage type="refund" />} />
+              <Route path="/shipping-policy"     element={<PolicyPage type="shipping" />} />
+              <Route path="/contact"             element={<PolicyPage type="contact" />} />
 
               {/* Payment callback — visited after Paystack redirects back */}
               <Route path="/payment/callback"    element={<ErrorBoundary><PaymentCallback /></ErrorBoundary>} />

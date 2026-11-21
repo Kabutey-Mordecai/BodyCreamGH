@@ -48,6 +48,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _emailCtrl = TextEditingController();
   final _addressCtrl = TextEditingController();
   final _cityCtrl = TextEditingController();
+  final _gpsCtrl = TextEditingController();
+  final _landmarkCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final _couponCtrl = TextEditingController();
@@ -277,6 +279,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _emailCtrl.dispose();
     _addressCtrl.dispose();
     _cityCtrl.dispose();
+    _gpsCtrl.dispose();
+    _landmarkCtrl.dispose();
     _phoneCtrl.dispose();
     _notesCtrl.dispose();
     _couponCtrl.dispose();
@@ -388,6 +392,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
         isPickup ? 'Pickup: $_pickupLocation' : _addressCtrl.text.trim();
     final shippingCity = isPickup ? 'Accra' : _cityCtrl.text.trim();
     final shippingRegion = isPickup ? 'Greater Accra' : _selectedRegion;
+    final ghanaPostGps = isPickup || _gpsCtrl.text.trim().isEmpty
+        ? null
+        : _gpsCtrl.text.trim().toUpperCase();
+    final deliveryLandmark = isPickup || _landmarkCtrl.text.trim().isEmpty
+        ? null
+        : _landmarkCtrl.text.trim();
     final couponCode = _appliedCoupon != null ? _couponCtrl.text.trim() : null;
     final notesText =
         _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim();
@@ -410,6 +420,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           deliveryFee: _deliveryFee(cart),
           fulfillmentMethod: _fulfillmentMethod,
           paymentMethod: backendPaymentMethod,
+          ghanaPostGps: ghanaPostGps,
+          deliveryLandmark: deliveryLandmark,
           notes: notesText,
           couponCode: couponCode,
         );
@@ -422,6 +434,8 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
           shippingRegion: shippingRegion,
           fulfillmentMethod: _fulfillmentMethod,
           paymentMethod: backendPaymentMethod,
+          ghanaPostGps: ghanaPostGps,
+          deliveryLandmark: deliveryLandmark,
           phone:
               _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
           notes: notesText,
@@ -892,6 +906,35 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                     }
                   });
                 },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _gpsCtrl,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'GhanaPostGPS Code (optional)',
+                  hintText: 'e.g. GA-183-9024',
+                  prefixIcon: Icon(Icons.my_location_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) {
+                  final raw = v?.trim().toUpperCase() ?? '';
+                  if (raw.isEmpty) return null;
+                  if (!RegExp(r'^[A-Z]{2}-\d{3,4}-\d{4}$').hasMatch(raw)) {
+                    return 'Format: GA-183-9024';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _landmarkCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Nearest Landmark (optional)',
+                  hintText: 'e.g. Opposite Shell station, green gate',
+                  prefixIcon: Icon(Icons.assistant_direction_outlined),
+                  border: OutlineInputBorder(),
+                ),
               ),
               const SizedBox(height: 12),
             ],

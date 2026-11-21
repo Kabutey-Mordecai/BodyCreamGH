@@ -739,6 +739,12 @@ export default function OrderDetail() {
                   {(order.shipping_city || order.shipping_region) && (
                     <div>{order.shipping_city}{order.shipping_region ? `, ${order.shipping_region}` : ''}</div>
                   )}
+                  {order.ghana_post_gps && (
+                    <div><strong>GhanaPostGPS:</strong> {order.ghana_post_gps}</div>
+                  )}
+                  {order.delivery_landmark && (
+                    <div><strong>Landmark:</strong> {order.delivery_landmark}</div>
+                  )}
                   {!order.shipping_address && !order.shipping_city && <div className="muted">Not provided</div>}
                 </div>
               )}

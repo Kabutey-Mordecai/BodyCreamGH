@@ -90,7 +90,7 @@ const createOrder = async (req, res) => {
   try {
     const fulfillment_method = req.body.fulfillment_method === 'pickup' ? 'pickup' : 'delivery';
     const payment_method = req.body.payment_method === 'pay_on_delivery' ? 'pay_on_delivery' : 'paystack';
-    const { notes } = req.body;
+    const { notes, ghana_post_gps, delivery_landmark } = req.body;
     let { shipping_address, shipping_city, shipping_region } = req.body;
 
     if (fulfillment_method === 'delivery' && (!shipping_address || !shipping_city || !shipping_region)) {
@@ -191,11 +191,15 @@ const createOrder = async (req, res) => {
       await client.query(
         `INSERT INTO orders
            (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
-            shipping_region, delivery_fee, coupon_code, discount_amount, notes,
+            shipping_region, delivery_fee, ghana_post_gps, delivery_landmark,
+            coupon_code, discount_amount, notes,
             fulfillment_method, payment_method, status, payment_status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'unpaid')`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'unpaid')`,
         [orderId, req.user.id, candidate, total, shipping_address, shipping_city,
-         shipping_region, delivery_fee, appliedCouponCode, discountAmount, notes,
+         shipping_region, delivery_fee,
+         ghana_post_gps ? String(ghana_post_gps).trim().toUpperCase() : null,
+         delivery_landmark ? String(delivery_landmark).trim() : null,
+         appliedCouponCode, discountAmount, notes,
          fulfillment_method, payment_method, initialStatus]
       );
     });
@@ -1490,12 +1494,16 @@ const createGuestOrder = async (req, res) => {
       await client.query(
         `INSERT INTO orders
            (id, customer_id, order_number, total_amount, shipping_address, shipping_city,
-            shipping_region, delivery_fee, coupon_code, discount_amount, notes, guest_email,
+            shipping_region, delivery_fee, ghana_post_gps, delivery_landmark,
+            coupon_code, discount_amount, notes, guest_email,
             guest_first_name, guest_last_name, guest_phone,
             fulfillment_method, payment_method, status, payment_status)
-         VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'unpaid')`,
+         VALUES ($1,NULL,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'unpaid')`,
         [orderId, candidate, total, shipping_address, shipping_city,
-         shipping_region, delivery_fee, appliedCouponCode, discountAmount, fullNotes, email,
+         shipping_region, delivery_fee,
+         req.body.ghana_post_gps ? String(req.body.ghana_post_gps).trim().toUpperCase() : null,
+         req.body.delivery_landmark ? String(req.body.delivery_landmark).trim() : null,
+         appliedCouponCode, discountAmount, fullNotes, email,
          first_name, last_name || null, phone,
          fulfillment_method, payment_method, initialStatus]
       );

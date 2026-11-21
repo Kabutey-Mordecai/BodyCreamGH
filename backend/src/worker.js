@@ -76,6 +76,9 @@ async function start() {
   await require('./workers/refund.reconciliation.worker')(boss);
   logger.info('Refund reconciliation worker registered');
 
+  await require('./workers/order.expiry.worker')(boss);
+  logger.info('Order expiry worker registered');
+
   logger.info('Worker process ready');
 
   // ── Graceful shutdown ─────────────────────────────────────────────────────

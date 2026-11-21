@@ -463,6 +463,7 @@ export default function ProductPage() {
                   <img
                     src={resolveImageUrl(galleryImages[selectedIdx]?.url)}
                     alt={product.name}
+                    fetchPriority="high"
                     onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
                   />
                   <div className="pdp-zoom-hint" aria-hidden="true">&#128269;</div>

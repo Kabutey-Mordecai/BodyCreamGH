@@ -45,9 +45,12 @@ const createOrderSchema = Joi.object({
     then: Joi.string().trim().max(100).optional().allow('', null),
     otherwise: Joi.string().trim().min(1).max(100).required(),
   }),
-  delivery_fee:     Joi.number().min(0).default(0),
-  coupon_code:      Joi.string().trim().max(50).optional().allow('', null),
-  notes:            Joi.string().trim().max(1000).optional().allow('', null),
+  delivery_fee:      Joi.number().min(0).default(0),
+  ghana_post_gps:    Joi.string().trim().uppercase().pattern(/^[A-Z]{2}-\d{3,4}-\d{4}$/).optional().allow('', null)
+    .messages({ 'string.pattern.base': 'GhanaPostGPS must be in the format GA-183-9024' }),
+  delivery_landmark: Joi.string().trim().max(300).optional().allow('', null),
+  coupon_code:       Joi.string().trim().max(50).optional().allow('', null),
+  notes:             Joi.string().trim().max(1000).optional().allow('', null),
 });
 
 const createGuestOrderSchema = Joi.object({
@@ -72,9 +75,12 @@ const createGuestOrderSchema = Joi.object({
     then: Joi.string().trim().max(100).optional().allow('', null),
     otherwise: Joi.string().trim().min(1).max(100).required(),
   }),
-  delivery_fee:     Joi.number().min(0).default(0),
-  coupon_code:      Joi.string().trim().max(50).optional().allow('', null),
-  notes:            Joi.string().trim().max(1000).optional().allow('', null),
+  delivery_fee:      Joi.number().min(0).default(0),
+  ghana_post_gps:    Joi.string().trim().uppercase().pattern(/^[A-Z]{2}-\d{3,4}-\d{4}$/).optional().allow('', null)
+    .messages({ 'string.pattern.base': 'GhanaPostGPS must be in the format GA-183-9024' }),
+  delivery_landmark: Joi.string().trim().max(300).optional().allow('', null),
+  coupon_code:       Joi.string().trim().max(50).optional().allow('', null),
+  notes:             Joi.string().trim().max(1000).optional().allow('', null),
   items: Joi.array().items(
     Joi.object({
       product_id:    Joi.string().uuid().required(),
