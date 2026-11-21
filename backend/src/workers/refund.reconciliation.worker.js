@@ -206,6 +206,131 @@ async function applyRefundNeedsAttention(order, paystackRefund, boss) {
   }
 }
 
+// ── Duplicate-payment refund reconciliation ───────────────────────────────────
+
+async function reconcileDuplicatePaymentRefunds(boss) {
+  let checked = 0, refunded = 0, reverted = 0;
+
+  const { rows: pendingDupRefunds } = await pool.query(
+    `SELECT p.id, p.order_id, p.amount, p.currency, p.paystack_reference, o.status AS order_status
+       FROM payments p
+       JOIN orders o ON o.id = p.order_id
+      WHERE p.status = 'refund_pending'
+        AND p.payment_method = 'paystack'
+        AND p.paystack_reference IS NOT NULL
+      ORDER BY p.updated_at ASC
+      LIMIT $1`,
+    [BATCH_LIMIT]
+  );
+
+  for (const row of pendingDupRefunds) {
+    checked++;
+    let paystackRefund = null;
+    try {
+      const list = await fetchRefundsByTransaction(row.paystack_reference);
+      paystackRefund = (list || [])[0] || null;
+    } catch (err) {
+      logger.error('Duplicate refund reconciliation: Paystack API error', {
+        paymentId: row.id,
+        orderId: row.order_id,
+        err: err.message,
+      });
+      continue;
+    }
+
+    if (!paystackRefund) continue;
+    const status = String(paystackRefund.status || '').toLowerCase();
+    const refundRef = paystackRefund.id ? String(paystackRefund.id) : (paystackRefund.reference || 'unknown');
+    const amountNum = Number(row.amount) || 0;
+
+    if (status === 'processed') {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const { rowCount } = await client.query(
+          `UPDATE payments SET status = 'refunded', updated_at = NOW()
+            WHERE id = $1 AND status = 'refund_pending'`,
+          [row.id]
+        );
+        if (rowCount > 0) {
+          await logStatusChange(
+            row.order_id,
+            row.order_status,
+            row.order_status,
+            `Duplicate payment refund confirmed via reconciliation (ref ${row.paystack_reference}, ${row.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef})`,
+            client
+          );
+          await client.query('COMMIT');
+          refunded++;
+        } else {
+          await client.query('ROLLBACK');
+        }
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        logger.error('Duplicate refund reconciliation: error marking refunded', { paymentId: row.id, err: err.message });
+      } finally {
+        client.release();
+      }
+    } else if (status === 'failed') {
+      const client = await pool.connect();
+      let didRevert = false;
+      try {
+        await client.query('BEGIN');
+        const { rowCount } = await client.query(
+          `UPDATE payments SET status = 'duplicate', updated_at = NOW()
+            WHERE id = $1 AND status = 'refund_pending'`,
+          [row.id]
+        );
+        if (rowCount > 0) {
+          await logStatusChange(
+            row.order_id,
+            row.order_status,
+            row.order_status,
+            `Duplicate payment refund failed on Paystack (ref ${row.paystack_reference}, ${row.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef}) — reverted to duplicate for retry`,
+            client
+          );
+          await client.query('COMMIT');
+          didRevert = true;
+          reverted++;
+        } else {
+          await client.query('ROLLBACK');
+        }
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        logger.error('Duplicate refund reconciliation: error reverting to duplicate', { paymentId: row.id, err: err.message });
+      } finally {
+        client.release();
+      }
+
+      if (didRevert && boss) {
+        await boss.send(
+          'notification/admin-payment-alert',
+          {
+            orderId: row.order_id,
+            alertKey: `dup_refund_failed_${row.paystack_reference}_${refundRef}`,
+            title: 'Duplicate payment refund failed',
+            detail: `Paystack refund #${refundRef} for duplicate payment ${row.paystack_reference} (${row.currency || 'GHS'} ${amountNum.toFixed(2)}) failed. Payment reverted to 'duplicate' for retry.`,
+          },
+          { retryLimit: 3 }
+        );
+      }
+    } else if (status === 'needs-attention' && boss) {
+      await boss.send(
+        'notification/admin-payment-alert',
+        {
+          orderId: row.order_id,
+          alertKey: `dup_refund_needs_attention_${row.paystack_reference}_${refundRef}`,
+          title: 'Duplicate payment refund needs attention',
+          detail: `Paystack refund #${refundRef} for duplicate payment ${row.paystack_reference} (${row.currency || 'GHS'} ${amountNum.toFixed(2)}) requires customer account details.`,
+        },
+        { retryLimit: 3 }
+      );
+    }
+  }
+
+  return { checked, refunded, reverted };
+}
+
 // ── Worker registration ───────────────────────────────────────────────────────
 
 module.exports = async function register(boss) {
@@ -293,7 +418,8 @@ module.exports = async function register(boss) {
         }
       }
 
-      logger.info('Refund reconciliation complete', { checked, updated, failed, unmatched });
+      const dupStats = await reconcileDuplicatePaymentRefunds(boss);
+      logger.info('Refund reconciliation complete', { checked, updated, failed, unmatched, duplicateRefunds: dupStats });
     } catch (err) {
       logger.error('Refund reconciliation error', { err: err.message });
       throw err;
@@ -310,3 +436,5 @@ module.exports = async function register(boss) {
 
   logger.info('Refund reconciliation worker registered (every 30 min)');
 };
+
+module.exports.reconcileDuplicatePaymentRefunds = reconcileDuplicatePaymentRefunds;

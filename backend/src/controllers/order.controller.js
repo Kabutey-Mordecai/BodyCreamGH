@@ -1986,29 +1986,31 @@ const refundDuplicatePayment = async (req, res) => {
     }
 
     const refundRef = refundData?.id ? String(refundData.id) : (refundData?.reference || 'submitted');
+    const providerStatus = String(refundData?.status || 'pending').toLowerCase();
+    const nextPaymentStatus = providerStatus === 'processed' ? 'refunded' : 'refund_pending';
     const amountNum = Number(payment.amount) || 0;
     const auditNote = alreadyRefundedOnPaystack
-      ? `Duplicate payment reconciled as already refunded on Paystack (ref ${payment.paystack_reference}, ${payment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef})`
-      : `Duplicate payment refunded (ref ${payment.paystack_reference}, ${payment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef}) — ${notes}`;
+      ? `Duplicate payment refund reconciled as ${nextPaymentStatus} on Paystack (ref ${payment.paystack_reference}, ${payment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef}, status: ${providerStatus})`
+      : `Duplicate payment refund ${nextPaymentStatus === 'refunded' ? 'completed' : 'initiated'} (ref ${payment.paystack_reference}, ${payment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef}, status: ${providerStatus}) — ${notes}`;
 
     const { rows: updatedRows } = await client.query(
-      `UPDATE payments SET status = 'refunded', updated_at = NOW()
+      `UPDATE payments SET status = $2, updated_at = NOW()
         WHERE id = $1
         RETURNING id, order_id, amount, currency, status, payment_method, paystack_reference, updated_at`,
-      [paymentId]
+      [paymentId, nextPaymentStatus]
     );
     await logStatusChange(orderId, payment.order_status, payment.order_status, auditNote, client);
     await client.query('COMMIT');
 
     return res.json({
-      message: alreadyRefundedOnPaystack
-        ? 'Duplicate payment was already refunded on Paystack; local status reconciled'
-        : 'Duplicate payment refunded via Paystack',
+      message: nextPaymentStatus === 'refunded'
+        ? 'Duplicate payment refunded via Paystack'
+        : 'Duplicate payment refund submitted to Paystack (pending confirmation)',
       already_refunded_on_paystack: alreadyRefundedOnPaystack,
       payment: updatedRows[0],
       paystack_refund: {
         id: refundData?.id || null,
-        status: refundData?.status || 'pending',
+        status: providerStatus,
       },
     });
   } catch (err) {
