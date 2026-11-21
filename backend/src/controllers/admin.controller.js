@@ -52,8 +52,8 @@ async function deleteFileSafe(filename) {
 const getDashboard = async (req, res) => {
   try {
     const [revenue, orders, customers, products, recentOrdersResult, todayRevenueResult, lowStockResult] = await Promise.all([
-      pool.query(`SELECT COALESCE(SUM(total_amount), 0) AS total_revenue FROM orders WHERE payment_status = 'paid'`),
-      pool.query(`SELECT COUNT(*) AS total_orders, COUNT(*) FILTER (WHERE payment_status = 'paid') AS paid_orders FROM orders`),
+      pool.query(`SELECT COALESCE(SUM(total_amount - COALESCE(refund_amount, 0)), 0) AS total_revenue FROM orders WHERE payment_status IN ('paid', 'partially_refunded')`),
+      pool.query(`SELECT COUNT(*) AS total_orders, COUNT(*) FILTER (WHERE payment_status IN ('paid', 'partially_refunded')) AS paid_orders FROM orders`),
       pool.query(`SELECT COUNT(*) AS total_customers FROM users WHERE role = 'customer'`),
       pool.query('SELECT COUNT(*) AS total_products FROM products'),
       pool.query(`
@@ -66,9 +66,9 @@ const getDashboard = async (req, res) => {
          LIMIT 10
       `),
       pool.query(`
-        SELECT COALESCE(SUM(total_amount), 0) AS today_revenue
+        SELECT COALESCE(SUM(total_amount - COALESCE(refund_amount, 0)), 0) AS today_revenue
           FROM orders
-         WHERE payment_status = 'paid' AND DATE(created_at) = CURRENT_DATE
+         WHERE payment_status IN ('paid', 'partially_refunded') AND DATE(created_at) = CURRENT_DATE
       `),
       pool.query(`SELECT COUNT(*) AS low_stock_count FROM products WHERE stock_quantity <= 5`),
     ]);
@@ -100,16 +100,16 @@ const getAnalytics = async (req, res) => {
     let whereClause, params;
 
     if (from && to) {
-      whereClause = `WHERE payment_status = 'paid' AND DATE(created_at) BETWEEN $1::date AND $2::date`;
+      whereClause = `WHERE payment_status IN ('paid', 'partially_refunded') AND DATE(created_at) BETWEEN $1::date AND $2::date`;
       params = [from, to];
     } else {
       const d = Math.min(365, Math.max(1, parseInt(days) || 30));
-      whereClause = `WHERE payment_status = 'paid' AND created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
+      whereClause = `WHERE payment_status IN ('paid', 'partially_refunded') AND created_at >= NOW() - ($1::int * INTERVAL '1 day')`;
       params = [d];
     }
 
     const { rows } = await pool.query(`
-      SELECT DATE(created_at) AS date, COUNT(*) AS orders, SUM(total_amount) AS revenue
+      SELECT DATE(created_at) AS date, COUNT(*) AS orders, SUM(total_amount - COALESCE(refund_amount, 0)) AS revenue
         FROM orders
         ${whereClause}
        GROUP BY DATE(created_at)
@@ -544,20 +544,23 @@ const getFinancials = async (req, res) => {
     const [summaryResult, dailyResult, pendingResult] = await Promise.all([
       pool.query(`
         SELECT
-          COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) AS gross_revenue,
-          COALESCE(SUM(CASE WHEN refund_status = 'success' THEN refund_amount ELSE 0 END), 0) AS total_refunded,
-          COUNT(CASE WHEN payment_status = 'paid' THEN 1 END)::int AS paid_orders,
-          COUNT(CASE WHEN refund_status = 'success' THEN 1 END)::int AS refunded_orders
+          COALESCE(SUM(CASE WHEN payment_status IN ('paid', 'partially_refunded', 'refunded') THEN total_amount ELSE 0 END), 0) AS gross_revenue,
+          COALESCE(SUM(CASE WHEN refund_status = 'success' OR payment_status IN ('partially_refunded', 'refunded') THEN COALESCE(refund_amount, 0) ELSE 0 END), 0) AS total_refunded,
+          COUNT(CASE WHEN payment_status IN ('paid', 'partially_refunded', 'refunded') THEN 1 END)::int AS paid_orders,
+          COUNT(CASE WHEN refund_status = 'success' OR payment_status IN ('partially_refunded', 'refunded') THEN 1 END)::int AS refunded_orders
         FROM orders WHERE TRUE ${dateFilter}
       `, params),
       pool.query(`
         SELECT DATE(created_at) AS date,
-               COALESCE(SUM(CASE WHEN payment_status = 'paid' THEN total_amount ELSE 0 END), 0) AS revenue,
-               COALESCE(SUM(CASE WHEN refund_status = 'success' THEN refund_amount ELSE 0 END), 0) AS refunded
+               COALESCE(SUM(CASE WHEN payment_status IN ('paid', 'partially_refunded', 'refunded') THEN total_amount ELSE 0 END), 0) AS revenue,
+               COALESCE(SUM(CASE WHEN refund_status = 'success' OR payment_status IN ('partially_refunded', 'refunded') THEN COALESCE(refund_amount, 0) ELSE 0 END), 0) AS refunded
           FROM orders WHERE TRUE ${dateFilter}
          GROUP BY DATE(created_at) ORDER BY date ASC
       `, params),
-      pool.query(`SELECT COALESCE(SUM(refund_amount), 0) AS pending_refunds FROM orders WHERE refund_status = 'pending'`),
+      pool.query(`
+        SELECT COALESCE((SELECT SUM(refund_amount) FROM orders WHERE refund_status = 'pending'), 0)
+             + COALESCE((SELECT SUM(refund_amount) FROM return_requests WHERE status = 'refund_pending'), 0) AS pending_refunds
+      `),
     ]);
 
     const s            = summaryResult.rows[0];
