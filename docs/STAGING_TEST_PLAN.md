@@ -8,7 +8,7 @@ Run every step below on staging against **Paystack Test Mode** (`sk_test_...`) b
 
 ## Pre-Flight Checks
 
-1. **Back up the database before running migrations `036`, `037`, `038`:**
+1. **Back up the database before running migrations `036`, `037`, `038`, `039`:**
    ```bash
    pg_dump --format=custom --no-owner --no-privileges \
      -h "$DB_HOST" -p "${DB_PORT:-5432}" -U "$DB_USER" \
@@ -51,9 +51,10 @@ Run every step below on staging against **Paystack Test Mode** (`sk_test_...`) b
   - `return_requests` row transitions `pending` → `refund_pending` (with `refund_reference = RET-...-1`) → `refunded` after Paystack `refund.processed` webhook (or 30-min reconciler).
   - `orders.status` stays `'delivered'`, `orders.payment_status = 'partially_refunded'`, `orders.refund_amount = 50.00`.
   - Product stock unchanged (`restock_items = false`).
-- **Capture real webhook body (REQUIRED before production launch):**
-  - Temporarily log the parsed `req.body` (NOT headers/signature) of the real `refund.processed` webhook from Paystack test mode and also capture one `GET https://api.paystack.co/refund?reference=<tx_ref>` response (redact keys/emails).
-  - Confirm whether Paystack echoes `merchant_note` and/or `reference` in both payloads, and **paste the redacted JSON into the PR**.
+- **Capture real Paystack v2 payloads (REQUIRED before production launch):**
+  - **Verify Paystack preserves our `merchant_note` in the create response, `GET /refund/{id}`, and the `refund.*` webhook body; paste redacted bodies in the PR.**
+  - Confirm `POST /refund` request bodies contain ONLY documented Paystack v2 fields (`transaction`, `amount`, `currency`, `customer_note`, `merchant_note` — never `reference`).
+  - Redact all API keys, `Authorization` headers, `x-paystack-signature` values, and customer PII before pasting into the PR.
 
 ### (c) Second Partial Return of the Exact Same Amount (GHS 50.00)
 - **Steps:**
@@ -92,12 +93,22 @@ Run every step below on staging against **Paystack Test Mode** (`sk_test_...`) b
   3. Attempt `POST /api/deliveries` without `tracking_number` → confirm `400`.
   4. Submit `POST /api/deliveries` with a real tracking number → confirm `201`, shipping email sent, and updating delivery to `delivered` sets `orders.delivered_at`.
 
-### (g) Mobile Money (MoMo) Payment & Partial Refund
+### (g) Mobile Money (MoMo) Payment & Refund (Explicit MoMo Refund Test)
 - **Steps:**
   1. Complete a Paystack test-mode Mobile Money payment (GHS).
-  2. Mark delivered, request and approve a partial return for 1 item.
+  2. Mark delivered, request and approve a partial return for 1 item (and/or a full MoMo refund).
 - **Expected:**
-  - Confirm `refund.pending` / `refund.processed` (or `refund.failed` if simulated failure) transitions `return_requests.status` cleanly, and that a `refund_failed` row can be retried from Admin `OrderDetail` without double-refunding.
+  - Confirm `POST /refund` succeeds against a MoMo transaction in GHS, and that `refund.pending` / `refund.processed` (or `refund.failed` / `refund.needs-attention` if simulated) transitions `return_requests.status` cleanly.
+  - Confirm a `refund_failed` row can be retried from Admin `OrderDetail` without double-refunding.
+  - Paste the redacted MoMo refund create response and webhook body in the PR.
+  - *(Note: Paystack's exact refund time window and minimum refund amount are unverified against an official Paystack URL; confirm any practical limits during staging tests.)*
+
+### (h) Handling `needs-attention` Refunds (Manual Operations Runbook)
+- **Behavior:** When Paystack returns status `needs-attention` (via `refund.needs-attention` webhook or the 30-min refund reconciler), the system raises a **`singletonKey`-deduped admin alert** (`admin-payment-alert`) and keeps the row awaiting manual resolution. There is intentionally **no bank-details UI** in Admin yet.
+- **Admin Action Required:**
+  1. Contact the customer to obtain their refund account details (`currency`, `account_number`, `bank_id`).
+  2. Complete the refund either directly in the **Paystack Dashboard** or via Paystack's documented retry endpoint: `POST /refund/retry_with_customer_details/{id}` with `{ refund_account_details: { currency, account_number, bank_id } }`.
+  3. Once Paystack confirms settlement (or if completed outside the webhook flow), mark the `return_requests` / `orders` row manually.
 
 ---
 
