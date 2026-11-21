@@ -137,6 +137,7 @@ export const cartAPI = {
 export const ordersAPI = {
   create:          (data)   => api.post('/orders', data),
   createGuest:     (data)   => api.post('/orders/guest', data),
+  saveCheckoutSession: (data) => api.post('/orders/checkout-session', data),
   getAll:          (params) => api.get('/orders', { params }),
   getById:         (id)     => api.get(`/orders/${id}`),
   getStatusLog:    (id)     => api.get(`/orders/${id}/log`),

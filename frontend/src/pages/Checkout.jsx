@@ -55,6 +55,34 @@ export default function Checkout() {
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
   const submittingRef         = useRef(false);
+  const checkoutSessionTokenRef = useRef(
+    `cs-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  );
+
+  useEffect(() => {
+    const email = (form.email || user?.email || '').trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || cart.length === 0) {
+      return;
+    }
+    const timer = setTimeout(() => {
+      const step = form.delivery_address.trim() ? 'shipping' : 'contact';
+      ordersAPI.saveCheckoutSession({
+        session_token: checkoutSessionTokenRef.current,
+        email,
+        first_name: form.first_name || user?.first_name || undefined,
+        phone: form.phone || user?.phone || undefined,
+        subtotal: cartTotal,
+        step_reached: step,
+        items: cart.map(i => ({
+          product_id: i.product_id,
+          name: i.name,
+          quantity: i.quantity,
+          price: i.price,
+        })),
+      }).catch(() => {});
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [form.email, form.first_name, form.phone, form.delivery_address, user?.email, user?.first_name, user?.phone, cart, cartTotal]);
 
   // Coupon state
   const [couponInput, setCouponInput]       = useState('');

@@ -9,6 +9,7 @@ const suggestCache = new NodeCache({ stdTTL: 60, checkperiod: 60, maxKeys: 300 }
 
 const ALLOWED_PRODUCT_QUERY_KEYS = [
   'category', 'search', 'sort', 'limit', 'offset', 'page', 'min_price', 'max_price', 'in_stock',
+  'skin_type', 'skin_concern',
 ];
 
 function buildCanonicalProductKey(query = {}) {

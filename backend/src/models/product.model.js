@@ -1,4 +1,18 @@
 const pool = require('../config/database');
+
+let pgTrgmAvailable = null;
+async function hasPgTrgm() {
+  if (pgTrgmAvailable !== null) return pgTrgmAvailable;
+  try {
+    const { rows } = await pool.query(
+      `SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm' LIMIT 1`
+    );
+    pgTrgmAvailable = rows.length > 0;
+  } catch {
+    pgTrgmAvailable = false;
+  }
+  return pgTrgmAvailable;
+}
 const { randomUUID: uuid } = require('crypto');
 
 // Scalar correlated subquery — returns the most generous currently-active
@@ -44,7 +58,7 @@ const PROMO_SUBQ = `(
 module.exports = {
   findAll: async ({
     category, search, sort, limit, offset, includeInactive,
-    min_price, max_price, in_stock,
+    min_price, max_price, in_stock, skin_type, skin_concern,
   } = {}) => {
     const filterParams   = [];
     const filterClauses  = [];
@@ -56,9 +70,28 @@ module.exports = {
       filterParams.push(category);
       filterClauses.push(`p.category = $${filterParams.length}`);
     }
+    if (skin_type) {
+      filterParams.push(String(skin_type).trim().toLowerCase());
+      filterClauses.push(`$${filterParams.length} = ANY(COALESCE(p.skin_types, '{}'::text[]))`);
+    }
+    if (skin_concern) {
+      filterParams.push(String(skin_concern).trim().toLowerCase());
+      filterClauses.push(`$${filterParams.length} = ANY(COALESCE(p.skin_concerns, '{}'::text[]))`);
+    }
     if (search) {
-      filterParams.push(`%${search}%`);
-      filterClauses.push(`(p.name ILIKE $${filterParams.length} OR p.description ILIKE $${filterParams.length})`);
+      const cleanSearch = String(search).trim();
+      const useTrgm = await hasPgTrgm();
+      filterParams.push(`%${cleanSearch}%`);
+      const likeIdx = filterParams.length;
+      if (useTrgm && cleanSearch.length >= 3) {
+        filterParams.push(cleanSearch);
+        const rawIdx = filterParams.length;
+        filterClauses.push(
+          `(p.name ILIKE $${likeIdx} OR p.description ILIKE $${likeIdx} OR similarity(p.name, $${rawIdx}) > 0.18)`
+        );
+      } else {
+        filterClauses.push(`(p.name ILIKE $${likeIdx} OR p.description ILIKE $${likeIdx})`);
+      }
     }
     if (min_price !== undefined && min_price !== '') {
       filterParams.push(Number(min_price));

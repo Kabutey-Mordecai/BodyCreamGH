@@ -274,28 +274,67 @@ export default function ProductPage() {
     const reviewCount = parseInt(product.review_count || reviewMeta.summary?.review_count || 0, 10);
     const avgRating = parseFloat(product.avg_rating || reviewMeta.summary?.avg_rating || 0);
 
-    const jsonLd = {
-      '@context': 'https://schema.org',
-      '@type': 'Product',
-      name: product.name,
-      description: desc,
-      ...(absImage ? { image: [absImage] } : {}),
-      brand: { '@type': 'Brand', name: storeName },
-      offers: {
-        '@type': 'Offer',
-        priceCurrency: 'GHS',
-        price: Number.isFinite(priceNum) ? priceNum.toFixed(2) : '0.00',
-        availability: stockNum > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
-        url: window.location.href.split('#')[0],
-      },
-      ...(reviewCount > 0 && avgRating > 0 ? {
-        aggregateRating: {
-          '@type': 'AggregateRating',
-          ratingValue: avgRating.toFixed(1),
-          reviewCount,
+    const returnDays = Number(settings.return_window_days) || 7;
+    const accraFee = Number(settings.delivery_fee_accra) || 25;
+    const origin = window.location.origin;
+
+    const jsonLd = [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: product.name,
+        description: desc,
+        sku: selectedVariant?.sku || product.sku || String(product.id),
+        ...(absImage ? { image: [absImage] } : {}),
+        brand: { '@type': 'Brand', name: storeName },
+        offers: {
+          '@type': 'Offer',
+          priceCurrency: 'GHS',
+          price: Number.isFinite(priceNum) ? priceNum.toFixed(2) : '0.00',
+          itemCondition: 'https://schema.org/NewCondition',
+          availability: stockNum > 0 ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock',
+          url: window.location.href.split('#')[0],
+          hasMerchantReturnPolicy: {
+            '@type': 'MerchantReturnPolicy',
+            applicableCountry: 'GH',
+            returnPolicyCategory: 'https://schema.org/MerchantReturnFiniteReturnWindow',
+            merchantReturnDays: returnDays,
+            returnMethod: 'https://schema.org/ReturnByMail',
+          },
+          shippingDetails: {
+            '@type': 'OfferShippingDetails',
+            shippingRate: {
+              '@type': 'MonetaryAmount',
+              value: accraFee.toFixed(2),
+              currency: 'GHS',
+            },
+            shippingDestination: {
+              '@type': 'DefinedRegion',
+              addressCountry: 'GH',
+            },
+          },
         },
-      } : {}),
-    };
+        ...(reviewCount > 0 && avgRating > 0 ? {
+          aggregateRating: {
+            '@type': 'AggregateRating',
+            ratingValue: avgRating.toFixed(1),
+            reviewCount,
+          },
+        } : {}),
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'BreadcrumbList',
+        itemListElement: [
+          { '@type': 'ListItem', position: 1, name: 'Home', item: `${origin}/` },
+          { '@type': 'ListItem', position: 2, name: 'Shop', item: `${origin}/shop` },
+          ...(product.category
+            ? [{ '@type': 'ListItem', position: 3, name: product.category, item: `${origin}/shop?category=${encodeURIComponent(product.category)}` }]
+            : []),
+          { '@type': 'ListItem', position: product.category ? 4 : 3, name: product.name, item: window.location.href.split('#')[0] },
+        ],
+      },
+    ];
 
     return {
       title: `${product.name} — ${storeName}`,
@@ -744,6 +783,37 @@ export default function ProductPage() {
                 </div>
               ))}
             </div>
+
+            {/* ── Structured Beauty D2C Accordions (searchable native <details>) ── */}
+            <section className="pdp-accordions" aria-label="Product details and care">
+              <details className="pdp-accordion-item">
+                <summary>Key Botanicals &amp; Ingredients</summary>
+                <div className="pdp-accordion-body">
+                  <p>
+                    {product.ingredients_inci ||
+                      'Crafted with unrefined Northern Ghanaian Shea Butter, cold-pressed botanical oils, and skin-nourishing emollients. Paraben-free and hydroquinone-free.'}
+                  </p>
+                </div>
+              </details>
+              <details className="pdp-accordion-item">
+                <summary>How to Use / Daily Ritual</summary>
+                <div className="pdp-accordion-body">
+                  <p>
+                    {product.how_to_use ||
+                      'Warm a small amount between palms and massage onto slightly damp skin after bathing to lock in lasting hydration.'}
+                  </p>
+                </div>
+              </details>
+              <details className="pdp-accordion-item">
+                <summary>Safety &amp; Skin Compatibility</summary>
+                <div className="pdp-accordion-body">
+                  <p>
+                    {product.safety_notes ||
+                      'For external cosmetic use only. Patch-test on a small area before full application. Store in a cool, dry place away from direct sunlight.'}
+                  </p>
+                </div>
+              </details>
+            </section>
           </div>
         </div>
       </div>
@@ -948,6 +1018,30 @@ export default function ProductPage() {
           </div>
         </div>
       )}
+
+      {/* ── Sticky Mobile Add-to-Cart Bar ───────────────── */}
+      <div className="pdp-sticky-mobile-bar" role="region" aria-label="Quick add to cart">
+        <div className="pdp-sticky-mobile-info">
+          <span className="pdp-sticky-mobile-name">{product.name}</span>
+          <span className="pdp-sticky-mobile-price">
+            GHS {(isOnSale ? pdpEffectivePrice : effectivePrice).toFixed(2)}
+            {selectedVariant
+              ? ` · ${selectedVariant.option_values.map(ov => ov.value).join(' / ')}`
+              : ''}
+          </span>
+        </div>
+        <button
+          type="button"
+          className="btn btn-accent pdp-sticky-mobile-btn"
+          onClick={handleAddToCart}
+          disabled={isOutOfStock || adding || (product.has_variants && !selectedVariant)}
+        >
+          {adding ? 'Adding…'
+            : isOutOfStock ? 'Out of Stock'
+            : product.has_variants && !selectedVariant ? 'Select Size'
+            : 'Add to Cart'}
+        </button>
+      </div>
 
       {/* ── Lightbox ─────────────────────────────────────── */}
       {lightbox && (

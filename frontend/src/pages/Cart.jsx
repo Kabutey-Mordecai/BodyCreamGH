@@ -1,10 +1,12 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { useSettings } from '../context/SettingsContext';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './Cart.css';
 
 export default function Cart() {
   const { cart, loading, cartTotal, updateItem, removeItem } = useCart();
+  const { settings } = useSettings();
   const navigate = useNavigate();
 
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
@@ -26,6 +28,9 @@ export default function Cart() {
 
   // Count the total number of items, used in the header
   const itemCount = cart.reduce((n, item) => n + item.quantity, 0);
+  const freeThreshold = Number(settings.free_delivery_threshold) || 200;
+  const remainingForFree = Math.max(0, freeThreshold - cartTotal);
+  const freeProgress = freeThreshold > 0 ? Math.min(100, (cartTotal / freeThreshold) * 100) : 100;
 
   return (
     <div className="page-section">
@@ -37,6 +42,19 @@ export default function Cart() {
             {itemCount} {itemCount === 1 ? 'item' : 'items'} ready for checkout
           </p>
         </div>
+
+        {freeThreshold > 0 && (
+          <div className="cart-free-ship-banner" role="status" aria-live="polite">
+            <p className="cart-free-ship-text">
+              {remainingForFree > 0
+                ? <>Add <strong>GHS {remainingForFree.toFixed(2)}</strong> more for <strong>FREE Accra Delivery</strong></>
+                : <>🎉 You unlocked <strong>FREE Accra Delivery</strong>!</>}
+            </p>
+            <div className="cart-free-ship-track" aria-hidden="true">
+              <div className="cart-free-ship-fill" style={{ width: `${freeProgress}%` }} />
+            </div>
+          </div>
+        )}
 
         <div className="cart-layout">
           {/* ── Line items ─────────────────────────────── */}

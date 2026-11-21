@@ -127,6 +127,8 @@ export const productsAPI = {
 // ── Orders (admin sees all) ───────────────────────────────────────────
 export const ordersAPI = {
   getAll:              (params)            => api.get('/orders/admin/all', { params }),
+  getAbandoned:        (params)            => api.get('/orders/admin/abandoned', { params }),
+  sendAbandonedReminder: (sessionId)       => api.post(`/orders/admin/abandoned/${sessionId}/remind`),
   getRequestCounts:    ()                  => api.get('/orders/admin/requests/counts'),
   getRequests:         (type)              => api.get('/orders/admin/requests', { params: { type } }),
   exportOrders:        (params)            => api.get('/orders/admin/export', { params, responseType: 'blob' }),

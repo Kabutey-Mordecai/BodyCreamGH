@@ -34,6 +34,10 @@ export default function Orders() {
   const [paymentFilter, setPaymentFilter] = useState('all');
   const [page, setPage]           = useState(1);
   const [exporting, setExporting] = useState(false);
+  const [viewMode, setViewMode]   = useState('orders'); // 'orders' | 'abandoned'
+  const [abandoned, setAbandoned] = useState([]);
+  const [abandonedLoading, setAbandonedLoading] = useState(false);
+  const [remindingId, setRemindingId] = useState(null);
   const timerRef = useRef(null);
   const debounceRef = useRef(null);
 
@@ -123,6 +127,98 @@ export default function Orders() {
           </button>
         </div>
       </div>
+
+      {/* View Mode Tabs (Orders vs Abandoned Carts) */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+        <button
+          className={`btn btn-sm ${viewMode === 'orders' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={() => setViewMode('orders')}
+        >
+          Orders
+        </button>
+        <button
+          className={`btn btn-sm ${viewMode === 'abandoned' ? 'btn-primary' : 'btn-outline'}`}
+          onClick={async () => {
+            setViewMode('abandoned');
+            setAbandonedLoading(true);
+            try {
+              const { data } = await ordersAPI.getAbandoned();
+              setAbandoned(data.sessions || []);
+            } catch {
+              toast.error('Failed to load abandoned checkouts');
+            } finally {
+              setAbandonedLoading(false);
+            }
+          }}
+        >
+          Abandoned Carts
+        </button>
+      </div>
+
+      {viewMode === 'abandoned' ? (
+        <div className="card">
+          <DataTable
+            loading={abandonedLoading}
+            rows={abandoned}
+            emptyMessage="No abandoned checkouts captured yet."
+            columns={[
+              {
+                key: 'email',
+                label: 'Customer',
+                render: s => (
+                  <div>
+                    <div className="cell-primary">{s.first_name || s.email}</div>
+                    <div className="muted text-sm">{s.email}{s.phone ? ` · ${s.phone}` : ''}</div>
+                  </div>
+                ),
+              },
+              {
+                key: 'step_reached',
+                label: 'Step',
+                render: s => <span className="badge badge-neutral" style={{ textTransform: 'capitalize' }}>{s.step_reached}</span>,
+              },
+              {
+                key: 'subtotal',
+                label: 'Cart Value',
+                render: s => <strong>{fmt(s.subtotal)}</strong>,
+              },
+              {
+                key: 'updated_at',
+                label: 'Last Active',
+                render: s => new Date(s.updated_at).toLocaleString('en-GH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }),
+              },
+              {
+                key: 'actions',
+                label: 'Recovery',
+                render: s => (
+                  <button
+                    className="btn btn-sm btn-outline"
+                    disabled={remindingId === s.id}
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      setRemindingId(s.id);
+                      try {
+                        await ordersAPI.sendAbandonedReminder(s.id);
+                        toast.success(`Recovery email sent to ${s.email}`);
+                        setAbandoned(prev => prev.map(row => row.id === s.id ? { ...row, reminder_sent_at: new Date().toISOString() } : row));
+                      } catch (err) {
+                        toast.error(err.response?.data?.error || 'Failed to send reminder');
+                      } finally {
+                        setRemindingId(null);
+                      }
+                    }}
+                  >
+                    {remindingId === s.id
+                      ? 'Sending…'
+                      : s.reminder_sent_at ? 'Resend Email' : 'Send Recovery Email'}
+                  </button>
+                ),
+              },
+            ]}
+          />
+        </div>
+      ) : (
+        <>
 
       {/* Status tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, overflowX: 'auto' }}>
@@ -292,6 +388,8 @@ export default function Orders() {
           <span style={{ fontSize: '0.85rem', color: 'var(--ac-text-muted)' }}>Page {page} of {totalPages}</span>
           <button className="btn btn-outline btn-sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Next →</button>
         </div>
+      )}
+        </>
       )}
     </div>
   );

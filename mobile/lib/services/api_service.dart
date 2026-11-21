@@ -6,13 +6,13 @@ import '../config.dart';
 
 class _TimeoutClient extends http.BaseClient {
   final http.Client _inner;
-  final Duration timeout;
-  _TimeoutClient(this._inner, {this.timeout = const Duration(seconds: 15)});
+  static const Duration _timeout = Duration(seconds: 15);
+  _TimeoutClient(this._inner);
 
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) {
     return _inner.send(request).timeout(
-          timeout,
+          _timeout,
           onTimeout: () => throw TimeoutException(
             'Request timed out. Please check your internet connection and try again.',
           ),

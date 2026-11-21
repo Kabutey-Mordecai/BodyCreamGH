@@ -1,5 +1,5 @@
 const express = require('express');
-const { verifyToken, requireAdmin } = require('../middleware/auth');
+const { verifyToken, optionalToken, requireAdmin } = require('../middleware/auth');
 const { makeRateLimiter } = require('../middleware/rateLimit');
 const {
   validateCreateOrder, validateCreateGuest, validateOrderStatus,
@@ -14,6 +14,7 @@ const {
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,
   trackOrder,
+  upsertCheckoutSession, getAbandonedCheckouts, sendAbandonedCheckoutReminder,
 } = require('../controllers/order.controller');
 const {
   getOrderReturns,
@@ -53,13 +54,16 @@ const trackOrderNumberLimiter = makeRateLimiter(
   }
 );
 
-// Public tracking — must be before /:orderId to avoid route conflict
+// Public tracking & abandoned checkout lead capture — must be before /:orderId
 router.post('/track', trackLimiter, trackOrderNumberLimiter, trackOrder);
+router.post('/checkout-session', trackLimiter, optionalToken, upsertCheckoutSession);
 
 router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);
 router.get('/', verifyToken, getOrders);
 router.get('/admin/all',              verifyToken, requireAdmin, getAllOrders);
+router.get('/admin/abandoned',        verifyToken, requireAdmin, getAbandonedCheckouts);
+router.post('/admin/abandoned/:sessionId/remind', verifyToken, requireAdmin, sendAbandonedCheckoutReminder);
 router.get('/admin/requests/counts', verifyToken, requireAdmin, getRequestCounts);
 router.get('/admin/requests',        verifyToken, requireAdmin, getRequests);
 router.get('/admin/export',          verifyToken, requireAdmin, exportOrders);

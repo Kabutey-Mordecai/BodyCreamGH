@@ -236,6 +236,14 @@ const createOrder = async (req, res) => {
     await client.query('COMMIT');
     transactionStarted = false;
 
+    pool.query(
+      `UPDATE checkout_sessions
+          SET recovered_order_id = $1, updated_at = NOW()
+        WHERE recovered_order_id IS NULL
+          AND customer_id = $2`,
+      [orderId, req.user.id]
+    ).catch(() => {});
+
     if (payment_method === 'pay_on_delivery') {
       const { notificationQueue, shipmentQueue } = require('../queues');
       notificationQueue.add('payment-success', { orderId, reference: `POD-${orderNumber}` })
@@ -1544,6 +1552,14 @@ const createGuestOrder = async (req, res) => {
     await client.query('COMMIT');
     transactionStarted = false;
 
+    pool.query(
+      `UPDATE checkout_sessions
+          SET recovered_order_id = $1, updated_at = NOW()
+        WHERE recovered_order_id IS NULL
+          AND LOWER(email) = LOWER($2)`,
+      [orderId, email]
+    ).catch(() => {});
+
     if (payment_method === 'pay_on_delivery') {
       const { notificationQueue, shipmentQueue } = require('../queues');
       notificationQueue.add('payment-success', { orderId, reference: `POD-${orderNumber}` })
@@ -2119,6 +2135,125 @@ const refundDuplicatePayment = async (req, res) => {
   }
 };
 
+// ── Abandoned Checkout Lead Capture & Recovery ──────────────────────────────
+
+const upsertCheckoutSession = async (req, res) => {
+  try {
+    const {
+      session_token,
+      email,
+      first_name = null,
+      phone = null,
+      items = [],
+      subtotal = 0,
+      step_reached = 'contact',
+    } = req.body || {};
+
+    const cleanEmail = String(email || '').trim().toLowerCase();
+    const cleanToken = String(session_token || '').trim().slice(0, 120);
+    if (!cleanToken || !cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Valid session_token and email are required' });
+    }
+
+    const safeItems = Array.isArray(items) ? items.slice(0, 50) : [];
+    const safeSubtotal = Math.max(0, Number(subtotal) || 0);
+    const safeStep = ['contact', 'shipping', 'payment'].includes(step_reached)
+      ? step_reached
+      : 'contact';
+
+    await pool.query(
+      `INSERT INTO checkout_sessions
+         (id, session_token, customer_id, email, first_name, phone, items_json, subtotal, step_reached, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, NOW())
+       ON CONFLICT (session_token) DO UPDATE SET
+         customer_id  = COALESCE(EXCLUDED.customer_id, checkout_sessions.customer_id),
+         email        = EXCLUDED.email,
+         first_name   = COALESCE(EXCLUDED.first_name, checkout_sessions.first_name),
+         phone        = COALESCE(EXCLUDED.phone, checkout_sessions.phone),
+         items_json   = EXCLUDED.items_json,
+         subtotal     = EXCLUDED.subtotal,
+         step_reached = EXCLUDED.step_reached,
+         updated_at   = NOW()
+       WHERE checkout_sessions.recovered_order_id IS NULL`,
+      [
+        uuid(),
+        cleanToken,
+        req.user?.id || null,
+        cleanEmail,
+        first_name ? String(first_name).trim().slice(0, 100) : null,
+        phone ? String(phone).trim().slice(0, 30) : null,
+        JSON.stringify(safeItems),
+        safeSubtotal,
+        safeStep,
+      ]
+    );
+
+    return res.json({ saved: true });
+  } catch (err) {
+    logger.error('upsertCheckoutSession error', { err: err.message });
+    return res.status(500).json({ error: 'Failed to save checkout session' });
+  }
+};
+
+const getAbandonedCheckouts = async (req, res) => {
+  try {
+    const includeRecovered = req.query.include_recovered === 'true';
+    const { rows } = await pool.query(
+      `SELECT cs.*
+         FROM checkout_sessions cs
+        ${includeRecovered ? '' : 'WHERE cs.recovered_order_id IS NULL'}
+        ORDER BY cs.updated_at DESC
+        LIMIT 100`
+    );
+    return res.json({ sessions: rows });
+  } catch (err) {
+    logger.error('getAbandonedCheckouts error', { err: err.message });
+    return res.status(500).json({ error: 'Failed to load abandoned checkouts' });
+  }
+};
+
+const sendAbandonedCheckoutReminder = async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM checkout_sessions WHERE id = $1 LIMIT 1`,
+      [req.params.sessionId]
+    );
+    const session = rows[0];
+    if (!session) return res.status(404).json({ error: 'Checkout session not found' });
+    if (session.recovered_order_id) {
+      return res.status(409).json({ error: 'This checkout has already been completed' });
+    }
+
+    const emailService = require('../services/email.service');
+    const storeUrl = (process.env.FRONTEND_URL || 'https://bodycreamgh.com').replace(/\/$/, '');
+    const items = Array.isArray(session.items_json) ? session.items_json : [];
+    const itemsHtml = items
+      .map(it => `<li>${it.name || 'Item'} × ${it.quantity || 1}</li>`)
+      .join('');
+
+    await emailService.sendEmail({
+      to: session.email,
+      subject: 'You left something glowing in your cart ✨',
+      html: `
+        <p>Hi ${session.first_name || 'there'},</p>
+        <p>Your BodyCream GH cart (GHS ${Number(session.subtotal || 0).toFixed(2)}) is still waiting for you:</p>
+        ${itemsHtml ? `<ul>${itemsHtml}</ul>` : ''}
+        <p><a href="${storeUrl}/cart" style="display:inline-block;padding:10px 18px;background:#1c1410;color:#fff;text-decoration:none;border-radius:4px;">Return to Your Cart</a></p>
+      `,
+    });
+
+    await pool.query(
+      `UPDATE checkout_sessions SET reminder_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
+      [session.id]
+    );
+
+    return res.json({ message: 'Recovery reminder email sent', reminder_sent_at: new Date().toISOString() });
+  } catch (err) {
+    logger.error('sendAbandonedCheckoutReminder error', { err: err.message });
+    return res.status(500).json({ error: 'Failed to send recovery reminder' });
+  }
+};
+
 module.exports = {
   createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders,
   getRequestCounts, getRequests, exportOrders,
@@ -2128,4 +2263,5 @@ module.exports = {
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,
   trackOrder,
+  upsertCheckoutSession, getAbandonedCheckouts, sendAbandonedCheckoutReminder,
 };

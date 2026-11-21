@@ -142,16 +142,33 @@ class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
                     color: AppColors.blush,
                     padding: const EdgeInsets.symmetric(
                         horizontal: 16, vertical: 10),
-                    child: Text(
-                      remainingForFree > 0
-                          ? 'Add ${AppConfig.currencySymbol}${remainingForFree.toStringAsFixed(2)} more for FREE delivery!'
-                          : '🎉 You qualify for FREE delivery!',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
-                      ),
+                    child: Column(
+                      children: [
+                        Text(
+                          remainingForFree > 0
+                              ? 'Add ${AppConfig.currencySymbol}${remainingForFree.toStringAsFixed(2)} more for FREE delivery!'
+                              : '🎉 You qualify for FREE delivery!',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            value: (cart.subtotal / cart.freeDeliveryOver)
+                                .clamp(0.0, 1.0),
+                            minHeight: 6,
+                            backgroundColor:
+                                AppColors.primary.withValues(alpha: 0.12),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                                AppColors.accentDark),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
 
