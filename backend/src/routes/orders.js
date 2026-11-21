@@ -32,6 +32,12 @@ const returnCreateLimiter = makeRateLimiter(15 * 60 * 1000, 10, 'Too many return
 const returnCancelLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many return cancellation requests. Please try again later.', {
   keyGenerator: (req, ip) => `ret:cancel:${req.user?.id || ip}`,
 });
+const requirePartialReturnsEnabled = (_req, res, next) => {
+  if (process.env.PARTIAL_RETURNS_ENABLED !== 'true') {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  next();
+};
 const trackOrderNumberLimiter = makeRateLimiter(
   15 * 60 * 1000,
   10,
@@ -57,15 +63,15 @@ router.get('/admin/requests/counts', verifyToken, requireAdmin, getRequestCounts
 router.get('/admin/requests',        verifyToken, requireAdmin, getRequests);
 router.get('/admin/export',          verifyToken, requireAdmin, exportOrders);
 // Item-level partial returns (admin) — MUST be mounted before /:orderId
-router.get('/admin/returns',                   verifyToken, requireAdmin, getAdminReturns);
-router.post('/admin/returns/:returnId/approve', verifyToken, requireAdmin, approveReturnRequestById);
-router.post('/admin/returns/:returnId/reject',  verifyToken, requireAdmin, rejectReturnRequestById);
+router.get('/admin/returns',                   requirePartialReturnsEnabled, verifyToken, requireAdmin, getAdminReturns);
+router.post('/admin/returns/:returnId/approve', requirePartialReturnsEnabled, verifyToken, requireAdmin, approveReturnRequestById);
+router.post('/admin/returns/:returnId/reject',  requirePartialReturnsEnabled, verifyToken, requireAdmin, rejectReturnRequestById);
 router.get('/:orderId', verifyToken, getOrderById);
 
 // Item-level partial returns (logged-in customer owner or admin for GET)
-router.get('/:orderId/returns',                    verifyToken, getOrderReturns);
-router.post('/:orderId/returns',                   verifyToken, returnCreateLimiter, createReturnRequest);
-router.post('/:orderId/returns/:returnId/cancel',  verifyToken, returnCancelLimiter, cancelReturnRequest);
+router.get('/:orderId/returns',                    requirePartialReturnsEnabled, verifyToken, getOrderReturns);
+router.post('/:orderId/returns',                   requirePartialReturnsEnabled, verifyToken, returnCreateLimiter, createReturnRequest);
+router.post('/:orderId/returns/:returnId/cancel',  requirePartialReturnsEnabled, verifyToken, returnCancelLimiter, cancelReturnRequest);
 
 // Admin-only fulfilment actions
 router.post('/:orderId/cancel',    verifyToken, requireAdmin, validateCancelOrder,  cancelOrder);

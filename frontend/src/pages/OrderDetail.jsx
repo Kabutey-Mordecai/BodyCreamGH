@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useSearchParams, Link } from 'react-router-dom';
 import { ordersAPI, deliveriesAPI, reviewsAPI, paymentsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import { useToast } from '../context/ToastContext';
 import StarRating from '../components/StarRating';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
@@ -58,6 +59,7 @@ export default function OrderDetail() {
   const { id } = useParams();
   const [searchParams] = useSearchParams();
   const { user } = useAuth();
+  const settings = useSettings();
   const { showToast } = useToast();
 
   const [order, setOrder]         = useState(null);
@@ -83,6 +85,7 @@ export default function OrderDetail() {
   const [returnError, setReturnError]       = useState('');
   const [returnData, setReturnData]         = useState({ returns: [], returnable_items: [], within_window: true, return_window_days: 14 });
   const [selectedReturnQty, setSelectedReturnQty] = useState({});
+  const partialReturnsEnabled = settings?.partial_returns_enabled === true || settings?.partial_returns_enabled === 'true';
 
   // Review prompt state — only populated for delivered orders when auth'd
   const [reviewedIds, setReviewedIds]   = useState(new Set());
@@ -212,10 +215,27 @@ export default function OrderDetail() {
   };
 
   useEffect(() => {
-    if (order?.status === 'delivered') loadReturns();
-  }, [id, order?.status]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (order?.status === 'delivered' && partialReturnsEnabled) loadReturns();
+  }, [id, order?.status, partialReturnsEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleRequestReturn = async () => {
+    if (!partialReturnsEnabled) {
+      if (!returnReason.trim()) { setReturnError('Please provide a reason.'); return; }
+      setReturnSaving(true);
+      setReturnError('');
+      try {
+        await ordersAPI.requestReturn(id, returnReason.trim());
+        setOrder(prev => ({ ...prev, return_requested: true, return_request_rejected: false }));
+        setReturnFormOpen(false);
+        setReturnReason('');
+        showToast('Return request submitted', 'success');
+      } catch (err) {
+        setReturnError(err.response?.data?.error || 'Could not submit request. Please try again.');
+      } finally {
+        setReturnSaving(false);
+      }
+      return;
+    }
     const chosenItems = Object.entries(selectedReturnQty)
       .filter(([, q]) => Number(q) > 0)
       .map(([order_item_id, quantity]) => ({ order_item_id, quantity: Number(quantity) }));
@@ -543,7 +563,7 @@ export default function OrderDetail() {
                 )}
               </div>
             )}
-            {returnData.returns.length > 0 && (
+            {partialReturnsEnabled && returnData.returns.length > 0 && (
               <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {returnData.returns.map((rr) => (
                   <div key={rr.id} style={{ border: '1px solid var(--color-border, #e5e7eb)', borderRadius: 8, padding: 12 }}>
@@ -570,6 +590,7 @@ export default function OrderDetail() {
             )}
             {returnFormOpen && (
               <div className="od-request-form">
+                {partialReturnsEnabled && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 12 }}>
                   <strong style={{ fontSize: '0.9rem' }}>Select items to return:</strong>
                   {(returnData.returnable_items || []).filter(it => Number(it.remaining_quantity) > 0).map((it) => {
@@ -601,6 +622,7 @@ export default function OrderDetail() {
                     );
                   })}
                 </div>
+                )}
                 <textarea
                   rows={3}
                   className="od-review-input od-review-textarea"

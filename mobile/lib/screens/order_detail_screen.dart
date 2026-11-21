@@ -210,21 +210,32 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Future<void> _promptAction({required bool isReturn}) async {
     if (_order == null) return;
     if (isReturn) {
-      await _promptPartialReturn();
-      return;
+      // Only show item-level partial return picker when PARTIAL_RETURNS_ENABLED is on
+      try {
+        final settings = await ApiService.instance.getPublicSettings();
+        final enabled = settings['partial_returns_enabled'] == true ||
+            settings['partial_returns_enabled'] == 'true';
+        if (enabled && mounted) {
+          await _promptPartialReturn();
+          return;
+        }
+      } catch (_) {}
+      if (!mounted) return;
     }
     final reasonCtrl = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Request Cancellation'),
+        title: Text(isReturn ? 'Request Return' : 'Request Cancellation'),
         content: TextField(
           controller: reasonCtrl,
           maxLines: 3,
           maxLength: 500,
-          decoration: const InputDecoration(
+          decoration: InputDecoration(
             labelText: 'Reason *',
-            hintText: 'Please explain why you want to cancel this order…',
+            hintText: isReturn
+                ? 'Please describe the reason for your return…'
+                : 'Please explain why you want to cancel this order…',
           ),
         ),
         actions: [
@@ -243,10 +254,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return;
     }
     try {
-      await ApiService.instance.requestOrderCancel(_order!.id, reasonCtrl.text);
+      if (isReturn) {
+        await ApiService.instance
+            .requestOrderReturn(_order!.id, reasonCtrl.text);
+      } else {
+        await ApiService.instance
+            .requestOrderCancel(_order!.id, reasonCtrl.text);
+      }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cancellation request submitted')),
+        SnackBar(
+          content: Text(
+            isReturn
+                ? 'Return request submitted'
+                : 'Cancellation request submitted',
+          ),
+        ),
       );
       _load();
     } catch (e) {
