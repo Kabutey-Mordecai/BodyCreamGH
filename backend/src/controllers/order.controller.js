@@ -1936,30 +1936,60 @@ const refundDuplicatePayment = async (req, res) => {
       return res.status(400).json({ error: 'Duplicate payment has no Paystack reference to refund' });
     }
 
-    let refundData;
+    // Idempotency guard: if a previous attempt succeeded on Paystack but our
+    // local DB write failed, Paystack already has a refund for this duplicate
+    // transaction. Check Paystack first so retries can NEVER double-refund.
+    let refundData = null;
+    let alreadyRefundedOnPaystack = false;
     try {
-      refundData = await createFullRefund({
-        transactionReference: payment.paystack_reference,
-        amount: payment.amount,
-        currency: payment.currency || 'GHS',
-        notes,
-      });
-    } catch (paystackErr) {
+      const existingRefunds = await fetchRefundsByTransaction(payment.paystack_reference);
+      const activeExisting = (existingRefunds || []).find((r) =>
+        ['pending', 'processing', 'processed', 'needs-attention'].includes(String(r?.status || '').toLowerCase())
+      );
+      if (activeExisting) {
+        refundData = activeExisting;
+        alreadyRefundedOnPaystack = true;
+      }
+    } catch (lookupErr) {
       await client.query('ROLLBACK').catch(() => {});
-      logger.error('[refundDuplicatePayment] Paystack refund failed', {
-        err: paystackErr.message,
-        status: paystackErr.status,
+      logger.error('[refundDuplicatePayment] Paystack refund lookup failed', {
+        err: lookupErr.message,
+        status: lookupErr.status,
         orderId,
         paymentId,
       });
       return res.status(502).json({
-        error: paystackErr.message || 'Paystack refund request failed',
+        error: 'Could not verify existing Paystack refunds before initiating refund; please retry',
       });
+    }
+
+    if (!alreadyRefundedOnPaystack) {
+      try {
+        refundData = await createFullRefund({
+          transactionReference: payment.paystack_reference,
+          amount: payment.amount,
+          currency: payment.currency || 'GHS',
+          notes,
+        });
+      } catch (paystackErr) {
+        await client.query('ROLLBACK').catch(() => {});
+        logger.error('[refundDuplicatePayment] Paystack refund failed', {
+          err: paystackErr.message,
+          status: paystackErr.status,
+          orderId,
+          paymentId,
+        });
+        return res.status(502).json({
+          error: paystackErr.message || 'Paystack refund request failed',
+        });
+      }
     }
 
     const refundRef = refundData?.id ? String(refundData.id) : (refundData?.reference || 'submitted');
     const amountNum = Number(payment.amount) || 0;
-    const auditNote = `Duplicate payment refunded (ref ${payment.paystack_reference}, ${payment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef}) — ${notes}`;
+    const auditNote = alreadyRefundedOnPaystack
+      ? `Duplicate payment reconciled as already refunded on Paystack (ref ${payment.paystack_reference}, ${payment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef})`
+      : `Duplicate payment refunded (ref ${payment.paystack_reference}, ${payment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef}) — ${notes}`;
 
     const { rows: updatedRows } = await client.query(
       `UPDATE payments SET status = 'refunded', updated_at = NOW()
@@ -1971,7 +2001,10 @@ const refundDuplicatePayment = async (req, res) => {
     await client.query('COMMIT');
 
     return res.json({
-      message: 'Duplicate payment refunded via Paystack',
+      message: alreadyRefundedOnPaystack
+        ? 'Duplicate payment was already refunded on Paystack; local status reconciled'
+        : 'Duplicate payment refunded via Paystack',
+      already_refunded_on_paystack: alreadyRefundedOnPaystack,
       payment: updatedRows[0],
       paystack_refund: {
         id: refundData?.id || null,
