@@ -21,6 +21,26 @@ const { refundOrder, requestReturn } = require('../src/controllers/order.control
 const { handleWebhook } = require('../src/controllers/payment.controller');
 const { reconcileReturnRequestRefunds } = require('../src/workers/refund.reconciliation.worker');
 
+const ALLOWED_POST_REFUND_KEYS = new Set([
+  'transaction',
+  'amount',
+  'currency',
+  'customer_note',
+  'merchant_note',
+]);
+
+function assertDocumentedRefundRequestBody(payload) {
+  assert(payload && typeof payload === 'object', 'POST /refund body must be a JSON object');
+  assert(!('reference' in payload), 'POST /refund body must NOT include undocumented "reference" key');
+  for (const key of Object.keys(payload)) {
+    assert(
+      ALLOWED_POST_REFUND_KEYS.has(key),
+      `POST /refund body contains undocumented key "${key}" (allowed: ${[...ALLOWED_POST_REFUND_KEYS].join(', ')})`
+    );
+  }
+  assert(typeof payload.transaction === 'string' && payload.transaction.length > 0, 'POST /refund requires transaction');
+}
+
 function makeRes() {
   return {
     statusCode: 200,
@@ -209,6 +229,7 @@ async function run() {
     let dbRefDuringPaystackCall = null;
     paystackAPI.defaults.adapter = async (config) => {
       if (config.method === 'post' && config.url === '/refund') {
+        assertDocumentedRefundRequestBody(JSON.parse(config.data));
         // Verify row was committed as refund_pending with self-generated reference BEFORE Paystack call
         const { rows } = await pool.query('SELECT status, refund_reference FROM return_requests WHERE id = $1', [returnId2]);
         dbStatusDuringPaystackCall = rows[0]?.status;
@@ -241,12 +262,23 @@ async function run() {
       }
       if (config.method === 'post' && config.url === '/refund') {
         retryPayload = JSON.parse(config.data);
+        assertDocumentedRefundRequestBody(retryPayload);
         return {
           status: 200,
           statusText: 'OK',
           headers: {},
           config,
-          data: { status: true, data: { id: 600123, status: 'pending', reference: retryPayload.reference } },
+          data: {
+            status: true,
+            data: {
+              id: 600123,
+              status: 'pending',
+              amount: retryPayload.amount,
+              currency: retryPayload.currency || 'GHS',
+              merchant_note: retryPayload.merchant_note || '',
+              customer_note: retryPayload.customer_note || '',
+            },
+          },
         };
       }
       throw new Error(`Unexpected call: ${config.method} ${config.url}`);
@@ -261,11 +293,29 @@ async function run() {
     assert.strictEqual(rRetryApprove.statusCode, 200);
     assert.strictEqual(retryPayload.amount, 5000);
     assert.strictEqual(rRetryApprove.body.return_request.status, 'refund_pending');
+    assert.strictEqual(rRetryApprove.body.return_request.refund_provider_id, '600123');
 
     // Reconcile return_requests -> Paystack reports 'processed' -> refunded + restocked + inventory_history
     paystackAPI.defaults.adapter = async (config) => {
       if (config.method === 'get' && config.url === '/refund/600123') {
-        return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: { id: 600123, status: 'processed' } } };
+        return {
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+          data: {
+            status: true,
+            data: {
+              id: 600123,
+              status: 'processed',
+              amount: 5000,
+              currency: 'GHS',
+              merchant_note: retryPayload.merchant_note || '',
+              customer_note: '',
+              transaction_reference: winRef,
+            },
+          },
+        };
       }
       throw new Error(`Unexpected reconcile call: ${config.method} ${config.url}`);
     };
@@ -287,7 +337,24 @@ async function run() {
     paystackAPI.defaults.adapter = async (config) => {
       if (config.method === 'post' && config.url === '/refund') {
         remainingFullPayload = JSON.parse(config.data);
-        return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: { id: 600999, status: 'pending' } } };
+        assertDocumentedRefundRequestBody(remainingFullPayload);
+        return {
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+          data: {
+            status: true,
+            data: {
+              id: 600999,
+              status: 'pending',
+              amount: remainingFullPayload.amount,
+              currency: remainingFullPayload.currency || 'GHS',
+              merchant_note: remainingFullPayload.merchant_note || '',
+              customer_note: '',
+            },
+          },
+        };
       }
       throw new Error(`Unexpected full refund call: ${config.method} ${config.url}`);
     };
@@ -329,7 +396,7 @@ async function run() {
     // Tier 1 webhook (return_requests via provider_id 700101)
     const w1 = await sendSignedWebhook({
       event: 'refund.processed',
-      data: { id: 700101, reference: 'RET-PRECEDENCE01-1', transaction_reference: precWinRef, status: 'processed', amount: 10000 },
+      data: { id: 700101, transaction_reference: precWinRef, merchant_note: 'Return RET-PRECEDENCE01-1', status: 'processed', amount: 10000, currency: 'GHS' },
     });
     assert.strictEqual(w1.statusCode, 200);
     const { rows: [t1Ret] } = await pool.query('SELECT status FROM return_requests WHERE id = $1', [precReturnId]);
@@ -481,13 +548,22 @@ async function run() {
       assert.strictEqual(rInWindow.statusCode, 201, 'Return within return_window_days must succeed (201)');
       const concRetId1 = rInWindow.body.return_request.id;
 
-      // ── 11. Concurrency: approve/approve & cancel/approve ────────────────────
+      // ── 11. Concurrency: approve/approve & cancel/approve (also tests merchant_note stripped warning) ──
       let concPostCount = 0;
       paystackAPI.defaults.adapter = async (config) => {
         if (config.method === 'post' && config.url === '/refund') {
           concPostCount++;
+          const body = JSON.parse(config.data);
+          assertDocumentedRefundRequestBody(body);
           await new Promise(r => setTimeout(r, 40));
-          return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: { id: 800222, status: 'pending' } } };
+          // Intentionally omit RET- tag from echoed merchant_note to verify warning path + provider id reliance
+          return {
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+            config,
+            data: { status: true, data: { id: 800222, status: 'pending', amount: body.amount, currency: 'GHS', merchant_note: '', customer_note: '' } },
+          };
         }
         throw new Error(`Unexpected call: ${config.method} ${config.url}`);
       };
@@ -500,6 +576,8 @@ async function run() {
       assert.strictEqual(approveStatuses[0], 200, `Expected one 200 in concurrent approve/approve, got ${approveStatuses}`);
       assert([400, 409].includes(approveStatuses[1]), `Expected one 400/409 in concurrent approve/approve, got ${approveStatuses}`);
       assert.strictEqual(concPostCount, 1, 'Concurrent approve/approve must call POST /refund at most ONCE');
+      const { rows: [concAfter] } = await pool.query('SELECT refund_provider_id FROM return_requests WHERE id = $1', [concRetId1]);
+      assert.strictEqual(concAfter.refund_provider_id, '800222', 'Must store refund_provider_id even when merchant_note is not echoed');
 
       // Concurrent cancel/approve on a fresh pending return
       const rFresh = makeRes();
@@ -515,7 +593,15 @@ async function run() {
       paystackAPI.defaults.adapter = async (config) => {
         if (config.method === 'post' && config.url === '/refund') {
           racePostCount++;
-          return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: { id: 800333, status: 'pending' } } };
+          const body = JSON.parse(config.data);
+          assertDocumentedRefundRequestBody(body);
+          return {
+            status: 200,
+            statusText: 'OK',
+            headers: {},
+            config,
+            data: { status: true, data: { id: 800333, status: 'pending', amount: body.amount, currency: 'GHS', merchant_note: body.merchant_note || '', customer_note: '' } },
+          };
         }
         throw new Error(`Unexpected call: ${config.method} ${config.url}`);
       };

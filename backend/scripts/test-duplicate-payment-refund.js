@@ -80,6 +80,7 @@ async function run() {
     assert.strictEqual(afterLookupErr[0].status, 'duplicate', 'Payment must remain duplicate after lookup failure');
 
     // 3. Prior 'failed' refund does NOT block retry; Paystack 'pending' response sets 'refund_pending' (NOT 'refunded')
+    const ALLOWED_POST_REFUND_KEYS = new Set(['transaction', 'amount', 'currency', 'customer_note', 'merchant_note']);
     let capturedPayload = null;
     let postRefundCalls = 0;
     paystackAPI.defaults.adapter = async (config) => {
@@ -90,18 +91,32 @@ async function run() {
           statusText: 'OK',
           headers: {},
           config,
-          data: { status: true, data: [{ id: 888000, status: 'failed', reference: 'rf_prev_failed' }] },
+          data: { status: true, data: [{ id: 888000, status: 'failed', amount: 15000, currency: 'GHS', merchant_note: 'Prior failed', customer_note: '' }] },
         };
       }
       if (config.method === 'post' && config.url === '/refund') {
         postRefundCalls++;
         capturedPayload = JSON.parse(config.data);
+        assert(!('reference' in capturedPayload), 'POST /refund must NOT send undocumented reference key');
+        for (const k of Object.keys(capturedPayload)) {
+          assert(ALLOWED_POST_REFUND_KEYS.has(k), `Undocumented POST /refund key: ${k}`);
+        }
         return {
           status: 200,
           statusText: 'OK',
           headers: {},
           config,
-          data: { status: true, data: { id: 999001, status: 'pending', transaction: { reference: dupRef } } },
+          data: {
+            status: true,
+            data: {
+              id: 999001,
+              status: 'pending',
+              amount: capturedPayload.amount,
+              currency: capturedPayload.currency || 'GHS',
+              merchant_note: capturedPayload.merchant_note || '',
+              customer_note: '',
+            },
+          },
         };
       }
       throw new Error(`Unexpected Paystack call: ${config.method} ${config.url}`);
@@ -177,7 +192,7 @@ async function run() {
           statusText: 'OK',
           headers: {},
           config,
-          data: { status: true, data: [{ id: 999002, status: 'processed', reference: 'rf_already_done' }] },
+          data: { status: true, data: [{ id: 999002, status: 'processed', amount: 15000, currency: 'GHS', merchant_note: '', customer_note: '' }] },
         };
       }
       if (config.method === 'post' && config.url === '/refund') {

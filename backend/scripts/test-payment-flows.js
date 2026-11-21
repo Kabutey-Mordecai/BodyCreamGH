@@ -490,11 +490,10 @@ function runMockQuery(sql, params = []) {
   }
 
   // findRefundOrderForUpdate
-  if (q.includes('o.refund_provider_id = $1') && q.includes('o.refund_reference = $2')) {
-    const [provId, refundRef, txRef] = params;
+  if (q.includes('o.refund_provider_id = $1') && q.includes('o.payment_reference = $2')) {
+    const [provId, txRef] = params;
     const all = [...dbState.orders.values()];
     const match = all.find(o => provId && String(o.refund_provider_id) === String(provId))
-      || all.find(o => refundRef && o.refund_reference === refundRef)
       || all.find(o => txRef && (o.payment_reference === txRef || [...dbState.payments.values()].some(p => p.order_id === o.id && p.paystack_reference === txRef)));
     return match ? { rows: [{ ...match }], rowCount: 1 } : { rows: [], rowCount: 0 };
   }
@@ -548,8 +547,12 @@ function runMockQuery(sql, params = []) {
           o.refund_method = o.refund_method || 'paystack';
         }
         o.refund_provider_id = o.refund_provider_id || params[0];
-        o.refund_reference = o.refund_reference || params[1];
-        o.refund_notes = params[2];
+        if (q.includes('refund_reference = COALESCE')) {
+          o.refund_reference = o.refund_reference || params[1];
+          o.refund_notes = params[2];
+        } else {
+          o.refund_notes = params[1];
+        }
       }
     } else if (q.includes("refund_status = 'success'")) {
       o.refund_status = 'success';
@@ -568,7 +571,9 @@ function runMockQuery(sql, params = []) {
         o.refund_notes = params[3];
       } else {
         o.refund_provider_id = o.refund_provider_id || params[0];
-        o.refund_reference = o.refund_reference || params[1];
+        if (q.includes('refund_reference = COALESCE')) {
+          o.refund_reference = o.refund_reference || params[1];
+        }
       }
     } else if (q.includes("refund_status = 'failed'")) {
       o.refund_status = 'failed';
@@ -578,8 +583,12 @@ function runMockQuery(sql, params = []) {
         o.refund_notes = params[1];
       } else {
         o.refund_provider_id = o.refund_provider_id || params[0];
-        o.refund_reference = o.refund_reference || params[1];
-        o.refund_notes = params[2];
+        if (q.includes('refund_reference = COALESCE')) {
+          o.refund_reference = o.refund_reference || params[1];
+          o.refund_notes = params[2];
+        } else {
+          o.refund_notes = params[1];
+        }
       }
     } else if (q.includes("refund_status = 'pending'")) {
       o.refund_status = 'pending';
@@ -597,8 +606,12 @@ function runMockQuery(sql, params = []) {
       o.refund_notes = params[0];
     } else if (q.includes('refund_provider_id = COALESCE')) {
       o.refund_provider_id = o.refund_provider_id || params[0];
-      o.refund_reference = o.refund_reference || params[1];
-      o.refund_notes = params[2];
+      if (q.includes('refund_reference = COALESCE')) {
+        o.refund_reference = o.refund_reference || params[1];
+        o.refund_notes = params[2];
+      } else {
+        o.refund_notes = params[1];
+      }
     }
 
     o.updated_at = new Date();
@@ -1060,7 +1073,7 @@ async function runTests() {
 
     // external refund.processed (refund_status was 'not_requested')
     const oExt = makeOrder({ status: 'delivered', payment_status: 'paid', refund_status: 'not_requested', payment_reference: 'ref_ext' });
-    const evExt = { event: 'refund.processed', data: { id: 888, reference: 'rf_ext', transaction_reference: 'ref_ext', status: 'processed' } };
+    const evExt = { event: 'refund.processed', data: { id: 888, transaction_reference: 'ref_ext', status: 'processed', amount: 10000, currency: 'GHS' } };
     const { rawBody: rb4, sig: s4 } = signWebhook(evExt);
     const w4 = makeRes();
     await handleWebhook({ rawBody: rb4, headers: { 'x-paystack-signature': s4 }, body: evExt }, w4);
@@ -1084,7 +1097,7 @@ async function runTests() {
     };
     mockPaystackHandlers.get = async (url) => {
       assert(url.startsWith('/refund'));
-      return { data: { status: true, data: [{ id: 5544, reference: 'rf_ps_5544', status: 'pending' }] } };
+      return { data: { status: true, data: [{ id: 5544, status: 'pending', amount: 9000, currency: 'GHS', merchant_note: 'Customer cancel', customer_note: '' }] } };
     };
 
     const rRefund = makeRes();
@@ -1096,6 +1109,11 @@ async function runTests() {
     const postCall = paystackCalls.find(c => c.method === 'POST' && c.url === '/refund');
     assert.equal(postCall.payload.amount, 9000);
     assert.equal(postCall.payload.currency, 'GHS');
+    assert.equal('reference' in postCall.payload, false);
+    const allowedKeys = new Set(['transaction', 'amount', 'currency', 'customer_note', 'merchant_note']);
+    for (const k of Object.keys(postCall.payload)) {
+      assert(allowedKeys.has(k), `Unexpected POST /refund key: ${k}`);
+    }
   }
 
   // ── 7. Rate limiter: IPv6 /64 prefix & LRU eviction (no global fail-closed) ─
