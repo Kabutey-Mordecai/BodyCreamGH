@@ -54,13 +54,14 @@ module.exports = {
   },
 
   updateStatus: async (id, status) => {
+    const isDelivered = status === 'delivered';
     await pool.query(
       `UPDATE orders
           SET status = $1,
-              delivered_at = CASE WHEN $1 = 'delivered' THEN COALESCE(delivered_at, NOW()) ELSE delivered_at END,
+              delivered_at = CASE WHEN $2 THEN COALESCE(delivered_at, NOW()) ELSE delivered_at END,
               updated_at = NOW()
-        WHERE id = $2`,
-      [status, id]
+        WHERE id = $3`,
+      [status, isDelivered, id]
     );
   },
 
