@@ -95,8 +95,11 @@ String? normalizeDeepLinkPath(Uri uri) {
   if (host == 'payment') {
     return '/payment';
   }
-  if (host == 'app' && uri.path.startsWith('/') && !uri.path.contains('..')) {
-    return uri.path;
+  if (host == 'app' &&
+      uri.pathSegments.length == 2 &&
+      (uri.pathSegments[0] == 'orders' || uri.pathSegments[0] == 'order') &&
+      _safeDeepLinkIdPattern.hasMatch(uri.pathSegments[1])) {
+    return '/${uri.pathSegments[0]}/${uri.pathSegments[1]}';
   }
   return '/';
 }
