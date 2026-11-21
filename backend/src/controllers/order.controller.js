@@ -536,26 +536,53 @@ const updateOrderStatus = async (req, res) => {
     await logStatusChange(req.params.orderId, fromStatus, status, note || 'Manual update by admin');
     logger.info('Order status updated', { orderId: req.params.orderId, from: fromStatus, to: status });
 
-    // When an order is delivered, actively send a review request asking the buyer for a review of what they bought
-    if (status === 'delivered') {
+    // Notify the buyer by email on key fulfilment transitions (confirmed, processing/packing, shipped/ready-for-pickup, delivered/picked-up)
+    if (['confirmed', 'processing', 'shipped', 'delivered'].includes(status)) {
       (async () => {
         try {
           const orderData = await OrderModel.findById(req.params.orderId);
-          const orderItems = await OrderModel.getItems(req.params.orderId);
           const customerEmail = orderData?.email || orderData?.guest_email;
-          if (customerEmail && orderItems.length > 0) {
-            const emailService = require('../services/email.service');
-            await emailService.sendReviewRequest(customerEmail, {
-              customerName: orderData.first_name || 'Valued Customer',
-              orderNumber:  orderData.order_number,
-              orderId:      orderData.id,
-              items:        orderItems,
-              frontendUrl:  process.env.FRONTEND_URL || 'http://localhost:5173',
-            });
-            logger.info('Review request email dispatched for delivered order', { orderId: req.params.orderId, email: customerEmail });
+          if (!customerEmail) return;
+
+          const emailService = require('../services/email.service');
+          let pickupLocation = null;
+          let pickupHours = null;
+          if (orderData.fulfillment_method === 'pickup') {
+            const { rows: sRows } = await pool.query(
+              `SELECT key, value FROM site_settings WHERE key IN ('pickup_location', 'pickup_hours')`
+            );
+            for (const r of sRows) {
+              if (r.key === 'pickup_location') pickupLocation = r.value;
+              if (r.key === 'pickup_hours') pickupHours = r.value;
+            }
+          }
+
+          await emailService.sendOrderStatusUpdate(customerEmail, {
+            customerName:      orderData.first_name || 'Valued Customer',
+            orderNumber:       orderData.order_number,
+            status,
+            fulfillmentMethod: orderData.fulfillment_method,
+            pickupLocation,
+            pickupHours,
+            note,
+          });
+          logger.info('Order status update email dispatched', { orderId: req.params.orderId, status, email: customerEmail });
+
+          if (status === 'delivered') {
+            const orderItems = await OrderModel.getItems(req.params.orderId);
+            if (orderItems.length > 0) {
+              await emailService.sendReviewRequest(customerEmail, {
+                customerName: orderData.first_name || 'Valued Customer',
+                orderNumber:  orderData.order_number,
+                orderId:      orderData.id,
+                items:        orderItems,
+                frontendUrl:  process.env.FRONTEND_URL || 'http://localhost:5173',
+              });
+              logger.info('Review request email dispatched for delivered order', { orderId: req.params.orderId, email: customerEmail });
+            }
           }
         } catch (mailErr) {
-          logger.error('Failed to dispatch review request email', { err: mailErr.message, orderId: req.params.orderId });
+          logger.error('Failed to dispatch order status email', { err: mailErr.message, orderId: req.params.orderId, status });
         }
       })();
     }

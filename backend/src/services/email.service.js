@@ -509,10 +509,82 @@ const sendAdminPaymentAlert = async (to, { orderNumber, title, detail }) => {
   });
 };
 
+const sendOrderStatusUpdate = async (
+  to,
+  { customerName, orderNumber, status, fulfillmentMethod, pickupLocation, pickupHours, note }
+) => {
+  if (!isConfigured() || !to) return;
+  const isPickup = fulfillmentMethod === 'pickup';
+
+  let subject;
+  let heading;
+  let bodyText;
+
+  switch (status) {
+    case 'confirmed':
+      subject = `Order ${orderNumber} Confirmed`;
+      heading = 'Your order has been confirmed!';
+      bodyText = isPickup
+        ? 'We have confirmed your pickup order and will let you know as soon as it is packed and ready.'
+        : 'We have confirmed your order and are getting it ready for dispatch.';
+      break;
+    case 'processing':
+      subject = `Order ${orderNumber} is Being Packed`;
+      heading = 'Your order is being packaged!';
+      bodyText = isPickup
+        ? 'Our team is carefully packing your items at our pickup station. We will notify you as soon as it is ready for collection.'
+        : 'Our team is carefully packing your items for shipment. We will notify you as soon as it is dispatched.';
+      break;
+    case 'shipped':
+      subject = isPickup
+        ? `Order ${orderNumber} is Ready for Pickup!`
+        : `Order ${orderNumber} Has Shipped!`;
+      heading = isPickup ? 'Your order is ready for pickup!' : 'Your order is on its way!';
+      bodyText = isPickup
+        ? 'Your package is packed and waiting for you at our pickup station.'
+        : 'Your package has been handed over for delivery and is on its way to you.';
+      break;
+    case 'delivered':
+      subject = isPickup
+        ? `Order ${orderNumber} Picked Up — Thank You!`
+        : `Order ${orderNumber} Delivered — Thank You!`;
+      heading = isPickup ? 'Order collected — thank you!' : 'Your order has been delivered!';
+      bodyText = isPickup
+        ? 'Your order has been marked as picked up. We hope you love your products!'
+        : 'Your order has been marked as delivered. We hope you love your products!';
+      break;
+    default:
+      return;
+  }
+
+  const pickupBlock = isPickup && (status === 'shipped' || status === 'processing' || status === 'confirmed') && pickupLocation
+    ? `<div style="background:#faf7f4;border:1px solid #ede5db;border-radius:8px;padding:12px 16px;margin:16px 0;">
+         <p style="margin:0 0 4px 0;font-weight:700;color:#1c1410;">Pickup Station</p>
+         <p style="margin:0;color:#1c1410;">${escapeHtml(pickupLocation)}</p>
+         ${pickupHours ? `<p style="margin:4px 0 0 0;font-size:13px;color:#7a6e68;">Hours: ${escapeHtml(pickupHours)}</p>` : ''}
+       </div>`
+    : '';
+
+  await getTransporter().sendMail({
+    from: `BodyCream GH <${process.env.SMTP_USER}>`,
+    to,
+    subject,
+    html: `<div style="font-family:sans-serif;max-width:560px;margin:0 auto;color:#1c1410;">
+      <h2>${escapeHtml(heading)}</h2>
+      <p>Hi ${escapeHtml(customerName || 'Valued Customer')},</p>
+      <p>${escapeHtml(bodyText)}</p>
+      <p><strong>Order Number:</strong> ${escapeHtml(orderNumber)}</p>
+      ${pickupBlock}
+      ${note && !/^Manual update by admin$|^Status changed to /i.test(note) ? `<p style="color:#555;"><em>Note: ${escapeHtml(note)}</em></p>` : ''}
+      <p style="margin-top:20px;color:#7a6e68;font-size:13px;">Thank you for shopping with BodyCream GH.</p>
+    </div>`,
+  });
+};
+
 module.exports = {
   escapeHtml,
   verifyTransporter,
-  sendOrderConfirmation, sendWelcomeEmail, sendShippingNotification,
+  sendOrderConfirmation, sendOrderStatusUpdate, sendWelcomeEmail, sendShippingNotification,
   sendPasswordResetEmail, sendReviewRequest, sendOrderCancellation, sendRefundNotification,
   sendCancelRequested, sendCancelRejected, sendReturnRequested, sendReturnRejected,
   sendAdminNewOrder, sendAdminCancelRequest, sendAdminCancelRejected,
