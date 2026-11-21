@@ -6,8 +6,10 @@ import 'package:cosmetics_app/models/order.dart';
 import 'package:cosmetics_app/models/product.dart';
 import 'package:cosmetics_app/providers/cart_provider.dart';
 import 'package:cosmetics_app/providers/theme_provider.dart';
+import 'package:cosmetics_app/services/api_service.dart';
 import 'package:cosmetics_app/theme/app_theme.dart';
 import 'package:cosmetics_app/widgets/password_strength.dart';
+import 'package:cosmetics_app/widgets/status_chip.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -182,6 +184,122 @@ void main() {
       expect(partiallyRefunded.isTerminal, isFalse);
       expect(partiallyRefunded.refundHint, '${AppConfig.currencySymbol}50.00 refunded');
       expect(partiallyRefunded.refundMessage, '${AppConfig.currencySymbol}50.00 refunded so far');
+    });
+
+    test('tolerates null delivered_at, null tracking_number, string/numeric amounts, pickup, and all return statuses', () {
+      // 1. Numeric fields as strings, null delivered_at, null tracking_number, omitted id (track endpoint for paid order)
+      final stringNumsOrder = Order.fromJson({
+        'order_number': 'ORD-23456789',
+        'status': 'shipped',
+        'payment_status': 'partially_refunded',
+        'fulfillment_method': 'delivery',
+        'total_amount': '250.50',
+        'delivery_fee': '20.00',
+        'discount_amount': '15.25',
+        'refund_amount': '50.25',
+        'delivered_at': null,
+        'delivery': {
+          'delivery_partner': 'DHL Ghana',
+          'tracking_number': null,
+        },
+        'items': [
+          {
+            'id': 'item-1',
+            'product_id': 'p-1',
+            'product_name': 'Cocoa Body Butter',
+            'quantity': '2',
+            'price_at_purchase': '115.25',
+            'subtotal': '230.50',
+          },
+        ],
+        'created_at': '2026-11-20T10:00:00Z',
+      });
+      expect(stringNumsOrder.id, '');
+      expect(stringNumsOrder.orderNumber, 'ORD-23456789');
+      expect(stringNumsOrder.deliveredAt, isNull);
+      expect(stringNumsOrder.trackingNumber, isNull);
+      expect(stringNumsOrder.isPickup, isFalse);
+      expect(stringNumsOrder.totalAmount, closeTo(250.50, 0.001));
+      expect(stringNumsOrder.deliveryFee, closeTo(20.00, 0.001));
+      expect(stringNumsOrder.discountAmount, closeTo(15.25, 0.001));
+      expect(stringNumsOrder.refundAmount, closeTo(50.25, 0.001));
+      expect(stringNumsOrder.items.first.id, 'item-1');
+      expect(stringNumsOrder.items.first.quantity, 2);
+      expect(stringNumsOrder.items.first.priceAtPurchase, closeTo(115.25, 0.001));
+      expect(stringNumsOrder.items.first.subtotal, closeTo(230.50, 0.001));
+
+      // 2. Numeric fields as numbers, pickup fulfillment, valid delivered_at
+      final numOrder = Order.fromJson({
+        'id': 'ord-num-1',
+        'order_number': 'ORD-100042',
+        'status': 'delivered',
+        'payment_status': 'paid',
+        'fulfillment_method': 'pickup',
+        'total_amount': 180,
+        'delivery_fee': 0,
+        'discount_amount': 10,
+        'refund_amount': 0,
+        'delivered_at': '2026-11-21T09:30:00Z',
+        'created_at': '2026-11-20T10:00:00Z',
+      });
+      expect(numOrder.isPickup, isTrue);
+      expect(numOrder.deliveredAt, isNotNull);
+      expect(numOrder.totalAmount, 180.0);
+      expect(numOrder.deliveryFee, 0.0);
+
+      // 3. ReturnRequest & ReturnRequestItem with string & number line_refund_amount + all 6 return statuses
+      const returnStatuses = [
+        'pending',
+        'rejected',
+        'refund_pending',
+        'refunded',
+        'refund_failed',
+        'cancelled',
+      ];
+      for (final st in returnStatuses) {
+        final rr = ReturnRequest.fromJson({
+          'id': 'ret-$st',
+          'order_id': 'ord-num-1',
+          'status': st,
+          'reason': 'Damaged seal',
+          'refund_amount': st == 'pending' ? '45.75' : 45.75,
+          'items': [
+            {
+              'id': 'rri-1',
+              'order_item_id': 'item-1',
+              'product_name': 'Cocoa Body Butter',
+              'quantity': '1',
+              'unit_refund_amount': '45.75',
+              'line_refund_amount': st == 'pending' ? '45.75' : 45.75,
+            },
+          ],
+        });
+        expect(rr.status, st);
+        expect(rr.refundAmount, closeTo(45.75, 0.001));
+        expect(rr.items.first.lineRefundAmount, closeTo(45.75, 0.001));
+        final (chipLabel, _, _) = StatusChip.resolve(st);
+        expect(chipLabel.isNotEmpty, isTrue);
+      }
+      final (partChipLabel, _, _) = StatusChip.resolve('partially_refunded');
+      expect(partChipLabel, 'Partially Refunded');
+    });
+
+    test('normalizes new base32 and legacy numeric order numbers and maps HTTP errors centrally', () {
+      expect(ApiService.normalizeOrderNumber('  #ord-23456789 '), 'ORD-23456789');
+      expect(ApiService.normalizeOrderNumber('##ORD-998877'), 'ORD-998877');
+      expect(ApiService.normalizeOrderNumber('ord-20240429-0012'), 'ORD-20240429-0012');
+
+      expect(ApiService.defaultStatusMessage(400), contains('Invalid request'));
+      expect(ApiService.defaultStatusMessage(401), contains('Session expired'));
+      expect(ApiService.defaultStatusMessage(403), contains('permission'));
+      expect(ApiService.defaultStatusMessage(404), contains('not found'));
+      expect(ApiService.defaultStatusMessage(409), contains('conflicts'));
+      expect(ApiService.defaultStatusMessage(429, retryAfter: 30), contains('30 seconds'));
+      expect(ApiService.defaultStatusMessage(502), contains('Server error'));
+      expect(
+        ApiService.formatError(const ApiException(400, 'Return window of 14 days has expired')),
+        'Return window of 14 days has expired',
+      );
     });
   });
 
