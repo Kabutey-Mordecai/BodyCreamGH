@@ -1769,7 +1769,7 @@ const trackOrder = async (req, res) => {
         [order.id]
       ),
       pool.query(
-        `SELECT to_status AS status, created_at, note
+        `SELECT to_status AS status, created_at
          FROM order_status_log
          WHERE order_id = $1
          ORDER BY created_at ASC`,
@@ -1778,7 +1778,7 @@ const trackOrder = async (req, res) => {
     ]);
 
     res.json({
-      id:                 order.id,
+      ...(order.payment_status !== 'paid' ? { id: order.id } : {}),
       order_number:       order.order_number,
       status:             order.status,
       payment_status:     order.payment_status,

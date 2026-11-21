@@ -1,5 +1,6 @@
 const express = require('express');
 const { verifyToken, requireAdmin } = require('../middleware/auth');
+const { makeRateLimiter } = require('../middleware/rateLimit');
 const {
   validateCreateOrder, validateCreateGuest, validateOrderStatus,
   validateCancelOrder, validateRefundOrder,
@@ -16,9 +17,10 @@ const {
 } = require('../controllers/order.controller');
 
 const router = express.Router();
+const trackLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many tracking requests. Please try again later.');
 
 // Public tracking — must be before /:orderId to avoid route conflict
-router.post('/track', trackOrder);
+router.post('/track', trackLimiter, trackOrder);
 
 router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);
