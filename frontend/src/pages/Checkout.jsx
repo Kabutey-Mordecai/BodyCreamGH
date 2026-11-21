@@ -36,12 +36,6 @@ export default function Checkout() {
 
   const [fulfillmentMethod, setFulfillmentMethod] = useState('delivery');
   const [paymentMethod, setPaymentMethod]         = useState('paystack');
-  const [momoProvider, setMomoProvider]           = useState('mtn');
-  const [momoPhone, setMomoPhone]                 = useState('');
-  const [momoFlow, setMomoFlow]                   = useState(null);
-  const [momoOtp, setMomoOtp]                     = useState('');
-  const [momoBusy, setMomoBusy]                   = useState(false);
-  const [momoErr, setMomoErr]                     = useState('');
   const [podConfirmation, setPodConfirmation]     = useState(null);
 
   const [form, setForm] = useState({
@@ -172,50 +166,6 @@ export default function Checkout() {
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
 
-  // Auto-poll Paystack verify while waiting for customer to approve MoMo USSD prompt
-  useEffect(() => {
-    if (!momoFlow || (momoFlow.stage !== 'waiting' && momoFlow.stage !== 'verifying')) return;
-    let cancelled = false;
-    let attempts = 0;
-
-    const verifyOnce = async () => {
-      if (cancelled) return;
-      try {
-        const res = await paymentsAPI.verify(momoFlow.reference);
-        if (cancelled) return;
-        if (res.status === 202 || res.data?.status === 'pending') return;
-        await clearLocalCart();
-        setMomoFlow(prev => (prev ? { ...prev, stage: 'success' } : prev));
-      } catch (err) {
-        if (cancelled) return;
-        const msg = err.response?.data?.error || '';
-        if (/failed|declined|reversed|abandoned/i.test(msg)) {
-          setMomoErr(msg);
-          setMomoFlow(prev => (prev ? { ...prev, stage: 'failed' } : prev));
-        }
-      }
-    };
-
-    if (momoFlow.stage === 'verifying') {
-      verifyOnce();
-      return () => { cancelled = true; };
-    }
-
-    const id = setInterval(() => {
-      attempts++;
-      if (attempts > 25) {
-        clearInterval(id);
-        return;
-      }
-      verifyOnce();
-    }, 3000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [momoFlow?.reference, momoFlow?.stage]); // eslint-disable-line react-hooks/exhaustive-deps
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (submittingRef.current) return;
@@ -227,17 +177,6 @@ export default function Checkout() {
     }
     if (isGuest && validation && !validation.valid) {
       return setError('Some items in your cart are unavailable. Please review your cart and remove unavailable items.');
-    }
-
-    const effectiveMomoPhone = (momoPhone || form.phone || '').trim();
-    if (paymentMethod === 'momo_direct') {
-      const digits = effectiveMomoPhone.replace(/[\s\-().]/g, '');
-      const norm = digits.startsWith('+233')
-        ? '0' + digits.slice(4)
-        : (digits.startsWith('233') && digits.length === 12 ? '0' + digits.slice(3) : digits);
-      if (!/^0[235]\d{8}$/.test(norm)) {
-        return setError('Please enter a valid 10-digit Ghana Mobile Money number (e.g. 024XXXXXXX or 055XXXXXXX).');
-      }
     }
 
     submittingRef.current = true;
@@ -310,30 +249,6 @@ export default function Checkout() {
         } else {
           navigate(`/orders/${order.orderId}`);
         }
-        return;
-      }
-
-      if (paymentMethod === 'momo_direct') {
-        const { data: charge } = await paymentsAPI.chargeMomo({
-          orderId:  order.orderId,
-          phone:    effectiveMomoPhone,
-          provider: momoProvider,
-          ...(isGuest ? { email: order.email || form.email } : {}),
-        });
-        const initStatus = (charge.status || 'pay_offline').toLowerCase();
-        setMomoErr('');
-        setMomoOtp('');
-        setMomoFlow({
-          orderId:     order.orderId,
-          orderNumber: order.orderNumber || order.orderId,
-          total:       Number(order.total ?? validatedOrderTotal),
-          reference:   charge.reference,
-          stage:       initStatus === 'send_otp' ? 'send_otp' : initStatus === 'success' ? 'verifying' : initStatus === 'failed' ? 'failed' : 'waiting',
-          displayText: charge.display_text || charge.message || '',
-          phone:       effectiveMomoPhone,
-          provider:    momoProvider,
-          guestEmail:  isGuest ? (order.email || form.email) : null,
-        });
         return;
       }
 
@@ -416,161 +331,6 @@ export default function Checkout() {
       setCouponLoading(false);
     }
   };
-
-  const handleMomoSubmitOtp = async (e) => {
-    e.preventDefault();
-    if (!momoFlow || momoBusy) return;
-    if (momoOtp.trim().length < 4) return setMomoErr('Enter the verification OTP sent to your phone.');
-    setMomoBusy(true);
-    setMomoErr('');
-    try {
-      const { data } = await paymentsAPI.submitOtp({ reference: momoFlow.reference, otp: momoOtp.trim() });
-      const st = (data.status || 'pay_offline').toLowerCase();
-      setMomoFlow(prev => prev ? {
-        ...prev,
-        displayText: data.display_text || data.message || prev.displayText,
-        stage: st === 'success' ? 'verifying' : st === 'failed' ? 'failed' : 'waiting',
-      } : prev);
-    } catch (err) {
-      setMomoErr(err.response?.data?.error || 'Failed to verify OTP.');
-    } finally {
-      setMomoBusy(false);
-    }
-  };
-
-  const handleMomoCheckNow = async () => {
-    if (!momoFlow || momoBusy) return;
-    setMomoBusy(true);
-    setMomoErr('');
-    try {
-      const res = await paymentsAPI.verify(momoFlow.reference);
-      if (res.status === 202 || res.data?.status === 'pending') {
-        setMomoErr(`Still waiting for approval on ${momoFlow.phone}. Check your phone for the MoMo PIN prompt.`);
-      } else {
-        await clearLocalCart();
-        setMomoFlow(prev => (prev ? { ...prev, stage: 'success' } : prev));
-      }
-    } catch (err) {
-      setMomoErr(err.response?.data?.error || 'Payment not confirmed yet. Please check your phone.');
-    } finally {
-      setMomoBusy(false);
-    }
-  };
-
-  const handleMomoFallbackWeb = async () => {
-    if (!momoFlow || momoBusy) return;
-    setMomoBusy(true);
-    setMomoErr('');
-    try {
-      const { data: payment } = momoFlow.guestEmail
-        ? await paymentsAPI.initializeGuest(momoFlow.orderId, momoFlow.guestEmail)
-        : await paymentsAPI.initialize(momoFlow.orderId);
-      if (!isSafePaystackCheckoutUrl(payment?.authorization_url)) {
-        throw new Error('Invalid payment redirect URL received.');
-      }
-      window.location.assign(payment.authorization_url);
-    } catch (err) {
-      setMomoErr(err.response?.data?.error || err.message || 'Could not open Paystack Web.');
-      setMomoBusy(false);
-    }
-  };
-
-  if (momoFlow) {
-    const providerLabel = momoFlow.provider === 'vod' ? 'Telecel Cash' : momoFlow.provider === 'atl' ? 'AT Money' : 'MTN Mobile Money';
-    return (
-      <div className="page-section">
-        <div className="container" style={{ maxWidth: 540, textAlign: 'center', padding: '56px 16px' }}>
-          <div className="checkout-section" style={{ alignItems: 'center', textAlign: 'center', gap: 14 }}>
-            <span className="section-label">
-              {momoFlow.orderNumber} · GHS {Number(momoFlow.total || 0).toFixed(2)}
-            </span>
-
-            {momoFlow.stage === 'send_otp' && (
-              <>
-                <h1 className="page-title" style={{ marginBottom: 4 }}>Enter SMS Code</h1>
-                <p style={{ color: 'var(--color-muted)', margin: 0 }}>
-                  {momoFlow.displayText || `Enter the SMS OTP sent to ${momoFlow.phone} to authorize your ${providerLabel} payment.`}
-                </p>
-                {momoErr && <div className="alert alert-error" style={{ width: '100%' }}>{momoErr}</div>}
-                <form onSubmit={handleMomoSubmitOtp} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={momoOtp}
-                    onChange={e => setMomoOtp(e.target.value)}
-                    placeholder="123456"
-                    required
-                    style={{ textAlign: 'center', fontSize: '1.4rem', letterSpacing: '0.35em', fontWeight: 700, padding: '12px' }}
-                  />
-                  <button type="submit" className="btn btn-accent btn-full" disabled={momoBusy}>
-                    {momoBusy ? 'Verifying…' : 'Confirm Code'}
-                  </button>
-                </form>
-              </>
-            )}
-
-            {(momoFlow.stage === 'waiting' || momoFlow.stage === 'verifying') && (
-              <>
-                <div className="spinner" style={{ margin: '8px auto' }} />
-                <h1 className="page-title" style={{ marginBottom: 4 }}>
-                  {momoFlow.stage === 'verifying' ? 'Confirming Payment…' : 'Approve on Your Phone'}
-                </h1>
-                <p style={{ color: 'var(--color-muted)', margin: 0 }}>
-                  {momoFlow.displayText || `A ${providerLabel} prompt has been sent to ${momoFlow.phone}. Enter your MoMo PIN on your phone to complete payment.`}
-                </p>
-                <div className="checkout-pickup-box" style={{ width: '100%', textAlign: 'center', fontSize: '0.84rem' }}>
-                  Didn&apos;t see the popup? On MTN, dial <strong>*170#</strong> → Option 6 (My Wallet) → Option 3 (My Approvals).
-                </div>
-                {momoErr && <div className="alert alert-error" style={{ width: '100%' }}>{momoErr}</div>}
-                <button type="button" className="btn btn-accent btn-full" disabled={momoBusy} onClick={handleMomoCheckNow}>
-                  {momoBusy ? 'Checking…' : "I've Approved — Check Now"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleMomoFallbackWeb}
-                  disabled={momoBusy}
-                  style={{ background: 'none', border: 'none', color: 'var(--color-accent-dark)', cursor: 'pointer', fontWeight: 600, fontSize: '0.88rem' }}
-                >
-                  Pay with Card / Paystack Web instead
-                </button>
-              </>
-            )}
-
-            {momoFlow.stage === 'success' && (
-              <>
-                <div style={{ fontSize: '3rem', color: '#27ae60' }}>✓</div>
-                <h1 className="page-title" style={{ marginBottom: 4 }}>Payment Confirmed!</h1>
-                <p style={{ color: 'var(--color-muted)', margin: 0 }}>
-                  Your {providerLabel} payment for order <strong>{momoFlow.orderNumber}</strong> has been received.
-                </p>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center', marginTop: 12 }}>
-                  <Link to={isGuest ? '/track' : `/orders/${momoFlow.orderId}`} className="btn btn-accent">
-                    {isGuest ? 'Track Your Order' : 'View Order Detail'}
-                  </Link>
-                  <Link to="/shop" className="btn btn-outline">Continue Shopping</Link>
-                </div>
-              </>
-            )}
-
-            {momoFlow.stage === 'failed' && (
-              <>
-                <h1 className="page-title" style={{ marginBottom: 4 }}>Payment Not Completed</h1>
-                <p style={{ color: 'var(--color-muted)', margin: 0 }}>
-                  {momoErr || 'The Mobile Money prompt was declined or timed out.'}
-                </p>
-                <button type="button" className="btn btn-accent btn-full" disabled={momoBusy} onClick={handleMomoFallbackWeb}>
-                  Pay via Paystack Web (Card / MoMo)
-                </button>
-                <Link to={isGuest ? '/shop' : `/orders/${momoFlow.orderId}`} className="btn btn-outline btn-full">
-                  {isGuest ? 'Back to Shop' : 'View Order'}
-                </Link>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   if (podConfirmation) {
     return (
@@ -946,8 +706,6 @@ export default function Checkout() {
                 ? 'Processing…'
                 : paymentMethod === 'pay_on_delivery'
                 ? `Place Order — GHS ${validatedOrderTotal.toFixed(2)} (${fulfillmentMethod === 'pickup' ? 'Pay on Pickup' : 'Pay on Delivery'})`
-                : paymentMethod === 'momo_direct'
-                ? `Pay GHS ${validatedOrderTotal.toFixed(2)} with Mobile Money`
                 : `Pay GHS ${validatedOrderTotal.toFixed(2)} with Paystack`}
             </button>
 
@@ -956,8 +714,6 @@ export default function Checkout() {
               <span>
                 {paymentMethod === 'pay_on_delivery'
                   ? 'Your order will be confirmed immediately. Pay in cash or Mobile Money upon receipt.'
-                  : paymentMethod === 'momo_direct'
-                  ? 'A secure Mobile Money prompt will be sent straight to your phone via Paystack.'
                   : "You'll be redirected to Paystack's secure payment page. Cards, mobile money, and bank transfers are accepted."}
               </span>
             </div>

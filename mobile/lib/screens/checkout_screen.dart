@@ -49,14 +49,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _addressCtrl = TextEditingController();
   final _cityCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
-  final _momoPhoneCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final _couponCtrl = TextEditingController();
 
   String _selectedRegion = 'Greater Accra';
   String _fulfillmentMethod = 'delivery'; // 'delivery' | 'pickup'
   String _paymentMethod = 'paystack'; // 'paystack' | 'pay_on_delivery'
-  final String _momoProvider = 'mtn'; // reserved for future direct MoMo UX
 
   bool _loadingSettings = true;
   bool _allowGuestCheckout = false;
@@ -89,7 +87,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final user = context.read<AuthProvider>().user;
     if (user?.phone != null && user!.phone!.trim().isNotEmpty) {
       _phoneCtrl.text = user.phone!.trim();
-      _momoPhoneCtrl.text = user.phone!.trim();
     }
     if (user?.address != null && user!.address!.trim().isNotEmpty) {
       _addressCtrl.text = user.address!.trim();
@@ -281,7 +278,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _addressCtrl.dispose();
     _cityCtrl.dispose();
     _phoneCtrl.dispose();
-    _momoPhoneCtrl.dispose();
     _notesCtrl.dispose();
     _couponCtrl.dispose();
     super.dispose();
@@ -399,9 +395,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
     final backendPaymentMethod =
         _paymentMethod == 'pay_on_delivery' ? 'pay_on_delivery' : 'paystack';
-    final momoPhone = _momoPhoneCtrl.text.trim().isNotEmpty
-        ? _momoPhoneCtrl.text.trim()
-        : _phoneCtrl.text.trim();
 
     try {
       Map<String, dynamic> order;
@@ -467,32 +460,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
 
       final guestEmail = (order['email'] ?? _emailCtrl.text.trim()).toString();
-
-      if (_paymentMethod == 'momo_direct') {
-        final charge = await ApiService.instance.chargeMobileMoney(
-          orderId: orderId,
-          phone: momoPhone,
-          provider: _momoProvider,
-          email: isGuest ? guestEmail : null,
-        );
-        final reference = (charge['reference'] ?? '').toString();
-        if (reference.isEmpty) {
-          throw Exception('Did not receive a payment reference from Paystack.');
-        }
-        if (!mounted) return;
-        context.go('/momo-payment', extra: {
-          'order_id': orderId,
-          'order_number': orderNum,
-          'amount': orderTotal,
-          'reference': reference,
-          'status': (charge['status'] ?? 'pay_offline').toString(),
-          'display_text': (charge['display_text'] ?? charge['message'] ?? '').toString(),
-          'phone': momoPhone,
-          'provider': _momoProvider,
-          if (isGuest) 'guest_email': guestEmail,
-        });
-        return;
-      }
 
       final payment = isGuest
           ? await ApiService.instance.initializeGuestPayment(
@@ -1194,9 +1161,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                           ? 'Checking availability…'
                           : _paymentMethod == 'pay_on_delivery'
                               ? 'Place Order — ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} (${isPickup ? 'Pay on Pickup' : 'Pay on Delivery'})'
-                              : _paymentMethod == 'momo_direct'
-                                  ? 'Pay ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} with Mobile Money'
-                                  : 'Pay ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} with Paystack',
+                              : 'Pay ${AppConfig.currencySymbol}${total.toStringAsFixed(2)} with Paystack',
                     ),
             ),
             const SizedBox(height: 10),
