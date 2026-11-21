@@ -336,6 +336,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final titleCtrl = TextEditingController();
     final commentCtrl = TextEditingController();
     bool submitting = false;
+    String? sheetError;
 
     await showModalBottomSheet(
       context: context,
@@ -398,11 +399,51 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  if (sheetError != null) ...[
+                    Container(
+                      key: const ValueKey('review-sheet-error'),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.error.withValues(alpha: 0.4),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 18,
+                            color: AppColors.error,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              sheetError!,
+                              style: TextStyle(
+                                color: AppColors.error,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   FilledButton(
                     onPressed: submitting
                         ? null
                         : () async {
-                            setModalState(() => submitting = true);
+                            setModalState(() {
+                              submitting = true;
+                              sheetError = null;
+                            });
                             try {
                               await ApiService.instance.createProductReview(
                                 widget.productId,
@@ -444,18 +485,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   }
                                   return;
                                 }
-                                setModalState(() => submitting = false);
-                                ScaffoldMessenger.of(ctx).showSnackBar(
-                                  SnackBar(content: Text(e.message)),
-                                );
+                                setModalState(() {
+                                  submitting = false;
+                                  sheetError = e.message;
+                                });
                               } catch (e) {
                                 if (!ctx.mounted) return;
-                                setModalState(() => submitting = false);
-                                ScaffoldMessenger.of(ctx).showSnackBar(
-                                  SnackBar(
-                                    content: Text(ApiService.formatError(e)),
-                                  ),
-                                );
+                                setModalState(() {
+                                  submitting = false;
+                                  sheetError = ApiService.formatError(e);
+                                });
                               }
                           },
                     child: Text(submitting ? 'Submitting...' : 'Submit Review'),
