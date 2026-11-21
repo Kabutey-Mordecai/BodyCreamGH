@@ -56,7 +56,7 @@ void main() {
             200,
           );
         }
-        if (path.endsWith('/api/products/prod-1/can-review') &&
+        if (path.endsWith('/api/products/prod-1/reviews/can-review') &&
             req.method == 'GET') {
           return http.Response(
             jsonEncode({'can_review': true, 'already_reviewed': false}),
@@ -198,7 +198,7 @@ void main() {
               200,
             );
           }
-          if (path.endsWith('/api/products/prod-1/can-review') &&
+          if (path.endsWith('/api/products/prod-1/reviews/can-review') &&
               req.method == 'GET') {
             canReviewCalls += 1;
             if (canReviewCalls == 1) {
