@@ -59,6 +59,13 @@ function validateEnv() {
     errors.push('PAYSTACK_SECRET_KEY must be a live key (sk_live_...) in production — test keys are not accepted');
   }
 
+  const courierMode = (process.env.COURIER_MODE || 'manual').trim().toLowerCase();
+  if (!['mock', 'manual', 'live'].includes(courierMode)) {
+    errors.push(`COURIER_MODE must be one of mock, manual, live (got "${courierMode}")`);
+  } else if (courierMode === 'mock') {
+    errors.push('COURIER_MODE=mock is forbidden in production — use COURIER_MODE=manual or live');
+  }
+
   if (errors.length > 0) {
     process.stderr.write('\n[FATAL] Production environment validation failed:\n');
     for (const err of errors) {

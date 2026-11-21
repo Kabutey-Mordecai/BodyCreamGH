@@ -112,6 +112,28 @@ module.exports = async function register(boss) {
         return;
       }
 
+      const courierMode = (process.env.COURIER_MODE || (process.env.NODE_ENV === 'production' ? 'manual' : 'mock')).trim().toLowerCase();
+      if (courierMode === 'manual') {
+        const needsProcessing = order.status !== 'processing';
+        if (needsProcessing) {
+          assertTransition(order.status, 'processing');
+          await client.query(
+            `UPDATE orders SET status = 'processing', updated_at = NOW() WHERE id = $1`, [orderId]
+          );
+          await client.query(
+            `INSERT INTO order_status_log (id, order_id, from_status, to_status, note, created_at)
+             VALUES ($1, $2, $3, 'processing', 'Awaiting manual courier dispatch (COURIER_MODE=manual)', NOW())`,
+            [uuid(), orderId, order.status]
+          );
+        }
+        await markProcessed(eventId, 'shipment.manual_dispatch', client);
+        await client.query('COMMIT');
+        inTransaction = false;
+        await markProcessed(jobsId, 'shipment.jobs');
+        logger.info('COURIER_MODE=manual: awaiting admin tracking number; no fake tracking number generated', { orderId });
+        return;
+      }
+
       const { rows: existing } = await client.query(
         'SELECT tracking_number FROM deliveries WHERE order_id = $1', [orderId]
       );
@@ -179,6 +201,11 @@ module.exports = async function register(boss) {
 
   // ── Advance shipment through courier lifecycle ────────────────────────────
   await boss.work('shipment/advance-shipment', { teamSize: 5 }, async (jobs) => {
+    const courierMode = (process.env.COURIER_MODE || (process.env.NODE_ENV === 'production' ? 'manual' : 'mock')).trim().toLowerCase();
+    if (courierMode !== 'mock') {
+      logger.info('Ignoring automated advance-shipment job outside mock mode', { courierMode });
+      return;
+    }
     const job = Array.isArray(jobs) ? jobs[0] : jobs;
     if (!job?.data) return;
     const { trackingNumber, orderId } = job.data;
