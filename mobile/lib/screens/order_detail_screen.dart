@@ -44,6 +44,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Order? _order;
   Map<String, dynamic>? _delivery;
   List<Map<String, dynamic>> _statusLog = [];
+  bool _partialReturnsEnabled = false;
+  List<Map<String, dynamic>> _returnRequests = [];
   Set<String> _reviewedProductIds = {};
   final Map<String, int> _reviewRatings = {};
   final Map<String, TextEditingController> _reviewTitleCtrls = {};
@@ -105,12 +107,31 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
       final order = Order.fromJson(data);
       Set<String> reviewed = _reviewedProductIds;
+      bool partialEnabled = _partialReturnsEnabled;
+      List<Map<String, dynamic>> returnRequests = _returnRequests;
       if (order.status == 'delivered' && order.refundStatus != 'success') {
         try {
           final revList =
               await ApiService.instance.getOrderReviewStatus(widget.orderId);
           reviewed = revList.toSet();
         } catch (_) {}
+        if (order.paymentStatus == 'paid' ||
+            order.paymentStatus == 'partially_refunded') {
+          try {
+            final settings = await ApiService.instance.getSettings();
+            partialEnabled = settings['partial_returns_enabled'] == true ||
+                settings['partial_returns_enabled'] == 'true';
+            if (partialEnabled) {
+              final retData =
+                  await ApiService.instance.getOrderReturns(widget.orderId);
+              returnRequests = (retData['returns'] as List<dynamic>? ?? [])
+                  .whereType<Map<String, dynamic>>()
+                  .toList();
+            } else {
+              returnRequests = [];
+            }
+          } catch (_) {}
+        }
       }
 
       if (mounted) {
@@ -119,6 +140,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _delivery = delivery ?? order.delivery;
           _statusLog = rawLog.whereType<Map<String, dynamic>>().toList();
           _reviewedProductIds = reviewed;
+          _partialReturnsEnabled = partialEnabled;
+          _returnRequests = returnRequests;
           _loading = false;
         });
         _configureBackgroundPoll(order);
@@ -172,7 +195,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool get _showReturnSection =>
       _order != null &&
       _order!.status == 'delivered' &&
-      _order!.paymentStatus == 'paid' &&
+      (_order!.paymentStatus == 'paid' ||
+          _order!.paymentStatus == 'partially_refunded') &&
       (_order!.refundStatus == null ||
           _order!.refundStatus == 'not_requested');
 
@@ -403,6 +427,27 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Partial return request submitted')),
+      );
+      _load();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), ''),
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _cancelPartialReturn(String returnId) async {
+    if (_order == null) return;
+    try {
+      await ApiService.instance.cancelOrderReturn(_order!.id, returnId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Return request cancelled')),
       );
       _load();
     } catch (e) {
@@ -713,7 +758,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                     style: const TextStyle(fontSize: 13),
                   ),
                   if (!order.returnRequested ||
-                      order.returnRequestRejected) ...[
+                      order.returnRequestRejected ||
+                      _partialReturnsEnabled) ...[
                     const SizedBox(height: 10),
                     OutlinedButton(
                       onPressed: () => _promptAction(isReturn: true),
@@ -721,6 +767,75 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                           ? 'Resubmit request'
                           : 'Request return'),
                     ),
+                  ],
+                  if (_partialReturnsEnabled && _returnRequests.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    ..._returnRequests.map((rr) {
+                      final rrId = (rr['id'] ?? '').toString();
+                      final rrStatus = (rr['status'] ?? 'pending').toString();
+                      final rrAmt = double.tryParse(
+                              (rr['refund_amount'] ?? 0).toString()) ??
+                          0;
+                      final rrReason = (rr['reason'] ?? '').toString();
+                      final rrItems =
+                          (rr['items'] as List<dynamic>? ?? [])
+                              .whereType<Map<String, dynamic>>()
+                              .toList();
+                      return Container(
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.border),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Return · ${AppConfig.currencySymbol}${rrAmt.toStringAsFixed(2)}',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w700),
+                                ),
+                                StatusChip(rrStatus),
+                              ],
+                            ),
+                            if (rrReason.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                rrReason,
+                                style: const TextStyle(
+                                    fontSize: 12.5, color: AppColors.muted),
+                              ),
+                            ],
+                            if (rrItems.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              ...rrItems.map((it) {
+                                final pName =
+                                    (it['product_name'] ?? 'Item').toString();
+                                final vLabel = it['variant_label']?.toString();
+                                final q = it['quantity'] ?? 1;
+                                return Text(
+                                  '• $pName${(vLabel != null && vLabel.isNotEmpty) ? ' ($vLabel)' : ''} × $q',
+                                  style: const TextStyle(fontSize: 12),
+                                );
+                              }),
+                            ],
+                            if (rrStatus == 'pending' && rrId.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              OutlinedButton(
+                                onPressed: () => _cancelPartialReturn(rrId),
+                                child: const Text('Cancel return request'),
+                              ),
+                            ],
+                          ],
+                        ),
+                      );
+                    }),
                   ],
                 ],
               ),
@@ -1018,6 +1133,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         order.deliveryFee == 0
                             ? 'Free'
                             : '${AppConfig.currencySymbol}${order.deliveryFee!.toStringAsFixed(2)}',
+                      ),
+                    if (order.refundAmount != null && order.refundAmount! > 0)
+                      _MetaRow(
+                        'Refunded',
+                        '-${AppConfig.currencySymbol}${order.refundAmount!.toStringAsFixed(2)}',
                       ),
                     const SizedBox(height: 4),
                     Row(

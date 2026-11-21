@@ -169,6 +169,19 @@ void main() {
       expect(active.isTerminal, isFalse);
       expect(active.refundHint, '');
       expect(active.refundMessage, isNull);
+
+      final partiallyRefunded = Order.fromJson({
+        'id': 'o4',
+        'order_number': 'BC-0004',
+        'status': 'delivered',
+        'payment_status': 'partially_refunded',
+        'refund_amount': 50.0,
+        'total_amount': 150.0,
+        'created_at': '2026-11-20T10:00:00Z',
+      });
+      expect(partiallyRefunded.isTerminal, isFalse);
+      expect(partiallyRefunded.refundHint, '${AppConfig.currencySymbol}50.00 refunded');
+      expect(partiallyRefunded.refundMessage, '${AppConfig.currencySymbol}50.00 refunded so far');
     });
   });
 

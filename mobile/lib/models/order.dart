@@ -184,13 +184,20 @@ class Order {
   String get refundHint {
     final rs = refundStatus ?? 'not_requested';
     if (status == 'cancelled' &&
-        (paymentStatus == 'paid' || paymentStatus == 'payment_review') &&
+        (paymentStatus == 'paid' ||
+            paymentStatus == 'partially_refunded' ||
+            paymentStatus == 'payment_review') &&
         rs == 'not_requested') {
       return 'Refund may be pending';
     }
     if (rs == 'pending') return 'Refund pending';
     if (rs == 'failed') return 'Refund failed - contact support';
     if (status == 'refunded' || rs == 'success') return 'Refunded';
+    if (paymentStatus == 'partially_refunded') {
+      return refundAmount != null && refundAmount! > 0
+          ? '${AppConfig.currencySymbol}${refundAmount!.toStringAsFixed(2)} refunded'
+          : 'Partially refunded';
+    }
     return '';
   }
 
@@ -198,7 +205,9 @@ class Order {
   String? get refundMessage {
     final rs = refundStatus ?? 'not_requested';
     if (status == 'cancelled' &&
-        (paymentStatus == 'paid' || paymentStatus == 'payment_review') &&
+        (paymentStatus == 'paid' ||
+            paymentStatus == 'partially_refunded' ||
+            paymentStatus == 'payment_review') &&
         rs == 'not_requested') {
       return 'This order was cancelled. A refund may be pending.';
     }
@@ -208,6 +217,11 @@ class Order {
     }
     if (rs == 'failed') return 'Refund failed - contact support';
     if (status == 'refunded' || rs == 'success') return 'Refunded';
+    if (paymentStatus == 'partially_refunded') {
+      return refundAmount != null && refundAmount! > 0
+          ? '${AppConfig.currencySymbol}${refundAmount!.toStringAsFixed(2)} refunded so far'
+          : 'Partially refunded';
+    }
     return null;
   }
 

@@ -56,6 +56,16 @@ class StatusChip extends StatelessWidget {
         return ('Cancel Requested', const Color(0xFFFEE2E2), const Color(0xFF991B1B));
       case 'return_requested':
         return ('Return Requested', const Color(0xFFFEF3C7), const Color(0xFF92400E));
+      case 'partially_refunded':
+        return ('Partially Refunded', const Color(0xFFFEF3C7), const Color(0xFF92400E));
+      case 'refund_pending':
+        return ('Refund Pending', const Color(0xFFFEF3C7), const Color(0xFF92400E));
+      case 'refund_failed':
+        return ('Refund Failed', const Color(0xFFFEE2E2), const Color(0xFF991B1B));
+      case 'rejected':
+        return ('Rejected', const Color(0xFFFEE2E2), const Color(0xFF991B1B));
+      case 'approved':
+        return ('Approved', const Color(0xFFD1FAE5), const Color(0xFF065F46));
       case 'cancelled':
       case 'failed':
         return (
