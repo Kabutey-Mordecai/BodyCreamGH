@@ -56,6 +56,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   bool _loading = true;
   bool _paying = false;
   String? _loadError;
+  String? _pickupLocation;
+  String? _pickupHours;
   Timer? _pollTimer;
 
   @override
@@ -115,6 +117,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       Set<String> reviewed = _reviewedProductIds;
       bool partialEnabled = _partialReturnsEnabled;
       List<Map<String, dynamic>> returnRequests = _returnRequests;
+      Map<String, dynamic>? settings;
+      if (order.isPickup) {
+        settings = await ApiService.instance
+            .getSettings()
+            .catchError((_) => <String, dynamic>{});
+      }
       if (order.status == 'delivered' && order.refundStatus != 'success') {
         try {
           final revList =
@@ -124,7 +132,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         if (order.paymentStatus == 'paid' ||
             order.paymentStatus == 'partially_refunded') {
           try {
-            final settings = await ApiService.instance.getSettings();
+            settings ??= await ApiService.instance.getSettings();
             partialEnabled = settings['partial_returns_enabled'] == true ||
                 settings['partial_returns_enabled'] == 'true';
             if (partialEnabled) {
@@ -139,6 +147,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           } catch (_) {}
         }
       }
+      final rawLoc = settings?['pickup_location']?.toString().trim() ?? '';
+      final rawHrs = settings?['pickup_hours']?.toString().trim() ?? '';
 
       if (mounted) {
         setState(() {
@@ -148,6 +158,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _reviewedProductIds = reviewed;
           _partialReturnsEnabled = partialEnabled;
           _returnRequests = returnRequests;
+          _pickupLocation = rawLoc.isEmpty ? null : rawLoc;
+          _pickupHours = rawHrs.isEmpty ? null : rawHrs;
           _loadError = null;
           _loading = false;
         });
@@ -992,10 +1004,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   leading: const Icon(Icons.storefront_outlined,
                       color: AppColors.accentDark),
                   title: const Text('Fulfillment: Store Pickup'),
-                  subtitle: Text(
-                    order.status == 'delivered'
-                        ? 'Picked up'
-                        : 'We will notify you when your order is ready for pickup.',
+                  subtitle: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.status == 'delivered'
+                            ? 'Picked up'
+                            : 'We will notify you when your order is ready for pickup.',
+                      ),
+                      if (_pickupLocation != null) ...[
+                        const SizedBox(height: 4),
+                        Text('Location: $_pickupLocation'),
+                      ],
+                      if (_pickupHours != null) ...[
+                        const SizedBox(height: 2),
+                        Text('Hours: $_pickupHours'),
+                      ],
+                    ],
                   ),
                 ),
               ),

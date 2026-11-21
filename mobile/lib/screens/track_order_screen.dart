@@ -41,6 +41,8 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
   bool _paying = false;
   String? _error;
   Order? _order;
+  String? _pickupLocation;
+  String? _pickupHours;
 
   @override
   void initState() {
@@ -74,9 +76,23 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
         normalizedNum,
         _emailCtrl.text.trim(),
       );
+      final order = Order.fromJson(data);
+      String? pickupLoc;
+      String? pickupHrs;
+      if (order.isPickup) {
+        final settings = await ApiService.instance
+            .getSettings()
+            .catchError((_) => <String, dynamic>{});
+        final loc = settings['pickup_location']?.toString().trim() ?? '';
+        final hrs = settings['pickup_hours']?.toString().trim() ?? '';
+        pickupLoc = loc.isEmpty ? null : loc;
+        pickupHrs = hrs.isEmpty ? null : hrs;
+      }
       if (!mounted) return;
       setState(() {
-        _order = Order.fromJson(data);
+        _order = order;
+        _pickupLocation = pickupLoc;
+        _pickupHours = pickupHrs;
         _loading = false;
       });
     } catch (e) {
@@ -328,24 +344,38 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
                             color: AppColors.blush,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Column(
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
+                              const Text(
                                 'Fulfillment: Store Pickup',
                                 style: TextStyle(
                                   fontWeight: FontWeight.w700,
                                   fontSize: 13.5,
                                 ),
                               ),
-                              SizedBox(height: 4),
-                              Text(
+                              const SizedBox(height: 4),
+                              const Text(
                                 'We will notify you when your order is ready for pickup.',
                                 style: TextStyle(
                                   fontSize: 12.5,
                                   color: AppColors.muted,
                                 ),
                               ),
+                              if (_pickupLocation != null) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  'Location: $_pickupLocation',
+                                  style: const TextStyle(fontSize: 12.5),
+                                ),
+                              ],
+                              if (_pickupHours != null) ...[
+                                const SizedBox(height: 2),
+                                Text(
+                                  'Hours: $_pickupHours',
+                                  style: const TextStyle(fontSize: 12.5),
+                                ),
+                              ],
                             ],
                           ),
                         ),
