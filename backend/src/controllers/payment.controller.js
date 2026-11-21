@@ -648,8 +648,6 @@ function getRefundPayloadKey(event) {
   const data = event.data || {};
   return data.id ||
     data.refund_id ||
-    data.refund_reference ||
-    data.reference ||
     data.transaction_reference ||
     data.transaction?.reference ||
     data.transaction;
@@ -664,11 +662,6 @@ function getRefundEventId(event) {
 function getRefundProviderId(data) {
   if (!data) return null;
   return data.id || data.refund_id || null;
-}
-
-function getRefundReference(data) {
-  if (!data) return null;
-  return data.refund_reference || data.reference || null;
 }
 
 function getTransactionReference(data) {
@@ -689,36 +682,33 @@ function getRefundFailureDetail(data) {
 
 async function findRefundOrderForUpdate(client, data) {
   const providerId = getRefundProviderId(data);
-  const refundReference = getRefundReference(data);
   const transactionReference = getTransactionReference(data);
 
   const { rows } = await client.query(
     `SELECT o.*
        FROM orders o
       WHERE ($1::text IS NOT NULL AND o.refund_provider_id = $1)
-         OR ($2::text IS NOT NULL AND o.refund_reference = $2)
          OR (
-              $3::text IS NOT NULL
+              $2::text IS NOT NULL
               AND (
-                o.payment_reference = $3
+                o.payment_reference = $2
                 OR EXISTS (
                   SELECT 1
                     FROM payments p
                    WHERE p.order_id = o.id
-                     AND p.paystack_reference = $3
+                     AND p.paystack_reference = $2
                 )
               )
             )
       ORDER BY
         CASE
           WHEN $1::text IS NOT NULL AND o.refund_provider_id = $1 THEN 1
-          WHEN $2::text IS NOT NULL AND o.refund_reference = $2 THEN 2
-          ELSE 3
+          ELSE 2
         END,
         o.updated_at DESC
       LIMIT 1
       FOR UPDATE OF o`,
-    [providerId ? String(providerId) : null, refundReference, transactionReference]
+    [providerId ? String(providerId) : null, transactionReference]
   );
 
   return rows[0] || null;
@@ -821,7 +811,7 @@ async function findReturnRequestForWebhook(client, data) {
   const merchantNote = typeof data?.merchant_note === 'string' ? data.merchant_note : '';
   const amountPesewas = Number.isFinite(Number(data?.amount)) ? Math.round(Number(data.amount)) : null;
 
-  // 1. Exact match by Paystack refund provider ID
+  // (a) Exact match by Paystack refund provider ID
   if (providerId) {
     const { rows } = await client.query(
       `SELECT * FROM return_requests WHERE refund_provider_id = $1 LIMIT 1 FOR UPDATE`,
@@ -829,17 +819,30 @@ async function findReturnRequestForWebhook(client, data) {
     );
     if (rows.length > 0) return { match: rows[0], ambiguous: false, candidates: [] };
   }
-  // 2. Match by our RET- tag inside documented merchant_note field
+  // (b) Match by our RET- tag inside documented merchant_note field + transaction_reference
   const noteMatch = merchantNote.match(/\bRET-[0-9A-F]{12}-\d+\b/i);
-  if (noteMatch) {
+  if (noteMatch && txRef) {
     const { rows } = await client.query(
-      `SELECT * FROM return_requests WHERE UPPER(refund_reference) = UPPER($1) LIMIT 1 FOR UPDATE`,
-      [noteMatch[0]]
+      `SELECT rr.*
+         FROM return_requests rr
+         JOIN orders o ON o.id = rr.order_id
+        WHERE UPPER(rr.refund_reference) = UPPER($1)
+          AND (
+            o.payment_reference = $2
+            OR EXISTS (
+              SELECT 1 FROM payments p
+               WHERE p.order_id = o.id
+                 AND p.paystack_reference = $2
+            )
+          )
+        LIMIT 1
+        FOR UPDATE OF rr`,
+      [noteMatch[0], txRef]
     );
     if (rows.length > 0) return { match: rows[0], ambiguous: false, candidates: [] };
   }
 
-  // Fallback when neither providerId nor merchant_note matched:
+  // (c) Fallback when neither providerId nor merchant_note+txRef matched:
   // Match by transaction reference + exact pesewa amount, ONLY if unambiguous (exactly 1 candidate).
   // If >1 refund_pending rows match, flag ambiguous and alert admin instead of auto-resolving.
   if (txRef && amountPesewas !== null && amountPesewas > 0) {
@@ -932,7 +935,7 @@ async function completePaystackRefundFromWebhook(event) {
         const { finalizeReturnRequestRefund } = require('./return.controller');
         await finalizeReturnRequestRefund(client, matchedReturn, {
           providerId: getRefundProviderId(event.data),
-          refundReference: getRefundReference(event.data),
+          refundReference: matchedReturn.refund_reference,
           notePrefix: 'Paystack partial return refund processed via webhook',
         });
       }
@@ -975,7 +978,6 @@ async function completePaystackRefundFromWebhook(event) {
       logger.warn('Paystack refund webhook could not be matched to an order', {
         event: event.event,
         refundProviderId: getRefundProviderId(event.data),
-        refundReference: getRefundReference(event.data),
         transactionReference: getTransactionReference(event.data),
       });
       return;
@@ -989,23 +991,21 @@ async function completePaystackRefundFromWebhook(event) {
     }
 
     const providerId = getRefundProviderId(event.data);
-    const refundReference = getRefundReference(event.data);
 
     // If the refund was not initiated from the app ('pending' / 'needs_attention'),
     // flag payment_review and alert admin instead of dropping the event.
     if (!['pending', 'needs_attention'].includes(order.refund_status)) {
-      const note = `External Paystack refund processed (ref ${refundReference || providerId || 'n/a'}) while refund_status="${order.refund_status}" — flagged for payment_review.`;
+      const note = `External Paystack refund processed (id ${providerId || 'n/a'}) while refund_status="${order.refund_status}" — flagged for payment_review.`;
       const refundNotes = [order.refund_notes, note].filter(Boolean).join('\n');
 
       await client.query(
         `UPDATE orders
             SET payment_status = 'payment_review',
                 refund_provider_id = COALESCE(refund_provider_id, $1),
-                refund_reference = COALESCE(refund_reference, $2),
-                refund_notes = $3,
+                refund_notes = $2,
                 updated_at = NOW()
-          WHERE id = $4`,
-        [providerId ? String(providerId) : null, refundReference, refundNotes, order.id]
+          WHERE id = $3`,
+        [providerId ? String(providerId) : null, refundNotes, order.id]
       );
 
       await logStatusChange(order.id, order.status, order.status, note, client);
@@ -1031,11 +1031,10 @@ async function completePaystackRefundFromWebhook(event) {
               status = 'refunded',
               payment_status = 'refunded',
               refund_provider_id = COALESCE(refund_provider_id, $1),
-              refund_reference = COALESCE(refund_reference, $2),
               refunded_at = NOW(),
               updated_at = NOW()
-        WHERE id = $3`,
-      [providerId ? String(providerId) : null, refundReference, order.id]
+        WHERE id = $2`,
+      [providerId ? String(providerId) : null, order.id]
     );
 
     await client.query(
@@ -1167,7 +1166,6 @@ async function failPaystackRefundFromWebhook(event) {
       logger.warn('Paystack refund failure webhook could not be matched to an order', {
         event: event.event,
         refundProviderId: getRefundProviderId(event.data),
-        refundReference: getRefundReference(event.data),
         transactionReference: getTransactionReference(event.data),
       });
       return;
@@ -1192,7 +1190,6 @@ async function failPaystackRefundFromWebhook(event) {
     }
 
     const providerId = getRefundProviderId(event.data);
-    const refundReference = getRefundReference(event.data);
     const failureDetail = getRefundFailureDetail(event.data);
     const refundNotes = [order.refund_notes, `Paystack refund failed: ${failureDetail}`]
       .filter(Boolean)
@@ -1202,11 +1199,10 @@ async function failPaystackRefundFromWebhook(event) {
       `UPDATE orders
           SET refund_status = 'failed',
               refund_provider_id = COALESCE(refund_provider_id, $1),
-              refund_reference = COALESCE(refund_reference, $2),
-              refund_notes = $3,
+              refund_notes = $2,
               updated_at = NOW()
-        WHERE id = $4`,
-      [providerId ? String(providerId) : null, refundReference, refundNotes, order.id]
+        WHERE id = $3`,
+      [providerId ? String(providerId) : null, refundNotes, order.id]
     );
 
     await client.query('COMMIT');
@@ -1300,7 +1296,6 @@ async function handleRefundNeedsAttentionFromWebhook(event) {
       await client.query('COMMIT');
       logger.warn('Paystack refund.needs-attention webhook could not be matched to an order', {
         refundProviderId: getRefundProviderId(event.data),
-        refundReference: getRefundReference(event.data),
         transactionReference: getTransactionReference(event.data),
       });
       return;
@@ -1315,7 +1310,6 @@ async function handleRefundNeedsAttentionFromWebhook(event) {
     }
 
     const providerId = getRefundProviderId(event.data);
-    const refundReference = getRefundReference(event.data);
     const detail = getRefundFailureDetail(event.data);
     const note = `Paystack refund needs attention — customer account details required (${detail})`;
     const refundNotes = [order.refund_notes, note].filter(Boolean).join('\n');
@@ -1325,11 +1319,10 @@ async function handleRefundNeedsAttentionFromWebhook(event) {
           SET refund_status = 'needs_attention',
               refund_method = COALESCE(refund_method, 'paystack'),
               refund_provider_id = COALESCE(refund_provider_id, $1),
-              refund_reference = COALESCE(refund_reference, $2),
-              refund_notes = $3,
+              refund_notes = $2,
               updated_at = NOW()
-        WHERE id = $4`,
-      [providerId ? String(providerId) : null, refundReference, refundNotes, order.id]
+        WHERE id = $3`,
+      [providerId ? String(providerId) : null, refundNotes, order.id]
     );
 
     await logStatusChange(
@@ -1484,7 +1477,7 @@ const handleWebhook = async (req, res) => {
       // Informational only — no durable state change needed.
       logger.info('Paystack refund status webhook received', {
         event: event.event,
-        refundReference: getRefundReference(event.data),
+        refundProviderId: getRefundProviderId(event.data),
         transactionReference: getTransactionReference(event.data),
       });
     } else if (DISPUTE_EVENTS.has(event.event)) {

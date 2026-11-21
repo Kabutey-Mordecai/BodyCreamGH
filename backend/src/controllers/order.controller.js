@@ -1167,7 +1167,7 @@ const refundOrder = async (req, res) => {
   }
 
   const providerId = refundData.id || refundData.refund_id || null;
-  const providerReference = refundData.reference || reference || null;
+  const providerReference = reference || null;
   const psStatus = String(refundData.status || '').toLowerCase();
   const completeClient = await pool.connect();
   let completeTransactionStarted = false;
@@ -2074,7 +2074,7 @@ const refundDuplicatePayment = async (req, res) => {
       }
     }
 
-    const refundRef = refundData?.id ? String(refundData.id) : (refundData?.reference || 'submitted');
+    const refundRef = refundData?.id ? String(refundData.id) : 'submitted';
     const providerStatus = String(refundData?.status || 'pending').toLowerCase();
     const nextPaymentStatus = providerStatus === 'processed' ? 'refunded' : 'refund_pending';
     const amountNum = Number(payment.amount) || 0;

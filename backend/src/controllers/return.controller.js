@@ -3,7 +3,7 @@
 const { randomUUID: uuid } = require('crypto');
 const pool = require('../config/database');
 const InventoryModel = require('../models/inventory.model');
-const { createRefund, fetchRefundsByTransaction } = require('../services/paystack.service');
+const { createRefund, fetchRefundById, fetchRefundsByTransaction } = require('../services/paystack.service');
 const { calculateReturnRefund } = require('../utils/returnMath');
 const { logStatusChange } = require('../utils/audit');
 const logger = require('../utils/logger');
@@ -134,17 +134,18 @@ async function finalizeReturnRequestRefund(client, returnRow, { providerId = nul
 }
 
 /**
- * Find an existing Paystack refund matching BOTH our merchant_note RET- tag
- * AND exact pesewa amount.
+ * Find an existing Paystack refund matching our merchant_note RET- tag,
+ * exact pesewa amount, and (when present on the Paystack record) transaction_reference.
  */
-function matchPaystackRefundByRefAndAmount(refundList, expectedRef, expectedAmountPesewas) {
+function matchPaystackRefundByRefAndAmount(refundList, expectedRef, expectedAmountPesewas, expectedTxRef = null) {
   if (!Array.isArray(refundList) || !expectedRef) return null;
   const refLower = String(expectedRef).toLowerCase();
   return refundList.find((r) => {
     const rNote = String(r?.merchant_note || '').toLowerCase();
     const noteMatches = rNote.includes(refLower);
     const amtMatches = Number(r?.amount) === expectedAmountPesewas;
-    return noteMatches && amtMatches;
+    const txMatches = !expectedTxRef || !r?.transaction_reference || r.transaction_reference === expectedTxRef;
+    return noteMatches && amtMatches && txMatches;
   }) || null;
 }
 
@@ -626,6 +627,7 @@ const approveReturnRequestById = async (req, res) => {
   let reserved = null;
   let paystackTxRef = null;
   let prevRefForRetryCheck = null;
+  let prevProviderIdForRetryCheck = null;
   let isManual = false;
 
   const client = await pool.connect();
@@ -735,6 +737,7 @@ const approveReturnRequestById = async (req, res) => {
 
     // Paystack path: write status='refund_pending' with self-generated reference BEFORE calling Paystack
     prevRefForRetryCheck = rr.status === 'refund_failed' ? rr.refund_reference : null;
+    prevProviderIdForRetryCheck = rr.status === 'refund_failed' ? rr.refund_provider_id : null;
     const nextAttempt = Number(rr.refund_attempt || 0) + 1;
     const selfRef = `RET-${returnId.replace(/-/g, '').slice(0, 12).toUpperCase()}-${nextAttempt}`;
 
@@ -765,19 +768,88 @@ const approveReturnRequestById = async (req, res) => {
     client.release();
   }
 
-  // Step 2: If retrying from refund_failed, check Paystack by PREVIOUS reference + exact amount
-  // (never "any active refund exists") so a prior timed-out call that succeeded on Paystack isn't doubled.
+  // Step 2: If retrying from refund_failed, check Paystack in strict order:
+  //   (a) provider id (refund_provider_id)
+  //   (b) RET- tag in merchant_note + transaction reference
+  //   (c) transaction reference + exact amount ONLY if exactly one candidate (alert admin if ambiguous)
   const expectedAmountPesewas = Math.round(Number(reserved.refund_amount) * 100);
+  const ACTIVE_PAYSTACK_STATUSES = new Set(['pending', 'processing', 'processed', 'needs-attention']);
   let refundData = null;
   let reusedExisting = false;
 
-  if (prevRefForRetryCheck) {
+  if (prevProviderIdForRetryCheck || prevRefForRetryCheck) {
     try {
-      const existingList = await fetchRefundsByTransaction(paystackTxRef);
-      const matched = matchPaystackRefundByRefAndAmount(existingList, prevRefForRetryCheck, expectedAmountPesewas);
-      if (matched && ['pending', 'processing', 'processed', 'needs-attention'].includes(String(matched.status || '').toLowerCase())) {
-        refundData = matched;
-        reusedExisting = true;
+      // (a) Provider ID lookup
+      if (prevProviderIdForRetryCheck) {
+        const byId = await fetchRefundById(prevProviderIdForRetryCheck);
+        if (byId && ACTIVE_PAYSTACK_STATUSES.has(String(byId.status || '').toLowerCase())) {
+          refundData = byId;
+          reusedExisting = true;
+        }
+      }
+
+      // (b) RET- tag in merchant_note + transaction reference
+      if (!reusedExisting) {
+        const existingList = await fetchRefundsByTransaction(paystackTxRef);
+        const byNote = prevRefForRetryCheck
+          ? matchPaystackRefundByRefAndAmount(existingList, prevRefForRetryCheck, expectedAmountPesewas, paystackTxRef)
+          : null;
+        if (byNote && ACTIVE_PAYSTACK_STATUSES.has(String(byNote.status || '').toLowerCase())) {
+          refundData = byNote;
+          reusedExisting = true;
+        } else if (Array.isArray(existingList) && existingList.length > 0) {
+          // (c) Transaction reference + exact amount only if unambiguous (1 local candidate, 1 unclaimed active Paystack refund)
+          const { rows: claimedRows } = await pool.query(
+            `SELECT refund_provider_id FROM return_requests WHERE order_id = $1 AND id <> $2 AND refund_provider_id IS NOT NULL`,
+            [reserved.order_id, returnId]
+          );
+          const claimedIds = new Set(claimedRows.map(r => String(r.refund_provider_id)));
+          const unclaimedActive = existingList.filter((r) => {
+            const st = String(r?.status || '').toLowerCase();
+            const rId = r?.id ? String(r.id) : null;
+            const txOk = !r?.transaction_reference || r.transaction_reference === paystackTxRef;
+            return ACTIVE_PAYSTACK_STATUSES.has(st) &&
+              Number(r?.amount) === expectedAmountPesewas &&
+              txOk &&
+              (!rId || !claimedIds.has(rId));
+          });
+
+          if (unclaimedActive.length > 0) {
+            const { rows: [cntRow] } = await pool.query(
+              `SELECT COUNT(*)::int AS cnt
+                 FROM return_requests
+                WHERE order_id = $1
+                  AND status IN ('refund_pending', 'refund_failed')
+                  AND ROUND(refund_amount * 100)::int = $2`,
+              [reserved.order_id, expectedAmountPesewas]
+            );
+            const localCandidates = Number(cntRow?.cnt || 0);
+            if (localCandidates === 1 && unclaimedActive.length === 1) {
+              refundData = unclaimedActive[0];
+              reusedExisting = true;
+            } else {
+              await pool.query(
+                `UPDATE return_requests SET status = 'refund_failed', updated_at = NOW() WHERE id = $1 AND status = 'refund_pending'`,
+                [returnId]
+              ).catch(() => {});
+              const { notificationQueue } = require('../queues');
+              const alertKey = `ambiguous_return_retry_${returnId}_${reserved.refund_attempt}`;
+              notificationQueue.add(
+                'admin-payment-alert',
+                {
+                  orderId: reserved.order_id,
+                  alertKey,
+                  title: 'Ambiguous Paystack refund on retry',
+                  detail: `Retry for return ${returnId.slice(0, 8)} (GHS ${Number(reserved.refund_amount).toFixed(2)}) found ${unclaimedActive.length} unclaimed Paystack refund(s) across ${localCandidates} equal-amount return(s) without a matching RET- tag. Not auto-resolved; inspect Paystack manually.`,
+                },
+                { singletonKey: alertKey }
+              ).catch(() => {});
+              return res.status(409).json({
+                error: 'Ambiguous existing Paystack refund(s) found for this amount; admin alert raised for manual review',
+              });
+            }
+          }
+        }
       }
     } catch (lookupErr) {
       logger.error('[approveReturnRequestById] Paystack lookup failed on retry', {
@@ -800,6 +872,17 @@ const approveReturnRequestById = async (req, res) => {
         currency: 'GHS',
         notes: merchantNote,
       });
+
+      // Verify Paystack echoed our RET- tag in merchant_note; if not, log a warning (no secrets)
+      // and rely on the stored refund_provider_id for webhook/reconciler matching.
+      const echoedNote = typeof refundData?.merchant_note === 'string' ? refundData.merchant_note : '';
+      if (!echoedNote.toUpperCase().includes(String(reserved.refund_reference).toUpperCase())) {
+        logger.warn('[approveReturnRequestById] Paystack Create Refund response did not preserve RET- tag in merchant_note; relying on stored provider id', {
+          returnId,
+          refundProviderId: refundData?.id ? String(refundData.id) : null,
+          hasMerchantNote: Boolean(echoedNote),
+        });
+      }
     } catch (paystackErr) {
       logger.error('[approveReturnRequestById] Paystack refund call failed', {
         err: paystackErr.message, status: paystackErr.status, returnId,
@@ -854,6 +937,23 @@ const approveReturnRequestById = async (req, res) => {
     if (!locked) {
       await postClient.query('ROLLBACK');
       return res.status(404).json({ error: 'Return request not found' });
+    }
+
+    if (locked.status === 'refunded') {
+      const { rows: [alreadyDone] } = await postClient.query(
+        `UPDATE return_requests
+            SET refund_provider_id = COALESCE(refund_provider_id, $1),
+                updated_at = NOW()
+          WHERE id = $2
+          RETURNING *`,
+        [providerId, returnId]
+      );
+      await postClient.query('COMMIT');
+      return res.json({
+        message: 'Return approved and refunded via Paystack',
+        return_request: alreadyDone,
+        paystack_refund: { id: providerId, status: providerStatus },
+      });
     }
 
     if (providerStatus === 'processed') {

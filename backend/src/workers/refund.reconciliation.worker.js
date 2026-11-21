@@ -35,11 +35,10 @@ async function applyRefundSuccess(order, paystackRefund, boss) {
               status            = 'refunded',
               payment_status    = 'refunded',
               refund_provider_id = COALESCE(refund_provider_id, $1),
-              refund_reference  = COALESCE(refund_reference,  $2),
               refunded_at       = NOW(),
               updated_at        = NOW()
-        WHERE id = $3`,
-      [String(paystackRefund.id), paystackRefund.reference || null, order.id]
+        WHERE id = $2`,
+      [String(paystackRefund.id), order.id]
     );
 
     await client.query(
@@ -112,11 +111,10 @@ async function applyRefundFailed(order, paystackRefund) {
       `UPDATE orders
           SET refund_status     = 'failed',
               refund_provider_id = COALESCE(refund_provider_id, $1),
-              refund_reference  = COALESCE(refund_reference,  $2),
-              refund_notes      = $3,
+              refund_notes      = $2,
               updated_at        = NOW()
-        WHERE id = $4`,
-      [String(paystackRefund.id), paystackRefund.reference || null, note, order.id]
+        WHERE id = $3`,
+      [String(paystackRefund.id), note, order.id]
     );
 
     await client.query('COMMIT');
@@ -161,11 +159,10 @@ async function applyRefundNeedsAttention(order, paystackRefund, boss) {
       `UPDATE orders
           SET refund_status     = 'needs_attention',
               refund_provider_id = COALESCE(refund_provider_id, $1),
-              refund_reference  = COALESCE(refund_reference,  $2),
-              refund_notes      = $3,
+              refund_notes      = $2,
               updated_at        = NOW()
-        WHERE id = $4`,
-      [String(paystackRefund.id), paystackRefund.reference || null, note, order.id]
+        WHERE id = $3`,
+      [String(paystackRefund.id), note, order.id]
     );
 
     await logStatusChange(
@@ -243,18 +240,67 @@ async function reconcileReturnRequestRefunds(boss) {
     const isStale48h = ageMs > STALE_REFUND_PENDING_MS;
 
     let paystackRefund = null;
+    let isAmbiguous = false;
     try {
+      // (a) Provider ID lookup
       if (row.refund_provider_id) {
         paystackRefund = await fetchRefundById(row.refund_provider_id);
       }
-      if (!paystackRefund && row.tx_reference && row.refund_reference) {
+      // (b) RET- tag in merchant_note + transaction reference
+      // (c) Transaction reference + exact amount only if unambiguous (1 local candidate, 1 unclaimed Paystack refund)
+      if (!paystackRefund && row.tx_reference) {
         const list = await fetchRefundsByTransaction(row.tx_reference);
-        paystackRefund = matchPaystackRefundByRefAndAmount(list, row.refund_reference, amountPesewas);
+        if (row.refund_reference) {
+          paystackRefund = matchPaystackRefundByRefAndAmount(list, row.refund_reference, amountPesewas, row.tx_reference);
+        }
+        if (!paystackRefund && Array.isArray(list) && list.length > 0) {
+          const { rows: claimedRows } = await pool.query(
+            `SELECT refund_provider_id FROM return_requests WHERE order_id = $1 AND id <> $2 AND refund_provider_id IS NOT NULL`,
+            [row.order_id, row.id]
+          );
+          const claimedIds = new Set(claimedRows.map(r => String(r.refund_provider_id)));
+          const unclaimedByAmount = list.filter((r) => {
+            const rId = r?.id ? String(r.id) : null;
+            const txOk = !r?.transaction_reference || r.transaction_reference === row.tx_reference;
+            return Number(r?.amount) === amountPesewas && txOk && (!rId || !claimedIds.has(rId));
+          });
+          if (unclaimedByAmount.length > 0) {
+            const { rows: [cntRow] } = await pool.query(
+              `SELECT COUNT(*)::int AS cnt
+                 FROM return_requests
+                WHERE order_id = $1
+                  AND status = 'refund_pending'
+                  AND ROUND(refund_amount * 100)::int = $2`,
+              [row.order_id, amountPesewas]
+            );
+            const localCandidates = Number(cntRow?.cnt || 0);
+            if (localCandidates === 1 && unclaimedByAmount.length === 1) {
+              paystackRefund = unclaimedByAmount[0];
+            } else {
+              isAmbiguous = true;
+              if (boss) {
+                const ambKey = `ret_refund_ambiguous_${row.id}_${row.refund_attempt || 1}`;
+                await boss.send(
+                  'notification/admin-payment-alert',
+                  {
+                    orderId: row.order_id,
+                    alertKey: ambKey,
+                    title: 'Ambiguous partial return refund during reconciliation',
+                    detail: `Return ${row.id.slice(0, 8)} (GHS ${Number(row.refund_amount).toFixed(2)}) matched ${unclaimedByAmount.length} Paystack refund(s) across ${localCandidates} equal-amount refund_pending return(s) without a usable merchant_note. Not auto-resolved; reconcile manually.`,
+                  },
+                  { retryLimit: 3, singletonKey: ambKey }
+                );
+              }
+            }
+          }
+        }
       }
     } catch (err) {
       logger.error('Return refund reconciliation: Paystack API error', { returnId: row.id, err: err.message });
       continue;
     }
+
+    if (isAmbiguous) continue;
 
     if (!paystackRefund) {
       if (ageMs >= UNMATCHED_REFUND_ALERT_MS && boss) {
@@ -440,7 +486,7 @@ async function reconcileDuplicatePaymentRefunds(boss) {
       continue;
     }
     const status = String(paystackRefund.status || '').toLowerCase();
-    const refundRef = paystackRefund.id ? String(paystackRefund.id) : (paystackRefund.reference || 'unknown');
+    const refundRef = paystackRefund.id ? String(paystackRefund.id) : 'unknown';
 
     if (status === 'processed') {
       const client = await pool.connect();
