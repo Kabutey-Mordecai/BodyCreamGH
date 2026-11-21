@@ -39,7 +39,21 @@ const ReviewModel = {
     return { rows, total: countResult.rows[0].total };
   },
 
-  findByUser: async (userId) => {
+  findByUser: async (userId, productId = null) => {
+    if (productId) {
+      const { rows } = await pool.query(
+        `SELECT r.id, r.rating, r.title, r.body,
+                r.is_approved, r.is_rejected, r.created_at,
+                p.name AS product_name, p.id AS product_id, p.image_url
+         FROM product_reviews r
+         JOIN products p ON r.product_id = p.id
+         WHERE r.user_id = $1 AND r.product_id = $2
+         ORDER BY r.created_at DESC
+         LIMIT 1`,
+        [userId, productId]
+      );
+      return rows[0] || null;
+    }
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body,
               r.is_approved, r.is_rejected, r.created_at,
