@@ -107,9 +107,10 @@ export const authAPI = {
   login:            (data)    => api.post('/auth/login', data),
   logout:           (data={}) => api.post('/auth/logout', data),
   getMe:            ()        => api.get('/auth/me'),
-  forgotPassword:   (email)   => api.post('/auth/forgot-password', { email }),
-  verifyResetToken: (token)   => api.get(`/auth/verify-reset-token/${token}`),
-  resetPassword:    (data)    => api.post('/auth/reset-password', data),
+  forgotPassword:   (email)        => api.post('/auth/forgot-password', { email }),
+  verifyResetToken: (token, email) =>
+    api.get(`/auth/verify-reset-token/${encodeURIComponent(token)}`, email ? { params: { email } } : undefined),
+  resetPassword:    (data)         => api.post('/auth/reset-password', data),
 };
 
 // ── Products ──────────────────────────────────────────────────────────────────
@@ -147,6 +148,8 @@ export const ordersAPI = {
 export const paymentsAPI = {
   initialize:      (orderId)           => api.post('/payments/initialize', { orderId }),
   initializeGuest: (orderId, email)    => api.post('/payments/guest/initialize', { orderId, email }),
+  chargeMomo:      (data)              => api.post('/payments/charge-momo', data),
+  submitOtp:       (data)              => api.post('/payments/submit-otp', data),
   verify:          (reference, config) => api.post('/payments/verify', { reference }, config),
 };
 
