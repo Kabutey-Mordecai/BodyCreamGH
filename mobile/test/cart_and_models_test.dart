@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cosmetics_app/config.dart';
 import 'package:cosmetics_app/models/order.dart';
 import 'package:cosmetics_app/models/product.dart';
 import 'package:cosmetics_app/providers/cart_provider.dart';
 import 'package:cosmetics_app/providers/theme_provider.dart';
+import 'package:cosmetics_app/screens/track_order_screen.dart';
 import 'package:cosmetics_app/services/api_service.dart';
 import 'package:cosmetics_app/theme/app_theme.dart';
 import 'package:cosmetics_app/widgets/password_strength.dart';
@@ -300,6 +302,41 @@ void main() {
         ApiService.formatError(const ApiException(400, 'Return window of 14 days has expired')),
         'Return window of 14 days has expired',
       );
+
+      // Exact required order number strings through normalizeOrderNumber and TrackOrderScreen.validateOrderNumber
+      const sampleInputs = <String, String>{
+        'ORD-1795247768659': 'ORD-1795247768659',
+        'ord-gcb7irgj': 'ORD-GCB7IRGJ',
+        '#ORD-GCB7IRGJ': 'ORD-GCB7IRGJ',
+        ' #ord-gcb7irgj ': 'ORD-GCB7IRGJ',
+      };
+      sampleInputs.forEach((raw, expected) {
+        expect(ApiService.normalizeOrderNumber(raw), expected);
+        expect(TrackOrderScreen.validateOrderNumber(raw), isNull);
+      });
+      expect(TrackOrderScreen.validateOrderNumber('   ###   '), isNotNull);
+
+      // 429 Retry-After header parsing: header present, header missing, non-numeric header
+      final errWithHeader = ApiService.parseErrorResponse(
+        http.Response('', 429, headers: {'retry-after': '42'}),
+      );
+      expect(errWithHeader.statusCode, 429);
+      expect(errWithHeader.retryAfter, 42);
+      expect(errWithHeader.message, contains('42 seconds'));
+
+      final errMissingHeader = ApiService.parseErrorResponse(
+        http.Response('', 429),
+      );
+      expect(errMissingHeader.statusCode, 429);
+      expect(errMissingHeader.retryAfter, 60);
+      expect(errMissingHeader.message, contains('60 seconds'));
+
+      final errNonNumericHeader = ApiService.parseErrorResponse(
+        http.Response('', 429, headers: {'retry-after': 'Wed, 21 Oct 2026 07:28:00 GMT'}),
+      );
+      expect(errNonNumericHeader.statusCode, 429);
+      expect(errNonNumericHeader.retryAfter, 60);
+      expect(errNonNumericHeader.message, contains('60 seconds'));
     });
   });
 
