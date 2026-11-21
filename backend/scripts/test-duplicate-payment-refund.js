@@ -119,10 +119,18 @@ async function run() {
     assert.strictEqual(capturedPayload.amount, 15000);
     assert.strictEqual(resDup.body.payment.status, 'refund_pending', 'Pending Paystack refund must store status=refund_pending, not refunded');
 
-    // 4. Put failReconcilePaymentId into 'refund_pending' too, then run refund.reconciliation.worker:
+    // 4. Put failReconcilePaymentId into 'refund_pending' too, and add a stale (>48h) refund_pending row
     //    - dupRef reports 'processed' -> moves to 'refunded'
-    //    - failRecRef reports 'failed' -> reverts to 'duplicate' + alerts admin
+    //    - failRecRef reports 'failed' -> reverts to 'duplicate' + alerts admin (with singletonKey)
+    //    - staleRef (>48h old, still pending) -> alerts admin with dup_refund_stale_48h_* & singletonKey
+    const stalePaymentId = uuid();
+    const staleRef = `test_dup_stale_${Date.now()}`;
     await pool.query(`UPDATE payments SET status = 'refund_pending' WHERE id = $1`, [failReconcilePaymentId]);
+    await pool.query(
+      `INSERT INTO payments (id, order_id, amount, currency, status, payment_method, paystack_reference, updated_at)
+       VALUES ($1, $2, 150.00, 'GHS', 'refund_pending', 'paystack', $3, NOW() - INTERVAL '49 hours')`,
+      [stalePaymentId, orderId, staleRef]
+    );
 
     const sentAlerts = [];
     const mockBoss = {
@@ -139,6 +147,9 @@ async function run() {
         if (config.params?.reference === failRecRef) {
           return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: [{ id: 999003, status: 'failed' }] } };
         }
+        if (config.params?.reference === staleRef) {
+          return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: [{ id: 999004, status: 'pending' }] } };
+        }
       }
       throw new Error(`Unexpected Paystack call during reconcile: ${config.method} ${config.url}`);
     };
@@ -146,9 +157,14 @@ async function run() {
     const recStats = await reconcileDuplicatePaymentRefunds(mockBoss);
     assert(recStats.refunded >= 1, 'Expected at least 1 refund_pending row marked refunded');
     assert(recStats.reverted >= 1, 'Expected at least 1 failed refund_pending row reverted to duplicate');
+    assert(recStats.staleAlerted >= 1, 'Expected at least 1 stale >48h refund_pending alert');
     assert(
-      sentAlerts.some(a => a.queue === 'notification/admin-payment-alert' && a.data.orderId === orderId && a.data.detail.includes(failRecRef)),
-      'Expected admin-payment-alert when duplicate refund fails during reconciliation'
+      sentAlerts.some(a => a.queue === 'notification/admin-payment-alert' && a.data.orderId === orderId && a.data.detail.includes(failRecRef) && a.opts?.singletonKey === a.data.alertKey),
+      'Expected admin-payment-alert with singletonKey when duplicate refund fails during reconciliation'
+    );
+    assert(
+      sentAlerts.some(a => a.queue === 'notification/admin-payment-alert' && a.data.alertKey === `dup_refund_stale_48h_${staleRef}` && a.opts?.singletonKey === a.data.alertKey),
+      'Expected stale >48h admin-payment-alert with singletonKey'
     );
 
     // 5. Retry idempotency: prior Paystack 'processed' refund skips POST /refund and marks 'refunded'

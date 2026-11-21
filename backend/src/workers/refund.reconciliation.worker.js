@@ -182,15 +182,16 @@ async function applyRefundNeedsAttention(order, paystackRefund, boss) {
       paystackId: paystackRefund.id,
     });
     if (boss) {
+      const alertKey = `refund_needs_attention_${paystackRefund.id || order.id}`;
       await boss.send(
         'notification/admin-payment-alert',
         {
           orderId: order.id,
-          alertKey: `refund_needs_attention_${paystackRefund.id || order.id}`,
+          alertKey,
           title: 'Paystack refund needs attention',
           detail: 'Paystack requires customer account details to complete this refund.',
         },
-        { retryLimit: 3 }
+        { retryLimit: 3, singletonKey: alertKey }
       );
     }
     return true;
@@ -208,11 +209,13 @@ async function applyRefundNeedsAttention(order, paystackRefund, boss) {
 
 // ── Duplicate-payment refund reconciliation ───────────────────────────────────
 
+const STALE_REFUND_PENDING_MS = 48 * 60 * 60 * 1000;
+
 async function reconcileDuplicatePaymentRefunds(boss) {
-  let checked = 0, refunded = 0, reverted = 0;
+  let checked = 0, refunded = 0, reverted = 0, staleAlerted = 0;
 
   const { rows: pendingDupRefunds } = await pool.query(
-    `SELECT p.id, p.order_id, p.amount, p.currency, p.paystack_reference, o.status AS order_status
+    `SELECT p.id, p.order_id, p.amount, p.currency, p.paystack_reference, p.updated_at, o.status AS order_status
        FROM payments p
        JOIN orders o ON o.id = p.order_id
       WHERE p.status = 'refund_pending'
@@ -225,6 +228,10 @@ async function reconcileDuplicatePaymentRefunds(boss) {
 
   for (const row of pendingDupRefunds) {
     checked++;
+    const amountNum = Number(row.amount) || 0;
+    const ageMs = row.updated_at ? Date.now() - new Date(row.updated_at).getTime() : 0;
+    const isStale48h = ageMs > STALE_REFUND_PENDING_MS;
+
     let paystackRefund = null;
     try {
       const list = await fetchRefundsByTransaction(row.paystack_reference);
@@ -238,10 +245,25 @@ async function reconcileDuplicatePaymentRefunds(boss) {
       continue;
     }
 
-    if (!paystackRefund) continue;
+    if (!paystackRefund) {
+      if (isStale48h && boss) {
+        const staleKey = `dup_refund_stale_48h_${row.paystack_reference}`;
+        await boss.send(
+          'notification/admin-payment-alert',
+          {
+            orderId: row.order_id,
+            alertKey: staleKey,
+            title: 'Duplicate payment refund stuck >48h',
+            detail: `Duplicate payment ${row.paystack_reference} (${row.currency || 'GHS'} ${amountNum.toFixed(2)}) has been in refund_pending for over 48 hours with no matching Paystack refund record.`,
+          },
+          { retryLimit: 3, singletonKey: staleKey }
+        );
+        staleAlerted++;
+      }
+      continue;
+    }
     const status = String(paystackRefund.status || '').toLowerCase();
     const refundRef = paystackRefund.id ? String(paystackRefund.id) : (paystackRefund.reference || 'unknown');
-    const amountNum = Number(row.amount) || 0;
 
     if (status === 'processed') {
       const client = await pool.connect();
@@ -303,32 +325,47 @@ async function reconcileDuplicatePaymentRefunds(boss) {
       }
 
       if (didRevert && boss) {
+        const failKey = `dup_refund_failed_${row.paystack_reference}_${refundRef}`;
         await boss.send(
           'notification/admin-payment-alert',
           {
             orderId: row.order_id,
-            alertKey: `dup_refund_failed_${row.paystack_reference}_${refundRef}`,
+            alertKey: failKey,
             title: 'Duplicate payment refund failed',
             detail: `Paystack refund #${refundRef} for duplicate payment ${row.paystack_reference} (${row.currency || 'GHS'} ${amountNum.toFixed(2)}) failed. Payment reverted to 'duplicate' for retry.`,
           },
-          { retryLimit: 3 }
+          { retryLimit: 3, singletonKey: failKey }
         );
       }
     } else if (status === 'needs-attention' && boss) {
+      const attnKey = `dup_refund_needs_attention_${row.paystack_reference}_${refundRef}`;
       await boss.send(
         'notification/admin-payment-alert',
         {
           orderId: row.order_id,
-          alertKey: `dup_refund_needs_attention_${row.paystack_reference}_${refundRef}`,
+          alertKey: attnKey,
           title: 'Duplicate payment refund needs attention',
           detail: `Paystack refund #${refundRef} for duplicate payment ${row.paystack_reference} (${row.currency || 'GHS'} ${amountNum.toFixed(2)}) requires customer account details.`,
         },
-        { retryLimit: 3 }
+        { retryLimit: 3, singletonKey: attnKey }
       );
+    } else if (isStale48h && boss) {
+      const staleKey = `dup_refund_stale_48h_${row.paystack_reference}`;
+      await boss.send(
+        'notification/admin-payment-alert',
+        {
+          orderId: row.order_id,
+          alertKey: staleKey,
+          title: 'Duplicate payment refund stuck >48h',
+          detail: `Duplicate payment ${row.paystack_reference} (${row.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef}) has remained in refund_pending (provider status: ${status}) for over 48 hours.`,
+        },
+        { retryLimit: 3, singletonKey: staleKey }
+      );
+      staleAlerted++;
     }
   }
 
-  return { checked, refunded, reverted };
+  return { checked, refunded, reverted, staleAlerted };
 }
 
 // ── Worker registration ───────────────────────────────────────────────────────
