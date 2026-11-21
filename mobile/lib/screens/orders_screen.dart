@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -16,7 +17,8 @@ class OrdersScreen extends StatefulWidget {
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> {
+class _OrdersScreenState extends State<OrdersScreen>
+    with WidgetsBindingObserver {
   List<Order> _orders = [];
   List<Map<String, dynamic>> _pendingPrompts = [];
   Map<String, dynamic>? _pagination;
@@ -24,6 +26,34 @@ class _OrdersScreenState extends State<OrdersScreen> {
   bool _loading = false;
   String? _error;
   bool _wasLoggedIn = false;
+  Timer? _pollTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _wasLoggedIn && mounted) {
+      _load(silent: true);
+    }
+  }
+
+  void _startPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted && _wasLoggedIn) _load(silent: true);
+    });
+  }
 
   @override
   void didChangeDependencies() {
@@ -32,8 +62,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
     if (isLoggedIn && !_wasLoggedIn) {
       _wasLoggedIn = true;
       _load();
+      _startPolling();
     } else if (!isLoggedIn && _wasLoggedIn) {
       _wasLoggedIn = false;
+      _pollTimer?.cancel();
       _orders = [];
       _pendingPrompts = [];
       _pagination = null;
@@ -41,11 +73,13 @@ class _OrdersScreenState extends State<OrdersScreen> {
     }
   }
 
-  Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+  Future<void> _load({bool silent = false}) async {
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
     try {
       final results = await Future.wait([
         ApiService.instance.getMyOrdersWithMeta(page: _page, limit: 20),
@@ -71,7 +105,7 @@ class _OrdersScreenState extends State<OrdersScreen> {
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && !silent) {
         setState(() {
           _error =
               e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), '');
