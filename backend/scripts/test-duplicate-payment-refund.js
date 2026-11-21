@@ -49,13 +49,20 @@ async function run() {
     );
     assert.strictEqual(resWin.statusCode, 400, `Expected 400 for non-duplicate payment, got ${resWin.statusCode}`);
 
-    // 2. Stub Paystack GET /refund (none existing) + POST /refund and verify ONLY dupRef is refunded (never winRef)
+    // 2. Stub Paystack GET /refund returning a previously FAILED refund + POST /refund
+    //    Confirm a prior 'failed' refund does NOT block a retry, and ONLY dupRef is refunded (never winRef)
     let capturedPayload = null;
     let postRefundCalls = 0;
     paystackAPI.defaults.adapter = async (config) => {
       if (config.method === 'get' && config.url === '/refund') {
         assert.strictEqual(config.params?.reference, dupRef, 'Lookup must query the duplicate reference, not the winning reference');
-        return { status: 200, statusText: 'OK', headers: {}, config, data: { status: true, data: [] } };
+        return {
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config,
+          data: { status: true, data: [{ id: 888000, status: 'failed', reference: 'rf_prev_failed' }] },
+        };
       }
       if (config.method === 'post' && config.url === '/refund') {
         postRefundCalls++;
@@ -129,8 +136,14 @@ async function run() {
       'SELECT note FROM order_status_log WHERE order_id = $1',
       [orderId]
     );
-    assert(logRows.some(r => r.note.includes(dupRef)), 'Expected audit log entry for duplicate refund');
-    assert(logRows.some(r => r.note.includes(retryDupRef)), 'Expected audit log entry for reconciled duplicate refund');
+    assert(
+      logRows.some(r => r.note.includes(dupRef) && r.note.includes('999001') && r.note.includes('150.00')),
+      'Expected audit log entry to contain duplicate reference, Paystack refund id (999001), and amount (150.00)'
+    );
+    assert(
+      logRows.some(r => r.note.includes(retryDupRef) && r.note.includes('999002') && r.note.includes('150.00')),
+      'Expected audit log entry for reconciled duplicate refund with refund id and amount'
+    );
 
     console.log('ALL DUPLICATE PAYMENT REFUND TESTS PASSED (two-ref isolation + no double-refund on retry)');
   } finally {
