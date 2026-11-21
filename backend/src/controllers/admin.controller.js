@@ -639,6 +639,9 @@ const createAdminAccount = async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
     const safeRole = ALLOWED_ADMIN_ROLES.includes(role) ? role : 'admin';
+    if (safeRole !== 'admin' && req.userRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Only super_admin may assign staff roles' });
+    }
 
     const { rows: existing } = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
     if (existing.length) return res.status(409).json({ error: 'Email already registered' });
@@ -685,16 +688,63 @@ const getAuditLogs = async (req, res) => {
   }
 };
 
+const updateAdminRole = async (req, res) => {
+  try {
+    if (req.userRole !== 'super_admin') {
+      return res.status(403).json({ error: 'Only super_admin may change roles' });
+    }
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'You cannot change your own role' });
+    }
+    const { role } = req.body || {};
+    if (!ALLOWED_ADMIN_ROLES.includes(role)) {
+      return res.status(400).json({ error: 'Invalid role' });
+    }
+    const result = await pool.query(
+      `UPDATE users SET role = $1, updated_at = NOW()
+        WHERE id = $2 AND role = ANY($3::text[])
+        RETURNING id, email, role`,
+      [role, req.params.id, ALLOWED_ADMIN_ROLES]
+    );
+    if (!result.rowCount) return res.status(404).json({ error: 'Admin account not found' });
+
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'admin.account.role_change',
+      resourceType: 'user',
+      resourceId: req.params.id,
+      details: { email: result.rows[0].email, new_role: role },
+      ip: req.ip,
+    });
+    res.json(result.rows[0]);
+  } catch (err) {
+    logger.error('updateAdminRole error', { err: err.message });
+    res.status(500).json({ error: 'Failed to update admin role' });
+  }
+};
+
 const deactivateAdminAccount = async (req, res) => {
   try {
     if (req.params.id === req.user.id) {
       return res.status(400).json({ error: 'You cannot deactivate your own account' });
     }
     const result = await pool.query(
-      `UPDATE users SET is_active = false WHERE id = $1 AND role = 'admin' RETURNING id`,
-      [req.params.id]
+      `UPDATE users SET is_active = false WHERE id = $1 AND role = ANY($2::text[]) RETURNING id, email`,
+      [req.params.id, ALLOWED_ADMIN_ROLES]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Admin account not found' });
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'admin.account.deactivate',
+      resourceType: 'user',
+      resourceId: req.params.id,
+      details: { email: result.rows[0].email },
+      ip: req.ip,
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to deactivate admin account' });
@@ -704,10 +754,20 @@ const deactivateAdminAccount = async (req, res) => {
 const activateAdminAccount = async (req, res) => {
   try {
     const result = await pool.query(
-      `UPDATE users SET is_active = true WHERE id = $1 AND role = 'admin' RETURNING id`,
-      [req.params.id]
+      `UPDATE users SET is_active = true WHERE id = $1 AND role = ANY($2::text[]) RETURNING id, email`,
+      [req.params.id, ALLOWED_ADMIN_ROLES]
     );
     if (!result.rowCount) return res.status(404).json({ error: 'Admin account not found' });
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'admin.account.activate',
+      resourceType: 'user',
+      resourceId: req.params.id,
+      details: { email: result.rows[0].email },
+      ip: req.ip,
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to activate admin account' });
@@ -723,6 +783,7 @@ module.exports = {
   getAllCustomers,
   getAdminAccounts,
   createAdminAccount,
+  updateAdminRole,
   deactivateAdminAccount,
   activateAdminAccount,
   getAuditLogs,

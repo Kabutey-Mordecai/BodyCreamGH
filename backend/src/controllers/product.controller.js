@@ -125,6 +125,16 @@ const createProduct = async (req, res) => {
   try {
     const id = await ProductModel.create(req.body);
     bustCache();
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'product.create',
+      resourceType: 'product',
+      resourceId: id,
+      details: { name: req.body.name, price: req.body.price },
+      ip: req.ip,
+    });
     res.status(201).json({ id, message: 'Product created' });
   } catch (error) {
     logger.error('Error creating product', { err: error.message });
@@ -138,6 +148,16 @@ const updateProduct = async (req, res) => {
     if (!product) return res.status(404).json({ error: 'Product not found' });
     await ProductModel.update(req.params.id, req.body);
     bustCache();
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'product.update',
+      resourceType: 'product',
+      resourceId: req.params.id,
+      details: { name: req.body.name ?? product.name, old_price: product.price, new_price: req.body.price },
+      ip: req.ip,
+    });
     res.json({ message: 'Product updated' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update product' });
@@ -148,6 +168,16 @@ const deleteProduct = async (req, res) => {
   try {
     await ProductModel.delete(req.params.id);
     bustCache();
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'product.delete',
+      resourceType: 'product',
+      resourceId: req.params.id,
+      details: {},
+      ip: req.ip,
+    });
     res.json({ message: 'Product deleted' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to delete product' });
