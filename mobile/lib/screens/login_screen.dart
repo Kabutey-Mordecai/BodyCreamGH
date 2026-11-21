@@ -108,7 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter your account email and we will send you a password reset link.',
+              'Enter your account email and we will send you a 6-digit verification code.',
               style: TextStyle(fontSize: 13.5, color: AppColors.muted),
             ),
             const SizedBox(height: 12),
@@ -122,8 +122,8 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
             const SizedBox(height: 8),
             TextButton(
-              onPressed: () => Navigator.pop(ctx, 'have_token'),
-              child: const Text('Already have a reset token?'),
+              onPressed: () => Navigator.pop(ctx, 'have_code'),
+              child: const Text('Already have a 6-digit code?'),
             ),
           ],
         ),
@@ -134,26 +134,26 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, 'send'),
-            child: const Text('Send Reset Link'),
+            child: const Text('Send 6-Digit Code'),
           ),
         ],
       ),
     );
-    if (action == 'have_token') {
-      _openTokenResetDialog();
+    final email = resetEmailCtrl.text.trim();
+    if (action == 'have_code') {
+      await _openPinResetFlow(email: email);
       return;
     }
-    if (action != 'send' || resetEmailCtrl.text.trim().isEmpty) return;
+    if (action != 'send' || email.isEmpty) return;
     try {
-      await ApiService.instance.forgotPassword(resetEmailCtrl.text.trim());
+      await ApiService.instance.forgotPassword(email);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Reset token sent! Check your email and paste the token below.'),
+        SnackBar(
+          content: Text('6-digit reset code sent to $email.'),
         ),
       );
-      await _openTokenResetDialog();
+      await _openPinResetFlow(email: email);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -166,47 +166,109 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  Future<void> _openTokenResetDialog() async {
-    final tokenCtrl = TextEditingController();
+  Future<void> _openPinResetFlow({String email = ''}) async {
+    final pinCtrl = TextEditingController();
     final newPassCtrl = TextEditingController();
     final confirmCtrl = TextEditingController();
+    int step = 1; // 1 = enter 6-digit PIN, 2 = enter new password
+    String verifiedPin = '';
     String? dialogErr;
-    bool saving = false;
+    bool busy = false;
 
     await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Set New Password'),
+          title: Text(step == 1 ? 'Enter 6-Digit Code' : 'Set New Password'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TextField(
-                  controller: tokenCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Reset Token (from email)',
+                if (step == 1) ...[
+                  Text(
+                    email.isNotEmpty
+                        ? 'Enter the 6-digit verification code sent to $email.'
+                        : 'Enter the 6-digit verification code sent to your email.',
+                    style: const TextStyle(fontSize: 13.5, color: AppColors.muted),
                   ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: newPassCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'New Password',
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: pinCtrl,
+                    keyboardType: TextInputType.number,
+                    maxLength: 6,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 10,
+                    ),
+                    decoration: const InputDecoration(
+                      hintText: '000000',
+                      counterText: '',
+                    ),
                   ),
-                  onChanged: (_) => setDialogState(() {}),
-                ),
-                PasswordStrengthMeter(password: newPassCtrl.text),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: confirmCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Confirm New Password',
+                  if (email.isNotEmpty)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: busy
+                            ? null
+                            : () async {
+                                setDialogState(() {
+                                  busy = true;
+                                  dialogErr = null;
+                                });
+                                try {
+                                  await ApiService.instance.forgotPassword(email);
+                                  if (!ctx.mounted) return;
+                                  setDialogState(() {
+                                    busy = false;
+                                    dialogErr = null;
+                                  });
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                          content: Text('New 6-digit code sent!')),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (!ctx.mounted) return;
+                                  setDialogState(() {
+                                    busy = false;
+                                    dialogErr = e.toString().replaceFirst(
+                                        RegExp(r'ApiException\(\d+\): '), '');
+                                  });
+                                }
+                              },
+                        child: const Text('Resend code'),
+                      ),
+                    ),
+                ] else ...[
+                  const Text(
+                    'Code verified! Choose a strong new password for your account.',
+                    style: TextStyle(fontSize: 13.5, color: AppColors.muted),
                   ),
-                ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: newPassCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'New Password',
+                    ),
+                    onChanged: (_) => setDialogState(() {}),
+                  ),
+                  PasswordStrengthMeter(password: newPassCtrl.text),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: confirmCtrl,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Confirm New Password',
+                    ),
+                  ),
+                ],
                 if (dialogErr != null) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -220,62 +282,93 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: saving ? null : () => Navigator.pop(ctx),
+              onPressed: busy ? null : () => Navigator.pop(ctx),
               child: const Text('Cancel'),
             ),
-            FilledButton(
-              onPressed: saving
-                  ? null
-                  : () async {
-                      final tok = tokenCtrl.text.trim();
-                      final pw = newPassCtrl.text;
-                      if (tok.isEmpty) {
-                        setDialogState(
-                            () => dialogErr = 'Please enter your reset token.');
-                        return;
-                      }
-                      if (pw != confirmCtrl.text) {
-                        setDialogState(
-                            () => dialogErr = 'Passwords do not match.');
-                        return;
-                      }
-                      if (getPasswordStrength(pw).score < 4) {
-                        setDialogState(() => dialogErr =
-                            'Please meet all 4 password requirements.');
-                        return;
-                      }
-                      setDialogState(() {
-                        saving = true;
-                        dialogErr = null;
-                      });
-                      try {
-                        await ApiService.instance.verifyResetToken(tok);
-                        await ApiService.instance.resetPassword(
-                          token: tok,
-                          newPassword: pw,
-                        );
-                        if (!ctx.mounted) return;
-                        Navigator.pop(ctx);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                  'Password updated! You can now sign in.'),
-                            ),
-                          );
+            if (step == 1)
+              FilledButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        final pin = pinCtrl.text.trim();
+                        if (!RegExp(r'^\d{6}$').hasMatch(pin)) {
+                          setDialogState(() =>
+                              dialogErr = 'Please enter the 6-digit code.');
+                          return;
                         }
-                      } catch (e) {
-                        if (!ctx.mounted) return;
                         setDialogState(() {
-                          saving = false;
-                          dialogErr = e
-                              .toString()
-                              .replaceFirst(RegExp(r'ApiException\(\d+\): '), '');
+                          busy = true;
+                          dialogErr = null;
                         });
-                      }
-                    },
-              child: Text(saving ? 'Updating…' : 'Update Password'),
-            ),
+                        try {
+                          await ApiService.instance
+                              .verifyResetToken(pin, email: email);
+                          if (!ctx.mounted) return;
+                          setDialogState(() {
+                            busy = false;
+                            verifiedPin = pin;
+                            step = 2;
+                            dialogErr = null;
+                          });
+                        } catch (e) {
+                          if (!ctx.mounted) return;
+                          setDialogState(() {
+                            busy = false;
+                            dialogErr = e.toString().replaceFirst(
+                                RegExp(r'ApiException\(\d+\): '), '');
+                          });
+                        }
+                      },
+                child: Text(busy ? 'Verifying…' : 'Verify Code'),
+              )
+            else
+              FilledButton(
+                onPressed: busy
+                    ? null
+                    : () async {
+                        final pw = newPassCtrl.text;
+                        if (pw != confirmCtrl.text) {
+                          setDialogState(
+                              () => dialogErr = 'Passwords do not match.');
+                          return;
+                        }
+                        if (getPasswordStrength(pw).score < 4) {
+                          setDialogState(() => dialogErr =
+                              'Please meet all 4 password requirements.');
+                          return;
+                        }
+                        setDialogState(() {
+                          busy = true;
+                          dialogErr = null;
+                        });
+                        try {
+                          await ApiService.instance.resetPassword(
+                            token: verifiedPin,
+                            newPassword: pw,
+                            email: email,
+                          );
+                          if (!ctx.mounted) return;
+                          Navigator.pop(ctx);
+                          if (mounted) {
+                            if (email.isNotEmpty) _emailCtrl.text = email;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    'Password updated! You can now sign in.'),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (!ctx.mounted) return;
+                          setDialogState(() {
+                            busy = false;
+                            dialogErr = e.toString().replaceFirst(
+                                RegExp(r'ApiException\(\d+\): '), '');
+                          });
+                        }
+                      },
+                child: Text(busy ? 'Updating…' : 'Update Password'),
+              ),
           ],
         ),
       ),

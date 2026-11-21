@@ -169,9 +169,12 @@ class ApiService {
     await _handleResponse(res);
   }
 
-  Future<void> verifyResetToken(String token) async {
+  Future<void> verifyResetToken(String token, {String? email}) async {
+    final query = (email != null && email.trim().isNotEmpty)
+        ? '?email=${Uri.encodeQueryComponent(email.trim())}'
+        : '';
     final res = await _client.get(
-      _uri('/auth/verify-reset-token/${Uri.encodeComponent(token)}'),
+      _uri('/auth/verify-reset-token/${Uri.encodeComponent(token.trim())}$query'),
       headers: _headers(),
     );
     await _handleResponse(res);
@@ -180,11 +183,16 @@ class ApiService {
   Future<void> resetPassword({
     required String token,
     required String newPassword,
+    String? email,
   }) async {
     final res = await _client.post(
       _uri('/auth/reset-password'),
       headers: _headers(),
-      body: jsonEncode({'token': token, 'new_password': newPassword}),
+      body: jsonEncode({
+        'token': token.trim(),
+        'new_password': newPassword,
+        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      }),
     );
     await _handleResponse(res);
   }

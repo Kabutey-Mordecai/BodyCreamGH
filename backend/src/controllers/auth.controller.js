@@ -379,8 +379,8 @@ const forgotPassword = async (req, res) => {
         [user.id]
       );
 
-      const token = crypto.randomBytes(32).toString('hex');
-      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      const token = crypto.randomInt(100000, 1000000).toString(); // 6-digit PIN
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
       await pool.query(
         `INSERT INTO password_reset_tokens (id, user_id, token, expires_at)
@@ -389,7 +389,7 @@ const forgotPassword = async (req, res) => {
       );
 
       const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3001'}/reset-password?token=${token}`;
-      sendPasswordResetEmail(user.email, resetUrl).catch(err =>
+      sendPasswordResetEmail(user.email, resetUrl, token).catch(err =>
         // Log the failure with the recipient address so SMTP issues are
         // diagnosable in production logs. Never log the token or the reset URL.
         logger.error('Password reset email failed to send', {
@@ -411,18 +411,26 @@ const forgotPassword = async (req, res) => {
 
 const verifyResetToken = async (req, res) => {
   try {
-    const { token } = req.params;
-    const { rows } = await pool.query(
-      `SELECT id FROM password_reset_tokens
-       WHERE token = $1 AND used = false AND expires_at > NOW()`,
-      [token]
-    );
+    const token = String(req.params.token || '').trim();
+    const email = typeof req.query.email === 'string' ? req.query.email.trim().toLowerCase() : '';
+    const { rows } = email
+      ? await pool.query(
+          `SELECT prt.id FROM password_reset_tokens prt
+           JOIN users u ON u.id = prt.user_id
+           WHERE prt.token = $1 AND LOWER(u.email) = $2 AND prt.used = false AND prt.expires_at > NOW()`,
+          [token, email]
+        )
+      : await pool.query(
+          `SELECT id FROM password_reset_tokens
+           WHERE token = $1 AND used = false AND expires_at > NOW()`,
+          [token]
+        );
     if (rows.length === 0) {
-      return res.status(400).json({ valid: false, error: 'This link is invalid or has expired.' });
+      return res.status(400).json({ valid: false, error: 'This code is invalid or has expired.' });
     }
     res.json({ valid: true });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to verify token' });
+    res.status(500).json({ error: 'Failed to verify code' });
   }
 };
 
@@ -430,10 +438,12 @@ const verifyResetToken = async (req, res) => {
 
 const resetPassword = async (req, res) => {
   try {
-    const { token, new_password } = req.body;
+    const { token, new_password, email } = req.body;
+    const cleanToken = typeof token === 'string' ? token.trim() : '';
+    const cleanEmail = typeof email === 'string' ? email.trim().toLowerCase() : '';
 
-    if (!token || !new_password) {
-      return res.status(400).json({ error: 'Token and new password are required' });
+    if (!cleanToken || !new_password) {
+      return res.status(400).json({ error: 'Reset code and new password are required' });
     }
     if (new_password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });
@@ -450,16 +460,24 @@ const resetPassword = async (req, res) => {
       // FOR UPDATE locks the reset token row for the duration of this transaction.
       // A concurrent request with the same token blocks here until we commit
       // (used = true → their query returns 0 rows) or roll back (they proceed).
-      const { rows } = await client.query(
-        `SELECT * FROM password_reset_tokens
-         WHERE token = $1 AND used = false AND expires_at > NOW()
-         FOR UPDATE`,
-        [token]
-      );
+      const { rows } = cleanEmail
+        ? await client.query(
+            `SELECT prt.* FROM password_reset_tokens prt
+             JOIN users u ON u.id = prt.user_id
+             WHERE prt.token = $1 AND LOWER(u.email) = $2 AND prt.used = false AND prt.expires_at > NOW()
+             FOR UPDATE OF prt`,
+            [cleanToken, cleanEmail]
+          )
+        : await client.query(
+            `SELECT * FROM password_reset_tokens
+             WHERE token = $1 AND used = false AND expires_at > NOW()
+             FOR UPDATE`,
+            [cleanToken]
+          );
 
       if (rows.length === 0) {
         await client.query('ROLLBACK');
-        return res.status(400).json({ error: 'This link is invalid or has expired.' });
+        return res.status(400).json({ error: 'This code is invalid or has expired.' });
       }
 
       const resetRecord = rows[0];

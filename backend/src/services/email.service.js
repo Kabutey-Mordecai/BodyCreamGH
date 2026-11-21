@@ -129,20 +129,22 @@ const sendPasswordResetEmail = async (to, resetUrl, token = null) => {
   await getTransporter().sendMail({
     from: `BodyCream GH <${process.env.SMTP_USER}>`,
     to,
-    subject: 'Reset your password',
+    subject: extractedToken ? `Your password reset code: ${extractedToken}` : 'Reset your password',
     html: `
       <h2>Password Reset Request</h2>
-      <p>We received a request to reset your password. Click the button below to choose a new one:</p>
+      ${extractedToken ? `
+        <p>Enter this <strong>6-digit verification code</strong> in the app to reset your password:</p>
+        <div style="font-family:monospace;font-size:30px;font-weight:700;letter-spacing:8px;background:#faf7f4;border:1px solid #ede5db;padding:16px 20px;border-radius:8px;text-align:center;color:#1c1410;margin:16px 0;">
+          ${escapeHtml(extractedToken)}
+        </div>
+      ` : ''}
+      <p>Or reset on the web using the button below:</p>
       <p>
-        <a href="${resetUrl}" style="background:#000;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;display:inline-block;">
+        <a href="${resetUrl}" style="background:#1c1410;color:#fff;padding:12px 24px;border-radius:4px;text-decoration:none;display:inline-block;">
           Reset Password
         </a>
       </p>
-      ${extractedToken ? `
-        <p style="margin-top:16px">Using the mobile app? Tap <strong>Already have a reset token?</strong> and paste this token:</p>
-        <p style="font-family:monospace;font-size:13px;background:#f5f2ee;padding:10px 12px;border-radius:4px;word-break:break-all;">${escapeHtml(extractedToken)}</p>
-      ` : ''}
-      <p>This link and token expire in <strong>1 hour</strong>.</p>
+      <p>This code expires in <strong>15 minutes</strong>.</p>
       <p>If you did not request a password reset, you can safely ignore this email.</p>
     `,
   });
