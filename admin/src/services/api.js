@@ -141,6 +141,9 @@ export const ordersAPI = {
   rejectCancelRequest: (id, data)          => api.post(`/orders/${id}/reject-cancel`, data),
   approveReturnRequest:(id)                => api.post(`/orders/${id}/approve-return`),
   rejectReturnRequest: (id, data)          => api.post(`/orders/${id}/reject-return`, data),
+  getOrderReturns:     (id)                => api.get(`/orders/${id}/returns`),
+  approvePartialReturn:(returnId, data={}) => api.post(`/orders/admin/returns/${returnId}/approve`, data),
+  rejectPartialReturn: (returnId, data={}) => api.post(`/orders/admin/returns/${returnId}/reject`, data),
 };
 
 // ── Inventory ─────────────────────────────────────────────────────────

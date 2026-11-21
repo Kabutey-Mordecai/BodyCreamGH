@@ -51,6 +51,9 @@ export default function OrderDetail() {
   const [markPaidSaving, setMarkPaidSaving] = useState(false);
   const [payments, setPayments] = useState([]);
   const [dupRefundingId, setDupRefundingId] = useState(null);
+  const [partialReturns, setPartialReturns] = useState([]);
+  const [retActionId, setRetActionId] = useState(null);
+  const [retOptions, setRetOptions] = useState({});
 
   // Delivery form state
   const [deliveryForm, setDeliveryForm] = useState({
@@ -81,6 +84,9 @@ export default function OrderDetail() {
     ordersAPI.getStatusLog(id)
       .then(({ data }) => setStatusLog(Array.isArray(data) ? data : []))
       .catch(() => setStatusLog([]));
+    ordersAPI.getOrderReturns(id)
+      .then(({ data }) => setPartialReturns(Array.isArray(data?.returns) ? data.returns : []))
+      .catch(() => setPartialReturns([]));
   };
 
   useEffect(load, [id]);
@@ -102,6 +108,38 @@ export default function OrderDetail() {
       toast.error(err.response?.data?.error || 'Failed to refund duplicate payment');
     } finally {
       setDupRefundingId(null);
+    }
+  };
+
+  const handleApprovePartialReturn = async (rr) => {
+    const opts = retOptions[rr.id] || { restock_items: false, include_delivery_fee: false };
+    const isRetry = rr.status === 'refund_failed';
+    if (!window.confirm(`${isRetry ? 'Retry refund' : 'Approve & refund'} GHS ${Number(rr.refund_amount || 0).toFixed(2)} for this return request?`)) {
+      return;
+    }
+    setRetActionId(rr.id);
+    try {
+      const { data } = await ordersAPI.approvePartialReturn(rr.id, isRetry ? {} : opts);
+      toast.success(data?.message || 'Return refund submitted');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to process return refund');
+    } finally {
+      setRetActionId(null);
+    }
+  };
+
+  const handleRejectPartialReturn = async (rr) => {
+    const reason = window.prompt('Reason for rejecting this return request (optional):') ?? '';
+    setRetActionId(rr.id);
+    try {
+      await ordersAPI.rejectPartialReturn(rr.id, { reason });
+      toast.success('Return request rejected');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to reject return request');
+    } finally {
+      setRetActionId(null);
     }
   };
 
@@ -773,6 +811,75 @@ export default function OrderDetail() {
                     </button>
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {partialReturns.length > 0 && (
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 className="card-title">Item Return Requests ({partialReturns.length})</h2>
+              </div>
+              <div className="card-body">
+                {partialReturns.map((rr) => {
+                  const opts = retOptions[rr.id] || { restock_items: false, include_delivery_fee: false };
+                  const busy = retActionId === rr.id;
+                  return (
+                    <div key={rr.id} style={{ padding: '12px 0', borderTop: '1px solid var(--border-color, #eee)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <strong>GHS {Number(rr.refund_amount || 0).toFixed(2)}</strong>
+                        <span className={`badge ${rr.status === 'refunded' ? 'badge-success' : rr.status === 'refund_failed' || rr.status === 'rejected' ? 'badge-danger' : 'badge-warning'}`}>
+                          {rr.status}
+                        </span>
+                      </div>
+                      <div className="muted" style={{ fontSize: '0.82rem', marginTop: 4 }}>{rr.reason}</div>
+                      {Array.isArray(rr.items) && rr.items.length > 0 && (
+                        <ul style={{ margin: '6px 0 8px 18px', fontSize: '0.82rem' }}>
+                          {rr.items.map((it) => (
+                            <li key={it.id}>
+                              {it.product_name}{it.variant_label ? ` (${it.variant_label})` : ''} × {it.quantity} — GHS {Number(it.line_refund_amount || 0).toFixed(2)}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {rr.status === 'pending' && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                          <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={opts.restock_items}
+                              onChange={(e) => setRetOptions(prev => ({ ...prev, [rr.id]: { ...opts, restock_items: e.target.checked } }))}
+                            />
+                            Restock returned items (unopened / sealed only)
+                          </label>
+                          {Number(order.delivery_fee || 0) > 0 && (
+                            <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={opts.include_delivery_fee}
+                                onChange={(e) => setRetOptions(prev => ({ ...prev, [rr.id]: { ...opts, include_delivery_fee: e.target.checked } }))}
+                              />
+                              Include delivery fee (+GHS {Number(order.delivery_fee).toFixed(2)})
+                            </label>
+                          )}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                            <button className="btn btn-accent btn-sm" disabled={busy} onClick={() => handleApprovePartialReturn(rr)}>
+                              {busy ? 'Processing…' : 'Approve & Refund'}
+                            </button>
+                            <button className="btn btn-outline btn-sm" disabled={busy} onClick={() => handleRejectPartialReturn(rr)}>
+                              Reject
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {rr.status === 'refund_failed' && (
+                        <button className="btn btn-danger btn-sm" style={{ marginTop: 8 }} disabled={busy} onClick={() => handleApprovePartialReturn(rr)}>
+                          {busy ? 'Retrying…' : 'Retry Paystack Refund'}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
