@@ -12,7 +12,7 @@ import 'package:cosmetics_app/services/api_service.dart';
 
 void main() {
   testWidgets(
-    'ShopScreen caps inline category chips and opens searchable picker for 20+ groups',
+    'ShopScreen moves 20+ categories into hamburger side drawer and filters on tap',
     (tester) async {
       final requestedCategories = <String?>[];
       final products = List.generate(25, (i) {
@@ -65,27 +65,38 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Overflow chip is shown and Group 22 is NOT in the initial inline bar
-      final moreChip = find.byKey(const ValueKey('more-categories-chip'));
-      expect(moreChip, findsOneWidget);
+      // Category chip row is no longer shown under the search bar
       expect(find.text('Group 22'), findsNothing);
 
-      // Open searchable category picker bottom sheet
-      await tester.tap(moreChip);
+      // Open hamburger side drawer
+      await tester.tap(find.byTooltip('Open navigation menu'));
       await tester.pumpAndSettle();
 
-      final searchField = find.byKey(const ValueKey('category-search-field'));
-      expect(searchField, findsOneWidget);
+      expect(find.text('OUR CATEGORIES'), findsOneWidget);
+      expect(find.text('See All'), findsOneWidget);
 
-      await tester.enterText(searchField, 'Group 22');
+      // Scroll inside drawer to Group 22 and tap it
+      await tester.scrollUntilVisible(
+        find.text('Group 22'),
+        150,
+        scrollable: find.descendant(
+          of: find.byType(Drawer),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      await tester.drag(
+        find.descendant(
+          of: find.byType(Drawer),
+          matching: find.byType(ListView),
+        ),
+        const Offset(0, -100),
+      );
       await tester.pumpAndSettle();
-
-      await tester.tap(find.widgetWithText(ListTile, 'Group 22'));
+      await tester.tap(find.text('Group 22'));
       await tester.pumpAndSettle();
 
       expect(requestedCategories, contains('Group 22'));
-      // Selected deep category is now pinned in the inline chip bar
-      expect(find.widgetWithText(FilterChip, 'Group 22'), findsOneWidget);
+      expect(find.widgetWithText(InputChip, 'Group 22'), findsOneWidget);
     },
   );
 }
