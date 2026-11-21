@@ -29,6 +29,18 @@ function validateEnv() {
     process.exit(1);
   }
 
+  const rawCourierMode = (process.env.COURIER_MODE || (process.env.NODE_ENV === 'production' ? 'manual' : 'mock'))
+    .trim()
+    .toLowerCase();
+  if (!['mock', 'manual', 'live'].includes(rawCourierMode)) {
+    process.stderr.write(`\n[FATAL] Invalid COURIER_MODE "${rawCourierMode}". Allowed: mock (non-prod), manual.\n\n`);
+    process.exit(1);
+  }
+  if (rawCourierMode === 'live') {
+    process.stderr.write('\n[FATAL] COURIER_MODE=live is not implemented yet. Refusing to start. Use COURIER_MODE=manual.\n\n');
+    process.exit(1);
+  }
+
   if (process.env.NODE_ENV !== 'production') return;
 
   const errors = [];
@@ -59,11 +71,8 @@ function validateEnv() {
     errors.push('PAYSTACK_SECRET_KEY must be a live key (sk_live_...) in production — test keys are not accepted');
   }
 
-  const courierMode = (process.env.COURIER_MODE || 'manual').trim().toLowerCase();
-  if (!['mock', 'manual', 'live'].includes(courierMode)) {
-    errors.push(`COURIER_MODE must be one of mock, manual, live (got "${courierMode}")`);
-  } else if (courierMode === 'mock') {
-    errors.push('COURIER_MODE=mock is forbidden in production — use COURIER_MODE=manual or live');
+  if (rawCourierMode === 'mock') {
+    errors.push('COURIER_MODE=mock is forbidden in production — use COURIER_MODE=manual');
   }
 
   if (errors.length > 0) {
