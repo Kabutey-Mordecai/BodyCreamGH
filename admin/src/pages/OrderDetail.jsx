@@ -294,7 +294,7 @@ export default function OrderDetail() {
     REFUNDABLE_STATUSES.includes(order.status) &&
     !['pending', 'needs_attention', 'success'].includes(order.refund_status);
   const canMarkPaid = order.payment_method === 'pay_on_delivery' &&
-    order.payment_status !== 'paid' &&
+    !['paid', 'partially_refunded', 'refunded'].includes(order.payment_status) &&
     !['cancelled', 'refunded'].includes(order.status);
   const refundInfo = refundLabel(order);
   const subtotal = (order.items || []).reduce((s, it) => s + Number(it.subtotal || (it.price_at_purchase * it.quantity) || 0), 0);

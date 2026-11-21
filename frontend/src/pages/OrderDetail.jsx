@@ -506,7 +506,7 @@ export default function OrderDetail() {
 
         {/* ── Return request banner/form ────────────────── */}
         {user && order.status === 'delivered' &&
-          order.payment_status === 'paid' &&
+          ['paid', 'partially_refunded'].includes(order.payment_status) &&
           (!order.refund_status || order.refund_status === 'not_requested') && (
           <section className="order-state-banner order-state-banner--info">
             {order.return_requested && !order.return_request_rejected ? (

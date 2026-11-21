@@ -92,6 +92,9 @@ export default function Requests() {
       if (tab === 'cancel') {
         await ordersAPI.approveCancelRequest(order.id);
         toast.success(`Cancellation approved for #${order.order_number}`);
+      } else if (order.is_partial_return && order.return_id) {
+        await ordersAPI.approvePartialReturn(order.return_id, {});
+        toast.success(`Partial return approved for #${order.order_number}`);
       } else {
         await ordersAPI.approveReturnRequest(order.id);
         toast.success(`Return approved for #${order.order_number}`);
@@ -116,6 +119,9 @@ export default function Requests() {
       if (tab === 'cancel') {
         await ordersAPI.rejectCancelRequest(order.id, payload);
         toast.success(`Cancellation rejected for #${order.order_number}`);
+      } else if (order.is_partial_return && order.return_id) {
+        await ordersAPI.rejectPartialReturn(order.return_id, payload || {});
+        toast.success(`Partial return rejected for #${order.order_number}`);
       } else {
         await ordersAPI.rejectReturnRequest(order.id, payload);
         toast.success(`Return rejected for #${order.order_number}`);

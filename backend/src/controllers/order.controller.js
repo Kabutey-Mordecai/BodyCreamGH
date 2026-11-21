@@ -414,13 +414,17 @@ const getRequestCounts = async (req, res) => {
             AND status NOT IN ('cancelled', 'refunded')
             AND COALESCE(refund_status, 'not_requested') NOT IN ('pending', 'success')
         ) AS return_count,
-        COUNT(*) FILTER (WHERE status = 'pending') AS pending_orders
+        COUNT(*) FILTER (WHERE status = 'pending') AS pending_orders,
+        (SELECT COUNT(*) FROM return_requests WHERE status = 'pending') AS partial_return_count
       FROM orders
     `);
+    const legacyReturns = parseInt(rows[0].return_count, 10) || 0;
+    const partialReturns = parseInt(rows[0].partial_return_count, 10) || 0;
     res.json({
-      cancel:        parseInt(rows[0].cancel_count),
-      return:        parseInt(rows[0].return_count),
-      pendingOrders: parseInt(rows[0].pending_orders),
+      cancel:         parseInt(rows[0].cancel_count, 10) || 0,
+      return:         legacyReturns + partialReturns,
+      partialReturns,
+      pendingOrders:  parseInt(rows[0].pending_orders, 10) || 0,
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch request counts' });
@@ -464,6 +468,39 @@ const getRequests = async (req, res) => {
         ${where}
        ORDER BY COALESCE(o.cancel_requested_at, o.return_requested_at) DESC
     `);
+
+    if (type === 'return') {
+      const { rows: partialRows } = await pool.query(`
+        SELECT o.id, o.order_number, rr.refund_amount AS total_amount, o.status, o.payment_status, o.refund_status,
+               o.fulfillment_method, o.payment_method, o.customer_id,
+               rr.id AS return_id, TRUE AS is_partial_return, rr.status AS partial_return_status,
+               rr.reason AS return_reason, rr.created_at AS return_requested_at,
+               COALESCE(u.email, o.guest_email) AS customer_email,
+               COALESCE(u.phone, o.guest_phone) AS customer_phone,
+               (o.customer_id IS NULL) AS is_guest,
+               COALESCE(u.first_name || ' ' || u.last_name, u.first_name, o.guest_email, 'Customer') AS customer_name,
+               (SELECT COALESCE(SUM(quantity), 0)::int FROM return_request_items WHERE return_request_id = rr.id) AS item_count,
+               (
+                 SELECT json_agg(json_build_object(
+                   'name', p.name,
+                   'quantity', rri.quantity,
+                   'variant_label', oi.variant_label,
+                   'image_url', p.image_url
+                 ))
+                 FROM return_request_items rri
+                 JOIN order_items oi ON oi.id = rri.order_item_id
+                 JOIN products p ON p.id = oi.product_id
+                 WHERE rri.return_request_id = rr.id
+               ) AS items
+          FROM return_requests rr
+          JOIN orders o ON o.id = rr.order_id
+          LEFT JOIN users u ON o.customer_id = u.id
+         WHERE rr.status = 'pending'
+         ORDER BY rr.created_at DESC
+      `);
+      return res.json([...partialRows, ...rows]);
+    }
+
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch requests' });
@@ -1844,7 +1881,7 @@ const trackOrder = async (req, res) => {
     ]);
 
     res.json({
-      ...(order.payment_status !== 'paid' ? { id: order.id } : {}),
+      ...(!['paid', 'partially_refunded', 'refunded'].includes(order.payment_status) ? { id: order.id } : {}),
       order_number:       order.order_number,
       status:             order.status,
       payment_status:     order.payment_status,
