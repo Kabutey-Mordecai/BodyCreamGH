@@ -18,9 +18,22 @@ const {
 
 const router = express.Router();
 const trackLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many tracking requests. Please try again later.');
+const trackOrderNumberLimiter = makeRateLimiter(
+  15 * 60 * 1000,
+  10,
+  'Too many tracking requests for this order. Please try again later.',
+  {
+    keyGenerator: (req, ip) => {
+      const raw = typeof req.body?.order_number === 'string'
+        ? req.body.order_number.trim().replace(/^#+/, '').trim().toUpperCase()
+        : '';
+      return raw ? `track:ord:${raw}` : `track:ip:${ip}`;
+    },
+  }
+);
 
 // Public tracking — must be before /:orderId to avoid route conflict
-router.post('/track', trackLimiter, trackOrder);
+router.post('/track', trackLimiter, trackOrderNumberLimiter, trackOrder);
 
 router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);
