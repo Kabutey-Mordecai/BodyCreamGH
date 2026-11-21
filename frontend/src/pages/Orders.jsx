@@ -66,6 +66,16 @@ export default function Orders() {
       .catch(() => setPendingPrompts([]));
   }, [page, retryCount]);
 
+  const [copiedNum, setCopiedNum] = useState('');
+
+  const handleCopyOrderNum = (e, num) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard?.writeText(num).catch(() => {});
+    setCopiedNum(num);
+    setTimeout(() => setCopiedNum(prev => (prev === num ? '' : prev)), 2000);
+  };
+
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
 
   const grouped = groupOrders(orders);
@@ -147,7 +157,26 @@ export default function Orders() {
                       <div className="order-row-main">
                         <div className="order-row-id">
                           <span className="section-label" style={{ marginBottom: 4 }}>Order</span>
-                          <span className="order-number">#{orderNum}</span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span className="order-number">#{orderNum}</span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleCopyOrderNum(e, orderNum)}
+                              title="Copy order number"
+                              style={{
+                                background: 'none',
+                                border: '1px solid var(--color-border)',
+                                borderRadius: 4,
+                                padding: '2px 7px',
+                                fontSize: '0.72rem',
+                                cursor: 'pointer',
+                                color: copiedNum === orderNum ? 'var(--color-accent-dark)' : 'var(--color-muted)',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {copiedNum === orderNum ? '✓ Copied' : 'Copy'}
+                            </button>
+                          </span>
                         </div>
                         <div className="order-row-date">
                           <span className="order-meta-label">Placed on</span>

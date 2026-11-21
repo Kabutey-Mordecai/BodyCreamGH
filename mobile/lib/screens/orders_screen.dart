@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -414,9 +415,34 @@ class _OrderCard extends StatelessWidget {
               Row(
                 children: [
                   Expanded(
-                    child: Text(
-                      '#$orderNum',
-                      style: Theme.of(context).textTheme.titleMedium,
+                    child: Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            '#$orderNum',
+                            style: Theme.of(context).textTheme.titleMedium,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Copy order number',
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.only(left: 4),
+                          constraints: const BoxConstraints(
+                              minWidth: 28, minHeight: 28),
+                          icon: const Icon(Icons.copy_rounded,
+                              size: 16, color: AppColors.muted),
+                          onPressed: () {
+                            Clipboard.setData(ClipboardData(text: orderNum));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Copied $orderNum'),
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          },
+                        ),
+                      ],
                     ),
                   ),
                   Wrap(

@@ -312,9 +312,23 @@ export default function OrderDetail() {
         <div className="order-detail-header">
           <div>
             <span className="section-label">Order Receipt</span>
-            <h1 className="page-title" style={{ marginBottom: '6px' }}>
-              Order #{orderNum}
-            </h1>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: '6px' }}>
+              <h1 className="page-title" style={{ margin: 0 }}>
+                Order #{orderNum}
+              </h1>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={(e) => {
+                  navigator.clipboard?.writeText(orderNum).catch(() => {});
+                  const btn = e.currentTarget;
+                  btn.textContent = '✓ Copied';
+                  setTimeout(() => { btn.textContent = 'Copy #'; }, 2000);
+                }}
+              >
+                Copy #
+              </button>
+            </div>
             <p className="order-detail-date">
               Placed on{' '}
               {new Date(order.created_at).toLocaleDateString('en-GB', {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../config.dart';
@@ -382,6 +383,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
         ),
         title: Text('Order #$orderNum'),
         actions: [
+          IconButton(
+            tooltip: 'Copy order number',
+            icon: const Icon(Icons.copy_rounded, size: 20),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: orderNum));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Copied $orderNum'),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            },
+          ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
