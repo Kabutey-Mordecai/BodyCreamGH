@@ -87,21 +87,6 @@ const List<Map<String, String>> _defaultLookbookSlides = [
   },
 ];
 
-const List<Map<String, String>> _defaultFaqs = [
-  {
-    'q': 'How quickly do you deliver across Ghana?',
-    'a': 'Orders within Greater Accra arrive within 24–48 hours. Nationwide deliveries across all 16 regions take 2–4 business days.'
-  },
-  {
-    'q': 'Are your shea and cocoa butter products 100% natural?',
-    'a': 'Yes — every batch is hand-whipped with unrefined Northern Ghana shea butter, cold-pressed botanical oils, and zero parabens.'
-  },
-  {
-    'q': 'How do I pay and can I track my order as a guest?',
-    'a': 'Pay securely via Paystack (Mobile Money or Card). Both guests and registered customers can track orders anytime from the Track Order page.'
-  },
-];
-
 const List<Map<String, dynamic>> _defaultTestimonials = [
   {
     'customer_name': 'Akosua M.',
