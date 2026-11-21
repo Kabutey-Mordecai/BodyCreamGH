@@ -301,10 +301,21 @@ const getOrders = async (req, res) => {
 const getOrderById = async (req, res) => {
   try {
     // Admins can see any order; customers only see their own
-    const customerId = req.user.role === 'admin' ? null : req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    const customerId = isAdmin ? null : req.user.id;
     const order = await OrderModel.findById(req.params.orderId, customerId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
     const items = await OrderModel.getItems(req.params.orderId);
+    if (isAdmin) {
+      const { rows: payments } = await pool.query(
+        `SELECT id, amount, currency, status, payment_method, paystack_reference, created_at, updated_at
+           FROM payments
+          WHERE order_id = $1
+          ORDER BY created_at DESC`,
+        [req.params.orderId]
+      );
+      return res.json({ order, items, payments });
+    }
     res.json({ order, items });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch order' });
@@ -1880,10 +1891,107 @@ const markOrderPaid = async (req, res) => {
   }
 };
 
+// ── Admin: refund a specific payment row flagged as 'duplicate' ──────────────
+const refundDuplicatePayment = async (req, res) => {
+  const { orderId, paymentId } = req.params;
+  const notes = typeof req.body?.notes === 'string' && req.body.notes.trim()
+    ? req.body.notes.trim()
+    : 'Duplicate payment refund initiated by admin';
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    let rows;
+    try {
+      ({ rows } = await client.query(
+        `SELECT p.id, p.order_id, p.amount, p.currency, p.status, p.payment_method, p.paystack_reference,
+                o.status AS order_status, o.order_number
+           FROM payments p
+           JOIN orders o ON o.id = p.order_id
+          WHERE p.id = $1 AND p.order_id = $2
+          FOR UPDATE OF p NOWAIT`,
+        [paymentId, orderId]
+      ));
+    } catch (lockErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      if (lockErr.code === '55P03') {
+        return res.status(409).json({ error: 'A refund for this duplicate payment is already in progress' });
+      }
+      throw lockErr;
+    }
+
+    if (rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Payment record not found for this order' });
+    }
+    const payment = rows[0];
+    if (payment.status !== 'duplicate') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        error: `Only payments flagged as 'duplicate' can be refunded via this action (current status: '${payment.status}')`,
+      });
+    }
+    if (payment.payment_method !== 'paystack' || !payment.paystack_reference) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Duplicate payment has no Paystack reference to refund' });
+    }
+
+    let refundData;
+    try {
+      refundData = await createFullRefund({
+        transactionReference: payment.paystack_reference,
+        amount: payment.amount,
+        currency: payment.currency || 'GHS',
+        notes,
+      });
+    } catch (paystackErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      logger.error('[refundDuplicatePayment] Paystack refund failed', {
+        err: paystackErr.message,
+        status: paystackErr.status,
+        orderId,
+        paymentId,
+      });
+      return res.status(502).json({
+        error: paystackErr.message || 'Paystack refund request failed',
+      });
+    }
+
+    const refundRef = refundData?.id ? String(refundData.id) : (refundData?.reference || 'submitted');
+    const amountNum = Number(payment.amount) || 0;
+    const auditNote = `Duplicate payment refunded (ref ${payment.paystack_reference}, ${payment.currency || 'GHS'} ${amountNum.toFixed(2)}, Paystack refund #${refundRef}) — ${notes}`;
+
+    const { rows: updatedRows } = await client.query(
+      `UPDATE payments SET status = 'refunded', updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, order_id, amount, currency, status, payment_method, paystack_reference, updated_at`,
+      [paymentId]
+    );
+    await logStatusChange(orderId, payment.order_status, payment.order_status, auditNote, client);
+    await client.query('COMMIT');
+
+    return res.json({
+      message: 'Duplicate payment refunded via Paystack',
+      payment: updatedRows[0],
+      paystack_refund: {
+        id: refundData?.id || null,
+        status: refundData?.status || 'pending',
+      },
+    });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('[refundDuplicatePayment] error', { err: err.message, orderId, paymentId });
+    return res.status(500).json({ error: 'Failed to refund duplicate payment' });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders,
   getRequestCounts, getRequests, exportOrders,
-  updateOrderStatus, cancelOrder, refundOrder, markOrderPaid, getOrderStatusLog, getReviewStatus,
+  updateOrderStatus, cancelOrder, refundOrder, markOrderPaid, refundDuplicatePayment,
+  getOrderStatusLog, getReviewStatus,
   requestCancel, requestReturn,
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,

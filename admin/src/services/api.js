@@ -133,6 +133,8 @@ export const ordersAPI = {
   updateStatus:        (id, status, note)  => api.patch(`/orders/${id}/status`, { status, note }),
   cancelOrder:         (id, reason)        => api.post(`/orders/${id}/cancel`, { reason }),
   refundOrder:         (id, data)          => api.post(`/orders/${id}/refund`, data),
+  refundDuplicatePayment: (orderId, paymentId, data = {}) =>
+    api.post(`/orders/${orderId}/payments/${paymentId}/refund-duplicate`, data),
   markPaid:            (id, note)          => api.post(`/orders/${id}/mark-paid`, { note }),
   getStatusLog:        (id)                => api.get(`/orders/${id}/log`),
   approveCancelRequest:(id)                => api.post(`/orders/${id}/approve-cancel`),

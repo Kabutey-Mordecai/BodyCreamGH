@@ -9,7 +9,7 @@ const {
 const {
   createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders,
   getRequestCounts, getRequests, exportOrders,
-  updateOrderStatus, cancelOrder, refundOrder, markOrderPaid, getOrderStatusLog, getReviewStatus,
+  updateOrderStatus, cancelOrder, refundOrder, markOrderPaid, refundDuplicatePayment, getOrderStatusLog, getReviewStatus,
   requestCancel, requestReturn,
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,
@@ -47,6 +47,7 @@ router.get('/:orderId', verifyToken, getOrderById);
 // Admin-only fulfilment actions
 router.post('/:orderId/cancel',    verifyToken, requireAdmin, validateCancelOrder,  cancelOrder);
 router.post('/:orderId/refund',    verifyToken, requireAdmin, validateRefundOrder,  refundOrder);
+router.post('/:orderId/payments/:paymentId/refund-duplicate', verifyToken, requireAdmin, refundDuplicatePayment);
 router.post('/:orderId/mark-paid', verifyToken, requireAdmin, markOrderPaid);
 router.patch('/:orderId/status',   verifyToken, requireAdmin, validateOrderStatus,  updateOrderStatus);
 

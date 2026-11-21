@@ -49,6 +49,8 @@ export default function OrderDetail() {
 
   const [requestActionSaving, setRequestActionSaving] = useState(false);
   const [markPaidSaving, setMarkPaidSaving] = useState(false);
+  const [payments, setPayments] = useState([]);
+  const [dupRefundingId, setDupRefundingId] = useState(null);
 
   // Delivery form state
   const [deliveryForm, setDeliveryForm] = useState({
@@ -71,6 +73,7 @@ export default function OrderDetail() {
     ordersAPI.getById(id)
       .then(({ data }) => {
         setOrder(data?.order ? { ...data.order, items: data.items || [] } : data);
+        setPayments(Array.isArray(data?.payments) ? data.payments : []);
       })
       .catch(() => toast.error('Failed to load order'))
       .finally(() => setLoading(false));
@@ -85,6 +88,22 @@ export default function OrderDetail() {
   useEffect(() => {
     settingsAPI.getAll().then(({ data }) => setStore(data)).catch(() => {});
   }, []);
+
+  const handleRefundDuplicate = async (payment) => {
+    if (!window.confirm(`Refund duplicate Paystack payment ${payment.paystack_reference} (GHS ${Number(payment.amount || 0).toFixed(2)})?`)) {
+      return;
+    }
+    setDupRefundingId(payment.id);
+    try {
+      await ordersAPI.refundDuplicatePayment(id, payment.id);
+      toast.success(`Duplicate payment ${payment.paystack_reference} refunded`);
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to refund duplicate payment');
+    } finally {
+      setDupRefundingId(null);
+    }
+  };
 
   const changeStatus = async (next, note = '') => {
     setSaving(true);
@@ -726,6 +745,37 @@ export default function OrderDetail() {
               )}
             </div>
           </div>
+
+          {payments.some(p => p.status === 'duplicate') && (
+            <div className="card" style={{ borderColor: 'var(--color-danger, #c0392b)' }}>
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 className="card-title">Duplicate Payments</h2>
+                <span className="badge badge-danger">Action Required</span>
+              </div>
+              <div className="card-body">
+                <p className="muted" style={{ fontSize: '0.84rem', marginTop: 0 }}>
+                  These extra Paystack charges were flagged as duplicates on an already-paid order. Refunding them does not cancel the order.
+                </p>
+                {payments.filter(p => p.status === 'duplicate').map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--border-color, #eee)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div className="mono" style={{ fontSize: '0.82rem', wordBreak: 'break-all' }}>{p.paystack_reference}</div>
+                      <div className="muted" style={{ fontSize: '0.8rem' }}>
+                        {p.currency || 'GHS'} {Number(p.amount || 0).toFixed(2)} · {p.created_at ? new Date(p.created_at).toLocaleString('en-GH') : ''}
+                      </div>
+                    </div>
+                    <button
+                      className="btn btn-danger btn-sm"
+                      disabled={dupRefundingId === p.id}
+                      onClick={() => handleRefundDuplicate(p)}
+                    >
+                      {dupRefundingId === p.id ? 'Refunding…' : 'Refund duplicate'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {order.notes && (
             <div className="card">
