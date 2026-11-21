@@ -43,23 +43,39 @@ function computeRetryDelayMs(error, retryCount) {
   return Math.min(5000, 500 * (2 ** (retryCount - 1)));
 }
 
+function sanitizeAxiosError(error) {
+  const status = error?.response?.status;
+  const apiMessage = error?.response?.data?.message;
+  const clean = new Error(apiMessage || error?.message || 'Paystack request failed');
+  if (status !== undefined) clean.status = status;
+  if (error?.code) clean.code = error.code;
+  // Preserve only status and response payload (never config, headers, or Authorization)
+  if (error?.response) {
+    clean.response = {
+      status: error.response.status,
+      data: error.response.data,
+    };
+  }
+  return clean;
+}
+
 paystackAPI.interceptors.response.use(
   res => res,
   async (error) => {
     const cfg = error.config;
     if (!cfg || (cfg.method || '').toLowerCase() !== 'get') {
-      return Promise.reject(error);
+      return Promise.reject(sanitizeAxiosError(error));
     }
 
     const status = error.response?.status;
     const isRetryable = status === 429 || (status >= 500 && status < 600) || RETRYABLE_NET_CODES.has(error.code);
     if (!isRetryable) {
-      return Promise.reject(error);
+      return Promise.reject(sanitizeAxiosError(error));
     }
 
     cfg._retryCount = (cfg._retryCount || 0) + 1;
     if (cfg._retryCount > MAX_GET_RETRIES) {
-      return Promise.reject(error);
+      return Promise.reject(sanitizeAxiosError(error));
     }
 
     const delayMs = computeRetryDelayMs(error, cfg._retryCount);

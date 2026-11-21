@@ -26,7 +26,8 @@ const restockProduct = async (req, res) => {
 
     res.json({ message: `Restocked ${quantity} units of "${product.name}"` });
   } catch (error) {
-    console.error('Restock error:', error);
+    const logger = require('../utils/logger');
+    logger.error('Restock error', { err: error.message });
     res.status(500).json({ error: 'Failed to restock product' });
   }
 };
@@ -74,7 +75,8 @@ const adjustInventory = async (req, res) => {
 
     res.json({ ok: true, new_stock: newStock });
   } catch (error) {
-    console.error('Inventory adjust error:', error);
+    const logger = require('../utils/logger');
+    logger.error('Inventory adjust error', { err: error.message });
     res.status(500).json({ error: 'Failed to adjust inventory' });
   }
 };

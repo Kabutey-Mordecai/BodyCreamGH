@@ -1798,7 +1798,7 @@ const trackOrder = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('[trackOrder] error:', err);
+    logger.error('[trackOrder] error', { err: err.message });
     res.status(500).json({ message: 'Failed to track order' });
   }
 };

@@ -101,7 +101,8 @@ const createReview = async (req, res) => {
       message: autoApprove ? 'Review published!' : 'Review submitted for approval'
     });
   } catch (err) {
-    console.error('[review] createReview error:', err);
+    const logger = require('../utils/logger');
+    logger.error('[review] createReview error', { err: err.message });
     res.status(500).json({ error: 'Failed to submit review' });
   }
 };
