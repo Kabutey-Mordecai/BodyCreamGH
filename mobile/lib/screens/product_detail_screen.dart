@@ -427,18 +427,36 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                   ),
                                 );
                               }
-                            } catch (e) {
-                              if (!ctx.mounted) return;
-                              setModalState(() => submitting = false);
-                              ScaffoldMessenger.of(ctx).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    e.toString().replaceFirst(
-                                        RegExp(r'ApiException\(\d+\): '), ''),
+                              } on ApiException catch (e) {
+                                if (!ctx.mounted) return;
+                                if (e.statusCode == 409) {
+                                  Navigator.pop(ctx);
+                                  if (mounted) {
+                                    setState(() {
+                                      _canReviewData = {
+                                        'can_review': false,
+                                        'already_reviewed': true,
+                                      };
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(e.message)),
+                                    );
+                                  }
+                                  return;
+                                }
+                                setModalState(() => submitting = false);
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(content: Text(e.message)),
+                                );
+                              } catch (e) {
+                                if (!ctx.mounted) return;
+                                setModalState(() => submitting = false);
+                                ScaffoldMessenger.of(ctx).showSnackBar(
+                                  SnackBar(
+                                    content: Text(ApiService.formatError(e)),
                                   ),
-                                ),
-                              );
-                            }
+                                );
+                              }
                           },
                     child: Text(submitting ? 'Submitting...' : 'Submit Review'),
                   ),

@@ -55,6 +55,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   bool _loading = true;
   bool _paying = false;
+  String? _loadError;
   Timer? _pollTimer;
 
   @override
@@ -90,7 +91,12 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   }
 
   Future<void> _load({bool silent = false}) async {
-    if (!silent) setState(() => _loading = true);
+    if (!silent) {
+      setState(() {
+        _loading = true;
+        _loadError = null;
+      });
+    }
     try {
       final results = await Future.wait([
         ApiService.instance.getOrder(widget.orderId),
@@ -142,12 +148,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _reviewedProductIds = reviewed;
           _partialReturnsEnabled = partialEnabled;
           _returnRequests = returnRequests;
+          _loadError = null;
           _loading = false;
         });
         _configureBackgroundPoll(order);
       }
-    } catch (_) {
-      if (mounted && !silent) setState(() => _loading = false);
+    } catch (e) {
+      if (mounted && !silent) {
+        setState(() {
+          _loadError = ApiService.formatError(e);
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -419,23 +431,30 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
     }
 
     try {
-      await ApiService.instance.createOrderReturn(
+      final res = await ApiService.instance.createOrderReturn(
         _order!.id,
         items: chosen,
         reason: reasonCtrl.text,
       );
       if (!mounted) return;
+      final rrMap = res['return_request'] is Map<String, dynamic>
+          ? res['return_request'] as Map<String, dynamic>
+          : null;
+      final serverAmt = rrMap != null
+          ? double.tryParse((rrMap['refund_amount'] ?? '').toString())
+          : null;
+      final msg = serverAmt != null && serverAmt > 0
+          ? 'Return request submitted (Refund: ${AppConfig.currencySymbol}${serverAmt.toStringAsFixed(2)})'
+          : 'Partial return request submitted';
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Partial return request submitted')),
+        SnackBar(content: Text(msg)),
       );
       _load();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), ''),
-          ),
+          content: Text(ApiService.formatError(e)),
         ),
       );
     }
@@ -527,16 +546,32 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       return Scaffold(
         appBar: AppBar(title: const Text('Order Detail')),
         body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Text('Order not found'),
-              const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: () => context.go('/orders'),
-                child: const Text('Back to Orders'),
-              ),
-            ],
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  _loadError ?? 'Order not found',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 10,
+                  children: [
+                    if (_loadError != null)
+                      FilledButton(
+                        onPressed: () => _load(),
+                        child: const Text('Retry'),
+                      ),
+                    OutlinedButton(
+                      onPressed: () => context.go('/orders'),
+                      child: const Text('Back to Orders'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -950,8 +985,22 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             ),
             const SizedBox(height: 12),
 
-            // ── 8. Shipment Progress & Tracking Details (GET /deliveries/order/:id) ──
-            if (_delivery != null && !order.isTerminal) ...[
+            // ── 8. Shipment Progress & Tracking Details / Store Pickup ──
+            if (order.isPickup && !order.isTerminal) ...[
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.storefront_outlined,
+                      color: AppColors.accentDark),
+                  title: const Text('Fulfillment: Store Pickup'),
+                  subtitle: Text(
+                    order.status == 'delivered'
+                        ? 'Picked up'
+                        : 'We will notify you when your order is ready for pickup.',
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ] else if (_delivery != null && !order.isTerminal) ...[
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -1018,9 +1067,11 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                       if (_delivery!['delivery_partner'] != null)
                         _MetaRow('Courier',
                             _delivery!['delivery_partner'].toString()),
-                      if (_delivery!['tracking_number'] != null)
-                        _MetaRow('Tracking #',
-                            _delivery!['tracking_number'].toString()),
+                      _MetaRow(
+                        'Tracking #',
+                        _delivery!['tracking_number']?.toString() ??
+                            'Pending assignment',
+                      ),
                       if (_delivery!['estimated_delivery'] != null &&
                           DateTime.tryParse(
                                   _delivery!['estimated_delivery'].toString()) !=
@@ -1042,6 +1093,20 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                               .toLocal()),
                         ),
                     ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+            ] else if (!order.isPickup &&
+                !order.isTerminal &&
+                (order.status == 'processing' || order.status == 'shipped')) ...[
+              Card(
+                child: const ListTile(
+                  leading: Icon(Icons.local_shipping_outlined,
+                      color: AppColors.accentDark),
+                  title: Text('Shipment Status'),
+                  subtitle: Text(
+                    'Courier & tracking number will appear here once assigned.',
                   ),
                 ),
               ),

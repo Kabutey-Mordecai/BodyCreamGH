@@ -40,7 +40,8 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     super.initState();
     if (widget.initialOrderNumber != null &&
         widget.initialOrderNumber!.trim().isNotEmpty) {
-      _orderNumCtrl.text = widget.initialOrderNumber!.trim();
+      _orderNumCtrl.text =
+          ApiService.normalizeOrderNumber(widget.initialOrderNumber!);
     }
   }
 
@@ -59,8 +60,11 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
       _order = null;
     });
     try {
+      final normalizedNum =
+          ApiService.normalizeOrderNumber(_orderNumCtrl.text);
+      _orderNumCtrl.text = normalizedNum;
       final data = await ApiService.instance.trackOrder(
-        _orderNumCtrl.text.trim(),
+        normalizedNum,
         _emailCtrl.text.trim(),
       );
       if (!mounted) return;
@@ -71,7 +75,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), '');
+        _error = ApiService.formatError(e);
         _loading = false;
       });
     }
@@ -108,11 +112,7 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            e.toString()
-                .replaceFirst(RegExp(r'ApiException\(\d+\): '), '')
-                .replaceFirst('Exception: ', ''),
-          ),
+          content: Text(ApiService.formatError(e)),
         ),
       );
     } finally {
@@ -173,11 +173,12 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
                           controller: _orderNumCtrl,
                           decoration: const InputDecoration(
                             labelText: 'Order Number *',
-                            hintText: 'e.g. ORD-20240429-XXXX',
+                            hintText: 'e.g. ORD-23456789',
                             prefixIcon: Icon(Icons.tag),
                           ),
                           textCapitalization: TextCapitalization.characters,
-                          validator: (v) => v == null || v.trim().isEmpty
+                          validator: (v) => v == null ||
+                                  ApiService.normalizeOrderNumber(v).isEmpty
                               ? 'Enter your order number'
                               : null,
                         ),
@@ -313,8 +314,38 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
                         ),
                       ],
 
-                      // Delivery Info Box
-                      if (_order!.delivery != null) ...[
+                      // Delivery / Pickup Info Box
+                      if (_order!.isPickup) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.blush,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Fulfillment: Store Pickup',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'We will notify you when your order is ready for pickup.',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: AppColors.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else if (_order!.delivery != null) ...[
                         const SizedBox(height: 16),
                         Container(
                           width: double.infinity,
@@ -340,12 +371,10 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
                                   _order!.delivery!['delivery_partner']
                                       .toString(),
                                 ),
-                              if (_order!.delivery!['tracking_number'] != null)
-                                _TrackInfoRow(
-                                  'Tracking #',
-                                  _order!.delivery!['tracking_number']
-                                      .toString(),
-                                ),
+                              _TrackInfoRow(
+                                'Tracking #',
+                                _order!.trackingNumber ?? 'Pending assignment',
+                              ),
                               if (_order!.delivery!['estimated_delivery'] !=
                                       null &&
                                   DateTime.tryParse(_order!
@@ -361,6 +390,37 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
                                         .toLocal(),
                                   ),
                                 ),
+                            ],
+                          ),
+                        ),
+                      ] else if (_order!.status == 'processing' ||
+                          _order!.status == 'shipped') ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: AppColors.blush,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Delivery Info',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                'Courier & tracking details will appear here once assigned.',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  color: AppColors.muted,
+                                ),
+                              ),
                             ],
                           ),
                         ),

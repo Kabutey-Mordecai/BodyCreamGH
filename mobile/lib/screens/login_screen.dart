@@ -312,10 +312,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           });
                         } catch (e) {
                           if (!ctx.mounted) return;
+                          final msg = ApiService.formatError(e);
+                          final lower = msg.toLowerCase();
+                          final resetPinNeeded = lower.contains('too many') ||
+                              lower.contains('expired') ||
+                              lower.contains('new 6-digit');
                           setDialogState(() {
                             busy = false;
-                            dialogErr = e.toString().replaceFirst(
-                                RegExp(r'ApiException\(\d+\): '), '');
+                            if (resetPinNeeded) {
+                              step = 1;
+                              verifiedPin = '';
+                              pinCtrl.clear();
+                            }
+                            dialogErr = msg;
                           });
                         }
                       },
@@ -360,10 +369,19 @@ class _LoginScreenState extends State<LoginScreen> {
                           }
                         } catch (e) {
                           if (!ctx.mounted) return;
+                          final msg = ApiService.formatError(e);
+                          final lower = msg.toLowerCase();
+                          final resetPinNeeded = lower.contains('too many') ||
+                              lower.contains('expired') ||
+                              lower.contains('new 6-digit');
                           setDialogState(() {
                             busy = false;
-                            dialogErr = e.toString().replaceFirst(
-                                RegExp(r'ApiException\(\d+\): '), '');
+                            if (resetPinNeeded) {
+                              step = 1;
+                              verifiedPin = '';
+                              pinCtrl.clear();
+                            }
+                            dialogErr = msg;
                           });
                         }
                       },
