@@ -203,6 +203,24 @@ export default function Footer() {
                   <Link to={l.to}>{l.label}</Link>
                 </li>
               ))}
+              <li>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('open-cookie-banner'))}
+                  className="footer-link-btn"
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    font: 'inherit',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                  }}
+                >
+                  Cookie Preferences
+                </button>
+              </li>
               {cleanPhone && (
                 <li>
                   <a href={`tel:${cleanPhone.replace(/\s+/g, '')}`}>Call: {cleanPhone}</a>

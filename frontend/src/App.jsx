@@ -3,6 +3,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import WhatsAppFloat from './components/WhatsAppFloat';
+import CookieConsent from './components/CookieConsent';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
@@ -128,6 +129,7 @@ export default function App() {
 
         <Footer />
         <WhatsAppFloat />
+        <CookieConsent />
       </div>
     </ErrorBoundary>
   );

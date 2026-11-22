@@ -175,6 +175,15 @@ export default function PolicyPage({ type = 'privacy' }) {
         <div className="policy-footer-links">
           <Link to="/shop" className="btn btn-primary">Shop Collection</Link>
           <Link to="/track" className="btn btn-outline">Track an Order</Link>
+          {type === 'privacy' && (
+            <button
+              type="button"
+              onClick={() => window.dispatchEvent(new CustomEvent('open-cookie-banner'))}
+              className="btn btn-outline"
+            >
+              🍪 Cookie Preferences
+            </button>
+          )}
         </div>
       </div>
     </div>
