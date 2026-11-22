@@ -181,16 +181,57 @@ async function main() {
     }
     assert.ok(hit429, 'POST /api/orders/checkout-session must enforce per-IP rate limit');
 
-    // 7. Customer opt-out / deletion path deletes the saved checkout_session
+    // 7. Customer opt-out flow: GET displays confirmation page and does NOT delete; POST performs deletion
     const delToken = `${tokenBase}-del`;
     await pool.query(
       `INSERT INTO checkout_sessions (id, session_token, email, subtotal) VALUES ($1, $2, 'del@example.com', 50)`,
       [uuid(), delToken]
     );
-    const delRes = await fetch(`${baseUrl}/api/orders/checkout-session/opt-out?token=${encodeURIComponent(delToken)}`);
-    assert.strictEqual(delRes.status, 200);
-    const afterDel = await pool.query(`SELECT id FROM checkout_sessions WHERE session_token = $1`, [delToken]);
-    assert.strictEqual(afterDel.rows.length, 0, 'Customer opt-out link must delete checkout_session');
+
+    // 7a. GET returns 200 with confirmation form and leaves row in DB untouched
+    const getRes = await fetch(`${baseUrl}/api/orders/checkout-session/opt-out?token=${encodeURIComponent(delToken)}`);
+    assert.strictEqual(getRes.status, 200, 'GET opt-out must return 200 confirmation page');
+    const getHtml = await getRes.text();
+    assert.ok(getHtml.includes('Opt Out of Cart Reminders'), 'GET must show opt-out title');
+    assert.ok(getHtml.includes('<form method="POST" action="/api/orders/checkout-session/opt-out"'), 'GET must render POST form');
+    const afterGet = await pool.query(`SELECT id FROM checkout_sessions WHERE session_token = $1`, [delToken]);
+    assert.strictEqual(afterGet.rows.length, 1, 'GET opt-out must NOT delete checkout_session row');
+
+    // 7b. POST with token performs single-purpose deletion
+    const postRes = await fetch(`${baseUrl}/api/orders/checkout-session/opt-out`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ token: delToken }),
+    });
+    assert.strictEqual(postRes.status, 200, 'POST opt-out must return 200');
+    const postJson = await postRes.json();
+    assert.strictEqual(postJson.deleted, true, 'POST opt-out must report deleted: true');
+    const afterPost = await pool.query(`SELECT id FROM checkout_sessions WHERE session_token = $1`, [delToken]);
+    assert.strictEqual(afterPost.rows.length, 0, 'POST opt-out must delete checkout_session row');
+
+    // 7c. Repeated POST returns 404
+    const postAgainRes = await fetch(`${baseUrl}/api/orders/checkout-session/opt-out`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ token: delToken }),
+    });
+    const postAgainJson = await postAgainRes.json();
+    assert.strictEqual(postAgainJson.deleted, false, 'Repeated POST opt-out must return deleted: false');
+
+    // 7d. DELETE /api/orders/checkout-session directly
+    const directToken = `${tokenBase}-direct`;
+    await pool.query(
+      `INSERT INTO checkout_sessions (id, session_token, email, subtotal) VALUES ($1, $2, 'direct@example.com', 75)`,
+      [uuid(), directToken]
+    );
+    const delApiRes = await fetch(`${baseUrl}/api/orders/checkout-session`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_token: directToken }),
+    });
+    assert.strictEqual(delApiRes.status, 200);
+    const afterDirect = await pool.query(`SELECT id FROM checkout_sessions WHERE session_token = $1`, [directToken]);
+    assert.strictEqual(afterDirect.rows.length, 0, 'DELETE /api/orders/checkout-session must delete row');
 
     console.log('ALL CHECKOUT SESSION PRIVACY, RETENTION, RATE-LIMIT & REMINDER TESTS PASSED');
   } finally {

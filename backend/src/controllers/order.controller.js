@@ -2315,6 +2315,93 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
   }
 };
 
+const showCheckoutSessionOptOut = async (req, res) => {
+  try {
+    const rawToken = String(req.query?.token || '').trim().slice(0, 120);
+    if (!rawToken) {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(400).send(
+        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Invalid Request</h2><p>An opt-out token is required.</p></body></html>'
+      );
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id, email, first_name FROM checkout_sessions WHERE session_token = $1 LIMIT 1`,
+      [rawToken]
+    );
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    if (rows.length === 0) {
+      return res.status(404).send(
+        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Session Not Found</h2><p>This checkout session has already been removed or does not exist.</p></body></html>'
+      );
+    }
+
+    const escapedToken = rawToken.replace(/"/g, '&quot;');
+    return res.send(`<!doctype html>
+<html>
+<head><title>Opt Out of Cart Reminders</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="font-family:sans-serif;padding:40px;text-align:center;max-width:500px;margin:0 auto;color:#1c1410;">
+  <h2>Opt Out of Cart Reminders</h2>
+  <p>Are you sure you want to delete your saved checkout details and stop receiving recovery reminders?</p>
+  <form method="POST" action="/api/orders/checkout-session/opt-out" style="margin-top:24px;">
+    <input type="hidden" name="token" value="${escapedToken}">
+    <button type="submit" style="background:#b91c1c;color:#fff;border:none;padding:12px 24px;font-size:16px;border-radius:6px;cursor:pointer;font-weight:600;">
+      Confirm Opt-Out &amp; Delete Data
+    </button>
+  </form>
+</body>
+</html>`);
+  } catch (err) {
+    logger.error('showCheckoutSessionOptOut error', { err: err.message });
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(500).send('<!doctype html><html><body><h2>Error</h2><p>Failed to process opt-out confirmation.</p></body></html>');
+  }
+};
+
+const confirmCheckoutSessionOptOut = async (req, res) => {
+  try {
+    const rawToken = String(req.body?.token || req.query?.token || '').trim().slice(0, 120);
+    if (!rawToken) {
+      if (req.headers.accept?.includes('application/json') || req.is('json')) {
+        return res.status(400).json({ error: 'token is required' });
+      }
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.status(400).send('<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Invalid Request</h2><p>An opt-out token is required.</p></body></html>');
+    }
+
+    const { rowCount } = await pool.query(
+      `DELETE FROM checkout_sessions WHERE session_token = $1`,
+      [rawToken]
+    );
+
+    if (req.headers.accept?.includes('application/json') || req.is('json')) {
+      return res.json({ deleted: rowCount > 0, count: rowCount });
+    }
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    if (rowCount === 0) {
+      return res.status(404).send('<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Already Removed</h2><p>This checkout session has already been deleted.</p></body></html>');
+    }
+
+    return res.send(`<!doctype html>
+<html>
+<head><title>Opt-Out Successful</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="font-family:sans-serif;padding:40px;text-align:center;max-width:500px;margin:0 auto;color:#1c1410;">
+  <h2>You Have Been Opted Out</h2>
+  <p>Your saved checkout session has been permanently deleted and you will not receive further cart reminders.</p>
+</body>
+</html>`);
+  } catch (err) {
+    logger.error('confirmCheckoutSessionOptOut error', { err: err.message });
+    if (req.headers.accept?.includes('application/json') || req.is('json')) {
+      return res.status(500).json({ error: 'Failed to process opt-out' });
+    }
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    return res.status(500).send('<!doctype html><html><body><h2>Error</h2><p>Failed to complete opt-out.</p></body></html>');
+  }
+};
+
 const deleteCheckoutSession = async (req, res) => {
   try {
     const rawToken = String(
@@ -2335,12 +2422,6 @@ const deleteCheckoutSession = async (req, res) => {
           [req.user.id]
         );
 
-    if (req.method === 'GET') {
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.send(
-        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>You have been opted out</h2><p>Your saved checkout session has been deleted and you will not receive cart reminders.</p></body></html>'
-      );
-    }
     return res.json({ deleted: rowCount > 0, count: rowCount });
   } catch (err) {
     logger.error('deleteCheckoutSession error', { err: err.message });
@@ -2357,5 +2438,6 @@ module.exports = {
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,
   trackOrder,
-  upsertCheckoutSession, getAbandonedCheckouts, sendAbandonedCheckoutReminder, deleteCheckoutSession,
+  upsertCheckoutSession, getAbandonedCheckouts, sendAbandonedCheckoutReminder,
+  showCheckoutSessionOptOut, confirmCheckoutSessionOptOut, deleteCheckoutSession,
 };

@@ -18,7 +18,8 @@ const {
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,
   trackOrder,
-  upsertCheckoutSession, getAbandonedCheckouts, sendAbandonedCheckoutReminder, deleteCheckoutSession,
+  upsertCheckoutSession, getAbandonedCheckouts, sendAbandonedCheckoutReminder,
+  showCheckoutSessionOptOut, confirmCheckoutSessionOptOut, deleteCheckoutSession,
 } = require('../controllers/order.controller');
 const {
   getOrderReturns,
@@ -63,7 +64,8 @@ const trackOrderNumberLimiter = makeRateLimiter(
 router.post('/track', trackLimiter, trackOrderNumberLimiter, trackOrder);
 router.post('/checkout-session', checkoutSessionLimiter, optionalToken, upsertCheckoutSession);
 router.delete('/checkout-session', trackLimiter, optionalToken, deleteCheckoutSession);
-router.get('/checkout-session/opt-out', trackLimiter, deleteCheckoutSession);
+router.get('/checkout-session/opt-out', trackLimiter, showCheckoutSessionOptOut);
+router.post('/checkout-session/opt-out', trackLimiter, confirmCheckoutSessionOptOut);
 
 router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);

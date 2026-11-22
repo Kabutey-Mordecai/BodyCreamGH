@@ -67,7 +67,7 @@ app.use(helmet({
       objectSrc:      ["'none'"],
       frameAncestors: ["'none'"],
       baseUri:        ["'none'"],
-      formAction:     ["'none'"],
+      formAction:     ["'self'"],
     },
   },
   // Deny embedding this API in frames or iframes.
