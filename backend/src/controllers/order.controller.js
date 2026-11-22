@@ -2147,16 +2147,38 @@ const upsertCheckoutSession = async (req, res) => {
       items = [],
       subtotal = 0,
       step_reached = 'contact',
+      consent = false,
     } = req.body || {};
+
+    if (consent !== true) {
+      return res.status(400).json({ error: 'Cart reminder consent is required before saving contact details' });
+    }
 
     const cleanEmail = String(email || '').trim().toLowerCase();
     const cleanToken = String(session_token || '').trim().slice(0, 120);
-    if (!cleanToken || !cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    if (!cleanToken || !cleanEmail || cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({ error: 'Valid session_token and email are required' });
     }
 
-    const safeItems = Array.isArray(items) ? items.slice(0, 50) : [];
-    const safeSubtotal = Math.max(0, Number(subtotal) || 0);
+    if (!Array.isArray(items) || items.length > 50) {
+      return res.status(400).json({ error: 'items must be an array of at most 50 items' });
+    }
+    const safeItems = items.map(it => ({
+      product_id: it?.product_id ? String(it.product_id).slice(0, 64) : null,
+      name: it?.name ? String(it.name).trim().slice(0, 160) : 'Item',
+      quantity: Math.max(1, Math.min(999, parseInt(it?.quantity, 10) || 1)),
+      price: Math.max(0, Number(it?.price) || 0),
+    }));
+    const serializedItems = JSON.stringify(safeItems);
+    if (serializedItems.length > 16384) {
+      return res.status(400).json({ error: 'Checkout session payload exceeds maximum size' });
+    }
+
+    const parsedSubtotal = Number(subtotal);
+    if (!Number.isFinite(parsedSubtotal) || parsedSubtotal < 0 || parsedSubtotal > 1000000) {
+      return res.status(400).json({ error: 'Invalid subtotal' });
+    }
+    const safeSubtotal = parsedSubtotal;
     const safeStep = ['contact', 'shipping', 'payment'].includes(step_reached)
       ? step_reached
       : 'contact';
@@ -2223,6 +2245,9 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
     if (session.recovered_order_id) {
       return res.status(409).json({ error: 'This checkout has already been completed' });
     }
+    if (session.reminder_sent_at) {
+      return res.status(409).json({ error: 'A recovery reminder has already been sent for this session' });
+    }
 
     const emailService = require('../services/email.service');
     const storeUrl = (process.env.FRONTEND_URL || 'https://bodycreamgh.com').replace(/\/$/, '');
@@ -2246,6 +2271,16 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
       `UPDATE checkout_sessions SET reminder_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
       [session.id]
     );
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'abandoned_checkout.remind',
+      resourceType: 'checkout_session',
+      resourceId: session.id,
+      details: { email: session.email },
+      ip: req.ip,
+    });
 
     return res.json({ message: 'Recovery reminder email sent', reminder_sent_at: new Date().toISOString() });
   } catch (err) {

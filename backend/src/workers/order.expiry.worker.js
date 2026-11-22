@@ -130,10 +130,28 @@ async function expireUnpaidOrders({ ttlMinutes = DEFAULT_TTL_MINUTES } = {}) {
   return { checked: candidates.length, expiredCount };
 }
 
+async function purgeCheckoutSessions() {
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM checkout_sessions
+        WHERE created_at < NOW() - INTERVAL '30 days'
+           OR (recovered_order_id IS NOT NULL AND updated_at < NOW() - INTERVAL '24 hours')`
+    );
+    if (rowCount > 0) {
+      logger.info('Purged expired/recovered checkout sessions', { purgedCount: rowCount });
+    }
+    return { purgedCount: rowCount || 0 };
+  } catch (err) {
+    logger.warn('Failed to purge checkout sessions', { err: err.message });
+    return { purgedCount: 0 };
+  }
+}
+
 async function register(boss) {
   await boss.createQueue('orders-expire-unpaid');
   await boss.work('orders-expire-unpaid', { teamSize: 1 }, async () => {
     await expireUnpaidOrders();
+    await purgeCheckoutSessions();
   });
 
   await boss.schedule('orders-expire-unpaid', '*/5 * * * *', {}, {
@@ -148,4 +166,5 @@ async function register(boss) {
 }
 
 register.expireUnpaidOrders = expireUnpaidOrders;
+register.purgeCheckoutSessions = purgeCheckoutSessions;
 module.exports = register;

@@ -568,6 +568,15 @@ class ApiService {
     return await _handleResponse(res) as Map<String, dynamic>;
   }
 
+  Future<void> saveCheckoutSession(Map<String, dynamic> payload) async {
+    final token = await getAccessToken();
+    await _client.post(
+      _uri('/orders/checkout-session'),
+      headers: _headers(token: token),
+      body: jsonEncode(payload),
+    );
+  }
+
   Future<Map<String, dynamic>> getMyOrdersWithMeta({
     int page = 1,
     int limit = 20,

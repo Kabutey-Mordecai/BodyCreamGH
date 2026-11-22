@@ -28,6 +28,7 @@ const {
 
 const router = express.Router();
 const trackLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many tracking requests. Please try again later.');
+const checkoutSessionLimiter = makeRateLimiter(15 * 60 * 1000, 15, 'Too many checkout session updates. Please try again later.');
 const returnCreateLimiter = makeRateLimiter(15 * 60 * 1000, 10, 'Too many return requests. Please try again later.', {
   keyGenerator: (req, ip) => `ret:create:${req.user?.id || ip}`,
 });
@@ -56,7 +57,7 @@ const trackOrderNumberLimiter = makeRateLimiter(
 
 // Public tracking & abandoned checkout lead capture — must be before /:orderId
 router.post('/track', trackLimiter, trackOrderNumberLimiter, trackOrder);
-router.post('/checkout-session', trackLimiter, optionalToken, upsertCheckoutSession);
+router.post('/checkout-session', checkoutSessionLimiter, optionalToken, upsertCheckoutSession);
 
 router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);
