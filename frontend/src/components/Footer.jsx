@@ -65,6 +65,7 @@ const SOCIALS_META = [
 ];
 
 export default function Footer() {
+  const settings = useSettings();
   const {
     store_name,
     store_phone,
@@ -79,7 +80,8 @@ export default function Footer() {
     pay_on_delivery_enabled,
     back_to_top_enabled,
     footer_payment_badges_enabled,
-  } = useSettings();
+    categories,
+  } = settings;
 
   const rawWa = String(whatsapp_number || '').replace(/\D/g, '');
   const waHref = rawWa
