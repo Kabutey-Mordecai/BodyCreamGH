@@ -13,6 +13,7 @@ if (!testUrl) {
 process.env.DATABASE_URL = testUrl;
 
 const pool = require('../src/config/database');
+const ProductModel = require('../src/models/product.model');
 const { validateCreateOrder } = require('../src/middleware/validation');
 const { getFinancials } = require('../src/controllers/admin.controller');
 
@@ -85,7 +86,13 @@ async function main() {
       await pool.query(sql);
     }
 
-    console.log('ALL MISC HARDENING TESTS (GPS, FINANCIALS, SW, MIGRATION IDEMPOTENCY) PASSED');
+    // 5b. pg_trgm missing fallback test (ProductModel.findAll falls back cleanly to ILIKE)
+    ProductModel._setPgTrgmForTesting(false);
+    const fallbackRes = await ProductModel.findAll({ search: 'Shea' });
+    assert.ok(Array.isArray(fallbackRes), 'ILIKE fallback search must succeed without pg_trgm');
+    ProductModel._setPgTrgmForTesting(null);
+
+    console.log('ALL MISC HARDENING TESTS (GPS, FINANCIALS, SW, MIGRATION IDEMPOTENCY, PG_TRGM FALLBACK) PASSED');
   } finally {
     await pool.end();
   }
