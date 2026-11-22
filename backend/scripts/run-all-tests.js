@@ -87,6 +87,11 @@ const tests = [
   'scripts/test-revenue-reporting.js',
   'scripts/test-order-status-and-delivery.js',
   'scripts/test-review-status.js',
+  'scripts/test-order-expiry.js',
+  'scripts/test-rbac-audit.js',
+  'scripts/test-checkout-sessions.js',
+  'scripts/test-hardening-misc.js',
+  'scripts/test-integration-e2e.js',
 ];
 
 for (const script of tests) {

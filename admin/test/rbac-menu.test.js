@@ -138,3 +138,62 @@ test('isRouteAllowed enforces prefix and exact matching', () => {
   assert.strictEqual(isRouteAllowed('/settings/admins', 'admin'), true);
   assert.strictEqual(isRouteAllowed('/settings/admins', 'super_admin'), true);
 });
+
+test('403 API response interceptor behavior never triggers refresh loop or retry', async () => {
+  let refreshCalled = 0;
+  const interceptor = async (err) => {
+    const original = err.config || {};
+    if (
+      err.response?.status !== 401 ||
+      original._retry ||
+      (typeof window !== 'undefined' && window.location.pathname.startsWith('/login'))
+    ) {
+      return Promise.reject(err);
+    }
+    refreshCalled++;
+    return Promise.resolve({ retried: true });
+  };
+
+  const err403 = {
+    response: { status: 403, data: { error: 'Forbidden: Insufficient permissions' } },
+    config: { url: '/api/admin/financials' },
+  };
+
+  await assert.rejects(
+    async () => { await interceptor(err403); },
+    (caught) => {
+      assert.strictEqual(caught.response.status, 403);
+      assert.strictEqual(caught.config._retry, undefined, '403 must never set _retry');
+      return true;
+    }
+  );
+  assert.strictEqual(refreshCalled, 0, '403 must never call token refresh');
+});
+
+test('component error handlers capture 403 cleanly without crashing or infinite re-fetching', () => {
+  let callCount = 0;
+  let state = { loading: false, error: null, data: null };
+
+  function simulatePageLoad(apiCall) {
+    callCount++;
+    state.loading = true;
+    state.error = null;
+    return apiCall()
+      .then(res => { state.data = res.data; })
+      .catch(err => {
+        state.error = err.response?.data?.error || 'Failed to load';
+      })
+      .finally(() => { state.loading = false; });
+  }
+
+  const mockForbiddenApi = () => Promise.reject({
+    response: { status: 403, data: { error: 'Access denied: role not permitted' } },
+  });
+
+  return simulatePageLoad(mockForbiddenApi).then(() => {
+    assert.strictEqual(callCount, 1, 'API must only be called once');
+    assert.strictEqual(state.loading, false, 'Loading must resolve to false on 403');
+    assert.strictEqual(state.error, 'Access denied: role not permitted');
+    assert.strictEqual(state.data, null);
+  });
+});

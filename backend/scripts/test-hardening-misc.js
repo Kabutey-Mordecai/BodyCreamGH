@@ -98,11 +98,12 @@ async function main() {
     const stampedCi = mockSw.replace(/__BUILD_HASH__/g, ciFallback);
     assert.ok(stampedCi.includes(`const BUILD_HASH = '${ciFallback}';`), 'CI build without .git must stamp valid build hash');
 
-    // 5. Rehearse migrations 040-042 SQL idempotency directly on bodycream_test
+    // 5. Rehearse migrations 040-043 SQL idempotency directly on bodycream_test
     for (const file of [
       '040_ghana_post_gps_and_landmark.sql',
       '041_abandoned_checkouts_and_beauty_facets.sql',
       '042_rbac_and_audit_logs.sql',
+      '043_checkout_sessions_opt_out_token.sql',
     ]) {
       const sql = fs.readFileSync(path.resolve(__dirname, '../migrations', file), 'utf8');
       await pool.query(sql);

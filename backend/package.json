@@ -9,6 +9,7 @@
     "worker": "node src/worker.js",
     "worker:dev": "nodemon src/worker.js",
     "migrate": "node migrations/run.js",
+    "test": "node scripts/run-all-tests.js",
     "test:email": "node scripts/test-email.js"
   },
   "dependencies": {
