@@ -73,8 +73,8 @@ export default function Financials() {
             <StatCard label={`Refunded · ${label}`}      value={fmt(data.total_refunded)} sub="Completed refunds" />
             <StatCard label={`Net revenue · ${label}`}   value={fmt(data.net_revenue)}    sub="Gross minus refunds" />
             <StatCard label={`Gross profit · ${label}`}  value={fmt(data.gross_profit)}   sub={`Margin ${pct(data.gross_margin_pct)} (COGS ${fmt(data.estimated_cogs)})`} />
-            <StatCard label="Est. Paystack fees"         value={fmt(data.estimated_paystack_fees)} sub="1.95% on Paystack volume" />
-            <StatCard label="GRA tax est. (20% incl.)"   value={fmt(data.statutory_tax_estimate)} sub="VAT 15% + NHIL 2.5% + GETFund 2.5%" />
+            <StatCard label="Est. Paystack fees"         value={fmt(data.estimated_paystack_fees)} sub={`${data.paystack_fee_pct ?? 1.95}% on Paystack volume`} />
+            <StatCard label={`GRA tax est. (${data.statutory_tax_pct ?? 20}% incl.)`} value={fmt(data.statutory_tax_estimate)} sub="Estimate only, not for tax filing" />
             <StatCard label="Avg. order value"           value={fmt(data.avg_order_value)} sub="Paid orders in period" />
             <StatCard label="Refund rate"                value={pct(data.refund_rate)}     sub="Refunded ÷ paid orders" />
           </div>

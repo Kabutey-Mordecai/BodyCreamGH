@@ -541,7 +541,7 @@ const getFinancials = async (req, res) => {
       params = [d];
     }
 
-    const [summaryResult, dailyResult, pendingResult, cogsResult, paystackResult] = await Promise.all([
+    const [summaryResult, dailyResult, pendingResult, cogsResult, paystackResult, settingsResult] = await Promise.all([
       pool.query(`
         SELECT
           COALESCE(SUM(CASE WHEN payment_status IN ('paid', 'partially_refunded', 'refunded') THEN total_amount ELSE 0 END), 0) AS gross_revenue,
@@ -576,7 +576,19 @@ const getFinancials = async (req, res) => {
            AND COALESCE(payment_method, 'paystack') = 'paystack'
            ${dateFilter}
       `, params),
+      pool.query(
+        `SELECT key, value FROM site_settings WHERE key IN ('paystack_fee_pct', 'statutory_tax_pct')`
+      ),
     ]);
+
+    const finSettings = {};
+    for (const r of settingsResult.rows) finSettings[r.key] = r.value;
+    const paystackFeePct = Number.isFinite(Number(finSettings.paystack_fee_pct)) && Number(finSettings.paystack_fee_pct) >= 0
+      ? Number(finSettings.paystack_fee_pct)
+      : 1.95;
+    const taxRatePct = Number.isFinite(Number(finSettings.statutory_tax_pct)) && Number(finSettings.statutory_tax_pct) >= 0
+      ? Number(finSettings.statutory_tax_pct)
+      : 20;
 
     const s             = summaryResult.rows[0];
     const grossRevenue  = parseFloat(s.gross_revenue);
@@ -587,9 +599,9 @@ const getFinancials = async (req, res) => {
     const estimatedCogs = parseFloat(cogsResult.rows[0]?.estimated_cogs || 0);
     const grossProfit   = Math.round((netRevenue - estimatedCogs) * 100) / 100;
     const grossMarginPct = netRevenue > 0 ? Math.round((grossProfit / netRevenue) * 10000) / 100 : 0;
-    const paystackFees  = Math.round(parseFloat(paystackResult.rows[0]?.paystack_volume || 0) * 0.0195 * 100) / 100;
-    // Ghana standard VAT (15%) + NHIL (2.5%) + GETFund (2.5%) = 20% tax-inclusive slice
-    const taxEstimate   = Math.round((netRevenue - netRevenue / 1.2) * 100) / 100;
+    const paystackFees  = Math.round(parseFloat(paystackResult.rows[0]?.paystack_volume || 0) * (paystackFeePct / 100) * 100) / 100;
+    const taxDivisor    = 1 + taxRatePct / 100;
+    const taxEstimate   = Math.round((netRevenue - netRevenue / taxDivisor) * 100) / 100;
 
     res.json({
       gross_revenue:           grossRevenue,
@@ -598,7 +610,9 @@ const getFinancials = async (req, res) => {
       estimated_cogs:          estimatedCogs,
       gross_profit:            grossProfit,
       gross_margin_pct:        grossMarginPct,
+      paystack_fee_pct:        paystackFeePct,
       estimated_paystack_fees: paystackFees,
+      statutory_tax_pct:       taxRatePct,
       statutory_tax_estimate:  taxEstimate,
       avg_order_value:         paidOrders > 0 ? Math.round((grossRevenue / paidOrders) * 100) / 100 : 0,
       refund_rate:             paidOrders > 0 ? Math.round((refundedOrders / paidOrders) * 10000) / 100 : 0,

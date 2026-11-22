@@ -1,5 +1,6 @@
-const CACHE_NAME = 'bodycreamgh-shell-v1';
+const CACHE_NAME = 'bodycreamgh-shell-v2';
 const SHELL_URLS = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg'];
+const NO_CACHE_PREFIXES = ['/api/', '/checkout', '/login', '/register', '/account', '/orders', '/order', '/payment'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -21,7 +22,10 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) return;
+  if (url.origin !== self.location.origin) return;
+  if (NO_CACHE_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) {
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(
