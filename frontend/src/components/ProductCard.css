@@ -374,17 +374,100 @@
   width: 100%;
 }
 
-/* ── Touch devices — always show overlay ────── */
-@media (hover: none) {
+/* ── Touch & Mobile devices — Keep photos clean (no full-image dark overlay, matching Jumia) ────── */
+@media (hover: none), (max-width: 768px) {
   .product-card-overlay {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
-    background: linear-gradient(
-      to top,
-      rgba(20, 16, 12, 0.68) 0%,
-      transparent 60%
-    );
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .product-card {
+    border-radius: var(--radius);
+  }
+
+  .product-card-body {
+    padding: 8px 10px 10px;
+    gap: 3px;
+  }
+
+  .product-card-category {
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+  }
+
+  .product-card-name {
+    font-size: 0.86rem;
+    line-height: 1.25;
+    min-height: 2.15em;
+  }
+
+  .product-card-price,
+  .product-card-price-current {
+    font-size: 0.88rem;
+  }
+
+  .product-card-price-was {
+    font-size: 0.72rem;
+  }
+
+  .product-card-price-off {
+    font-size: 0.6rem;
+    padding: 1px 4px;
+  }
+
+  .badge-pill {
+    padding: 2px 7px;
+    font-size: 0.55rem;
+    letter-spacing: 0.06em;
+  }
+
+  .product-card-badges {
+    top: 8px;
+    left: 8px;
+    gap: 4px;
+  }
+
+  .product-card-wishlist {
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    opacity: 1 !important;
+  }
+
+  .product-card-wishlist svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  .product-card-quick-add {
+    right: 8px;
+    bottom: 8px;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
+  .quick-add-btn {
+    width: 32px;
+    height: 32px;
+    font-size: 1.1rem;
+  }
+
+  .quick-add-stepper button {
+    width: 24px;
+    height: 24px;
+    font-size: 0.9rem;
+  }
+
+  .quick-add-stepper span {
+    min-width: 18px;
+    font-size: 0.72rem;
+  }
+
+  .quick-add-options {
+    padding: 5px 9px;
+    font-size: 0.62rem;
   }
 }
 

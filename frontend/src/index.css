@@ -323,12 +323,25 @@ input:not([type="checkbox"]):not([type="radio"]):not(.nav-search-input):not(.her
 
 /* ── Responsive ─────────────────────────────────── */
 @media (max-width: 768px) {
+  .container {
+    padding: 0 14px;
+  }
   .products-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
   }
   .auth-card { padding: 32px 24px; }
   .page-section { padding: 56px 0; }
+}
+
+@media (max-width: 380px) {
+  .container {
+    padding: 0 8px;
+  }
+  .products-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
 }
 
 /* ── Alert variants ─────────────────────────────── */

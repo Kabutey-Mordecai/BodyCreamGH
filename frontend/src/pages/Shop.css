@@ -649,11 +649,33 @@ input.shop-search-input:focus-visible {
   }
 }
 
+@media (max-width: 768px) {
+  .shop-page .products-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 12px !important;
+  }
+  .shop-page .container {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
 @media (max-width: 640px) {
   .shop-header {
-    margin-bottom: 24px;
+    margin-bottom: 20px;
   }
   .shop-toolbar {
     margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 380px) {
+  .shop-page .products-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .shop-page .container {
+    padding-left: 8px;
+    padding-right: 8px;
   }
 }

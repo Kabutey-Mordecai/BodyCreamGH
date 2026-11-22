@@ -61,7 +61,7 @@ export default function Wishlist() {
             <Link to="/shop" className="btn btn-accent">Browse Products</Link>
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 24 }}>
+          <div className="products-grid">
             {items.map(item => (
               <div key={item.product_id} style={{
                 background: 'var(--color-surface)',
