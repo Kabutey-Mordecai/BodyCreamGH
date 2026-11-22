@@ -45,8 +45,10 @@ async function main() {
   // Stub emailService.sendEmail so test does not hit SMTP
   const origSendEmail = emailService.sendEmail;
   let sentEmails = 0;
-  emailService.sendEmail = async () => {
+  let lastEmailHtml = '';
+  emailService.sendEmail = async (opts) => {
     sentEmails++;
+    lastEmailHtml = opts?.html || '';
     return { messageId: 'mock-msg' };
   };
 
@@ -124,6 +126,7 @@ async function main() {
     const adminRemind1 = await reqJson(baseUrl, 'POST', `/api/orders/admin/abandoned/${sessionId}/remind`, adminToken);
     assert.strictEqual(adminRemind1.status, 200);
     assert.strictEqual(sentEmails, 1);
+    assert.ok(lastEmailHtml.includes('/api/orders/checkout-session/opt-out?token='), 'Reminder email must include opt-out link');
 
     const adminRemind2 = await reqJson(baseUrl, 'POST', `/api/orders/admin/abandoned/${sessionId}/remind`, adminToken);
     assert.strictEqual(adminRemind2.status, 409, 'Second reminder for same session must be blocked');
@@ -177,6 +180,17 @@ async function main() {
       }
     }
     assert.ok(hit429, 'POST /api/orders/checkout-session must enforce per-IP rate limit');
+
+    // 7. Customer opt-out / deletion path deletes the saved checkout_session
+    const delToken = `${tokenBase}-del`;
+    await pool.query(
+      `INSERT INTO checkout_sessions (id, session_token, email, subtotal) VALUES ($1, $2, 'del@example.com', 50)`,
+      [uuid(), delToken]
+    );
+    const delRes = await fetch(`${baseUrl}/api/orders/checkout-session/opt-out?token=${encodeURIComponent(delToken)}`);
+    assert.strictEqual(delRes.status, 200);
+    const afterDel = await pool.query(`SELECT id FROM checkout_sessions WHERE session_token = $1`, [delToken]);
+    assert.strictEqual(afterDel.rows.length, 0, 'Customer opt-out link must delete checkout_session');
 
     console.log('ALL CHECKOUT SESSION PRIVACY, RETENTION, RATE-LIMIT & REMINDER TESTS PASSED');
   } finally {
