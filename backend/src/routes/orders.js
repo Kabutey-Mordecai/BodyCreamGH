@@ -58,8 +58,8 @@ const trackOrderNumberLimiter = makeRateLimiter(
 // Public tracking & abandoned checkout lead capture — must be before /:orderId
 router.post('/track', trackLimiter, trackOrderNumberLimiter, trackOrder);
 router.post('/checkout-session', checkoutSessionLimiter, optionalToken, upsertCheckoutSession);
-router.delete('/checkout-session', checkoutSessionLimiter, optionalToken, deleteCheckoutSession);
-router.get('/checkout-session/opt-out', checkoutSessionLimiter, deleteCheckoutSession);
+router.delete('/checkout-session', trackLimiter, optionalToken, deleteCheckoutSession);
+router.get('/checkout-session/opt-out', trackLimiter, deleteCheckoutSession);
 
 router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);
