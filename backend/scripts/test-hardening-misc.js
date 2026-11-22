@@ -70,11 +70,21 @@ async function main() {
 
     // 4c. Service Worker cache safety checks
     const swSrc = fs.readFileSync(path.resolve(__dirname, '../../frontend/public/sw.js'), 'utf8');
-    assert.ok(/CACHE_NAME\s*=\s*'bodycreamgh-shell-v\d+'/.test(swSrc), 'sw.js must use versioned CACHE_NAME');
+    assert.ok(
+      /CACHE_NAME\s*=\s*(`bodycreamgh-shell-\$\{BUILD_HASH\}`|'bodycreamgh-shell-)/.test(swSrc),
+      'sw.js must use versioned CACHE_NAME'
+    );
     for (const prefix of ['/api/', '/checkout', '/login', '/account', '/orders', '/order']) {
       assert.ok(swSrc.includes(`'${prefix}'`), `sw.js NO_CACHE_PREFIXES must include ${prefix}`);
     }
     assert.ok(swSrc.includes('caches.delete'), 'sw.js activate handler must delete old caches');
+
+    // Also verify dist/sw.js gets stamped on build if present
+    const distSwPath = path.resolve(__dirname, '../../frontend/dist/sw.js');
+    if (fs.existsSync(distSwPath)) {
+      const distSw = fs.readFileSync(distSwPath, 'utf8');
+      assert.ok(!distSw.includes('__BUILD_HASH__'), 'dist/sw.js must replace __BUILD_HASH__ with real build hash');
+    }
 
     // 5. Rehearse migrations 040-042 SQL idempotency directly on bodycream_test
     for (const file of [

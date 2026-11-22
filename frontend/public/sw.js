@@ -1,4 +1,5 @@
-const CACHE_NAME = 'bodycreamgh-shell-v2';
+const BUILD_HASH = '__BUILD_HASH__';
+const CACHE_NAME = `bodycreamgh-shell-${BUILD_HASH}`;
 const SHELL_URLS = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg'];
 const NO_CACHE_PREFIXES = ['/api/', '/checkout', '/login', '/register', '/account', '/orders', '/order', '/payment'];
 
