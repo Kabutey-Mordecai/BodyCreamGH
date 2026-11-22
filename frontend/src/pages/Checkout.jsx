@@ -624,7 +624,11 @@ export default function Checkout() {
                         type="text"
                         value={form.ghana_post_gps}
                         onChange={handleChange}
-                        pattern="^[A-Za-z]{2}-\d{3,4}-\d{4}$"
+                        onBlur={e => setForm(prev => ({
+                          ...prev,
+                          ghana_post_gps: e.target.value.trim().toUpperCase(),
+                        }))}
+                        pattern="^\s*[A-Za-z]{2}-\d{3,4}-\d{4}\s*$"
                         autoComplete="postal-code"
                         aria-describedby="gps-hint"
                         placeholder="e.g. GA-183-9024"

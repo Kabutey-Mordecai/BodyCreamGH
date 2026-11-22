@@ -257,30 +257,47 @@ function runMockQuery(sql, params = []) {
     const isGuestInsert = q.includes('guest_email');
     const payStatusMatch = q.match(/'([a-z_]+)'\)$/);
     const insertedPaymentStatus = payStatusMatch ? payStatusMatch[1] : 'unpaid';
+    const colMatch = q.match(/INSERT INTO orders\s*\(([^)]+)\)\s*VALUES\s*\(([^)]+)\)/i);
+    const byCol = {};
+    if (colMatch) {
+      const cols = colMatch[1].split(',').map(s => s.trim());
+      const vals = colMatch[2].split(',').map(s => s.trim());
+      cols.forEach((col, idx) => {
+        const v = vals[idx] || '';
+        const pMatch = v.match(/^\$(\d+)$/);
+        if (pMatch) {
+          byCol[col] = params[Number(pMatch[1]) - 1];
+        } else if (v === 'NULL') {
+          byCol[col] = null;
+        } else {
+          byCol[col] = v.replace(/^'|'$/g, '');
+        }
+      });
+    }
     if (isGuestInsert) {
       makeOrder({
-        id: params[0],
+        id: byCol.id ?? params[0],
         customer_id: null,
-        order_number: params[1],
-        total_amount: String(params[2]),
-        guest_email: params[10],
-        guest_first_name: params[11],
-        guest_last_name: params[12],
-        guest_phone: params[13],
-        fulfillment_method: params[14],
-        payment_method: params[15],
-        status: params[16],
+        order_number: byCol.order_number ?? params[1],
+        total_amount: String(byCol.total_amount ?? params[2]),
+        guest_email: byCol.guest_email ?? params[10],
+        guest_first_name: byCol.guest_first_name ?? params[11],
+        guest_last_name: byCol.guest_last_name ?? params[12],
+        guest_phone: byCol.guest_phone ?? params[13],
+        fulfillment_method: byCol.fulfillment_method ?? params[14],
+        payment_method: byCol.payment_method ?? params[15],
+        status: byCol.status ?? params[16],
         payment_status: insertedPaymentStatus,
       });
     } else {
       makeOrder({
-        id: params[0],
-        customer_id: params[1],
-        order_number: params[2],
-        total_amount: String(params[3]),
-        fulfillment_method: params[11],
-        payment_method: params[12],
-        status: params[13],
+        id: byCol.id ?? params[0],
+        customer_id: byCol.customer_id ?? params[1],
+        order_number: byCol.order_number ?? params[2],
+        total_amount: String(byCol.total_amount ?? params[3]),
+        fulfillment_method: byCol.fulfillment_method ?? params[11],
+        payment_method: byCol.payment_method ?? params[12],
+        status: byCol.status ?? params[13],
         payment_status: insertedPaymentStatus,
       });
     }

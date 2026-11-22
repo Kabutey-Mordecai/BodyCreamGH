@@ -13,6 +13,10 @@ async function hasPgTrgm() {
   }
   return pgTrgmAvailable;
 }
+
+function _setPgTrgmForTesting(val) {
+  pgTrgmAvailable = val;
+}
 const { randomUUID: uuid } = require('crypto');
 
 // Scalar correlated subquery — returns the most generous currently-active
@@ -264,4 +268,6 @@ module.exports = {
   delete: async (id) => {
     await pool.query('DELETE FROM products WHERE id = $1', [id]);
   },
+
+  _setPgTrgmForTesting,
 };
