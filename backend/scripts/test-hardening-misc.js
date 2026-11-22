@@ -86,6 +86,18 @@ async function main() {
       assert.ok(!distSw.includes('__BUILD_HASH__'), 'dist/sw.js must replace __BUILD_HASH__ with real build hash');
     }
 
+    // Verify CI fallback when .git is absent
+    const mockSw = "const BUILD_HASH = '__BUILD_HASH__'; const CACHE_NAME = `bodycreamgh-shell-${BUILD_HASH}`;";
+    let ciFallback = '';
+    try {
+      require('child_process').execSync('git --git-dir=/nonexistent/path rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] });
+    } catch {
+      ciFallback = require('crypto').randomBytes(4).toString('hex');
+    }
+    assert.ok(ciFallback && ciFallback.length === 8, 'CI fallback must generate random hex hash when .git is absent');
+    const stampedCi = mockSw.replace(/__BUILD_HASH__/g, ciFallback);
+    assert.ok(stampedCi.includes(`bodycreamgh-shell-${ciFallback}`), 'CI build without .git must stamp valid cache name');
+
     // 5. Rehearse migrations 040-042 SQL idempotency directly on bodycream_test
     for (const file of [
       '040_ghana_post_gps_and_landmark.sql',

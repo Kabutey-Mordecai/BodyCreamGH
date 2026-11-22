@@ -12,12 +12,21 @@ function versionServiceWorkerPlugin() {
       const swDistPath = path.resolve(__dirname, 'dist/sw.js');
       if (fs.existsSync(swDistPath)) {
         let commit = '';
-        try {
-          commit = execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim();
-        } catch {
-          commit = crypto.randomBytes(4).toString('hex');
+        if (process.env.VITE_BUILD_HASH) {
+          commit = process.env.VITE_BUILD_HASH.trim();
+        } else {
+          try {
+            // Check if git is available and .git directory exists
+            commit = execSync('git rev-parse --short HEAD', {
+              stdio: ['ignore', 'pipe', 'ignore'],
+              encoding: 'utf8',
+            }).trim();
+          } catch {
+            // In CI tarballs / containers without .git, generate reproducible or random fallback
+            commit = crypto.randomBytes(4).toString('hex');
+          }
         }
-        const buildHash = process.env.VITE_BUILD_HASH || commit || Date.now().toString(36);
+        const buildHash = commit || crypto.randomBytes(4).toString('hex');
         let content = fs.readFileSync(swDistPath, 'utf8');
         content = content.replace(/__BUILD_HASH__/g, buildHash);
         fs.writeFileSync(swDistPath, content, 'utf8');

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, NavLink, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { ordersAPI, adminAPI } from '../services/api';
+import { filterNavGroupsByRole } from '../utils/rbac';
 import './AdminLayout.css';
 
 const STORE_NAME = import.meta.env.VITE_STORE_NAME || 'BodyCream GH';
@@ -100,7 +101,7 @@ export default function AdminLayout() {
         </Link>
 
         <nav className="sidebar-nav">
-          {NAV_GROUPS_DEF.map(group => (
+          {filterNavGroupsByRole(NAV_GROUPS_DEF, user?.role).map(group => (
             <div key={group.label} className="sidebar-group">
               <div className="sidebar-group-label">{group.label}</div>
               {group.items.map(item => {
