@@ -598,6 +598,16 @@ const updateOrderStatus = async (req, res) => {
 
     await OrderModel.updateStatus(req.params.orderId, status);
     await logStatusChange(req.params.orderId, fromStatus, status, note || 'Manual update by admin');
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'order.status_update',
+      resourceType: 'order',
+      resourceId: req.params.orderId,
+      details: { from: fromStatus, to: status, note: note || null },
+      ip: req.ip,
+    });
     logger.info('Order status updated', { orderId: req.params.orderId, from: fromStatus, to: status });
 
     // Notify the buyer by email on key fulfilment transitions (confirmed, processing/packing, shipped/ready-for-pickup, delivered/picked-up)
@@ -779,6 +789,16 @@ const cancelOrder = async (req, res) => {
       .catch(err => logger.error('Failed to enqueue cancellation notification', { err: err.message, orderId: order.id }));
 
     logger.info('Order cancelled', { orderId: order.id, from: order.status, to: 'cancelled' });
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'order.cancel',
+      resourceType: 'order',
+      resourceId: order.id,
+      details: { from: order.status, reason: cancellationReason || null },
+      ip: req.ip,
+    });
     res.json({ message: 'Order cancelled', order: updatedRows[0] });
   } catch (error) {
     if (transactionStarted) {
@@ -2246,6 +2266,16 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
       `UPDATE checkout_sessions SET reminder_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
       [session.id]
     );
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'abandoned_checkout.remind',
+      resourceType: 'checkout_session',
+      resourceId: session.id,
+      details: { email: session.email },
+      ip: req.ip,
+    });
 
     return res.json({ message: 'Recovery reminder email sent', reminder_sent_at: new Date().toISOString() });
   } catch (err) {

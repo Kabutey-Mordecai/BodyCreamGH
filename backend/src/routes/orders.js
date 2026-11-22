@@ -1,5 +1,9 @@
 const express = require('express');
-const { verifyToken, optionalToken, requireAdmin } = require('../middleware/auth');
+const { verifyToken, optionalToken, requireAdmin, requireRoles } = require('../middleware/auth');
+const requireSuperOrAdmin = requireRoles('admin', 'super_admin');
+const requireFulfillmentOrAdmin = requireRoles('admin', 'super_admin', 'fulfillment');
+const requireSupportOrAdmin = requireRoles('admin', 'super_admin', 'support');
+const requireOrderOps = requireRoles('admin', 'super_admin', 'fulfillment', 'support');
 const { makeRateLimiter } = require('../middleware/rateLimit');
 const {
   validateCreateOrder, validateCreateGuest, validateOrderStatus,
@@ -61,17 +65,17 @@ router.post('/checkout-session', trackLimiter, optionalToken, upsertCheckoutSess
 router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);
 router.get('/', verifyToken, getOrders);
-router.get('/admin/all',              verifyToken, requireAdmin, getAllOrders);
-router.get('/admin/abandoned',        verifyToken, requireAdmin, getAbandonedCheckouts);
-router.post('/admin/abandoned/:sessionId/remind', verifyToken, requireAdmin, sendAbandonedCheckoutReminder);
-router.get('/admin/requests/counts', verifyToken, requireAdmin, getRequestCounts);
-router.get('/admin/requests',        verifyToken, requireAdmin, getRequests);
-router.get('/admin/export',          verifyToken, requireAdmin, exportOrders);
+router.get('/admin/all',              verifyToken, requireAdmin, requireOrderOps, getAllOrders);
+router.get('/admin/abandoned',        verifyToken, requireAdmin, requireSupportOrAdmin, getAbandonedCheckouts);
+router.post('/admin/abandoned/:sessionId/remind', verifyToken, requireAdmin, requireSupportOrAdmin, sendAbandonedCheckoutReminder);
+router.get('/admin/requests/counts', verifyToken, requireAdmin, requireOrderOps, getRequestCounts);
+router.get('/admin/requests',        verifyToken, requireAdmin, requireOrderOps, getRequests);
+router.get('/admin/export',          verifyToken, requireAdmin, requireSuperOrAdmin, exportOrders);
 // Item-level partial returns (admin) — MUST be mounted before /:orderId
-router.get('/admin/returns',                   requirePartialReturnsEnabled, verifyToken, requireAdmin, getAdminReturns);
-router.post('/admin/:orderId/returns',         requirePartialReturnsEnabled, verifyToken, requireAdmin, adminCreateReturnRequest);
-router.post('/admin/returns/:returnId/approve', requirePartialReturnsEnabled, verifyToken, requireAdmin, approveReturnRequestById);
-router.post('/admin/returns/:returnId/reject',  requirePartialReturnsEnabled, verifyToken, requireAdmin, rejectReturnRequestById);
+router.get('/admin/returns',                   requirePartialReturnsEnabled, verifyToken, requireAdmin, requireOrderOps, getAdminReturns);
+router.post('/admin/:orderId/returns',         requirePartialReturnsEnabled, verifyToken, requireAdmin, requireSupportOrAdmin, adminCreateReturnRequest);
+router.post('/admin/returns/:returnId/approve', requirePartialReturnsEnabled, verifyToken, requireAdmin, requireSuperOrAdmin, approveReturnRequestById);
+router.post('/admin/returns/:returnId/reject',  requirePartialReturnsEnabled, verifyToken, requireAdmin, requireSupportOrAdmin, rejectReturnRequestById);
 router.get('/:orderId', verifyToken, getOrderById);
 
 // Item-level partial returns (logged-in customer owner or admin for GET)
@@ -79,22 +83,22 @@ router.get('/:orderId/returns',                    requirePartialReturnsEnabled,
 router.post('/:orderId/returns',                   requirePartialReturnsEnabled, verifyToken, returnCreateLimiter, createReturnRequest);
 router.post('/:orderId/returns/:returnId/cancel',  requirePartialReturnsEnabled, verifyToken, returnCancelLimiter, cancelReturnRequest);
 
-// Admin-only fulfilment actions
-router.post('/:orderId/cancel',    verifyToken, requireAdmin, validateCancelOrder,  cancelOrder);
-router.post('/:orderId/refund',    verifyToken, requireAdmin, validateRefundOrder,  refundOrder);
-router.post('/:orderId/payments/:paymentId/refund-duplicate', verifyToken, requireAdmin, refundDuplicatePayment);
-router.post('/:orderId/mark-paid', verifyToken, requireAdmin, markOrderPaid);
-router.patch('/:orderId/status',   verifyToken, requireAdmin, validateOrderStatus,  updateOrderStatus);
+// Admin-only fulfilment & refund actions
+router.post('/:orderId/cancel',    verifyToken, requireAdmin, requireFulfillmentOrAdmin, validateCancelOrder,  cancelOrder);
+router.post('/:orderId/refund',    verifyToken, requireAdmin, requireSuperOrAdmin, validateRefundOrder,  refundOrder);
+router.post('/:orderId/payments/:paymentId/refund-duplicate', verifyToken, requireAdmin, requireSuperOrAdmin, refundDuplicatePayment);
+router.post('/:orderId/mark-paid', verifyToken, requireAdmin, requireFulfillmentOrAdmin, markOrderPaid);
+router.patch('/:orderId/status',   verifyToken, requireAdmin, requireFulfillmentOrAdmin, validateOrderStatus,  updateOrderStatus);
 
 // Customer request routes (authenticated, no requireAdmin)
 router.post('/:orderId/request-cancel', verifyToken, validateRequestCancel, requestCancel);
 router.post('/:orderId/request-return', verifyToken, validateRequestReturn, requestReturn);
 
 // Admin approve/reject request routes
-router.post('/:orderId/approve-cancel', verifyToken, requireAdmin, approveCancelRequest);
-router.post('/:orderId/reject-cancel',  verifyToken, requireAdmin, rejectCancelRequest);
-router.post('/:orderId/approve-return', verifyToken, requireAdmin, approveReturnRequest);
-router.post('/:orderId/reject-return',  verifyToken, requireAdmin, rejectReturnRequest);
+router.post('/:orderId/approve-cancel', verifyToken, requireAdmin, requireSupportOrAdmin, approveCancelRequest);
+router.post('/:orderId/reject-cancel',  verifyToken, requireAdmin, requireSupportOrAdmin, rejectCancelRequest);
+router.post('/:orderId/approve-return', verifyToken, requireAdmin, requireSuperOrAdmin, approveReturnRequest);
+router.post('/:orderId/reject-return',  verifyToken, requireAdmin, requireSupportOrAdmin, rejectReturnRequest);
 
 router.get('/:orderId/log',           verifyToken, getOrderStatusLog);
 router.get('/:orderId/review-status', verifyToken, getReviewStatus);

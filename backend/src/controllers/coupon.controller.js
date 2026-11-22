@@ -50,6 +50,16 @@ const createCoupon = async (req, res) => {
       return res.status(400).json({ error: 'Percentage value must be between 1 and 100.' });
     }
     const coupon = await CouponModel.create({ code, type, value, min_order, max_uses, expires_at });
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'coupon.create',
+      resourceType: 'coupon',
+      resourceId: coupon.id,
+      details: { code: coupon.code, type, value },
+      ip: req.ip,
+    });
     res.status(201).json(coupon);
   } catch (err) {
     if (err.code === '23505') {
@@ -81,6 +91,16 @@ const updateCoupon = async (req, res) => {
 
     const updated = await CouponModel.update(req.params.id, { code, type, value, min_order, max_uses, expires_at, active });
     if (!updated) return res.status(404).json({ error: 'Coupon not found.' });
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'coupon.update',
+      resourceType: 'coupon',
+      resourceId: req.params.id,
+      details: { code, type, value, active },
+      ip: req.ip,
+    });
     res.json(updated);
   } catch (err) {
     logger.error('Update coupon error', { err: err.message });
@@ -91,6 +111,15 @@ const updateCoupon = async (req, res) => {
 const deactivateCoupon = async (req, res) => {
   try {
     await CouponModel.deactivate(req.params.id);
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'coupon.deactivate',
+      resourceType: 'coupon',
+      resourceId: req.params.id,
+      ip: req.ip,
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to deactivate coupon.' });
@@ -100,6 +129,15 @@ const deactivateCoupon = async (req, res) => {
 const deleteCoupon = async (req, res) => {
   try {
     await CouponModel.remove(req.params.id);
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'coupon.delete',
+      resourceType: 'coupon',
+      resourceId: req.params.id,
+      ip: req.ip,
+    });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete coupon.' });

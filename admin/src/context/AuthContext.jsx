@@ -5,6 +5,8 @@ import { authAPI } from '../services/api';
 // don't collide with the storefront app when both run on the same origin in dev.
 const AuthContext = createContext(null);
 
+const ADMIN_ROLES = new Set(['admin', 'super_admin', 'fulfillment', 'support', 'marketing']);
+
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -29,7 +31,7 @@ export function AuthProvider({ children }) {
       return { mfaRequired: true, mfaToken: data.mfa_token };
     }
 
-    if (data.user?.role !== 'admin') {
+    if (!ADMIN_ROLES.has(data.user?.role)) {
       throw new Error('This account does not have admin access.');
     }
     localStorage.setItem('admin_token', data.token);
@@ -42,7 +44,7 @@ export function AuthProvider({ children }) {
   // Step 2: OTP verification. Called after login() returns mfaRequired: true.
   const completeOtpLogin = async (mfaToken, otpCode) => {
     const { data } = await authAPI.verifyOtp({ mfa_token: mfaToken, otp_code: otpCode });
-    if (data.user?.role !== 'admin') {
+    if (!ADMIN_ROLES.has(data.user?.role)) {
       throw new Error('This account does not have admin access.');
     }
     localStorage.setItem('admin_token', data.token);

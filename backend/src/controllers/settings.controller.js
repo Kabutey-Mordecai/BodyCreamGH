@@ -51,6 +51,17 @@ const upsertSetting = async (req, res) => {
       [key, JSON.stringify(value), req.user?.id || null]
     );
     settingsCache.flushAll();
+    const { logAdminAction } = require('../utils/audit');
+    const isSensitive = /secret|token|password|key/i.test(key);
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'settings.update',
+      resourceType: 'site_settings',
+      resourceId: key,
+      details: { key, value: isSensitive ? '[REDACTED]' : value },
+      ip: req.ip,
+    });
     res.json({ ok: true });
   } catch (err) {
     logger.error('Settings upsert error', { err: err.message });
@@ -87,6 +98,21 @@ const upsertManySettings = async (req, res) => {
     }
     await client.query('COMMIT');
     settingsCache.flushAll();
+    const { logAdminAction } = require('../utils/audit');
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'settings.bulk_update',
+      resourceType: 'site_settings',
+      details: {
+        keys: entries
+          .map(e => e?.key)
+          .filter(Boolean)
+          .filter(k => !/secret|token|password|key/i.test(k))
+          .slice(0, 50),
+      },
+      ip: req.ip,
+    });
     res.json({ ok: true, count: entries.length });
   } catch (err) {
     await client.query('ROLLBACK');

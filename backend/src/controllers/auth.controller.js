@@ -123,8 +123,9 @@ const login = async (req, res) => {
       return res.status(401).json({ error: 'This account has been deactivated.' });
     }
 
-    // Admin accounts require a second factor (Email OTP) before JWT is issued.
-    if (user.role === 'admin') {
+    // Admin/staff accounts require a second factor (Email OTP) before JWT is issued.
+    const { ADMIN_ROLES } = require('../middleware/auth');
+    if (ADMIN_ROLES.has(user.role)) {
       const otp = crypto.randomInt(100000, 1000000).toString();
       const otpHash = hashOtp(otp);
       const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -190,7 +191,8 @@ const verifyOtp = async (req, res) => {
       [decoded.sub]
     );
     const user = rows[0];
-    if (!user || user.role !== 'admin' || user.is_active === false) {
+    const { ADMIN_ROLES } = require('../middleware/auth');
+    if (!user || !ADMIN_ROLES.has(user.role) || user.is_active === false) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
