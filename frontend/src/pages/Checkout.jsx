@@ -54,12 +54,14 @@ export default function Checkout() {
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [reminderConsent, setReminderConsent] = useState(false);
   const submittingRef         = useRef(false);
   const checkoutSessionTokenRef = useRef(
     `cs-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
   );
 
   useEffect(() => {
+    if (!reminderConsent) return;
     const email = (form.email || user?.email || '').trim();
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || cart.length === 0) {
       return;
@@ -68,6 +70,7 @@ export default function Checkout() {
       const step = form.delivery_address.trim() ? 'shipping' : 'contact';
       ordersAPI.saveCheckoutSession({
         session_token: checkoutSessionTokenRef.current,
+        consent: true,
         email,
         first_name: form.first_name || user?.first_name || undefined,
         phone: form.phone || user?.phone || undefined,
@@ -82,7 +85,7 @@ export default function Checkout() {
       }).catch(() => {});
     }, 1200);
     return () => clearTimeout(timer);
-  }, [form.email, form.first_name, form.phone, form.delivery_address, user?.email, user?.first_name, user?.phone, cart, cartTotal]);
+  }, [reminderConsent, form.email, form.first_name, form.phone, form.delivery_address, user?.email, user?.first_name, user?.phone, cart, cartTotal]);
 
   // Coupon state
   const [couponInput, setCouponInput]       = useState('');
@@ -504,6 +507,14 @@ export default function Checkout() {
                     placeholder="ama@example.com"
                   />
                 </div>
+                <label className="checkout-consent-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.85rem', color: 'var(--color-muted)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={reminderConsent}
+                    onChange={e => setReminderConsent(e.target.checked)}
+                  />
+                  <span>Send me a reminder if I don&apos;t complete my order</span>
+                </label>
               </div>
             )}
 

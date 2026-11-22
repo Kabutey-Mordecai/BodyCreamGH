@@ -60,6 +60,9 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
 
   bool _loadingSettings = true;
   bool _allowGuestCheckout = false;
+  bool _reminderConsent = false;
+  final String _checkoutSessionToken =
+      'cs-mob-${DateTime.now().millisecondsSinceEpoch}';
   bool _pickupEnabled = true;
   String _pickupLocation = 'East Legon, Accra (Call upon arrival)';
   String _pickupHours = 'Mon–Sat, 9:00 AM – 6:00 PM';
@@ -938,6 +941,45 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
               ),
               const SizedBox(height: 12),
             ],
+
+            CheckboxListTile(
+              value: _reminderConsent,
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text(
+                'Send me a reminder if I don\'t complete my order',
+                style: TextStyle(fontSize: 13),
+              ),
+              onChanged: (v) {
+                final checked = v ?? false;
+                setState(() => _reminderConsent = checked);
+                if (checked) {
+                  final email = (_emailCtrl.text.trim().isNotEmpty
+                          ? _emailCtrl.text.trim()
+                          : (context.read<AuthProvider>().user?.email ?? ''))
+                      .trim();
+                  if (email.contains('@') && cart.items.isNotEmpty) {
+                    ApiService.instance.saveCheckoutSession({
+                      'session_token': _checkoutSessionToken,
+                      'consent': true,
+                      'email': email,
+                      'first_name': _firstNameCtrl.text.trim(),
+                      'phone': _phoneCtrl.text.trim(),
+                      'subtotal': cart.subtotal,
+                      'step_reached': 'contact',
+                      'items': cart.items
+                          .map((i) => {
+                                'product_id': i.productId,
+                                'name': i.name,
+                                'quantity': i.quantity,
+                                'price': i.price,
+                              })
+                          .toList(),
+                    }).catchError((_) {});
+                  }
+                }
+              },
+            ),
 
             TextFormField(
               controller: _phoneCtrl,

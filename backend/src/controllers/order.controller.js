@@ -2167,16 +2167,41 @@ const upsertCheckoutSession = async (req, res) => {
       items = [],
       subtotal = 0,
       step_reached = 'contact',
+      consent = false,
     } = req.body || {};
+
+    if (consent !== true) {
+      return res.status(400).json({
+        error: 'Please update your app or refresh the page and tick the cart reminder consent box to save your checkout session.',
+        code: 'CONSENT_REQUIRED',
+      });
+    }
 
     const cleanEmail = String(email || '').trim().toLowerCase();
     const cleanToken = String(session_token || '').trim().slice(0, 120);
-    if (!cleanToken || !cleanEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+    if (!cleanToken || !cleanEmail || cleanEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
       return res.status(400).json({ error: 'Valid session_token and email are required' });
     }
 
-    const safeItems = Array.isArray(items) ? items.slice(0, 50) : [];
-    const safeSubtotal = Math.max(0, Number(subtotal) || 0);
+    if (!Array.isArray(items) || items.length > 50) {
+      return res.status(400).json({ error: 'items must be an array of at most 50 items' });
+    }
+    const safeItems = items.map(it => ({
+      product_id: it?.product_id ? String(it.product_id).slice(0, 64) : null,
+      name: it?.name ? String(it.name).trim().slice(0, 160) : 'Item',
+      quantity: Math.max(1, Math.min(999, parseInt(it?.quantity, 10) || 1)),
+      price: Math.max(0, Number(it?.price) || 0),
+    }));
+    const serializedItems = JSON.stringify(safeItems);
+    if (serializedItems.length > 16384) {
+      return res.status(400).json({ error: 'Checkout session payload exceeds maximum size' });
+    }
+
+    const parsedSubtotal = Number(subtotal);
+    if (!Number.isFinite(parsedSubtotal) || parsedSubtotal < 0 || parsedSubtotal > 1000000) {
+      return res.status(400).json({ error: 'Invalid subtotal' });
+    }
+    const safeSubtotal = parsedSubtotal;
     const safeStep = ['contact', 'shipping', 'payment'].includes(step_reached)
       ? step_reached
       : 'contact';
@@ -2243,9 +2268,14 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
     if (session.recovered_order_id) {
       return res.status(409).json({ error: 'This checkout has already been completed' });
     }
+    if (session.reminder_sent_at) {
+      return res.status(409).json({ error: 'A recovery reminder has already been sent for this session' });
+    }
 
     const emailService = require('../services/email.service');
     const storeUrl = (process.env.FRONTEND_URL || 'https://bodycreamgh.com').replace(/\/$/, '');
+    const apiBaseUrl = (process.env.BACKEND_PUBLIC_URL || process.env.API_URL || storeUrl).replace(/\/$/, '');
+    const optOutUrl = `${apiBaseUrl}/api/orders/checkout-session/opt-out?token=${encodeURIComponent(session.session_token)}`;
     const items = Array.isArray(session.items_json) ? session.items_json : [];
     const itemsHtml = items
       .map(it => `<li>${it.name || 'Item'} × ${it.quantity || 1}</li>`)
@@ -2259,6 +2289,7 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
         <p>Your BodyCream GH cart (GHS ${Number(session.subtotal || 0).toFixed(2)}) is still waiting for you:</p>
         ${itemsHtml ? `<ul>${itemsHtml}</ul>` : ''}
         <p><a href="${storeUrl}/cart" style="display:inline-block;padding:10px 18px;background:#1c1410;color:#fff;text-decoration:none;border-radius:4px;">Return to Your Cart</a></p>
+        <p style="margin-top:20px;font-size:12px;color:#666;">Don't want cart reminders? <a href="${optOutUrl}">Opt out and delete your saved checkout session</a>.</p>
       `,
     });
 
@@ -2284,6 +2315,39 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
   }
 };
 
+const deleteCheckoutSession = async (req, res) => {
+  try {
+    const rawToken = String(
+      req.query?.token || req.body?.session_token || ''
+    ).trim().slice(0, 120);
+
+    if (!rawToken && !req.user?.id) {
+      return res.status(400).json({ error: 'session_token is required' });
+    }
+
+    const { rowCount } = rawToken
+      ? await pool.query(
+          `DELETE FROM checkout_sessions WHERE session_token = $1`,
+          [rawToken]
+        )
+      : await pool.query(
+          `DELETE FROM checkout_sessions WHERE customer_id = $1 AND recovered_order_id IS NULL`,
+          [req.user.id]
+        );
+
+    if (req.method === 'GET') {
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(
+        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>You have been opted out</h2><p>Your saved checkout session has been deleted and you will not receive cart reminders.</p></body></html>'
+      );
+    }
+    return res.json({ deleted: rowCount > 0, count: rowCount });
+  } catch (err) {
+    logger.error('deleteCheckoutSession error', { err: err.message });
+    return res.status(500).json({ error: 'Failed to delete checkout session' });
+  }
+};
+
 module.exports = {
   createOrder, createGuestOrder, getOrders, getOrderById, getAllOrders,
   getRequestCounts, getRequests, exportOrders,
@@ -2293,5 +2357,5 @@ module.exports = {
   approveCancelRequest, rejectCancelRequest,
   approveReturnRequest, rejectReturnRequest,
   trackOrder,
-  upsertCheckoutSession, getAbandonedCheckouts, sendAbandonedCheckoutReminder,
+  upsertCheckoutSession, getAbandonedCheckouts, sendAbandonedCheckoutReminder, deleteCheckoutSession,
 };
