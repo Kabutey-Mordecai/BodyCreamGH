@@ -3,7 +3,7 @@ import { PageFlip } from 'page-flip';
 import { useSettings } from '../context/SettingsContext';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import Reveal from './Reveal';
-import './MidPageBanner.css';
+import './FeaturedSpotlight.css';
 
 const DEFAULT_SLIDES = [
   {
@@ -44,7 +44,7 @@ const DEFAULT_SLIDES = [
   },
 ];
 
-export default function MidPageBanner() {
+export default function FeaturedSpotlight() {
   const settings = useSettings();
   const bookMountRef = useRef(null);
   const templateRef = useRef(null);

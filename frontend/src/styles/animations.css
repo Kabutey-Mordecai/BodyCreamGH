@@ -188,3 +188,37 @@ html.no-animations .reveal {
     transform: none !important;
   }
 }
+
+/* ── 10. Luxury Shimmer Placeholder & Smooth Image Fade-In ────── */
+@keyframes bcShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.img-placeholder-shimmer {
+  background: linear-gradient(
+    90deg,
+    #f3ede5 0%,
+    #faf6f0 35%,
+    #ede3d5 50%,
+    #faf6f0 65%,
+    #f3ede5 100%
+  ) !important;
+  background-size: 200% 100% !important;
+  animation: bcShimmer 1.8s ease-in-out infinite !important;
+  position: relative;
+}
+
+.img-fade-in {
+  opacity: 0;
+  transition: opacity 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity;
+}
+
+.img-fade-in.is-loaded {
+  opacity: 1;
+}

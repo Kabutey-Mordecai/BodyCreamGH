@@ -69,6 +69,7 @@ export default function ProductPage() {
   const [qty, setQty]           = useState(1);
   const [adding, setAdding]     = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [mainImgLoaded, setMainImgLoaded] = useState(false);
 
   const touchStartX    = useRef(null);
   const lbTouchStartX  = useRef(null);
@@ -440,8 +441,8 @@ export default function ProductPage() {
   const galleryImages = product.images?.length ? product.images : [];
   const isMulti       = galleryImages.length > 1;
 
-  const prev = () => setSelectedIdx(i => Math.max(0, i - 1));
-  const next = () => setSelectedIdx(i => Math.min(galleryImages.length - 1, i + 1));
+  const prev = () => { setMainImgLoaded(false); setSelectedIdx(i => Math.max(0, i - 1)); };
+  const next = () => { setMainImgLoaded(false); setSelectedIdx(i => Math.min(galleryImages.length - 1, i + 1)); };
 
   const handleTouchStart = e => { touchStartX.current = e.touches[0].clientX; };
   const handleTouchEnd   = e => {
@@ -495,7 +496,7 @@ export default function ProductPage() {
                 aria-label={isMulti ? 'Product image slider' : undefined}
               >
                 <div
-                  className="product-detail-img pdp-img--zoomable"
+                  className={`product-detail-img pdp-img--zoomable ${!mainImgLoaded ? 'img-placeholder-shimmer' : ''}`}
                   onClick={() => openLightbox(selectedIdx)}
                   title="Click to enlarge"
                 >
@@ -503,7 +504,9 @@ export default function ProductPage() {
                     src={resolveImageUrl(galleryImages[selectedIdx]?.url)}
                     alt={product.name}
                     fetchpriority="high"
-                    onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
+                    className={`img-fade-in ${mainImgLoaded ? 'is-loaded' : ''}`}
+                    onLoad={() => setMainImgLoaded(true)}
+                    onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; setMainImgLoaded(true); }}
                   />
                   <div className="pdp-zoom-hint" aria-hidden="true">&#128269;</div>
                 </div>
@@ -544,7 +547,7 @@ export default function ProductPage() {
                       type="button"
                       role="tab"
                       className={`pdp-thumb${i === selectedIdx ? ' pdp-thumb--active' : ''}`}
-                      onClick={() => setSelectedIdx(i)}
+                      onClick={() => { if (i !== selectedIdx) setMainImgLoaded(false); setSelectedIdx(i); }}
                       aria-label={`Image ${i + 1}${img.is_primary ? ' (primary)' : ''}`}
                       aria-selected={i === selectedIdx}
                     >

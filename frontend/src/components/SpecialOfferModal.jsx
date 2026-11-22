@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
-import './PromoPopup.css';
+import './SpecialOfferModal.css';
 
 const SESSION_KEY = 'bodycream_promo_popup_dismissed';
 
@@ -10,7 +10,7 @@ function isExternalUrl(url) {
   return /^(https?:\/\/|mailto:|tel:|wa\.me)/i.test(url);
 }
 
-export default function PromoPopup() {
+export default function SpecialOfferModal() {
   const settings = useSettings();
   const [isOpen, setIsOpen] = useState(false);
   const [isClosing, setIsClosing] = useState(false);

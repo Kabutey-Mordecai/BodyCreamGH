@@ -32,6 +32,7 @@ export default function ProductCard({ product }) {
   const [adding,   setAdding]   = useState(false);
   const [added,    setAdded]    = useState(false);
   const [addError, setAddError] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   const cartItem = cart.find(i => i.product_id === product.id);
   const cartQty  = cartItem?.quantity ?? 0;
@@ -109,12 +110,14 @@ export default function ProductCard({ product }) {
     <article className="product-card">
 
       {/* ── Image ───────────────────────────── */}
-      <div className="product-card-img-wrap">
+      <div className={`product-card-img-wrap ${!imgLoaded ? 'img-placeholder-shimmer' : ''}`}>
         <img
           src={resolveImageUrl(product.image_url) || PLACEHOLDER_IMG}
           alt={product.name}
           loading="lazy"
           decoding="async"
+          className={`img-fade-in ${imgLoaded ? 'is-loaded' : ''}`}
+          onLoad={() => setImgLoaded(true)}
         />
 
         {/* Wishlist heart */}

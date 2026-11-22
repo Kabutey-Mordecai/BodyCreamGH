@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { productsAPI, newsletterAPI, reviewsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
@@ -10,12 +10,16 @@ import SearchBar from '../components/SearchBar';
 import StarRating from '../components/StarRating';
 import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
 import Reveal from '../components/Reveal';
-import PromoPopup from '../components/PromoPopup';
 import CampaignTiles from '../components/CampaignTiles';
-import MidPageBanner from '../components/MidPageBanner';
+import FeaturedSpotlight from '../components/FeaturedSpotlight';
 import HomeSeoBlock from '../components/HomeSeoBlock';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './Home.css';
+
+// Protected lazy-load to prevent adblockers from halting storefront render
+const SpecialOfferModal = lazy(() =>
+  import('../components/SpecialOfferModal').catch(() => ({ default: () => null }))
+);
 
 const RECENTLY_VIEWED_KEY = 'bodycream_recently_viewed';
 
@@ -86,6 +90,43 @@ const GALLERY = [
   'https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?auto=format&fit=crop&w=400&h=400&q=80',
   'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=400&h=400&q=80',
 ];
+
+function CategoryCardItem({ cat }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <Link
+      to={`/shop?category=${encodeURIComponent(cat.label)}`}
+      className={`cat-card ${!loaded ? 'img-placeholder-shimmer' : ''}`}
+    >
+      <img
+        src={resolveImageUrl(cat.image)}
+        alt={cat.label}
+        loading="lazy"
+        decoding="async"
+        className={`img-fade-in ${loaded ? 'is-loaded' : ''}`}
+        onLoad={() => setLoaded(true)}
+      />
+      <div className="cat-card-overlay" />
+      <span className="cat-card-label">{cat.label}</span>
+    </Link>
+  );
+}
+
+function LifestyleGalleryItem({ src, index }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className={`gallery-item ${!loaded ? 'img-placeholder-shimmer' : ''}`}>
+      <img
+        src={src}
+        alt={`Luxury skincare lifestyle ${index + 1}`}
+        loading="lazy"
+        decoding="async"
+        className={`img-fade-in ${loaded ? 'is-loaded' : ''}`}
+        onLoad={() => setLoaded(true)}
+      />
+    </div>
+  );
+}
 
 export default function Home() {
   const { user } = useAuth();
@@ -280,7 +321,9 @@ export default function Home() {
       {/* ══════════════════════════════════════════
           PROMOTIONAL POPUP MODAL (Admin controlled)
           ══════════════════════════════════════════ */}
-      <PromoPopup />
+      <Suspense fallback={null}>
+        <SpecialOfferModal />
+      </Suspense>
 
       {/* ══════════════════════════════════════════
           HERO — full-viewport, high-priority LCP img
@@ -362,14 +405,7 @@ export default function Home() {
           <div className="categories-grid">
             {(categories || []).map((cat, idx) => (
               <Reveal key={cat.label} delay={idx * 70}>
-                <Link
-                  to={`/shop?category=${encodeURIComponent(cat.label)}`}
-                  className="cat-card"
-                >
-                  <img src={resolveImageUrl(cat.image)} alt={cat.label} loading="lazy" />
-                  <div className="cat-card-overlay" />
-                  <span className="cat-card-label">{cat.label}</span>
-                </Link>
+                <CategoryCardItem cat={cat} />
               </Reveal>
             ))}
           </div>
@@ -474,9 +510,9 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════
-          MID-PAGE GRAPHIC CAMPAIGN BANNER (Jumia Style)
+          FEATURED CAMPAIGN SPOTLIGHT
           ══════════════════════════════════════════ */}
-      <MidPageBanner />
+      <FeaturedSpotlight />
 
       {/* ══════════════════════════════════════════
           BRAND STORY — split image + text
@@ -581,9 +617,7 @@ export default function Home() {
           ══════════════════════════════════════════ */}
       <section className="gallery-strip">
         {GALLERY.map((src, i) => (
-          <div key={i} className="gallery-item">
-            <img src={src} alt="Luxury skincare lifestyle" loading="lazy" />
-          </div>
+          <LifestyleGalleryItem key={i} src={src} index={i} />
         ))}
       </section>
 
