@@ -1,8 +1,10 @@
 'use strict';
 
 const pool = require('../config/database');
+const paystackAPI = require('../config/paystack');
 const InventoryModel = require('../models/inventory.model');
 const VariantModel = require('../models/variant.model');
+const { processPaymentSuccess } = require('./payment.worker');
 const { logStatusChange } = require('../utils/audit');
 const logger = require('../utils/logger');
 
@@ -12,12 +14,20 @@ const BATCH_LIMIT = 50;
 /**
  * Cancel stale pending+unpaid Paystack orders older than ttlMinutes and
  * atomically restore product/variant stock and coupon usage.
+ *
+ * Before cancelling, verifies any Paystack reference on the order:
+ *  - If Paystack reports 'success', marks the order paid via processPaymentSuccess.
+ *  - If verification fails or times out, skips the order this run (never cancels on uncertainty).
  */
-async function expireUnpaidOrders({ ttlMinutes = DEFAULT_TTL_MINUTES } = {}) {
+async function expireUnpaidOrders({
+  ttlMinutes = DEFAULT_TTL_MINUTES,
+  paystackClient = paystackAPI,
+  boss = null,
+} = {}) {
   const safeTtl = Math.max(5, Number(ttlMinutes) || DEFAULT_TTL_MINUTES);
 
   const { rows: candidates } = await pool.query(
-    `SELECT o.id
+    `SELECT o.id, o.order_number, o.payment_reference
        FROM orders o
       WHERE o.status = 'pending'
         AND o.payment_status = 'unpaid'
@@ -34,8 +44,67 @@ async function expireUnpaidOrders({ ttlMinutes = DEFAULT_TTL_MINUTES } = {}) {
   );
 
   let expiredCount = 0;
+  let paidRecoveredCount = 0;
+  let skippedVerifyErrorCount = 0;
 
   for (const candidate of candidates) {
+    // 1. Collect any Paystack references associated with this order
+    const { rows: payRefs } = await pool.query(
+      `SELECT paystack_reference
+         FROM payments
+        WHERE order_id = $1 AND paystack_reference IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 3`,
+      [candidate.id]
+    );
+    const refs = [...new Set([
+      ...payRefs.map(r => r.paystack_reference),
+      ...(candidate.payment_reference ? [candidate.payment_reference] : []),
+    ].filter(Boolean))];
+
+    // 2. Verify with Paystack before cancelling
+    let skipDueToUncertainty = false;
+    let recoveredAsPaid = false;
+
+    for (const ref of refs) {
+      try {
+        const resp = await paystackClient.get(`/transaction/verify/${encodeURIComponent(ref)}`);
+        const tx = resp?.data?.data;
+        if (!tx || typeof tx.status !== 'string') {
+          skipDueToUncertainty = true;
+          break;
+        }
+        if (tx.status === 'success') {
+          await processPaymentSuccess({
+            data: {
+              reference: ref,
+              orderId: candidate.id,
+              amountPesewas: tx.amount,
+              currency: tx.currency || 'GHS',
+            },
+          }, boss);
+          recoveredAsPaid = true;
+          paidRecoveredCount++;
+          break;
+        }
+      } catch (verifyErr) {
+        logger.warn('Paystack verify failed during expiry check; skipping order', {
+          orderId: candidate.id,
+          reference: ref,
+          err: verifyErr.message,
+        });
+        skipDueToUncertainty = true;
+        break;
+      }
+    }
+
+    if (recoveredAsPaid) continue;
+    if (skipDueToUncertainty) {
+      skippedVerifyErrorCount++;
+      continue;
+    }
+
+    // 3. Atomic single-transaction expiry with FOR UPDATE SKIP LOCKED
     const client = await pool.connect();
     let txOpen = false;
     try {
@@ -47,11 +116,13 @@ async function expireUnpaidOrders({ ttlMinutes = DEFAULT_TTL_MINUTES } = {}) {
                 stock_restored, coupon_returned
            FROM orders
           WHERE id = $1
-          FOR UPDATE`,
+            AND status = 'pending'
+            AND payment_status = 'unpaid'
+          FOR UPDATE SKIP LOCKED`,
         [candidate.id]
       );
       const order = rows[0];
-      if (!order || order.status !== 'pending' || order.payment_status !== 'unpaid') {
+      if (!order) {
         await client.query('ROLLBACK');
         txOpen = false;
         continue;
@@ -124,16 +195,27 @@ async function expireUnpaidOrders({ ttlMinutes = DEFAULT_TTL_MINUTES } = {}) {
     }
   }
 
-  if (expiredCount > 0) {
-    logger.info('Expired unpaid Paystack orders', { expiredCount, ttlMinutes: safeTtl });
+  if (expiredCount > 0 || paidRecoveredCount > 0) {
+    logger.info('Unpaid order expiry pass complete', {
+      checked: candidates.length,
+      expiredCount,
+      paidRecoveredCount,
+      skippedVerifyErrorCount,
+      ttlMinutes: safeTtl,
+    });
   }
-  return { checked: candidates.length, expiredCount };
+  return {
+    checked: candidates.length,
+    expiredCount,
+    paidRecoveredCount,
+    skippedVerifyErrorCount,
+  };
 }
 
 async function register(boss) {
   await boss.createQueue('orders-expire-unpaid');
   await boss.work('orders-expire-unpaid', { teamSize: 1 }, async () => {
-    await expireUnpaidOrders();
+    await expireUnpaidOrders({ boss });
   });
 
   await boss.schedule('orders-expire-unpaid', '*/5 * * * *', {}, {
