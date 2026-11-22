@@ -96,7 +96,7 @@ async function main() {
     }
     assert.ok(ciFallback && ciFallback.length === 8, 'CI fallback must generate random hex hash when .git is absent');
     const stampedCi = mockSw.replace(/__BUILD_HASH__/g, ciFallback);
-    assert.ok(stampedCi.includes(`bodycreamgh-shell-${ciFallback}`), 'CI build without .git must stamp valid cache name');
+    assert.ok(stampedCi.includes(`const BUILD_HASH = '${ciFallback}';`), 'CI build without .git must stamp valid build hash');
 
     // 5. Rehearse migrations 040-042 SQL idempotency directly on bodycream_test
     for (const file of [
