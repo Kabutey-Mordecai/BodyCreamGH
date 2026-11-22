@@ -6,7 +6,7 @@ import './Cart.css';
 
 export default function Cart() {
   const { cart, loading, cartTotal, updateItem, removeItem } = useCart();
-  const { settings } = useSettings();
+  const settings = useSettings() || {};
   const navigate = useNavigate();
 
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;

@@ -83,21 +83,38 @@ export default function Footer() {
     categories,
   } = settings;
 
-  const rawWa = String(whatsapp_number || '').replace(/\D/g, '');
-  const waHref = rawWa
-    ? `https://wa.me/${rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa}`
-    : (footer_whatsapp || 'https://wa.me');
+  const cleanPhone = store_phone || settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
+  const cleanEmail = store_email || settings.contact_email || 'hello@bodycreamgh.com';
+
+  const rawWa = String(whatsapp_number || cleanPhone || '').replace(/\D/g, '');
+  const waDigits = rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa;
+  const waHref = waDigits
+    ? `https://wa.me/${waDigits}?text=Hello%20${encodeURIComponent(store_name || 'BodyCream GH')},%20I%20have%20an%20inquiry.`
+    : (footer_whatsapp || 'https://wa.me/233245852804');
 
   const pickupEnabled = pickup_enabled !== false && pickup_enabled !== 'false';
   const podEnabled = pay_on_delivery_enabled === true || pay_on_delivery_enabled === 'true';
   const showBackToTop = back_to_top_enabled !== false && back_to_top_enabled !== 'false';
   const showPaymentBadges = footer_payment_badges_enabled !== false && footer_payment_badges_enabled !== 'false';
 
+  const defaultHandle = 'bodycreamgh';
+  const getSocialHref = (label, customHref) => {
+    if (customHref && !customHref.endsWith('.com') && !customHref.endsWith('.com/')) {
+      return customHref;
+    }
+    switch (label) {
+      case 'Instagram': return `https://instagram.com/${defaultHandle}`;
+      case 'Facebook':  return `https://facebook.com/${defaultHandle}`;
+      case 'TikTok':    return `https://tiktok.com/@${defaultHandle}`;
+      default:          return customHref;
+    }
+  };
+
   const socials = SOCIALS_META.map(s => ({
     ...s,
-    href: s.label === 'Instagram' ? (footer_instagram || s.href)
-        : s.label === 'Facebook'  ? (footer_facebook  || s.href)
-        : s.label === 'TikTok'    ? (footer_tiktok    || s.href)
+    href: s.label === 'Instagram' ? getSocialHref(s.label, footer_instagram)
+        : s.label === 'Facebook'  ? getSocialHref(s.label, footer_facebook)
+        : s.label === 'TikTok'    ? getSocialHref(s.label, footer_tiktok)
         : s.label === 'WhatsApp'  ? waHref
         : s.href,
   }));
@@ -186,14 +203,14 @@ export default function Footer() {
                   <Link to={l.to}>{l.label}</Link>
                 </li>
               ))}
-              {store_phone && (
+              {cleanPhone && (
                 <li>
-                  <a href={`tel:${store_phone}`}>Call: {store_phone}</a>
+                  <a href={`tel:${cleanPhone.replace(/\s+/g, '')}`}>Call: {cleanPhone}</a>
                 </li>
               )}
-              {store_email && (
+              {cleanEmail && (
                 <li>
-                  <a href={`mailto:${store_email}`}>{store_email}</a>
+                  <a href={`mailto:${cleanEmail}`}>{cleanEmail}</a>
                 </li>
               )}
             </ul>

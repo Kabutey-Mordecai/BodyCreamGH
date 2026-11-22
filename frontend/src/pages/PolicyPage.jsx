@@ -4,16 +4,16 @@ import { useSettings } from '../context/SettingsContext';
 import './PolicyPage.css';
 
 export default function PolicyPage({ type = 'privacy' }) {
-  const { settings } = useSettings();
+  const settings = useSettings() || {};
   const storeName = settings.store_name || 'BodyCream GH';
-  const email = settings.contact_email || 'hello@bodycreamgh.com';
-  const phone = settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
+  const email = settings.store_email || settings.contact_email || 'hello@bodycreamgh.com';
+  const phone = settings.store_phone || settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
   const address = settings.pickup_location || settings.store_address || 'East Legon, Accra, Ghana';
   const pickupHours = settings.pickup_hours || 'Mon–Sat, 9:00 AM – 6:00 PM';
   const returnDays = Number(settings.return_window_days) || 7;
-  const freeThreshold = Number(settings.free_delivery_threshold) || 200;
-  const accraFee = Number(settings.delivery_fee_accra) || 25;
-  const nationFee = Number(settings.delivery_fee_flat) || 50;
+  const freeThreshold = Number(settings.free_delivery_threshold || settings.free_delivery_over) || 200;
+  const accraFee = Number(settings.delivery_fee_accra) || 10;
+  const nationFee = Number(settings.delivery_fee_flat) || 15;
   const accraEta = settings.delivery_estimate_accra || '1–2 business days';
   const nationEta = settings.delivery_estimate_nationwide || '3–5 business days';
 
@@ -145,6 +145,32 @@ export default function PolicyPage({ type = 'privacy' }) {
             <p>{sec.body}</p>
           </section>
         ))}
+
+        {type === 'contact' && (
+          <div style={{ marginTop: 20, display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {phone && (
+              <a href={`tel:${phone}`} className="btn btn-primary" style={{ textDecoration: 'none' }}>
+                📞 Call {phone}
+              </a>
+            )}
+            {phone && (
+              <a
+                href={`https://wa.me/${phone.replace(/\D/g, '')}?text=Hello%20${encodeURIComponent(storeName)},%20I%20have%20an%20inquiry.`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-outline"
+                style={{ textDecoration: 'none', borderColor: '#25D366', color: '#128C7E' }}
+              >
+                💬 Chat on WhatsApp
+              </a>
+            )}
+            {email && (
+              <a href={`mailto:${email}`} className="btn btn-outline" style={{ textDecoration: 'none' }}>
+                ✉️ Email Us
+              </a>
+            )}
+          </div>
+        )}
 
         <div className="policy-footer-links">
           <Link to="/shop" className="btn btn-primary">Shop Collection</Link>
