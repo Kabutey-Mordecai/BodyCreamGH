@@ -101,6 +101,8 @@ function CategoryCardItem({ cat }) {
       <img
         src={resolveImageUrl(cat.image)}
         alt={cat.label}
+        width="300"
+        height="400"
         loading="lazy"
         decoding="async"
         className={`img-fade-in ${loaded ? 'is-loaded' : ''}`}
@@ -119,6 +121,8 @@ function LifestyleGalleryItem({ src, index }) {
       <img
         src={src}
         alt={`Luxury skincare lifestyle ${index + 1}`}
+        width="400"
+        height="400"
         loading="lazy"
         decoding="async"
         className={`img-fade-in ${loaded ? 'is-loaded' : ''}`}
@@ -524,6 +528,8 @@ export default function Home() {
             <img
               src="https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80"
               alt="Our story — handcrafting body creams"
+              width="700"
+              height="500"
               loading="lazy"
             />
           </Reveal>

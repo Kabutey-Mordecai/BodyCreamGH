@@ -222,6 +222,8 @@ export default function Shop() {
 
           <div className="shop-sort-wrap mobile-sort">
             <select
+              id="shop-mobile-sort"
+              name="sort"
               value={sort}
               onChange={e => setParam('sort', e.target.value)}
               className="shop-sort"
@@ -267,6 +269,8 @@ export default function Shop() {
                 <h4 className="shop-filter-group-title">Category</h4>
                 {categoryOptions.length > 8 && (
                   <input
+                    id="shop-cat-query"
+                    name="category_filter"
                     type="search"
                     value={catQuery}
                     onChange={(e) => setCatQuery(e.target.value)}
@@ -316,6 +320,8 @@ export default function Shop() {
                   <div className="shop-price-field">
                     <span className="shop-price-sublabel">Min</span>
                     <input
+                      id="shop-price-min"
+                      name="min_price"
                       type="number"
                       min="0"
                       placeholder="0"
@@ -329,6 +335,8 @@ export default function Shop() {
                   <div className="shop-price-field">
                     <span className="shop-price-sublabel">Max</span>
                     <input
+                      id="shop-price-max"
+                      name="max_price"
                       type="number"
                       min="0"
                       placeholder="500"
@@ -355,8 +363,10 @@ export default function Shop() {
               {/* Filter Group: Availability */}
               <div className="shop-filter-group">
                 <h4 className="shop-filter-group-title">Availability</h4>
-                <label className="shop-instock-checkbox">
+                <label className="shop-instock-checkbox" htmlFor="shop-instock-only">
                   <input
+                    id="shop-instock-only"
+                    name="in_stock"
                     type="checkbox"
                     checked={hasInStockFilter}
                     onChange={e => setParam('in_stock', e.target.checked ? 'true' : '')}
@@ -404,6 +414,8 @@ export default function Shop() {
                   <line x1="21" y1="21" x2="16.65" y2="16.65" />
                 </svg>
                 <input
+                  id="shop-search-query"
+                  name="search"
                   type="search"
                   placeholder="Search products by name, collection, ingredients…"
                   value={searchInput}
@@ -428,9 +440,11 @@ export default function Shop() {
               </form>
 
               <div className="shop-sort-pill desktop-sort">
-                <span className="shop-sort-caption">Sort:</span>
+                <label htmlFor="shop-desktop-sort" className="shop-sort-caption">Sort:</label>
                 <div className="shop-sort-select-wrap">
                   <select
+                    id="shop-desktop-sort"
+                    name="sort"
                     value={sort}
                     onChange={e => setParam('sort', e.target.value)}
                     className="shop-sort-select"

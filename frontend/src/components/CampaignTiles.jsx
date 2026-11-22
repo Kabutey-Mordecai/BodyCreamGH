@@ -57,6 +57,8 @@ export default function CampaignTiles() {
               <img
                 src={resolveImageUrl(tile1.image)}
                 alt={tile1.title}
+                width="700"
+                height="400"
                 className="campaign-tile-bg"
                 loading="lazy"
               />
@@ -78,6 +80,8 @@ export default function CampaignTiles() {
               <img
                 src={resolveImageUrl(tile2.image)}
                 alt={tile2.title}
+                width="700"
+                height="400"
                 className="campaign-tile-bg"
                 loading="lazy"
               />

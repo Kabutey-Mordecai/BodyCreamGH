@@ -114,6 +114,8 @@ export default function ProductCard({ product }) {
         <img
           src={resolveImageUrl(product.image_url) || PLACEHOLDER_IMG}
           alt={product.name}
+          width="400"
+          height="400"
           loading="lazy"
           decoding="async"
           className={`img-fade-in ${imgLoaded ? 'is-loaded' : ''}`}

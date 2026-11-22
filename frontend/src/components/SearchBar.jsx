@@ -160,6 +160,8 @@ export default function SearchBar({
           <path d="M13 13l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
         </svg>
         <input
+          id={isHero ? 'hero-search-input' : 'nav-search-input'}
+          name="search"
           type="search"
           role="combobox"
           aria-autocomplete="list"
@@ -228,6 +230,8 @@ export default function SearchBar({
                     <img
                       src={resolveImageUrl(p.image_url)}
                       alt=""
+                      width="40"
+                      height="40"
                       className="searchbar-thumb"
                       loading="lazy"
                     />
