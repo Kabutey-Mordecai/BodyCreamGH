@@ -20,7 +20,13 @@ Run every step below on staging against **Paystack Test Mode** (`sk_test_...`) b
    - `PARTIAL_RETURNS_ENABLED=true` (also verify flag-off behaviour first when unset/`false`)
    - `OTP_HMAC_SECRET` and `JWT_SECRET` freshly generated (64-char hex each)
    - Both `server.js` and `worker.js` running under PM2/systemd
-3. **Log leak reminder (repeat after EVERY step below):**
+3. **Bootstrap Initial `super_admin` Account (Launch Checklist):**
+   - Migration `042_rbac_and_audit_logs.sql` introduces the `super_admin` role. To designate the initial primary administrator without exposing secrets or hardcoding credentials, execute:
+   ```bash
+   psql "$DATABASE_URL" -c "UPDATE users SET role = 'super_admin' WHERE email = 'primary-admin@example.com';"
+   ```
+   *(Replace `primary-admin@example.com` with the designated primary store owner's administrative email. Do not use personal or real email addresses in documentation. Only `super_admin` can assign or change roles for other admin accounts via `PATCH /api/admin/accounts/:id/role`.)*
+4. **Log leak reminder (repeat after EVERY step below):**
    ```bash
    grep -iE "Authorization|Bearer sk_" /var/log/bodycreamgh/*.log
    ```
