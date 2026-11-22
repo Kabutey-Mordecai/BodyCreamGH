@@ -139,6 +139,12 @@ async function main() {
     assert.ok(actions.includes('admin.account.role_change'), 'audit log must record role_change');
     assert.ok(actions.includes('coupon.create'), 'audit log must record coupon.create');
 
+    // 9. DB is authoritative over JWT claims (forged/stale role in JWT is ignored; deactivated user gets 401)
+    const staleJwt = signToken({ id: users.support.id, email: users.support.email, role: 'super_admin' });
+    assert.strictEqual((await reqJson(baseUrl, 'GET', '/api/admin/financials', staleJwt)).status, 403, 'Stale/forged JWT role must not grant financials');
+    await pool.query(`UPDATE users SET is_active = FALSE WHERE id = $1`, [users.support.id]);
+    assert.strictEqual((await reqJson(baseUrl, 'GET', '/api/orders/admin/all', tokens.support)).status, 401, 'Deactivated DB account must get 401 even with valid JWT');
+
     console.log('ALL RBAC & AUDIT LOG TESTS PASSED');
   } finally {
     server.close();
