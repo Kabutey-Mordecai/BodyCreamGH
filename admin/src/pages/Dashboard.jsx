@@ -39,7 +39,7 @@ export default function Dashboard() {
       <div>
         <div className="page-header"><h1>Dashboard</h1></div>
         <div className="alert alert-warning">
-          Couldn't load dashboard data. Make sure the backend is running at <code>http://localhost:3000</code>.
+          Couldn't load dashboard data. Make sure the backend is running at <code>http://localhost:5000</code>.
         </div>
       </div>
     );

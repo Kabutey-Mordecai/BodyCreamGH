@@ -9,12 +9,12 @@ export default defineConfig({
     port: 5174,
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
       },
       // Proxy /uploads so product images served by the backend load in the admin dev server
       '/uploads': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:5000',
         changeOrigin: true,
       },
     },

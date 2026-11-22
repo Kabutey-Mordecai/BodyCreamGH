@@ -2,14 +2,14 @@ import 'package:flutter/foundation.dart';
 
 // Central configuration — change baseUrl to point at your deployed API.
 // In development, use your machine's LAN IP so the emulator/device can reach it:
-//   Android emulator: http://10.0.2.2:3000/api
-//   Physical device:  http://192.168.x.x:3000/api
+//   Android emulator: http://10.0.2.2:5000/api
+//   Physical device:  http://192.168.x.x:5000/api
 // In production:      https://api.yourdomain.com/api
 class AppConfig {
   static const bool hasApiUrl = bool.hasEnvironment('API_URL');
   static const String baseUrl = String.fromEnvironment(
     'API_URL',
-    defaultValue: 'http://10.0.2.2:3000/api',
+    defaultValue: 'http://10.0.2.2:5000/api',
   );
 
   // Public storefront URL. The backend builds the Paystack callback URL from

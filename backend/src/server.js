@@ -265,7 +265,7 @@ async function start() {
   // in src/worker.js. Do not start them here — cluster mode would launch one
   // pg-boss instance per CPU, wasting connection-pool slots unnecessarily.
 
-  const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 5000;
   const httpServer = app.listen(PORT, () =>
     logger.info(`Web server running on http://localhost:${PORT}`)
   );
