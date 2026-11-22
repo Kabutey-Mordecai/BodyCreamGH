@@ -138,10 +138,12 @@ export default function TrackOrder() {
               }}
             >
               <div className="field" style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: '0.88rem' }}>
+                <label htmlFor="track_order_number" style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: '0.88rem' }}>
                   Order number
                 </label>
                 <input
+                  id="track_order_number"
+                  name="order_number"
                   type="text"
                   value={form.order_number}
                   onChange={e => setForm(f => ({ ...f, order_number: e.target.value }))}
@@ -151,10 +153,12 @@ export default function TrackOrder() {
                 />
               </div>
               <div className="field" style={{ marginBottom: 24 }}>
-                <label style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: '0.88rem' }}>
+                <label htmlFor="track_email" style={{ display: 'block', fontWeight: 600, marginBottom: 6, fontSize: '0.88rem' }}>
                   Email address
                 </label>
                 <input
+                  id="track_email"
+                  name="email"
                   type="email"
                   value={form.email}
                   onChange={e => setForm(f => ({ ...f, email: e.target.value }))}

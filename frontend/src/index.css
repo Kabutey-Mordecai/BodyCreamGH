@@ -322,7 +322,7 @@ input:not([type="checkbox"]):not([type="radio"]):not(.nav-search-input):not(.her
 .auth-footer a { color: var(--color-accent-dark); font-weight: 600; }
 
 /* ── Responsive ─────────────────────────────────── */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .container {
     padding: 0 14px;
   }

@@ -375,13 +375,13 @@
 }
 
 /* ── Touch & Mobile devices — Keep photos clean (no full-image dark overlay, matching Jumia) ────── */
-@media (hover: none), (max-width: 768px) {
+@media (hover: none), (max-width: 900px) {
   .product-card-overlay {
     display: none !important;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .product-card {
     border-radius: var(--radius);
   }

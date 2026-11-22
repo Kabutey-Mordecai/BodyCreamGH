@@ -60,6 +60,8 @@ export default function Navigation() {
               <img
                 src={resolveImageUrl(logo_url)}
                 alt={store_name}
+                width="160"
+                height="48"
                 className="nav-logo-img"
                 onError={e => {
                   // If the logo fails to load, swap to the text fallback so the

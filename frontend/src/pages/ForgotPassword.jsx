@@ -151,6 +151,7 @@ export default function ForgotPassword() {
                 <label htmlFor="email">Email address</label>
                 <input
                   id="email"
+                  name="email"
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
@@ -199,6 +200,7 @@ export default function ForgotPassword() {
                 <label htmlFor="pin">6-Digit Code</label>
                 <input
                   id="pin"
+                  name="pin"
                   type="text"
                   inputMode="numeric"
                   maxLength={6}
@@ -255,6 +257,7 @@ export default function ForgotPassword() {
                 <label htmlFor="new_password">New Password</label>
                 <input
                   id="new_password"
+                  name="new_password"
                   type="password"
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
@@ -268,6 +271,7 @@ export default function ForgotPassword() {
                 <label htmlFor="confirm_password">Confirm New Password</label>
                 <input
                   id="confirm_password"
+                  name="confirm_password"
                   type="password"
                   value={confirmPass}
                   onChange={e => setConfirmPass(e.target.value)}

@@ -495,12 +495,15 @@ export default function OrderDetail() {
             {cancelFormOpen && (
               <div className="od-request-form">
                 <textarea
+                  id="cancel-reason"
+                  name="cancel_reason"
                   rows={3}
                   className="od-review-input od-review-textarea"
                   placeholder="Please explain why you want to cancel this order…"
                   value={cancelReason}
                   onChange={e => setCancelReason(e.target.value)}
                   maxLength={500}
+                  aria-label="Cancellation reason"
                 />
                 {cancelError && <p className="od-review-error">{cancelError}</p>}
                 <div className="od-request-actions">
@@ -597,8 +600,10 @@ export default function OrderDetail() {
                     const qty = Number(selectedReturnQty[it.id] || 0);
                     return (
                       <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 10px', border: '1px solid var(--color-border, #e5e7eb)', borderRadius: 8 }}>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer', fontSize: '0.88rem' }}>
+                        <label htmlFor={`return-item-${it.id}`} style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, cursor: 'pointer', fontSize: '0.88rem' }}>
                           <input
+                            id={`return-item-${it.id}`}
+                            name={`return_item_${it.id}`}
                             type="checkbox"
                             checked={qty > 0}
                             onChange={(e) => setSelectedReturnQty(prev => ({ ...prev, [it.id]: e.target.checked ? 1 : 0 }))}
@@ -607,6 +612,8 @@ export default function OrderDetail() {
                         </label>
                         {qty > 0 && (
                           <input
+                            id={`return-qty-${it.id}`}
+                            name={`return_qty_${it.id}`}
                             type="number"
                             min={1}
                             max={it.remaining_quantity}
@@ -616,6 +623,7 @@ export default function OrderDetail() {
                               setSelectedReturnQty(prev => ({ ...prev, [it.id]: v }));
                             }}
                             style={{ width: 64, padding: '4px 8px' }}
+                            aria-label={`Quantity of ${it.product_name} to return`}
                           />
                         )}
                       </div>
@@ -624,12 +632,15 @@ export default function OrderDetail() {
                 </div>
                 )}
                 <textarea
+                  id="return-reason"
+                  name="return_reason"
                   rows={3}
                   className="od-review-input od-review-textarea"
                   placeholder="Please describe the reason for your return…"
                   value={returnReason}
                   onChange={e => setReturnReason(e.target.value)}
                   maxLength={500}
+                  aria-label="Return reason"
                 />
                 {returnError && <p className="od-review-error">{returnError}</p>}
                 <div className="od-request-actions">
@@ -909,18 +920,24 @@ export default function OrderDetail() {
                           onChange={v => updateReviewForm(pid, 'rating', v)}
                         />
                         <input
+                          id={`review-title-${pid}`}
+                          name={`review_title_${pid}`}
                           type="text"
                           placeholder="Review title (optional)"
                           value={form.title}
                           onChange={e => updateReviewForm(pid, 'title', e.target.value)}
                           className="od-review-input"
+                          aria-label="Review title"
                         />
                         <textarea
+                          id={`review-body-${pid}`}
+                          name={`review_body_${pid}`}
                           rows={3}
                           placeholder="Tell us what you think…"
                           value={form.body}
                           onChange={e => updateReviewForm(pid, 'body', e.target.value)}
                           className="od-review-input od-review-textarea"
+                          aria-label="Review content"
                         />
                         {reviewErrors[pid] && (
                           <p className="od-review-error">{reviewErrors[pid]}</p>

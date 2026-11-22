@@ -284,6 +284,8 @@ export default function FeaturedSpotlight() {
                         <img
                           src={resolveImageUrl(slide.image)}
                           alt={slide.title || 'Product Story'}
+                          width="700"
+                          height="620"
                           className={`mid-banner-img ${slide.image_fit === 'contain' ? 'fit-contain' : ''}`}
                           style={{
                             objectFit: slide.image_fit || 'cover',

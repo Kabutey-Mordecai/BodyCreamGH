@@ -604,7 +604,7 @@ export default function Home() {
                   </div>
                   <p className="testimonial-text">"{t.text}"</p>
                   <div className="testimonial-author" style={{ marginTop: 14 }}>
-                    {t.avatar && <img src={t.avatar} alt={t.name} className="testimonial-avatar" />}
+                    {t.avatar && <img src={t.avatar} alt={t.name} width="48" height="48" loading="lazy" className="testimonial-avatar" />}
                     <div>
                       <strong>{t.name}</strong>
                       <span>{t.location}</span>
@@ -655,6 +655,8 @@ export default function Home() {
             ) : (
               <form className="newsletter-form" onSubmit={handleNewsletterSubmit}>
                 <input
+                  id="home-newsletter-email"
+                  name="email"
                   type="email"
                   placeholder="Enter your email address"
                   required

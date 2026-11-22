@@ -114,8 +114,9 @@ export default function Account() {
             <form className="auth-form" onSubmit={handleProfileSubmit}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
                 <div className="form-group">
-                  <label>First name</label>
+                  <label htmlFor="profile_first_name">First name</label>
                   <input
+                    id="profile_first_name"
                     name="first_name"
                     value={profile.first_name}
                     onChange={handleProfileChange}
@@ -124,8 +125,9 @@ export default function Account() {
                   />
                 </div>
                 <div className="form-group">
-                  <label>Last name</label>
+                  <label htmlFor="profile_last_name">Last name</label>
                   <input
+                    id="profile_last_name"
                     name="last_name"
                     value={profile.last_name}
                     onChange={handleProfileChange}
@@ -136,8 +138,9 @@ export default function Account() {
               </div>
 
               <div className="form-group">
-                <label>Phone number</label>
+                <label htmlFor="profile_phone">Phone number</label>
                 <input
+                  id="profile_phone"
                   name="phone"
                   type="tel"
                   value={profile.phone}
@@ -170,8 +173,9 @@ export default function Account() {
 
             <form className="auth-form" onSubmit={handlePwdSubmit}>
               <div className="form-group">
-                <label>Current password</label>
+                <label htmlFor="pwd_current">Current password</label>
                 <input
+                  id="pwd_current"
                   name="current_password"
                   type="password"
                   value={pwdForm.current_password}
@@ -182,8 +186,9 @@ export default function Account() {
               </div>
 
               <div className="form-group">
-                <label>New password</label>
+                <label htmlFor="pwd_new">New password</label>
                 <input
+                  id="pwd_new"
                   name="new_password"
                   type="password"
                   value={pwdForm.new_password}
@@ -195,8 +200,9 @@ export default function Account() {
               </div>
 
               <div className="form-group">
-                <label>Confirm new password</label>
+                <label htmlFor="pwd_confirm">Confirm new password</label>
                 <input
+                  id="pwd_confirm"
                   name="confirm"
                   type="password"
                   value={pwdForm.confirm}

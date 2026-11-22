@@ -707,6 +707,7 @@ export default function ProductPage() {
                   >−</button>
                   <input
                     id="qty"
+                    name="quantity"
                     type="number"
                     min={1}
                     max={effectiveStock}
@@ -981,8 +982,10 @@ export default function ProductPage() {
                 />
               </div>
               <div className="field">
-                <label>Title <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+                <label htmlFor="review-title">Title <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
                 <input
+                  id="review-title"
+                  name="title"
                   type="text"
                   maxLength={120}
                   placeholder="Summarise your experience"
@@ -991,8 +994,10 @@ export default function ProductPage() {
                 />
               </div>
               <div className="field">
-                <label>Review <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+                <label htmlFor="review-body">Review <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
                 <textarea
+                  id="review-body"
+                  name="body"
                   rows={4}
                   placeholder="What did you think of the product?"
                   value={reviewForm.body}

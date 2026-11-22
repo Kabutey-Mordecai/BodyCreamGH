@@ -507,8 +507,10 @@ export default function Checkout() {
                     placeholder="ama@example.com"
                   />
                 </div>
-                <label className="checkout-consent-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.85rem', color: 'var(--color-muted)', cursor: 'pointer' }}>
+                <label htmlFor="checkout-reminder-consent" className="checkout-consent-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10, fontSize: '0.85rem', color: 'var(--color-muted)', cursor: 'pointer' }}>
                   <input
+                    id="checkout-reminder-consent"
+                    name="reminder_consent"
                     type="checkbox"
                     checked={reminderConsent}
                     onChange={e => setReminderConsent(e.target.checked)}
@@ -526,8 +528,9 @@ export default function Checkout() {
 
               {pickupEnabled && (
                 <div className="checkout-method-grid" role="radiogroup" aria-label="Fulfillment method">
-                  <label className={`checkout-method-card${fulfillmentMethod === 'delivery' ? ' is-selected' : ''}`}>
+                  <label htmlFor="checkout-method-delivery" className={`checkout-method-card${fulfillmentMethod === 'delivery' ? ' is-selected' : ''}`}>
                     <input
+                      id="checkout-method-delivery"
                       type="radio"
                       name="fulfillment_method"
                       value="delivery"
@@ -542,8 +545,9 @@ export default function Checkout() {
                       </span>
                     </div>
                   </label>
-                  <label className={`checkout-method-card${fulfillmentMethod === 'pickup' ? ' is-selected' : ''}`}>
+                  <label htmlFor="checkout-method-pickup" className={`checkout-method-card${fulfillmentMethod === 'pickup' ? ' is-selected' : ''}`}>
                     <input
+                      id="checkout-method-pickup"
                       type="radio"
                       name="fulfillment_method"
                       value="pickup"
@@ -685,8 +689,9 @@ export default function Checkout() {
               <div className="gold-divider" style={{ margin: '0 0 16px' }} />
 
               <div className="checkout-method-grid" role="radiogroup" aria-label="Payment method">
-                <label className={`checkout-method-card${paymentMethod === 'paystack' ? ' is-selected' : ''}`}>
+                <label htmlFor="checkout-payment-paystack" className={`checkout-method-card${paymentMethod === 'paystack' ? ' is-selected' : ''}`}>
                   <input
+                    id="checkout-payment-paystack"
                     type="radio"
                     name="payment_method"
                     value="paystack"
@@ -700,8 +705,9 @@ export default function Checkout() {
                 </label>
 
                 {podEnabled && (
-                  <label className={`checkout-method-card${paymentMethod === 'pay_on_delivery' ? ' is-selected' : ''}${!podEligible ? ' is-disabled' : ''}`}>
+                  <label htmlFor="checkout-payment-pod" className={`checkout-method-card${paymentMethod === 'pay_on_delivery' ? ' is-selected' : ''}${!podEligible ? ' is-disabled' : ''}`}>
                     <input
+                      id="checkout-payment-pod"
                       type="radio"
                       name="payment_method"
                       value="pay_on_delivery"
@@ -750,12 +756,15 @@ export default function Checkout() {
               ) : (
                 <div className="coupon-row">
                   <input
+                    id="checkout-coupon-code"
+                    name="coupon_code"
                     type="text"
                     placeholder="Enter promo code"
                     value={couponInput}
                     onChange={e => { setCouponInput(e.target.value); setCouponError(''); }}
                     onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), applyCoupon())}
                     className="coupon-input"
+                    aria-label="Promo code"
                   />
                   <button
                     type="button"
