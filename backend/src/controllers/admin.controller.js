@@ -788,6 +788,62 @@ const activateAdminAccount = async (req, res) => {
   }
 };
 
+// ── Unified Omnisearch (for Cmd+K Command Palette) ───────────────────────────
+const omnisearch = async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    if (!q || q.length < 2) {
+      return res.json({ orders: [], products: [], customers: [] });
+    }
+    const term = `%${q}%`;
+    const [ordersRes, productsRes, customersRes] = await Promise.all([
+      pool.query(
+        `SELECT o.id, o.order_number, o.total_amount, o.status, o.created_at,
+                COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(TRIM(o.guest_first_name || ' ' || o.guest_last_name), ''), 'Guest') AS customer_name,
+                COALESCE(u.email, o.guest_email) AS customer_email
+           FROM orders o
+           LEFT JOIN users u ON o.customer_id = u.id
+          WHERE o.order_number ILIKE $1 
+             OR o.guest_email ILIKE $1 
+             OR o.guest_first_name ILIKE $1 
+             OR o.guest_last_name ILIKE $1 
+             OR u.email ILIKE $1 
+             OR u.first_name ILIKE $1 
+             OR u.last_name ILIKE $1
+          ORDER BY o.created_at DESC
+          LIMIT 5`,
+        [term]
+      ),
+      pool.query(
+        `SELECT id, name, category, price, stock_quantity, image_url
+           FROM products
+          WHERE name ILIKE $1 OR category ILIKE $1 OR sku ILIKE $1
+          ORDER BY name ASC
+          LIMIT 5`,
+        [term]
+      ),
+      pool.query(
+        `SELECT id, first_name, last_name, email, phone, role
+           FROM users
+          WHERE (first_name ILIKE $1 OR last_name ILIKE $1 OR email ILIKE $1 OR phone ILIKE $1)
+            AND role = 'customer'
+          ORDER BY created_at DESC
+          LIMIT 5`,
+        [term]
+      ),
+    ]);
+
+    return res.json({
+      orders: ordersRes.rows,
+      products: productsRes.rows,
+      customers: customersRes.rows,
+    });
+  } catch (err) {
+    logger.error('omnisearch error', { error: err.message });
+    return res.status(500).json({ error: 'Failed to execute omnisearch' });
+  }
+};
+
 module.exports = {
   getDashboard,
   getAnalytics,
@@ -806,4 +862,5 @@ module.exports = {
   deleteProductImage,
   reorderProductImages,
   setPrimaryProductImage,
+  omnisearch,
 };

@@ -4,43 +4,99 @@
    ================================================================ */
 
 :root {
-  /* Admin palette — whites, cool grays, gold accent */
-  --ac-bg:         #f6f7f9;   /* page background */
-  --ac-surface:    #ffffff;   /* cards, tables */
-  --ac-surface-2:  #fafbfc;   /* subtle alternate rows */
-  --ac-sidebar:    #141010;   /* dark sidebar matches storefront .color-dark */
-  --ac-sidebar-hover: #25201c;
+  color-scheme: light dark;
+  accent-color: #c9a55a;
 
-  --ac-border:     #e5e7eb;
+  /* Admin palette (Light mode default) */
+  --ac-bg:            #f8f9fa;   /* page background */
+  --ac-surface:       #ffffff;   /* cards, tables */
+  --ac-surface-2:     #f1f3f5;   /* subtle alternate rows */
+  --ac-sidebar:       #141010;   /* dark sidebar matches storefront .color-dark */
+  --ac-sidebar-hover: #221c18;
+  --ac-sidebar-text:  rgba(255, 255, 255, 0.72);
+  --ac-sidebar-text-active: #ffffff;
+
+  --ac-border:        #e5e7eb;
   --ac-border-strong: #d1d5db;
 
-  --ac-text:       #111827;
-  --ac-text-muted: #6b7280;
-  --ac-text-soft:  #9ca3af;
+  --ac-text:          #111827;
+  --ac-text-muted:    #6b7280;
+  --ac-text-soft:     #9ca3af;
+
+  /* Glassmorphic Topbar */
+  --ac-topbar-bg:     rgba(255, 255, 255, 0.85);
+  --ac-topbar-border: rgba(229, 231, 235, 0.8);
+  --ac-topbar-blur:   blur(12px);
 
   /* Brand accent — gold, matches the storefront */
-  --ac-accent:       #c9a55a;
-  --ac-accent-dark:  #a8863d;
-  --ac-accent-light: #faf1dd;
+  --ac-accent:        #c9a55a;
+  --ac-accent-dark:   #a8863d;
+  --ac-accent-light:  #faf1dd;
 
-  /* Status colors — used across badges, charts, alerts */
-  --ac-success:      #10b981;
-  --ac-success-soft: #d1fae5;
-  --ac-warning:      #f59e0b;
-  --ac-warning-soft: #fef3c7;
-  --ac-danger:       #ef4444;
-  --ac-danger-soft:  #fee2e2;
-  --ac-info:         #3b82f6;
-  --ac-info-soft:    #dbeafe;
+  /* Status colors — high-contrast badges & feedback */
+  --ac-success:       #059669;
+  --ac-success-soft:  #d1fae5;
+  --ac-warning:       #d97706;
+  --ac-warning-soft:  #fef3c7;
+  --ac-danger:        #dc2626;
+  --ac-danger-soft:   #fee2e2;
+  --ac-info:          #2563eb;
+  --ac-info-soft:     #dbeafe;
 
-  --ac-radius:    6px;
-  --ac-radius-lg: 10px;
-  --ac-shadow-sm: 0 1px 2px rgba(17, 24, 39, 0.05);
-  --ac-shadow:    0 1px 3px rgba(17, 24, 39, 0.08), 0 1px 2px rgba(17, 24, 39, 0.04);
-  --ac-shadow-lg: 0 10px 30px rgba(17, 24, 39, 0.10), 0 2px 6px rgba(17, 24, 39, 0.05);
+  --ac-radius-sm:     4px;
+  --ac-radius:        8px;
+  --ac-radius-lg:     12px;
+  --ac-radius-xl:     16px;
 
-  --ac-sidebar-w: 240px;
-  --ac-topbar-h:  60px;
+  --ac-shadow-sm:     0 1px 2px rgba(17, 24, 39, 0.05);
+  --ac-shadow:        0 1px 3px rgba(17, 24, 39, 0.08), 0 1px 2px rgba(17, 24, 39, 0.04);
+  --ac-shadow-md:     0 4px 14px rgba(17, 24, 39, 0.08);
+  --ac-shadow-lg:     0 10px 30px rgba(17, 24, 39, 0.10), 0 2px 6px rgba(17, 24, 39, 0.05);
+
+  --ac-sidebar-w:      240px;
+  --ac-sidebar-rail-w: 68px;
+  --ac-topbar-h:       62px;
+}
+
+/* ── Dark Mode Palette ────────────────────────────────────────── */
+[data-theme="dark"] {
+  color-scheme: dark;
+  --ac-bg:            #0e1117;   /* modern dark background */
+  --ac-surface:       #161b22;   /* cards, tables, panels */
+  --ac-surface-2:     #1f242d;   /* alternate rows & hover surfaces */
+  --ac-sidebar:       #0d1015;   /* deep charcoal sidebar */
+  --ac-sidebar-hover: #1c212a;
+  --ac-sidebar-text:  rgba(255, 255, 255, 0.68);
+  --ac-sidebar-text-active: #ffffff;
+
+  --ac-border:        #262c36;
+  --ac-border-strong: #38414f;
+
+  --ac-text:          #f3f4f6;
+  --ac-text-muted:    #9ca3af;
+  --ac-text-soft:     #6b7280;
+
+  --ac-topbar-bg:     rgba(22, 27, 34, 0.85);
+  --ac-topbar-border: rgba(38, 44, 54, 0.85);
+  --ac-topbar-blur:   blur(14px);
+
+  --ac-accent:        #dfb76c;
+  --ac-accent-dark:   #c9a55a;
+  --ac-accent-light:  rgba(201, 165, 90, 0.15);
+
+  --ac-success:       #34d399;
+  --ac-success-soft:  rgba(16, 185, 129, 0.16);
+  --ac-warning:       #fbbf24;
+  --ac-warning-soft:  rgba(245, 158, 11, 0.16);
+  --ac-danger:        #f87171;
+  --ac-danger-soft:   rgba(239, 68, 68, 0.16);
+  --ac-info:          #60a5fa;
+  --ac-info-soft:     rgba(59, 130, 246, 0.16);
+
+  --ac-shadow-sm:     0 1px 2px rgba(0, 0, 0, 0.35);
+  --ac-shadow:        0 2px 6px rgba(0, 0, 0, 0.45);
+  --ac-shadow-md:     0 4px 16px rgba(0, 0, 0, 0.55);
+  --ac-shadow-lg:     0 12px 32px rgba(0, 0, 0, 0.7);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

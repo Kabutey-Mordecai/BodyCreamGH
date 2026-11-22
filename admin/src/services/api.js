@@ -79,6 +79,7 @@ export const authAPI = {
 
 // ── Admin overview / analytics ────────────────────────────────────────
 export const adminAPI = {
+  omnisearch:             (q)      => api.get('/admin/omnisearch', { params: { q } }),
   getDashboard:           ()       => api.get('/admin/dashboard'),
   getAnalytics:           (params) => api.get('/admin/analytics', { params }),
   getFinancials:          (params) => api.get('/admin/financials', { params }),

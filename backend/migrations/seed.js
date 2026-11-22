@@ -62,7 +62,7 @@ const products = [
     cost:         32.00,
     category:     'Body Cream',
     brand:        'BodyCream GH',
-    image_url:    'https://images.unsplash.com/photo-1611080626919-7cf5a9dbab12?auto=format&fit=crop&w=600&q=80',
+    image_url:    'https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?auto=format&fit=crop&w=600&q=80',
     stock_quantity: 19,
     ingredients:  'Shea butter, turmeric extract, niacinamide, kojic acid, vitamin C',
     usage_instructions: 'Apply to clean skin morning and evening. Use SPF during the day.',

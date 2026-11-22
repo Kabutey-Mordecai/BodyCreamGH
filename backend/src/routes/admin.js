@@ -5,6 +5,7 @@ const {
   getDashboard, getAnalytics, getFinancials, getTopProducts, getInventoryOverview, getAllCustomers,
   getAdminAccounts, createAdminAccount, updateAdminRole, deactivateAdminAccount, activateAdminAccount, getAuditLogs,
   uploadProductImages, uploadGenericMedia, deleteProductImage, reorderProductImages, setPrimaryProductImage,
+  omnisearch,
 } = require('../controllers/admin.controller');
 const {
   getAllReviews, getReviewCounts, approveReview, rejectReview, deleteReview,
@@ -27,6 +28,7 @@ const requireMarketingOrAdmin = requireRoles('admin', 'super_admin', 'marketing'
 const requireFulfillmentOrAdmin = requireRoles('admin', 'super_admin', 'fulfillment');
 
 // ── Existing routes ───────────────────────────────────────────────────────────
+router.get('/omnisearch',    verifyToken, requireAdmin, omnisearch);
 router.get('/dashboard',     verifyToken, requireAdmin, getDashboard);
 router.get('/analytics',     verifyToken, requireAdmin, getAnalytics);
 router.get('/financials',    verifyToken, requireAdmin, requireSuperOrAdmin, getFinancials);
