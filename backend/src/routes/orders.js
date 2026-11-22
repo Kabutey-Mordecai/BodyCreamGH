@@ -60,12 +60,17 @@ const trackOrderNumberLimiter = makeRateLimiter(
   }
 );
 
+const optOutCsp = (req, res, next) => {
+  res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'");
+  next();
+};
+
 // Public tracking & abandoned checkout lead capture — must be before /:orderId
 router.post('/track', trackLimiter, trackOrderNumberLimiter, trackOrder);
 router.post('/checkout-session', checkoutSessionLimiter, optionalToken, upsertCheckoutSession);
 router.delete('/checkout-session', trackLimiter, optionalToken, deleteCheckoutSession);
-router.get('/checkout-session/opt-out', trackLimiter, showCheckoutSessionOptOut);
-router.post('/checkout-session/opt-out', trackLimiter, confirmCheckoutSessionOptOut);
+router.get('/checkout-session/opt-out', trackLimiter, optOutCsp, showCheckoutSessionOptOut);
+router.post('/checkout-session/opt-out', trackLimiter, optOutCsp, confirmCheckoutSessionOptOut);
 
 router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);

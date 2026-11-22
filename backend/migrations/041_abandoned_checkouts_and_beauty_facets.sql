@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS checkout_sessions (
   id UUID PRIMARY KEY,
   session_token VARCHAR(120) UNIQUE NOT NULL,
+  opt_out_token VARCHAR(120) UNIQUE,
   customer_id UUID REFERENCES users(id) ON DELETE SET NULL,
   email VARCHAR(254) NOT NULL,
   first_name VARCHAR(100),
@@ -15,7 +16,11 @@ CREATE TABLE IF NOT EXISTS checkout_sessions (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE checkout_sessions
+  ADD COLUMN IF NOT EXISTS opt_out_token VARCHAR(120) UNIQUE;
+
 CREATE INDEX IF NOT EXISTS idx_checkout_sessions_email ON checkout_sessions (LOWER(email));
+CREATE INDEX IF NOT EXISTS idx_checkout_sessions_opt_out ON checkout_sessions (opt_out_token) WHERE opt_out_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_checkout_sessions_open
   ON checkout_sessions (updated_at DESC)
   WHERE recovered_order_id IS NULL;

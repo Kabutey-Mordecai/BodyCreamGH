@@ -2257,6 +2257,15 @@ const getAbandonedCheckouts = async (req, res) => {
   }
 };
 
+function escapeHtml(str) {
+  return String(str || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const sendAbandonedCheckoutReminder = async (req, res) => {
   try {
     const { rows } = await pool.query(
@@ -2272,10 +2281,12 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
       return res.status(409).json({ error: 'A recovery reminder has already been sent for this session' });
     }
 
+    const crypto = require('crypto');
+    const optOutToken = crypto.randomBytes(32).toString('hex');
     const emailService = require('../services/email.service');
     const storeUrl = (process.env.FRONTEND_URL || 'https://bodycreamgh.com').replace(/\/$/, '');
     const apiBaseUrl = (process.env.BACKEND_PUBLIC_URL || process.env.API_URL || storeUrl).replace(/\/$/, '');
-    const optOutUrl = `${apiBaseUrl}/api/orders/checkout-session/opt-out?token=${encodeURIComponent(session.session_token)}`;
+    const optOutUrl = `${apiBaseUrl}/api/orders/checkout-session/opt-out?token=${encodeURIComponent(optOutToken)}`;
     const items = Array.isArray(session.items_json) ? session.items_json : [];
     const itemsHtml = items
       .map(it => `<li>${it.name || 'Item'} × ${it.quantity || 1}</li>`)
@@ -2294,8 +2305,8 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
     });
 
     await pool.query(
-      `UPDATE checkout_sessions SET reminder_sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
-      [session.id]
+      `UPDATE checkout_sessions SET opt_out_token = $1, reminder_sent_at = NOW(), updated_at = NOW() WHERE id = $2`,
+      [optOutToken, session.id]
     );
     const { logAdminAction } = require('../utils/audit');
     await logAdminAction({
@@ -2318,26 +2329,26 @@ const sendAbandonedCheckoutReminder = async (req, res) => {
 const showCheckoutSessionOptOut = async (req, res) => {
   try {
     const rawToken = String(req.query?.token || '').trim().slice(0, 120);
-    if (!rawToken) {
+    if (!rawToken || !/^[a-f0-9]{32,64}$/i.test(rawToken)) {
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.status(400).send(
-        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Invalid Request</h2><p>An opt-out token is required.</p></body></html>'
+      return res.status(404).send(
+        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Invalid or Expired Link</h2><p>This opt-out link is invalid or has expired.</p></body></html>'
       );
     }
 
     const { rows } = await pool.query(
-      `SELECT id, email, first_name FROM checkout_sessions WHERE session_token = $1 LIMIT 1`,
+      `SELECT id FROM checkout_sessions WHERE opt_out_token = $1 LIMIT 1`,
       [rawToken]
     );
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (rows.length === 0) {
       return res.status(404).send(
-        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Session Not Found</h2><p>This checkout session has already been removed or does not exist.</p></body></html>'
+        '<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Invalid or Expired Link</h2><p>This opt-out link is invalid or has expired.</p></body></html>'
       );
     }
 
-    const escapedToken = rawToken.replace(/"/g, '&quot;');
+    const escapedToken = escapeHtml(rawToken);
     return res.send(`<!doctype html>
 <html>
 <head><title>Opt Out of Cart Reminders</title><meta name="viewport" content="width=device-width, initial-scale=1"></head>
@@ -2362,26 +2373,26 @@ const showCheckoutSessionOptOut = async (req, res) => {
 const confirmCheckoutSessionOptOut = async (req, res) => {
   try {
     const rawToken = String(req.body?.token || req.query?.token || '').trim().slice(0, 120);
-    if (!rawToken) {
+    if (!rawToken || !/^[a-f0-9]{32,64}$/i.test(rawToken)) {
       if (req.headers.accept?.includes('application/json') || req.is('json')) {
-        return res.status(400).json({ error: 'token is required' });
+        return res.status(404).json({ error: 'Invalid or expired opt-out token', deleted: false });
       }
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      return res.status(400).send('<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Invalid Request</h2><p>An opt-out token is required.</p></body></html>');
+      return res.status(404).send('<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Invalid or Expired Link</h2><p>This opt-out link is invalid or has expired.</p></body></html>');
     }
 
     const { rowCount } = await pool.query(
-      `DELETE FROM checkout_sessions WHERE session_token = $1`,
+      `DELETE FROM checkout_sessions WHERE opt_out_token = $1`,
       [rawToken]
     );
 
     if (req.headers.accept?.includes('application/json') || req.is('json')) {
-      return res.json({ deleted: rowCount > 0, count: rowCount });
+      return res.status(rowCount > 0 ? 200 : 404).json({ deleted: rowCount > 0, count: rowCount || 0 });
     }
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     if (rowCount === 0) {
-      return res.status(404).send('<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Already Removed</h2><p>This checkout session has already been deleted.</p></body></html>');
+      return res.status(404).send('<!doctype html><html><body style="font-family:sans-serif;padding:40px;text-align:center;"><h2>Invalid or Expired Link</h2><p>This opt-out link is invalid or has expired.</p></body></html>');
     }
 
     return res.send(`<!doctype html>
@@ -2401,6 +2412,8 @@ const confirmCheckoutSessionOptOut = async (req, res) => {
     return res.status(500).send('<!doctype html><html><body><h2>Error</h2><p>Failed to complete opt-out.</p></body></html>');
   }
 };
+
+
 
 const deleteCheckoutSession = async (req, res) => {
   try {
