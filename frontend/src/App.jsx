@@ -3,7 +3,6 @@ import { lazy, Suspense, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import WhatsAppFloat from './components/WhatsAppFloat';
-import CookieConsent from './components/CookieConsent';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import Home from './pages/Home';
@@ -57,6 +56,12 @@ const OrderDetail     = lazy(() => import('./pages/OrderDetail'));
 const Wishlist        = lazy(() => import('./pages/Wishlist'));
 const Unsubscribe     = lazy(() => import('./pages/Unsubscribe'));
 const TrackOrder      = lazy(() => import('./pages/TrackOrder'));
+const PrivacyNotice   = lazy(() =>
+  import('./components/PrivacyNotice').catch((err) => {
+    console.warn('[PrivacyNotice] Notice blocked by client adblocker or unavailable:', err?.message);
+    return { default: () => null };
+  })
+);
 
 function RouteFade({ children }) {
   const { pathname } = useLocation();
@@ -129,7 +134,9 @@ export default function App() {
 
         <Footer />
         <WhatsAppFloat />
-        <CookieConsent />
+        <Suspense fallback={null}>
+          <PrivacyNotice />
+        </Suspense>
       </div>
     </ErrorBoundary>
   );
