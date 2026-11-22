@@ -293,7 +293,7 @@ export default function Home() {
           alt=""
           aria-hidden="true"
           className="hero-bg-img"
-          fetchPriority="high"
+          fetchpriority="high"
           decoding="sync"
         />
         <div className="hero-overlay" />
