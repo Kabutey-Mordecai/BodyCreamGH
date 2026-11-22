@@ -174,11 +174,6 @@ export default function Footer() {
                   <Link to={l.to}>{l.label}</Link>
                 </li>
               ))}
-              <li>
-                <a href="http://localhost:5174" target="_blank" rel="noopener noreferrer">
-                  Admin Console ↗
-                </a>
-              </li>
             </ul>
           </div>
 
