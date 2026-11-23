@@ -51,7 +51,19 @@ async function deleteFileSafe(filename) {
 
 const getDashboard = async (req, res) => {
   try {
-    const [revenue, orders, customers, products, recentOrdersResult, todayRevenueResult, lowStockResult] = await Promise.all([
+    const [
+      revenue,
+      orders,
+      customers,
+      products,
+      recentOrdersResult,
+      todayRevenueResult,
+      yesterdayRevenueResult,
+      periodMetricsResult,
+      lowStockResult,
+      pendingFulfillmentResult,
+      pendingReturnsResult,
+    ] = await Promise.all([
       pool.query(`SELECT COALESCE(SUM(total_amount - COALESCE(refund_amount, 0)), 0) AS total_revenue FROM orders WHERE payment_status IN ('paid', 'partially_refunded')`),
       pool.query(`SELECT COUNT(*) AS total_orders, COUNT(*) FILTER (WHERE payment_status IN ('paid', 'partially_refunded')) AS paid_orders FROM orders`),
       pool.query(`SELECT COUNT(*) AS total_customers FROM users WHERE role = 'customer'`),
@@ -70,12 +82,30 @@ const getDashboard = async (req, res) => {
           FROM orders
          WHERE payment_status IN ('paid', 'partially_refunded') AND DATE(created_at) = CURRENT_DATE
       `),
+      pool.query(`
+        SELECT COALESCE(SUM(total_amount - COALESCE(refund_amount, 0)), 0) AS yesterday_revenue
+          FROM orders
+         WHERE payment_status IN ('paid', 'partially_refunded') AND DATE(created_at) = CURRENT_DATE - INTERVAL '1 day'
+      `),
+      pool.query(`
+        SELECT
+          COALESCE(SUM(total_amount - COALESCE(refund_amount, 0)) FILTER (WHERE payment_status IN ('paid', 'partially_refunded') AND created_at >= NOW() - INTERVAL '7 days'), 0) AS rev_7d,
+          COALESCE(SUM(total_amount - COALESCE(refund_amount, 0)) FILTER (WHERE payment_status IN ('paid', 'partially_refunded') AND created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days'), 0) AS rev_prev_7d,
+          COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '7 days') AS orders_7d,
+          COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '14 days' AND created_at < NOW() - INTERVAL '7 days') AS orders_prev_7d
+        FROM orders
+      `),
       pool.query(`SELECT COUNT(*) AS low_stock_count FROM products WHERE stock_quantity <= 5`),
+      pool.query(`SELECT COUNT(*) AS pending_fulfillment FROM orders WHERE status IN ('pending', 'processing') AND payment_status IN ('paid', 'partially_refunded')`),
+      pool.query(`SELECT COUNT(*) AS pending_returns FROM return_requests WHERE status = 'pending'`).catch(() => ({ rows: [{ pending_returns: 0 }] })),
     ]);
 
     const totalRevenue = parseFloat(revenue.rows[0].total_revenue);
     const totalOrders  = parseInt(orders.rows[0].total_orders, 10);
     const paidOrders   = parseInt(orders.rows[0].paid_orders, 10);
+    const todayRevenue = parseFloat(todayRevenueResult.rows[0].today_revenue);
+    const yesterdayRevenue = parseFloat(yesterdayRevenueResult.rows[0].yesterday_revenue);
+    const pm = periodMetricsResult.rows[0];
 
     res.json({
       totalRevenue,
@@ -83,9 +113,16 @@ const getDashboard = async (req, res) => {
       paidOrders,
       totalCustomers:  parseInt(customers.rows[0].total_customers, 10),
       totalProducts:   parseInt(products.rows[0].total_products, 10),
-      todayRevenue:    parseFloat(todayRevenueResult.rows[0].today_revenue),
+      todayRevenue,
+      yesterdayRevenue,
+      rev7d:           parseFloat(pm.rev_7d),
+      revPrev7d:       parseFloat(pm.rev_prev_7d),
+      orders7d:        parseInt(pm.orders_7d, 10),
+      ordersPrev7d:    parseInt(pm.orders_prev_7d, 10),
       avgOrderValue:   paidOrders > 0 ? Math.round((totalRevenue / paidOrders) * 100) / 100 : 0,
       lowStockCount:   parseInt(lowStockResult.rows[0].low_stock_count, 10),
+      pendingFulfillmentCount: parseInt(pendingFulfillmentResult.rows[0].pending_fulfillment, 10),
+      pendingReturnsCount:     parseInt(pendingReturnsResult.rows[0].pending_returns, 10),
       recentOrders:    recentOrdersResult.rows,
     });
   } catch (error) {

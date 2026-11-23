@@ -318,7 +318,7 @@ textarea { resize: vertical; min-height: 80px; }
 /* ── Stat cards ──────────────────────────────────── */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
   margin-bottom: 24px;
 }
@@ -330,6 +330,22 @@ textarea { resize: vertical; min-height: 80px; }
   padding: 18px 20px;
   position: relative;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.stat-card:hover {
+  border-color: var(--ac-border-strong);
+  box-shadow: var(--ac-shadow-md);
+}
+
+.stat-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .stat-card-label {
@@ -340,36 +356,84 @@ textarea { resize: vertical; min-height: 80px; }
   text-transform: uppercase;
 }
 
+.stat-card-main {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 10px 0 8px;
+}
+
 .stat-card-value {
-  font-size: 1.7rem;
+  font-size: 1.65rem;
   font-weight: 700;
-  margin-top: 8px;
   color: var(--ac-text);
   line-height: 1.1;
   letter-spacing: -0.02em;
 }
 
-.stat-card-sub {
-  font-size: 0.78rem;
+.stat-sparkline {
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.stat-card-bottom {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stat-delta {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.stat-delta--up {
+  background: var(--ac-success-soft);
+  color: var(--ac-success);
+}
+
+.stat-delta--down {
+  background: var(--ac-danger-soft);
+  color: var(--ac-danger);
+}
+
+.stat-delta--flat {
+  background: var(--ac-surface-2);
   color: var(--ac-text-muted);
-  margin-top: 6px;
+}
+
+.stat-delta-label {
+  font-weight: 400;
+  opacity: 0.85;
+  margin-left: 2px;
+}
+
+.stat-card-sub {
+  font-size: 0.76rem;
+  color: var(--ac-text-muted);
 }
 
 .stat-card-icon {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
   background: var(--ac-accent-light);
   color: var(--ac-accent-dark);
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
-.stat-card-icon svg { width: 18px; height: 18px; }
+.stat-card-icon svg { width: 17px; height: 17px; }
 
 /* ── Tables ──────────────────────────────────────── */
 .data-table {
