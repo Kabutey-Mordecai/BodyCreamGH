@@ -169,8 +169,12 @@ export const customerAPI = {
 
 // ── Deliveries ────────────────────────────────────────────────────────────────
 export const deliveriesAPI = {
-  getByOrder: (orderId)          => api.get(`/deliveries/order/${orderId}`),
-  track:      (trackingNumber)   => api.get(`/deliveries/track/${trackingNumber}`),
+  getByOrder:           (orderId)          => api.get(`/deliveries/order/${orderId}`),
+  track:                (trackingNumber)   => api.get(`/deliveries/track/${encodeURIComponent(trackingNumber)}`),
+  confirmReceipt:       (orderId)          => api.post(`/deliveries/order/${orderId}/confirm-receipt`),
+  getRiderHandoff:      (token)            => api.get('/deliveries/rider/handoff', { params: { token } }),
+  uploadRiderPhoto:     (token, formData)  => api.post('/deliveries/rider/photo', formData, { params: { token }, headers: { 'Content-Type': 'multipart/form-data' } }),
+  confirmRiderDelivery: (payload)          => api.post('/deliveries/rider/confirm', payload),
 };
 
 // ── Site settings — storefront reads these on load ────────────────────────────

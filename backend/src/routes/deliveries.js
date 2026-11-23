@@ -1,27 +1,39 @@
 const express = require('express');
 const { verifyToken, requireAdmin } = require('../middleware/auth');
 const { validateCreateDelivery, validateUpdateDelivery } = require('../middleware/validation');
+const { uploadSingleMediaMiddleware } = require('../middleware/uploadFilter');
+const { uploadGenericMedia } = require('../controllers/admin.controller');
 const {
   createDelivery,
   trackShipment,
   getDeliveryByOrder,
   updateDelivery,
+  sendPodOtp,
+  getRiderHandoff,
+  confirmRiderDelivery,
+  confirmCustomerReceipt,
+  requireRiderToken,
 } = require('../controllers/delivery.controller');
 const { advanceShipment, simulateFullJourney } = require('../services/courier.service');
 
 const router = express.Router();
 
 // ── Public — no auth needed ───────────────────────────────────────────────────
-// Anyone with the tracking number can check status (mirrors real courier APIs)
 router.get('/track/:tracking_number', trackShipment);
 
-// ── Authenticated ─────────────────────────────────────────────────────────────
-router.post('/',              verifyToken, requireAdmin, validateCreateDelivery, createDelivery);
-router.get('/order/:orderId', verifyToken, getDeliveryByOrder);
-router.patch('/:deliveryId',  verifyToken, requireAdmin, validateUpdateDelivery, updateDelivery);
+// ── Signed Rider Proof-of-Delivery endpoints (authenticated via signed rider JWT) ──
+router.get('/rider/handoff', getRiderHandoff);
+router.post('/rider/photo',  requireRiderToken, uploadSingleMediaMiddleware, uploadGenericMedia);
+router.post('/rider/confirm', confirmRiderDelivery);
 
-// ── Admin: courier simulation endpoints ──────────────────────────────────────
-// Advance one step: pending → in_transit → out_for_delivery → delivered
+// ── Authenticated ─────────────────────────────────────────────────────────────
+router.post('/',                                verifyToken, requireAdmin, validateCreateDelivery, createDelivery);
+router.get('/order/:orderId',                   verifyToken, getDeliveryByOrder);
+router.post('/order/:orderId/confirm-receipt',  verifyToken, confirmCustomerReceipt);
+router.patch('/:deliveryId',                    verifyToken, requireAdmin, validateUpdateDelivery, updateDelivery);
+router.post('/:deliveryId/pod/send-otp',        verifyToken, requireAdmin, sendPodOtp);
+
+// ── Admin: courier stage progression endpoints ────────────────────────────────
 router.post('/simulate/advance/:tracking_number', verifyToken, requireAdmin, async (req, res) => {
   try {
     const result = await advanceShipment(req.params.tracking_number);
@@ -31,11 +43,10 @@ router.post('/simulate/advance/:tracking_number', verifyToken, requireAdmin, asy
   }
 });
 
-// Fire-and-forget: simulate the full journey automatically (each step after delayMs)
 router.post('/simulate/full/:tracking_number', verifyToken, requireAdmin, async (req, res) => {
   const delayMs = Math.max(1000, parseInt(req.query.delay) || 2000);
   res.json({ message: `Full simulation started for ${req.params.tracking_number}`, delayMs });
-  simulateFullJourney(req.params.tracking_number, delayMs); // runs in background
+  simulateFullJourney(req.params.tracking_number, delayMs);
 });
 
 module.exports = router;

@@ -191,6 +191,7 @@ export const deliveriesAPI = {
   update:          (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
   simulateAdvance: (trackingNumber)       => api.post(`/deliveries/simulate/advance/${encodeURIComponent(trackingNumber)}`),
   simulateFull:    (trackingNumber, delay) => api.post(`/deliveries/simulate/full/${encodeURIComponent(trackingNumber)}${delay ? `?delay=${delay}` : ''}`),
+  sendPodOtp:      (deliveryId)           => api.post(`/deliveries/${deliveryId}/pod/send-otp`),
 };
 
 // ── Product variants ──────────────────────────────────────────────────────────

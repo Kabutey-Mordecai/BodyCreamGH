@@ -76,6 +76,8 @@ export default function OrderDetail() {
   });
   const [deliveryStatus, setDeliveryStatus] = useState('');
   const [deliverySaving, setDeliverySaving] = useState(false);
+  const [podSending, setPodSending]         = useState(false);
+  const [podLinkInfo, setPodLinkInfo]       = useState(null);
 
   const loadDelivery = () => {
     deliveriesAPI.getByOrder(id)
@@ -325,6 +327,20 @@ export default function OrderDetail() {
     }
   };
 
+  const handleSendPodOtp = async () => {
+    if (!delivery?.id) return;
+    setPodSending(true);
+    try {
+      const { data } = await deliveriesAPI.sendPodOtp(delivery.id);
+      setPodLinkInfo(data);
+      toast.success('6-digit Delivery OTP sent to customer & Rider Link ready');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to send delivery OTP');
+    } finally {
+      setPodSending(false);
+    }
+  };
+
   const handleMarkPaid = () => openCodModal(false);
 
   const handleConfirmCodPayment = async (e) => {
@@ -410,7 +426,7 @@ export default function OrderDetail() {
             </svg>
             Print invoice
           </button>
-          <button className="btn btn-outline" onClick={() => printWaybill(order, store)} title="Print dispatch waybill (A4 / 80mm)">Print Waybill</button>
+          <button className="btn btn-outline" onClick={() => printWaybill(order, store, delivery)} title="Print Jumia-style dispatch waybill (A4 / 80mm)">Print Waybill</button>
         </div>
       </div>
 
@@ -1179,6 +1195,107 @@ export default function OrderDetail() {
                             : 'Mark as Delivered ✓'}
                       </button>
                     )}
+
+                    {/* ── Multi-Layer Proof of Delivery (OTP + Rider Handoff Link + Photo + GPS) ── */}
+                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--ac-border)' }}>
+                      <div style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                        Proof of Delivery (POD)
+                      </div>
+
+                      {delivery.pod_verified_at ? (
+                        <div style={{ background: '#ecfdf5', border: '1px solid #10b981', borderRadius: 6, padding: 10, fontSize: '0.82rem' }}>
+                          <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 4 }}>
+                            ✓ Verified Delivered ({delivery.pod_verified_method === 'rider_otp_photo' ? '6-Digit OTP + Photo + GPS' : delivery.pod_verified_method === 'customer_confirmed' ? 'Confirmed by Customer' : 'Admin Verified'})
+                          </div>
+                          <div className="muted text-xs">
+                            {new Date(delivery.pod_verified_at).toLocaleString('en-GH')}
+                            {delivery.pod_recipient_name ? ` · Received by: ${delivery.pod_recipient_name}` : ''}
+                          </div>
+                          {delivery.pod_lat != null && delivery.pod_lng != null && (
+                            <div style={{ marginTop: 6 }}>
+                              <a
+                                href={`https://www.google.com/maps?q=${delivery.pod_lat},${delivery.pod_lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: '#047857', fontWeight: 600, fontSize: '0.78rem' }}
+                              >
+                                📍 View GPS Drop-off Location ({Number(delivery.pod_lat).toFixed(4)}, {Number(delivery.pod_lng).toFixed(4)})
+                              </a>
+                            </div>
+                          )}
+                          {delivery.pod_photo_url && (
+                            <a
+                              href={resolveImageUrl(delivery.pod_photo_url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ display: 'inline-block', marginTop: 8 }}
+                            >
+                              <img
+                                src={resolveImageUrl(delivery.pod_photo_url)}
+                                alt="Proof of delivery parcel"
+                                style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 6, border: '1px solid #a7f3d0' }}
+                              />
+                            </a>
+                          )}
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            style={{ width: '100%', fontSize: '0.8rem' }}
+                            disabled={podSending}
+                            onClick={handleSendPodOtp}
+                          >
+                            {podSending ? 'Generating OTP & Link…' : '🔐 Send 6-Digit Delivery OTP & Get Rider Link'}
+                          </button>
+
+                          {podLinkInfo?.rider_url && (
+                            <div style={{ marginTop: 8, padding: 10, background: 'var(--ac-surface-2, #f8f7f4)', borderRadius: 6, border: '1px solid var(--ac-border)', fontSize: '0.78rem' }}>
+                              <div style={{ fontWeight: 600, marginBottom: 4 }}>Signed Rider Handoff Link (72h):</div>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm"
+                                  style={{ fontSize: '0.75rem' }}
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(podLinkInfo.rider_url);
+                                    toast.success('Rider link copied');
+                                  }}
+                                >
+                                  Copy Link
+                                </button>
+                                <a
+                                  href={podLinkInfo.rider_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-outline btn-sm"
+                                  style={{ fontSize: '0.75rem', textDecoration: 'none' }}
+                                >
+                                  Open Rider Page
+                                </a>
+                                {delivery.driver_phone && (
+                                  <a
+                                    href={`https://wa.me/${String(delivery.driver_phone).replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Dispatch (${podLinkInfo.tracking_number} · Zone ${podLinkInfo.zone_code}): Use this secure link at the customer's door to verify their 6-digit OTP & snap parcel photo: ${podLinkInfo.rider_url}`)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-outline btn-sm"
+                                    style={{ fontSize: '0.75rem', color: '#16a34a', borderColor: '#86efac', textDecoration: 'none' }}
+                                  >
+                                    WhatsApp to Rider
+                                  </a>
+                                )}
+                              </div>
+                              {podLinkInfo.demo_otp && (
+                                <div style={{ color: '#92400e', background: '#fef3c7', padding: '4px 8px', borderRadius: 4 }}>
+                                  Demo OTP (SMS unconfigured): <strong>{podLinkInfo.demo_otp}</strong>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </form>
                 ) : (
                   /* No delivery yet — create one */

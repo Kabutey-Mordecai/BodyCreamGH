@@ -1,6 +1,6 @@
 /**
- * Dispatch waybill print view (A4 or 80mm thermal). Dependency-free Code128-B barcode.
- * Opens a popup window with @page / @media print styles and a size toggle.
+ * Jumia-style boxed dispatch waybill & thermal shipping label (A4 or 80mm thermal).
+ * Dependency-free Code128-B SVG barcode with structured Ghana zone routing code (e.g. BC-ACC-308721487-6357).
  */
 const PATTERNS = [
   '212222','222122','222221','121223','121322','131222','122213','122312','132212','221213',
@@ -16,7 +16,22 @@ const PATTERNS = [
   '114131','311141','411131','211412','211214','211232','2331112',
 ];
 
-export function code128Svg(text, height = 48) {
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const money = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
+
+function resolveZone(region, city) {
+  const hay = `${region || ''} ${city || ''}`.toLowerCase();
+  if (hay.includes('accra') || hay.includes('tema') || hay.includes('legon')) return 'ACC';
+  if (hay.includes('ashanti') || hay.includes('kumasi')) return 'KSI';
+  if (hay.includes('western') || hay.includes('takoradi')) return 'TAK';
+  if (hay.includes('central') || hay.includes('cape coast') || hay.includes('kasoa')) return 'CAP';
+  if (hay.includes('northern') || hay.includes('tamale')) return 'TAM';
+  if (hay.includes('eastern') || hay.includes('koforidua')) return 'KOF';
+  if (hay.includes('volta') || hay.includes('ho')) return 'VOL';
+  return 'GHA';
+}
+
+export function code128Svg(text, height = 56) {
   const codes = [104];
   for (const ch of String(text)) {
     const c = ch.charCodeAt(0) - 32;
@@ -39,24 +54,21 @@ export function code128Svg(text, height = 48) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${height}" preserveAspectRatio="none" class="barcode" role="img" aria-label="Barcode ${esc(text)}">${rects}</svg>`;
 }
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const money = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
-
-export function printWaybill(order, store = {}) {
+export function printWaybill(order, store = {}, delivery = null) {
   const num = order.order_number || String(order.id || '').slice(0, 8);
+  const trackingCode = delivery?.tracking_number || num;
+  const zoneCode = delivery?.zone_code || resolveZone(order.shipping_region, order.shipping_city);
+  const partner = delivery?.delivery_partner || (order.fulfillment_method === 'pickup' ? 'Store Pickup' : 'In-house Dispatch Bike');
   const phoneFromNotes = order.notes?.match(/(?:^|\n)Phone:\s*(.+?)(\n|$)/i)?.[1]?.trim();
   const phone = order.customer_phone || order.guest_phone || phoneFromNotes || '';
   const name = `${order.first_name || order.customer_name || ''} ${order.last_name || ''}`.trim() || '—';
   const addr = [order.shipping_address, order.shipping_city, order.shipping_region].filter(Boolean).join(', ');
-  const paid = ['paid', 'partially_refunded', 'refunded'].includes(order.payment_status) || order.payment_method !== 'pay_on_delivery' && order.payment_status === 'paid';
+  const paid = ['paid', 'partially_refunded', 'refunded'].includes(order.payment_status);
   const cod = order.payment_method === 'pay_on_delivery' && !paid;
-  const banner = cod
-    ? `<div class="banner cod">COLLECT ${money(order.total_amount)} CASH ON DELIVERY</div>`
-    : paid
-      ? `<div class="banner paid">PAID${order.payment_method === 'paystack' ? ' (PAYSTACK)' : ''} — DO NOT COLLECT</div>`
-      : `<div class="banner cod">PAYMENT PENDING (${esc(order.payment_status || 'unpaid')})</div>`;
+  const collectAmount = cod ? Number(order.total_amount || 0) : 0;
 
   const items = order.items || [];
+  const totalItemQty = items.reduce((s, it) => s + Number(it.quantity || 1), 0);
   const subtotal = items.reduce((s, it) => s + Number(it.subtotal || (it.price_at_purchase * it.quantity) || 0), 0);
   const rows = items.map((it) => `<tr>
     <td>${esc(it.product_name || it.name)}${it.variant_label ? `<div class="v">${esc(it.variant_label)}</div>` : ''}</td>
@@ -64,29 +76,52 @@ export function printWaybill(order, store = {}) {
     <td class="r">${money(it.price_at_purchase || it.price)}</td>
     <td class="r">${money(it.subtotal || it.price_at_purchase * it.quantity)}</td></tr>`).join('');
 
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Waybill ${esc(num)}</title>
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Waybill ${esc(trackingCode)}</title>
 <style>
   :root{font-family:system-ui,Arial,sans-serif;color:#000}
   body{margin:0;padding:16px;background:#eee}
   .toolbar{display:flex;gap:8px;justify-content:center;margin-bottom:12px}
   .toolbar button{padding:6px 14px;font-size:14px;cursor:pointer}
-  .sheet{background:#fff;margin:0 auto;padding:16mm;box-sizing:border-box;width:210mm;font-size:13px}
+  .sheet{background:#fff;margin:0 auto;padding:14mm;box-sizing:border-box;width:210mm;font-size:13px}
   body.thermal .sheet{width:80mm;padding:3mm;font-size:11px}
-  h1{margin:0;font-size:20px} .muted{color:#444}
-  .head{display:flex;justify-content:space-between;gap:12px;border-bottom:2px solid #000;padding-bottom:8px;margin-bottom:8px}
-  .barcode{display:block;width:100%;max-width:260px;height:48px;margin:8px 0 2px}
-  .banner{font-weight:900;text-align:center;font-size:20px;padding:10px;margin:10px 0;border:3px solid #000}
-  .banner.paid{background:#fff} .banner.cod{background:#000;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  body.thermal .banner{font-size:15px;padding:6px}
-  table{width:100%;border-collapse:collapse;margin-top:8px}
-  th,td{padding:4px;border-bottom:1px solid #999;text-align:left;vertical-align:top}
+
+  /* Jumia-style boxed shipping label grid */
+  .label-box{border:2.5px solid #000}
+  .brand-bar{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:2px solid #000;background:#000;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .brand-bar h1{margin:0;font-size:20px;letter-spacing:1px;text-transform:uppercase}
+  .brand-bar .tag{font-size:12px;font-weight:700;letter-spacing:.5px}
+  .grid-row{display:grid;grid-template-columns:1.15fr 1fr;border-bottom:2px solid #000}
+  .grid-row:last-child{border-bottom:none}
+  .cell{padding:10px 12px;box-sizing:border-box}
+  .cell + .cell{border-left:2px solid #000}
+  body.thermal .grid-row{grid-template-columns:1fr}
+  body.thermal .cell + .cell{border-left:none;border-top:2px solid #000}
+
+  .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:#444;font-weight:700;margin-bottom:3px}
+  .recipient{font-size:15px;font-weight:800;margin-bottom:2px}
+  .collect-box{margin-top:8px;padding:8px;border:2px solid #000;display:flex;justify-content:space-between;align-items:center;gap:8px}
+  .collect-box.cod{background:#000;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .collect-amt{font-size:22px;font-weight:900;white-space:nowrap}
+  body.thermal .collect-amt{font-size:16px}
+
+  .zone-cell{display:flex;flex-direction:column;justify-content:space-between}
+  .zone-big{font-size:42px;font-weight:900;letter-spacing:2px;line-height:1;margin-top:6px}
+  body.thermal .zone-big{font-size:28px}
+  .barcode-wrap{text-align:center}
+  .barcode{display:block;width:100%;height:56px;margin:4px 0}
+  .code-txt{font-family:monospace;font-size:13px;font-weight:800;letter-spacing:.5px}
+
+  .muted{color:#444}
+  .pod-note{margin-top:10px;padding:7px 10px;border:1.5px dashed #000;font-size:11.5px;text-align:center;font-weight:600}
+  table{width:100%;border-collapse:collapse;margin-top:12px}
+  th,td{padding:4px 6px;border-bottom:1px solid #999;text-align:left;vertical-align:top}
   .r{text-align:right} .v{font-size:.9em;color:#444}
-  .totals{margin-left:auto;width:60%;margin-top:6px} .totals div{display:flex;justify-content:space-between;padding:2px 0}
-  .grand{font-weight:900;font-size:1.2em;border-top:2px solid #000}
-  .to{margin-top:8px;font-size:1.15em} .to b{font-size:1.2em}
-  .sign{display:flex;gap:16px;margin-top:28px} .sign div{flex:1;border-top:1px solid #000;padding-top:4px;font-size:.85em}
-  body.thermal .sign{flex-direction:column;gap:22px}
-  body.thermal .head{flex-direction:column}
+  .totals{margin-left:auto;width:55%;margin-top:6px} .totals div{display:flex;justify-content:space-between;padding:2px 0}
+  .grand{font-weight:900;font-size:1.15em;border-top:2px solid #000;margin-top:2px;padding-top:4px}
+  .sign{display:flex;gap:16px;margin-top:26px} .sign div{flex:1;border-top:1px solid #000;padding-top:4px;font-size:.85em}
+  body.thermal .sign{flex-direction:column;gap:20px}
+  body.thermal .totals{width:100%}
+
   @page{size:A4;margin:0}
   @media print{
     body{background:#fff;padding:0} .toolbar{display:none}
@@ -96,32 +131,76 @@ export function printWaybill(order, store = {}) {
   }
 </style></head><body class="a4">
 <div class="toolbar">
-  <button id="a4">A4</button><button id="th">80mm thermal</button><button id="pr">Print</button>
+  <button id="a4">A4 Sheet</button><button id="th">80mm Thermal</button><button id="pr">Print Label</button>
 </div>
 <div class="sheet">
-  <div class="head">
-    <div><h1>${esc(store.store_name || 'Store')}</h1>
-      ${store.store_phone ? `<div>${esc(store.store_phone)}</div>` : ''}
-      ${store.store_email ? `<div>${esc(store.store_email)}</div>` : ''}
-      ${store.store_address ? `<div class="muted">${esc(store.store_address)}</div>` : ''}</div>
-    <div><b>DISPATCH WAYBILL</b><div>Order #${esc(num)}</div>
-      <div class="muted">${esc(new Date(order.created_at).toLocaleDateString('en-GH'))}</div></div>
+  <div class="label-box">
+    <div class="brand-bar">
+      <h1>${esc(store.store_name || 'BODYCREAM GH')}</h1>
+      <span class="tag">EXPRESS DISPATCH</span>
+    </div>
+
+    <div class="grid-row">
+      <div class="cell">
+        <div class="lbl">Deliver To</div>
+        <div class="recipient">${esc(name)}</div>
+        <div>Tel: <b>${esc(phone || '—')}</b></div>
+        <div style="margin-top:4px">${esc(addr || 'Address not provided')}</div>
+        ${order.ghana_post_gps ? `<div class="muted" style="margin-top:2px">GPS: ${esc(order.ghana_post_gps)}</div>` : ''}
+      </div>
+      <div class="cell">
+        <div><b>Order #:</b> ${esc(num)}</div>
+        <div><b>Order Date:</b> ${esc(new Date(order.created_at).toLocaleDateString('en-GH'))}</div>
+        <div><b># items:</b> ${totalItemQty}</div>
+        <div class="collect-box ${cod ? 'cod' : ''}">
+          <div style="font-size:11px;font-weight:700;line-height:1.25">
+            ${cod ? 'AMOUNT TO COLLECT<br>(CASH / MOMO)' : 'PREPAID ONLINE<br>DO NOT COLLECT'}
+          </div>
+          <div class="collect-amt">${money(collectAmount)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-row">
+      <div class="cell zone-cell">
+        <div>
+          <div class="lbl">Dispatch Hub / Rider</div>
+          <div><b>${esc(partner)}</b></div>
+          ${delivery?.driver_phone ? `<div class="muted">${esc(delivery.driver_phone)}</div>` : ''}
+        </div>
+        <div class="zone-big">${esc(zoneCode)}</div>
+      </div>
+      <div class="cell barcode-wrap">
+        <div class="lbl">Parcel Tracking Barcode</div>
+        ${code128Svg(trackingCode)}
+        <div class="code-txt">${esc(trackingCode)}</div>
+      </div>
+    </div>
   </div>
-  ${code128Svg(num)}<div class="muted" style="font-family:monospace">${esc(num)}</div>
-  ${banner}
-  <div class="to">DELIVER TO<br><b>${esc(name)}</b><br>Tel: <b>${esc(phone || '—')}</b><br>${esc(addr || 'Address not provided')}</div>
-  <table><thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Total</th></tr></thead><tbody>${rows}</tbody></table>
+
+  <div class="pod-note">
+    PROOF OF DELIVERY REQUIRED: Rider must verify customer's 6-digit Delivery OTP &amp; snap parcel photo on handoff.
+  </div>
+
+  <table>
+    <thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Total</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
   <div class="totals">
     <div><span>Subtotal</span><span>${money(subtotal)}</span></div>
     ${Number(order.discount_amount) > 0 ? `<div><span>Discount</span><span>- ${money(order.discount_amount)}</span></div>` : ''}
     <div><span>Delivery</span><span>${Number(order.delivery_fee) ? money(order.delivery_fee) : 'Free'}</span></div>
     <div class="grand"><span>TOTAL</span><span>${money(order.total_amount)}</span></div>
   </div>
-  <div class="sign"><div>Rider name &amp; signature</div><div>Customer signature</div><div>Date / time</div></div>
+  <div class="sign">
+    <div>Rider name &amp; signature</div>
+    <div>Customer signature</div>
+    <div>Date / time</div>
+  </div>
 </div>
 <script>
   const b=document.body, st=document.createElement('style'); document.head.appendChild(st);
-  function mode(m){b.className=m; st.textContent='@page{size:'+(m==='thermal'?'80mm auto':'A4')+';margin:'+(m==='thermal'?'0':'0')+'}'}
+  function mode(m){b.className=m; st.textContent='@page{size:'+(m==='thermal'?'80mm auto':'A4')+';margin:0}'}
   document.getElementById('a4').onclick=()=>mode('a4');
   document.getElementById('th').onclick=()=>mode('thermal');
   document.getElementById('pr').onclick=()=>window.print();

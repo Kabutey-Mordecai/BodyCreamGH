@@ -2,13 +2,13 @@ const pool = require('../config/database');
 const { randomUUID: uuid } = require('crypto');
 
 module.exports = {
-  create: async ({ orderId, deliveryPartner, trackingNumber, estimatedDelivery, driverPhone }) => {
+  create: async ({ orderId, deliveryPartner, trackingNumber, estimatedDelivery, driverPhone, zoneCode }) => {
     const id = uuid();
     await pool.query(
       `INSERT INTO deliveries
-         (id, order_id, status, delivery_partner, tracking_number, estimated_delivery, driver_phone)
-       VALUES ($1,$2,'pending',$3,$4,$5,$6)`,
-      [id, orderId, deliveryPartner, trackingNumber, estimatedDelivery, driverPhone]
+         (id, order_id, status, delivery_partner, tracking_number, estimated_delivery, driver_phone, zone_code)
+       VALUES ($1,$2,'pending',$3,$4,$5,$6,$7)`,
+      [id, orderId, deliveryPartner, trackingNumber, estimatedDelivery, driverPhone, zoneCode || 'GHA']
     );
     return id;
   },

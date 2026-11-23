@@ -56,6 +56,7 @@ const OrderDetail     = lazy(() => import('./pages/OrderDetail'));
 const Wishlist        = lazy(() => import('./pages/Wishlist'));
 const Unsubscribe     = lazy(() => import('./pages/Unsubscribe'));
 const TrackOrder      = lazy(() => import('./pages/TrackOrder'));
+const RiderHandoff    = lazy(() => import('./pages/RiderHandoff'));
 const PrivacyNotice   = lazy(() =>
   import('./components/PrivacyNotice').catch((err) => {
     console.warn('[PrivacyNotice] Notice blocked by client adblocker or unavailable:', err?.message);
@@ -105,6 +106,7 @@ export default function App() {
               <Route path="/unsubscribe"         element={<Unsubscribe />} />
               <Route path="/track"               element={<TrackOrder />} />
               <Route path="/track-order"         element={<TrackOrder />} />
+              <Route path="/rider-handoff"       element={<RiderHandoff />} />
               <Route path="/privacy-policy"      element={<PolicyPage type="privacy" />} />
               <Route path="/terms"               element={<PolicyPage type="terms" />} />
               <Route path="/refund-policy"       element={<PolicyPage type="refund" />} />
