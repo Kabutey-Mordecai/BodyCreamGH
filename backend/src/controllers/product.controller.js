@@ -284,7 +284,19 @@ const getFacets = async (req, res) => {
         clauses.push('p.stock_quantity > 0');
       }
       if (on_sale === 'true' || on_sale === true) {
-        clauses.push('(p.compare_at_price IS NOT NULL AND p.compare_at_price > p.price)');
+        clauses.push(
+          `((p.compare_at_price IS NOT NULL AND p.compare_at_price > p.price) OR EXISTS (
+            SELECT 1 FROM promotions promo
+            WHERE promo.is_active = TRUE
+              AND promo.starts_at <= NOW()
+              AND promo.ends_at   >= NOW()
+              AND (
+                promo.applies_to = 'all'
+                OR (promo.applies_to = 'category' AND promo.category = p.category)
+                OR (promo.applies_to = 'product'  AND promo.product_id = p.id)
+              )
+          ))`
+        );
       }
       return { where: `WHERE ${clauses.join(' AND ')}`, params };
     };

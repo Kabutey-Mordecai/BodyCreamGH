@@ -905,15 +905,19 @@ export default function Shop() {
             ) : products.length === 0 ? (
               <div className="shop-empty">
                 <span className="shop-empty-icon">✦</span>
-                <h3>Nothing found</h3>
+                <h3>No products found</h3>
                 <p>
                   {search
                     ? `No products match "${search}".`
-                    : category
-                      ? `No ${category} products yet.`
-                      : hasPriceFilter
-                        ? 'No products in that price range.'
-                        : 'No products are available right now.'}
+                    : hasOnSaleFilter
+                      ? 'There are no products on sale matching your current filters right now.'
+                      : minRating
+                        ? `No products with ${minRating}★ and up match your current filters.`
+                        : category
+                          ? `No products found in "${category}" matching these filters.`
+                          : hasPriceFilter
+                            ? 'No products found in that price range.'
+                            : 'No products match your current filter selection.'}
                 </p>
                 {hasActiveFilters && (
                   <button

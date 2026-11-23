@@ -110,11 +110,15 @@ module.exports = {
     if (on_sale === 'true' || on_sale === true) {
       filterClauses.push(
         `((p.compare_at_price IS NOT NULL AND p.compare_at_price > p.price) OR EXISTS (
-          SELECT 1 FROM promotions pr
-          WHERE pr.is_active = TRUE AND pr.starts_at <= NOW() AND pr.ends_at >= NOW()
-            AND (pr.scope_type = 'store'
-              OR (pr.scope_type = 'category' AND pr.scope_value = p.category)
-              OR (pr.scope_type = 'product'  AND pr.scope_value = p.id::text))
+          SELECT 1 FROM promotions promo
+          WHERE promo.is_active = TRUE
+            AND promo.starts_at <= NOW()
+            AND promo.ends_at   >= NOW()
+            AND (
+              promo.applies_to = 'all'
+              OR (promo.applies_to = 'category' AND promo.category = p.category)
+              OR (promo.applies_to = 'product'  AND promo.product_id = p.id)
+            )
         ))`
       );
     }
