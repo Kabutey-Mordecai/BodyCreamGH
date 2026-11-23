@@ -11,11 +11,11 @@ const PENDING_GUEST_KEY = 'pending_guest_payment';
 const PENDING_AUTH_KEY  = 'pending_auth_payment';
 
 const PAGE_TITLES = {
-  verifying: 'Confirming Payment | BodyCreamGH',
-  pending:   'Payment Pending | BodyCreamGH',
-  success:   'Payment Successful | BodyCreamGH',
-  failed:    'Payment Failed | BodyCreamGH',
-  attention: 'Order Needs Attention | BodyCreamGH',
+  verifying: 'Confirming Payment',
+  pending:   'Payment Pending',
+  success:   'Payment Successful',
+  failed:    'Payment Failed',
+  attention: 'Order Needs Attention',
 };
 
 function hasCancelledRefundState(data) {

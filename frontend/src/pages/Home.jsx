@@ -184,12 +184,12 @@ export default function Home() {
       '@graph': [
         {
           '@type': 'Organization',
-          name: store_name || 'BodyCream GH',
+          name: store_name || 'GlowHaus Beauty',
           url: window.location.origin,
         },
         {
           '@type': 'WebSite',
-          name: store_name || 'BodyCream GH',
+          name: store_name || 'GlowHaus Beauty',
           url: window.location.origin,
           potentialAction: {
             '@type': 'SearchAction',
@@ -213,8 +213,8 @@ export default function Home() {
   }, [settings, store_name]);
 
   useSeo({
-    title: `${store_name || 'BodyCream GH'} — Luxury Handcrafted Skincare in Ghana`,
-    description: hero_subtitle || 'Shop handcrafted body creams, butters, oils, and scrubs in Ghana.',
+    title: `${store_name || 'GlowHaus Beauty'} — Authentic Cosmetics, Skincare & Makeup`,
+    description: hero_subtitle || 'Shop 100% authentic skincare, makeup, haircare, body care, and fragrances.',
     image: hero_image || DEFAULT_HERO_IMG,
     jsonLd: homeJsonLd,
   });
@@ -534,25 +534,24 @@ export default function Home() {
             />
           </Reveal>
           <Reveal direction="right" delay={100} className="brand-story-text">
-            <span className="section-label">Our Story</span>
-            <h2>Born in Ghana,<br />made for her.</h2>
+            <span className="section-label">Why Shop With Us</span>
+            <h2>Curated beauty,<br />100% authentic.</h2>
             <div className="gold-divider" style={{ margin: '12px 0 20px' }} />
             <p>
-              Every product begins with a simple belief: Ghanaian women deserve
-              skincare that was made <em>for them</em> — not adapted from formulas
-              designed for other climates and skin tones.
+              Every product in our store is carefully selected from trusted global
+              and local beauty brands — from daily skincare and serums to makeup,
+              haircare, and signature fragrances.
             </p>
             <p style={{ marginTop: '14px' }}>
-              We source raw shea butter directly from women cooperatives in the
-              Northern Region, blend it with locally grown botanical oils, and
-              bottle it with love right here in Accra.
+              We source directly from verified distributors, store every item in
+              climate-controlled conditions, and deliver fast to your doorstep.
             </p>
             <Link
               to="/shop"
               className="btn btn-outline"
               style={{ marginTop: '28px', width: 'fit-content' }}
             >
-              Discover the Range
+              Browse All Brands
             </Link>
           </Reveal>
         </div>
@@ -584,7 +583,7 @@ export default function Home() {
                     </Link>
                   )}
                   {r.title && <strong style={{ display: 'block', fontSize: '0.96rem', marginBottom: 6, color: 'var(--color-primary)' }}>{r.title}</strong>}
-                  <p className="testimonial-text">"{r.body || r.title || 'Exceptional handcrafted skincare!'}"</p>
+                  <p className="testimonial-text">"{r.body || r.title || 'Authentic beauty products and fast delivery!'}"</p>
                   <div className="testimonial-author" style={{ marginTop: 14 }}>
                     <div>
                       <strong>{r.first_name ? `${r.first_name} ${r.last_initial || ''}.` : 'Verified Buyer'}</strong>

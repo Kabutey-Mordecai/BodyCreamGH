@@ -17,7 +17,7 @@ const GHANA_REGIONS = [
 ];
 
 const DEFAULTS = {
-  store_name:     'BodyCream GH',
+  store_name:     'GlowHaus Beauty',
   store_email:    '',
   store_phone:    '',
   store_address:  '',

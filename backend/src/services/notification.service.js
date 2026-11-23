@@ -13,7 +13,7 @@ function log(level, event, payload) {
 async function sendSms({ to, message }) {
   const provider = String(process.env.SMS_PROVIDER || '').trim().toLowerCase();
   const apiKey = process.env.SMS_API_KEY;
-  const senderId = process.env.SMS_SENDER_ID || 'BodyCreamGH';
+  const senderId = process.env.SMS_SENDER_ID || 'GlowHaus';
 
   if (!provider || !apiKey || !to || !message) {
     log(LEVELS.INFO, 'sms.skipped', { provider: provider || 'none', hasTo: Boolean(to) });

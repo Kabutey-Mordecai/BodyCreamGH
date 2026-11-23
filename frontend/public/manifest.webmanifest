@@ -1,7 +1,7 @@
 {
-  "name": "BodyCream GH",
-  "short_name": "BodyCreamGH",
-  "description": "Luxury handcrafted skincare and body creams blended in Ghana.",
+  "name": "GlowHaus Beauty",
+  "short_name": "GlowHaus",
+  "description": "100% authentic cosmetics, skincare, makeup, haircare, and fragrances.",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

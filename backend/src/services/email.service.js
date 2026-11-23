@@ -10,7 +10,8 @@ let _transporter = null;
 function getFromAddress() {
   const configured = (process.env.EMAIL_FROM || '').trim();
   if (configured) return configured;
-  return `BodyCream GH <${(process.env.SMTP_USER || '').trim()}>`;
+  const brand = process.env.STORE_NAME || 'GlowHaus Beauty';
+  return `${brand} <${(process.env.SMTP_USER || '').trim()}>`;
 }
 
 function getTransporter() {

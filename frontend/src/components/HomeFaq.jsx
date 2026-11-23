@@ -10,7 +10,7 @@ export function buildFaqItems(settings = {}) {
     if (valid.length > 0) return valid;
   }
 
-  const storeName = settings.store_name || 'BodyCream GH';
+  const storeName = settings.store_name || 'GlowHaus Beauty';
   const accraEst = settings.delivery_estimate_accra || '1–2 business days';
   const nationEst = settings.delivery_estimate_nationwide || '3–5 business days';
   const freeOver = Number(settings.free_delivery_over);
@@ -48,8 +48,8 @@ export function buildFaqItems(settings = {}) {
       a: 'We offer hassle-free 7-day returns on unopened items and prompt replacements for any damaged delivery. Track your order status anytime on our Track Order page.',
     },
     {
-      q: 'Are your skincare products authentic and safe for melanin-rich skin?',
-      a: 'Yes. Every batch is handcrafted in Ghana with 100% raw Northern Ghana shea butter and botanical oils, free from parabens, sulfates, and harsh bleaching agents.',
+      q: 'Are all cosmetics and beauty products 100% authentic?',
+      a: 'Yes. Every skincare, makeup, haircare, and fragrance item is sourced directly from verified brand distributors, factory-sealed, and stored in climate-controlled conditions.',
     },
   ];
 }

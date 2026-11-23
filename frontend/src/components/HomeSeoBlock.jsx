@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { useSettings } from '../context/SettingsContext';
 import './HomeSeoBlock.css';
 
-const DEFAULT_TITLE = 'Handcrafted Luxury Skincare & Organic Body Creams in Ghana';
-const DEFAULT_TEXT = `Welcome to BodyCream GH, Ghana's premier destination for raw, unrefined shea butter creams, botanical radiance oils, and whipped moisturizing butters. Every formulation is handcrafted in Ghana using sustainably wildcrafted shea nuts harvested by women cooperatives across the Northern Region. Whether you are in Accra, Tema, Kumasi, Takoradi, Sunyani, or Tamale, we deliver glowing, deeply nourished skin directly to your doorstep with same-day express delivery in Accra and swift nationwide dispatch. Enjoy complete peace of mind with 100% secure Paystack checkout supporting MTN Mobile Money, Telecel Cash, Visa, and Mastercard, plus Pay on Delivery and free Store Pickup in Accra.`;
+const DEFAULT_TITLE = 'Authentic Cosmetics, Skincare, Makeup & Fragrances Online';
+const DEFAULT_TEXT = `Welcome to GlowHaus Beauty, your trusted destination for authentic skincare, makeup, haircare, body care, and fragrances. Every product in our catalog is sourced from verified brand distributors and sealed for freshness. Whether you are shopping from Accra, Tema, Kumasi, Takoradi, or anywhere nationwide, enjoy fast dispatch, secure Paystack checkout (Mobile Money, Visa, Mastercard), Pay on Delivery options, and easy store pickup.`;
 
 export default function HomeSeoBlock() {
   const settings = useSettings();
@@ -14,9 +14,10 @@ export default function HomeSeoBlock() {
 
   const title = settings.seo_editorial_title || DEFAULT_TITLE;
   const text = settings.seo_editorial_text || DEFAULT_TEXT;
+  const storeName = settings.store_name || 'GlowHaus Beauty';
 
   return (
-    <section className="home-seo-section" aria-label="About Shopping with BodyCream GH">
+    <section className="home-seo-section" aria-label={`About Shopping with ${storeName}`}>
       <div className="container">
         <div className="home-seo-card">
           <h3 className="home-seo-title">{title}</h3>
