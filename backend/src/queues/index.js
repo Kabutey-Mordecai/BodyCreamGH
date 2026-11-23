@@ -59,24 +59,33 @@ function pgOpts(defaults, opts = {}) {
   return { ...defaults, ...translated };
 }
 
+const ensuredQueues = new Set();
+async function safeSend(queueName, data, opts) {
+  if (!ensuredQueues.has(queueName)) {
+    await boss.createQueue(queueName).catch(() => {});
+    ensuredQueues.add(queueName);
+  }
+  return boss.send(queueName, data, opts);
+}
+
 const paymentQueue = {
-  add: (name, data, opts) => boss.send(`payment/${name}`, data, pgOpts(PAYMENT_DEFAULTS, opts)),
+  add: (name, data, opts) => safeSend(`payment/${name}`, data, pgOpts(PAYMENT_DEFAULTS, opts)),
 };
 
 const shipmentQueue = {
-  add: (name, data, opts) => boss.send(`shipment/${name}`, data, pgOpts(SHIPMENT_DEFAULTS, opts)),
+  add: (name, data, opts) => safeSend(`shipment/${name}`, data, pgOpts(SHIPMENT_DEFAULTS, opts)),
 };
 
 const notificationQueue = {
-  add: (name, data, opts) => boss.send(`notification/${name}`, data, pgOpts(NOTIFICATION_DEFAULTS, opts)),
+  add: (name, data, opts) => safeSend(`notification/${name}`, data, pgOpts(NOTIFICATION_DEFAULTS, opts)),
 };
 
 const reconcileQueue = {
-  add: (_name, data, opts) => boss.send('reconcile', data, pgOpts(RECONCILE_DEFAULTS, opts)),
+  add: (_name, data, opts) => safeSend('reconcile', data, pgOpts(RECONCILE_DEFAULTS, opts)),
 };
 
 const newsletterQueue = {
-  add: (name, data, opts) => boss.send(`newsletter/${name}`, data, pgOpts(NEWSLETTER_DEFAULTS, opts)),
+  add: (name, data, opts) => safeSend(`newsletter/${name}`, data, pgOpts(NEWSLETTER_DEFAULTS, opts)),
 };
 
 module.exports = { paymentQueue, shipmentQueue, notificationQueue, reconcileQueue, newsletterQueue };
