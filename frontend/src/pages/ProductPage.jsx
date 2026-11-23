@@ -636,9 +636,35 @@ export default function ProductPage() {
               </div>
             ) : (
               <p className="product-detail-price">
-                {product.has_variants && !selectedVariant
-                  ? `From GHS ${parseFloat(product.min_price || product.price).toFixed(2)}`
-                  : `GHS ${effectivePrice.toFixed(2)}`}
+                {(() => {
+                  const activePrices = (variantData?.variants || [])
+                    .filter(v => v.is_active !== false)
+                    .map(v => parseFloat(v.price))
+                    .filter(n => !Number.isNaN(n));
+                  const minP = activePrices.length > 0
+                    ? Math.min(...activePrices)
+                    : (product.min_price != null ? parseFloat(product.min_price) : parseFloat(product.price));
+                  const maxP = activePrices.length > 0
+                    ? Math.max(...activePrices)
+                    : (product.max_price != null ? parseFloat(product.max_price) : minP);
+                  const hasRange = product.has_variants && maxP > minP;
+
+                  if (product.has_variants && !selectedVariant) {
+                    return hasRange
+                      ? `GHS ${minP.toFixed(2)} – GHS ${maxP.toFixed(2)}`
+                      : `GHS ${minP.toFixed(2)}`;
+                  }
+                  return (
+                    <>
+                      <span>GHS {effectivePrice.toFixed(2)}</span>
+                      {hasRange && (
+                        <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: 'var(--color-muted)', marginTop: 2 }}>
+                          Price range: GHS {minP.toFixed(2)} – GHS {maxP.toFixed(2)}
+                        </span>
+                      )}
+                    </>
+                  );
+                })()}
               </p>
             )}
 

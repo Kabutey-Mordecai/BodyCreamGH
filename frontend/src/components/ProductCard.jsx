@@ -266,9 +266,11 @@ export default function ProductCard({ product }) {
           </div>
         )}
 
-        {product.has_variants && product.min_price ? (
+        {product.has_variants && product.min_price != null ? (
           <p className="product-card-price">
-            From GHS {parseFloat(product.min_price).toFixed(2)}
+            {product.max_price != null && parseFloat(product.max_price) > parseFloat(product.min_price)
+              ? `GHS ${parseFloat(product.min_price).toFixed(2)} – GHS ${parseFloat(product.max_price).toFixed(2)}`
+              : `GHS ${parseFloat(product.min_price).toFixed(2)}`}
           </p>
         ) : isOnSale ? (
           <div className="product-card-price-sale">
