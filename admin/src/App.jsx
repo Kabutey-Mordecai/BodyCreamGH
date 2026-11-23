@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminLayout from './layout/AdminLayout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -46,8 +46,9 @@ function AdminFallback() {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
   return (
-    <ErrorBoundary>
+    <ErrorBoundary resetKey={pathname}>
       <Suspense fallback={<AdminFallback />}>
         <Routes>
           {/* Public auth route — no sidebar/topbar chrome */}

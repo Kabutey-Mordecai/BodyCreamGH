@@ -90,7 +90,16 @@ export default function Promotions() {
 
   useEffect(() => {
     productsAPI.getAdminAll({ limit: 300 })
-      .then(({ data }) => setProductList(data.products || data || []))
+      .then(({ data }) => {
+        const list = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.data)
+            ? data.data
+            : Array.isArray(data?.products)
+              ? data.products
+              : [];
+        setProductList(list);
+      })
       .catch(() => {});
   }, []);
 
