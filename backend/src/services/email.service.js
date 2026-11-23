@@ -25,12 +25,18 @@ function getBrevoApiKey() {
   return (process.env.BREVO_API_KEY || '').trim();
 }
 
+const FREEMAIL_DOMAINS = new Set(['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com']);
+
 function getFromAddress() {
   const configured = (process.env.EMAIL_FROM || '').trim();
   if (configured) return configured;
   const brand = process.env.STORE_NAME || 'BodyCream GH';
   const fallbackEmail = (process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || '').trim();
   return fallbackEmail ? `${brand} <${fallbackEmail}>` : brand;
+}
+
+function getReplyToAddress() {
+  return (process.env.EMAIL_REPLY_TO || '').trim() || undefined;
 }
 
 function createBrevoTransporter(apiKey) {
@@ -49,13 +55,14 @@ function createBrevoTransporter(apiKey) {
         .filter(a => a.email);
       if (!toList.length) return { skipped: true };
 
+      const resolvedReplyTo = replyTo || getReplyToAddress();
       const payload = {
         sender,
         to: toList,
         subject: subject || '(No subject)',
         ...(html ? { htmlContent: html } : {}),
         ...(text ? { textContent: text } : {}),
-        ...(replyTo ? { replyTo: parseAddress(replyTo) } : {}),
+        ...(resolvedReplyTo ? { replyTo: parseAddress(resolvedReplyTo) } : {}),
       };
       const { data } = await axios.post('https://api.brevo.com/v3/smtp/email', payload, {
         headers: {
@@ -80,7 +87,7 @@ function getTransporter() {
     const port = parseInt(process.env.SMTP_PORT, 10) || 587;
     const secure = process.env.SMTP_SECURE === 'true' || port === 465;
     const requireTLS = process.env.SMTP_REQUIRE_TLS !== 'false' && !secure;
-    _transporter = nodemailer.createTransport({
+    const smtpTransporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port,
       secure,
@@ -90,6 +97,13 @@ function getTransporter() {
         pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
       },
     });
+    const origSendMail = smtpTransporter.sendMail.bind(smtpTransporter);
+    smtpTransporter.sendMail = (mailOptions, ...rest) => {
+      const replyTo = mailOptions?.replyTo || getReplyToAddress();
+      const opts = replyTo ? { ...mailOptions, replyTo } : mailOptions;
+      return origSendMail(opts, ...rest);
+    };
+    _transporter = smtpTransporter;
   }
   return _transporter;
 }
@@ -99,6 +113,16 @@ function getTransporter() {
 const verifyTransporter = async () => {
   if (!isConfigured()) return;
   const logger = require('../utils/logger');
+  const fromAddress = getFromAddress();
+  const fromEmail = parseAddress(fromAddress).email || '';
+  const atIdx = fromEmail.lastIndexOf('@');
+  const fromDomain = atIdx !== -1 ? fromEmail.slice(atIdx + 1).toLowerCase() : '';
+  if (FREEMAIL_DOMAINS.has(fromDomain)) {
+    logger.warn(
+      'EMAIL_FROM uses a freemail domain; configure a DKIM/DMARC-authenticated custom domain in EMAIL_FROM for primary-inbox delivery',
+      { from: fromAddress, domain: fromDomain }
+    );
+  }
   try {
     await getTransporter().verify();
     if (getBrevoApiKey()) {
