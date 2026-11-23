@@ -797,8 +797,7 @@ const createRiderManifestLink = async (req, res) => {
     if (cleanPartner) {
       params.push(`%${cleanPartner}%`);
       conditions.push(`d.delivery_partner ILIKE $${params.length}`);
-    }
-    if (cleanPhone) {
+    } else if (cleanPhone) {
       params.push(`%${cleanPhone.replace(/\s+/g, '')}%`);
       conditions.push(`REPLACE(COALESCE(d.driver_phone, ''), ' ', '') ILIKE $${params.length}`);
     }
@@ -859,8 +858,7 @@ const getRiderManifest = async (req, res) => {
     if (payload.dp) {
       params.push(`%${payload.dp}%`);
       conditions.push(`d.delivery_partner ILIKE $${params.length}`);
-    }
-    if (payload.ph) {
+    } else if (payload.ph) {
       params.push(`%${String(payload.ph).replace(/\s+/g, '')}%`);
       conditions.push(`REPLACE(COALESCE(d.driver_phone, ''), ' ', '') ILIKE $${params.length}`);
     }
