@@ -1062,6 +1062,25 @@ export default function ProductPage() {
                       ))}
                     </div>
                   )}
+                  {r.admin_reply && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        marginBottom: 10,
+                        padding: '10px 14px',
+                        borderRadius: 8,
+                        background: 'var(--color-bg-subtle, #f8f5ef)',
+                        borderLeft: '3px solid var(--color-accent, #c9a55a)',
+                        fontSize: '0.86rem',
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-accent-dark, #9a7428)', marginBottom: 4 }}>
+                        Response from {settings.store_name || 'BodyCream GH'}
+                        {r.admin_reply_at ? ` · ${new Date(r.admin_reply_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
+                      </div>
+                      <div style={{ color: 'var(--color-ink, #1f1b16)', lineHeight: 1.5 }}>{r.admin_reply}</div>
+                    </div>
+                  )}
                   <button
                     className={`review-helpful-btn${helpfulSent[r.id] ? ' review-helpful-btn--sent' : ''}`}
                     onClick={() => handleHelpful(r.id)}

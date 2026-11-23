@@ -18,6 +18,7 @@ const ReviewModel = {
 
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body, r.helpful_count, r.created_at,
+              r.admin_reply, r.admin_reply_at,
               COALESCE(r.images, '[]'::jsonb) AS images,
               u.first_name,
               LEFT(u.last_name, 1) AS last_initial,
@@ -201,14 +202,30 @@ const ReviewModel = {
     );
   },
 
+  reply: async (reviewId, replyText, adminUserId = null) => {
+    const clean = typeof replyText === 'string' ? replyText.trim() : '';
+    const { rows } = await pool.query(
+      `UPDATE product_reviews
+          SET admin_reply = $2,
+              admin_reply_at = CASE WHEN $2 IS NOT NULL THEN NOW() ELSE NULL END,
+              admin_reply_by = CASE WHEN $2 IS NOT NULL THEN $3 ELSE NULL END,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, product_id, admin_reply, admin_reply_at`,
+      [reviewId, clean || null, adminUserId]
+    );
+    return rows[0] || null;
+  },
+
   delete: async (reviewId) => {
     const { rows } = await pool.query(
-      `DELETE FROM product_reviews WHERE id = $1 RETURNING product_id`,
+      `DELETE FROM product_reviews WHERE id = $1 RETURNING id, product_id, rating, title, body`,
       [reviewId]
     );
     if (rows.length) {
       await ReviewModel.recalculateProductRating(rows[0].product_id);
     }
+    return rows[0] || null;
   },
 
   markHelpful: async (reviewId) => {
@@ -261,20 +278,23 @@ const ReviewModel = {
   },
 
   // Admin: paginated list with filters
-  findAll: async ({ status = 'pending', page = 1, limit = 20, search = '' } = {}) => {
+  findAll: async ({ status = 'all', page = 1, limit = 20, search = '' } = {}) => {
     const offset = (page - 1) * limit;
 
     let statusClause;
-    if (status === 'pending')  statusClause = 'r.is_approved = FALSE AND r.is_rejected = FALSE';
-    else if (status === 'approved') statusClause = 'r.is_approved = TRUE';
-    else if (status === 'rejected') statusClause = 'r.is_rejected = TRUE';
-    else statusClause = '1=1';
+    if (status === 'needs_reply')     statusClause = `r.is_approved = TRUE AND (r.admin_reply IS NULL OR TRIM(r.admin_reply) = '')`;
+    else if (status === 'replied')    statusClause = `r.admin_reply IS NOT NULL AND TRIM(r.admin_reply) <> ''`;
+    else if (status === 'low_rating') statusClause = `r.is_approved = TRUE AND r.rating <= 3`;
+    else if (status === 'pending')    statusClause = 'r.is_approved = FALSE AND r.is_rejected = FALSE';
+    else if (status === 'approved')   statusClause = 'r.is_approved = TRUE';
+    else if (status === 'rejected')   statusClause = 'r.is_rejected = TRUE';
+    else statusClause = 'r.is_approved = TRUE';
 
     const params = [];
     let searchClause = '';
     if (search) {
       params.push(`%${search}%`);
-      searchClause = `AND (p.name ILIKE $${params.length} OR u.email ILIKE $${params.length})`;
+      searchClause = `AND (p.name ILIKE $${params.length} OR u.email ILIKE $${params.length} OR COALESCE(r.body, '') ILIKE $${params.length})`;
     }
 
     params.push(limit, offset);
@@ -283,8 +303,10 @@ const ReviewModel = {
 
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body,
+              r.admin_reply, r.admin_reply_at,
               COALESCE(r.images, '[]'::jsonb) AS images,
               r.is_approved, r.is_rejected, r.rejection_reason,
+              (r.order_id IS NOT NULL) AS verified_purchase,
               r.helpful_count, r.created_at,
               u.first_name, u.last_name, u.email,
               p.name AS product_name, p.id AS product_id, p.image_url
@@ -298,7 +320,7 @@ const ReviewModel = {
     );
 
     const countParams = search ? [`%${search}%`] : [];
-    const countSearch = search ? `AND (p.name ILIKE $1 OR u.email ILIKE $1)` : '';
+    const countSearch = search ? `AND (p.name ILIKE $1 OR u.email ILIKE $1 OR COALESCE(r.body, '') ILIKE $1)` : '';
     const countResult = await pool.query(
       `SELECT COUNT(*)::int AS total
        FROM product_reviews r
@@ -314,6 +336,10 @@ const ReviewModel = {
   getStatusCounts: async () => {
     const { rows } = await pool.query(
       `SELECT
+        COUNT(*) FILTER (WHERE is_approved = TRUE)::int AS total,
+        COUNT(*) FILTER (WHERE is_approved = TRUE AND (admin_reply IS NULL OR TRIM(admin_reply) = ''))::int AS needs_reply,
+        COUNT(*) FILTER (WHERE is_approved = TRUE AND admin_reply IS NOT NULL AND TRIM(admin_reply) <> '')::int AS replied,
+        COUNT(*) FILTER (WHERE is_approved = TRUE AND rating <= 3)::int AS low_rating,
         COUNT(*) FILTER (WHERE is_approved = FALSE AND is_rejected = FALSE)::int AS pending,
         COUNT(*) FILTER (WHERE is_approved = TRUE)::int AS approved,
         COUNT(*) FILTER (WHERE is_rejected = TRUE)::int AS rejected

@@ -8,7 +8,7 @@ const {
   omnisearch,
 } = require('../controllers/admin.controller');
 const {
-  getAllReviews, getReviewCounts, approveReview, rejectReview, deleteReview,
+  getAllReviews, getReviewCounts, approveReview, rejectReview, replyToReview, deleteReview,
 } = require('../controllers/review.controller');
 const {
   getSubscribers, deleteSubscriber, importSubscribers,
@@ -40,6 +40,7 @@ router.get('/reviews/counts',        verifyToken, requireAdmin, requireSupportOr
 router.get('/reviews',               verifyToken, requireAdmin, requireSupportOrAdmin, getAllReviews);
 router.patch('/reviews/:id/approve', verifyToken, requireAdmin, requireSupportOrAdmin, approveReview);
 router.patch('/reviews/:id/reject',  verifyToken, requireAdmin, requireSupportOrAdmin, rejectReview);
+router.patch('/reviews/:id/reply',   verifyToken, requireAdmin, requireSupportOrAdmin, replyToReview);
 router.delete('/reviews/:id',        verifyToken, requireAdmin, requireSupportOrAdmin, deleteReview);
 
 // ── Admin account management & audit logs ─────────────────────────────────────
