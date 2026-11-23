@@ -20,6 +20,8 @@ const suggestSku = (name) => {
     .join('-');
 };
 
+import { GHANA_COSMETICS_BRANDS } from '../data/ghanaBrands';
+
 const EMPTY = {
   name: '', description: '', price: '', cost: '', compare_at_price: '',
   category: '', brand: '', image_url: '',
@@ -44,7 +46,7 @@ export default function ProductEditor() {
   const [uploadingText, setUploadingText] = useState('');
   const [error,         setError]         = useState('');
   const [catOptions,    setCatOptions]    = useState([]);
-  const [brandOptions,  setBrandOptions]  = useState([]);
+  const [brandOptions,  setBrandOptions]  = useState(GHANA_COSMETICS_BRANDS);
 
   const dirty = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(initialForm),
@@ -59,7 +61,11 @@ export default function ProductEditor() {
       .catch(() => {});
     productsAPI.getBrands()
       .then(({ data }) => {
-        if (Array.isArray(data?.brands)) setBrandOptions(data.brands);
+        if (Array.isArray(data?.brands)) {
+          const merged = Array.from(new Set([...GHANA_COSMETICS_BRANDS, ...data.brands]))
+            .sort((a, b) => a.localeCompare(b));
+          setBrandOptions(merged);
+        }
       })
       .catch(() => {});
   }, []);
