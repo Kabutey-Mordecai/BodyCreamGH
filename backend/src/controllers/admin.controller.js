@@ -4,6 +4,7 @@ const { randomUUID: uuidv4 } = require('crypto');
 const bcrypt = require('bcryptjs');
 const pool   = require('../config/database');
 const logger = require('../utils/logger');
+const storage = require('../services/storage.service');
 const { bustCache } = require('./product.controller');
 let sharp;
 try {
@@ -297,9 +298,12 @@ const uploadProductImages = async (req, res) => {
       }
 
       const filename = `${uuidv4()}${finalExt}`;
-      const url      = `/uploads/products/${filename}`;
-
-      await fs.promises.writeFile(path.join(UPLOAD_DIR, filename), outputBuffer);
+      const { url }  = await storage.uploadFile({
+        folder: 'products',
+        filename,
+        buffer: outputBuffer,
+        contentType: finalMime,
+      });
       writtenFiles.push(filename);
 
       insertRows.push({
@@ -544,9 +548,12 @@ const uploadGenericMedia = async (req, res) => {
     }
 
     const filename = `${uuidv4()}${finalExt}`;
-    await fs.promises.writeFile(path.join(MEDIA_DIR, filename), outputBuffer);
-
-    const url = `/uploads/media/${filename}`;
+    const { url }  = await storage.uploadFile({
+      folder: 'media',
+      filename,
+      buffer: outputBuffer,
+      contentType: finalMime,
+    });
     res.status(201).json({
       url,
       filename,

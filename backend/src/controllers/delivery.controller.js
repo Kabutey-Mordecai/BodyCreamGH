@@ -629,7 +629,7 @@ const confirmRiderDelivery = async (req, res) => {
     if (!otp || !/^\d{6}$/.test(String(otp).trim())) {
       return res.status(400).json({ error: 'Please enter the customer\'s 6-digit delivery code' });
     }
-    if (!pod_photo_url || typeof pod_photo_url !== 'string' || !pod_photo_url.startsWith('/uploads/')) {
+    if (!pod_photo_url || typeof pod_photo_url !== 'string' || (!pod_photo_url.startsWith('/uploads/') && !pod_photo_url.startsWith('https://'))) {
       return res.status(400).json({ error: 'Live parcel handoff photo is required for Proof of Delivery' });
     }
 
