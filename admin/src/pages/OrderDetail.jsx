@@ -1354,7 +1354,7 @@ export default function OrderDetail() {
         .track-dot {
           width: 28px; height: 28px;
           border-radius: 50%;
-          background: #fff;
+          background: var(--ac-surface);
           border: 2px solid var(--ac-border-strong);
           display: flex;
           align-items: center;

@@ -256,7 +256,7 @@ export default function Theme() {
           .theme-grid { grid-template-columns: 1fr !important; }
         }
         .preset-card {
-          background: #fff;
+          background: var(--ac-surface);
           border: 1px solid var(--ac-border);
           border-radius: 8px;
           padding: 10px;
@@ -286,7 +286,7 @@ export default function Theme() {
           align-items: center;
           justify-content: space-between;
           padding: 12px 14px;
-          background: #fff;
+          background: var(--ac-surface);
           border: 1px solid var(--ac-border);
           border-radius: 8px;
           cursor: pointer;

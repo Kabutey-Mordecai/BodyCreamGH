@@ -235,12 +235,13 @@ export default function Login() {
             radial-gradient(at 80% 80%, rgba(201, 165, 90, 0.08), transparent 40%);
         }
         .login-card {
-          background: #fff;
+          background: var(--ac-surface);
+          border: 1px solid var(--ac-border);
           border-radius: 14px;
           padding: 34px 36px;
           width: 100%;
           max-width: 420px;
-          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+          box-shadow: var(--ac-shadow-lg);
         }
         .login-brand {
           display: flex;
