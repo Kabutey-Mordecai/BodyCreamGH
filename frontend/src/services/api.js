@@ -118,6 +118,7 @@ export const productsAPI = {
   getAll:        (params) => api.get('/products', { params }),
   suggest:       (q)      => api.get('/products/suggest', { params: { q } }),
   getCategories: ()       => api.get('/products/categories'),
+  getBrands:     ()       => api.get('/products/brands'),
   getById:       (id)     => api.get(`/products/${id}`),
   getRelated:  (id)     => api.get(`/products/${id}/related`),
   getVariants: (id)     => api.get(`/products/${id}/variants`),

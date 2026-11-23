@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { productsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
@@ -6,6 +6,7 @@ import DataTable from '../components/DataTable';
 import SearchInput from '../components/SearchInput';
 import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
+import Modal from '../components/Modal';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const PAGE_SIZE = 20;
@@ -16,6 +17,33 @@ const stockStatus = (qty) => {
   if (qty <= 5) return 'low_stock';
   return 'in_stock';
 };
+
+// Lightweight CSV parser supporting quoted fields
+function parseProductCsv(text) {
+  const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return [];
+  const splitRow = (line) => {
+    const cols = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') { inQuotes = !inQuotes; continue; }
+      if (ch === ',' && !inQuotes) { cols.push(cur.trim()); cur = ''; continue; }
+      cur += ch;
+    }
+    cols.push(cur.trim());
+    return cols;
+  };
+
+  const headers = splitRow(lines[0]).map(h => h.toLowerCase().replace(/\s+/g, '_'));
+  return lines.slice(1).map(line => {
+    const vals = splitRow(line);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = vals[i] ?? ''; });
+    return obj;
+  }).filter(r => r.name && r.price !== '');
+}
 
 export default function Products() {
   const navigate = useNavigate();
@@ -28,9 +56,22 @@ export default function Products() {
   const [search, setSearch]     = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [category, setCategory] = useState('');
+  const [brand, setBrand]       = useState('');
+  const [brandList, setBrandList] = useState([]);
   const [page, setPage]         = useState(1);
   const [confirm, setConfirm]   = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [csvText, setCsvText]   = useState('');
+  const [importing, setImporting] = useState(false);
   const debounceRef = useRef(null);
+
+  useEffect(() => {
+    productsAPI.getBrands()
+      .then(({ data }) => {
+        if (Array.isArray(data?.brands)) setBrandList(data.brands);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -41,11 +82,11 @@ export default function Products() {
     return () => clearTimeout(debounceRef.current);
   }, [search]);
 
-  useEffect(() => { setPage(1); }, [category]);
+  useEffect(() => { setPage(1); }, [category, brand]);
 
   const load = () => {
     setLoading(true);
-    productsAPI.getAdminAll({ page, limit: PAGE_SIZE, search: debouncedSearch, category })
+    productsAPI.getAdminAll({ page, limit: PAGE_SIZE, search: debouncedSearch, category, brand })
       .then(({ data }) => {
         setProducts(data.data || []);
         setTotal(data.total || 0);
@@ -55,7 +96,25 @@ export default function Products() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(load, [page, debouncedSearch, category]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(load, [page, debouncedSearch, category, brand]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const parsedCsvItems = useMemo(() => parseProductCsv(csvText), [csvText]);
+
+  const handleBulkImport = async () => {
+    if (!parsedCsvItems.length) return;
+    setImporting(true);
+    try {
+      const { data } = await productsAPI.bulkImport(parsedCsvItems);
+      toast.success(`Imported ${data.imported} product${data.imported !== 1 ? 's' : ''}${data.skipped ? ` (${data.skipped} skipped)` : ''}`);
+      setImportOpen(false);
+      setCsvText('');
+      load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Bulk import failed');
+    } finally {
+      setImporting(false);
+    }
+  };
 
   const handleDelete = async (product) => {
     try {
@@ -86,6 +145,13 @@ export default function Products() {
           <p className="muted">{total.toLocaleString()} product{total !== 1 ? 's' : ''}</p>
         </div>
         <div className="page-actions">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => setImportOpen(true)}
+          >
+            ↑ Import CSV
+          </button>
           <Link to="/products/new" className="btn btn-accent">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New product
@@ -96,11 +162,16 @@ export default function Products() {
       <div className="toolbar">
         <div className="toolbar-left">
           <SearchInput value={search} onChange={setSearch} placeholder="Search by name, SKU, brand…" />
-          <select value={category} onChange={e => setCategory(e.target.value)} style={{ width: 180 }}>
+          <select value={category} onChange={e => setCategory(e.target.value)} style={{ width: 170 }}>
             <option value="">All categories</option>
-            {/* categories derive from loaded data — let user filter after they appear */}
             {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(c => (
               <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          <select value={brand} onChange={e => setBrand(e.target.value)} style={{ width: 170 }}>
+            <option value="">All brands</option>
+            {brandList.map(b => (
+              <option key={b} value={b}>{b}</option>
             ))}
           </select>
         </div>
@@ -192,6 +263,60 @@ export default function Products() {
         confirmLabel="Delete"
         danger
       />
+
+      <Modal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="Bulk Import Products (CSV)"
+        size="lg"
+        footer={
+          <>
+            <button type="button" className="btn btn-outline" onClick={() => setImportOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-accent"
+              disabled={importing || parsedCsvItems.length === 0}
+              onClick={handleBulkImport}
+            >
+              {importing ? 'Importing…' : `Import ${parsedCsvItems.length} Product${parsedCsvItems.length === 1 ? '' : 's'}`}
+            </button>
+          </>
+        }
+      >
+        <p className="muted text-sm" style={{ marginBottom: 12 }}>
+          Paste CSV rows or upload a <code>.csv</code> file with header columns:
+          <br />
+          <code>name,brand,category,price,cost,stock_quantity,sku,image_url,description</code>
+        </p>
+        <div style={{ marginBottom: 12 }}>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              const reader = new FileReader();
+              reader.onload = (ev) => setCsvText(String(ev.target?.result || ''));
+              reader.readAsText(file);
+            }}
+          />
+        </div>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="prod-csv-text">
+            CSV Data {parsedCsvItems.length > 0 && `(${parsedCsvItems.length} valid rows detected)`}
+          </label>
+          <textarea
+            id="prod-csv-text"
+            rows={7}
+            value={csvText}
+            onChange={e => setCsvText(e.target.value)}
+            placeholder={'name,brand,category,price,stock_quantity,sku\nFoaming Facial Cleanser 236ml,CeraVe,Skincare,185.00,24,CRV-CLN-236\nGloss Bomb Universal Lip Luminizer,Fenty Beauty,Makeup,260.00,15,FNT-LIP-001'}
+            style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}
+          />
+        </div>
+      </Modal>
     </div>
   );
 }

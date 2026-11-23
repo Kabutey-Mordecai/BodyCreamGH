@@ -238,8 +238,10 @@ export default function ProductCard({ product }) {
 
       {/* ── Info ────────────────────────────── */}
       <div className="product-card-body">
-        {product.category && (
-          <span className="product-card-category">{product.category}</span>
+        {(product.brand || product.category) && (
+          <span className="product-card-category">
+            {product.brand ? `${product.brand}${product.category ? ` · ${product.category}` : ''}` : product.category}
+          </span>
         )}
         <h3 className="product-card-name">
           <Link to={`/products/${product.id}`} className="product-card-link">

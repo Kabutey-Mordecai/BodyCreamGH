@@ -8,7 +8,7 @@ const cache = new NodeCache({ stdTTL: 300, checkperiod: 60, maxKeys: 500 });
 const suggestCache = new NodeCache({ stdTTL: 60, checkperiod: 60, maxKeys: 300 });
 
 const ALLOWED_PRODUCT_QUERY_KEYS = [
-  'category', 'search', 'sort', 'limit', 'offset', 'page', 'min_price', 'max_price', 'in_stock',
+  'category', 'brand', 'search', 'sort', 'limit', 'offset', 'page', 'min_price', 'max_price', 'in_stock',
   'skin_type', 'skin_concern',
 ];
 
@@ -186,12 +186,12 @@ const deleteProduct = async (req, res) => {
 
 const getAdminProducts = async (req, res) => {
   try {
-    const { category, search, sort } = req.query;
+    const { category, brand, search, sort } = req.query;
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
     const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const offset = (page - 1) * limit;
 
-    const result = await ProductModel.findAll({ category, search, sort, limit, offset, includeInactive: true });
+    const result = await ProductModel.findAll({ category, brand, search, sort, limit, offset, includeInactive: true });
     res.json({
       data:       result.products,
       total:      result.total,
@@ -240,4 +240,102 @@ const getCategories = async (req, res) => {
   }
 };
 
-module.exports = { getProducts, suggestProducts, getCategories, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility, bustCache };
+const getBrands = async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT TRIM(brand) AS brand, COUNT(*)::int AS count
+       FROM products
+       WHERE is_active = TRUE
+         AND brand IS NOT NULL
+         AND TRIM(brand) <> ''
+       GROUP BY TRIM(brand)
+       ORDER BY TRIM(brand) ASC`
+    );
+    res.json({
+      brands: rows.map((r) => r.brand),
+      details: rows,
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to load brands' });
+  }
+};
+
+const bulkImportProducts = async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (items.length === 0) {
+    return res.status(400).json({ error: 'No product items provided.' });
+  }
+  if (items.length > 200) {
+    return res.status(400).json({ error: 'Maximum 200 products per import batch.' });
+  }
+
+  const client = await pool.connect();
+  let imported = 0;
+  let skipped = 0;
+  const errors = [];
+
+  try {
+    await client.query('BEGIN');
+    for (let i = 0; i < items.length; i++) {
+      const row = items[i] || {};
+      const name = String(row.name || '').trim();
+      const price = Number(row.price);
+      if (!name || !Number.isFinite(price) || price < 0) {
+        skipped++;
+        errors.push(`Row ${i + 1}: Missing valid name or price`);
+        continue;
+      }
+
+      const sku = row.sku ? String(row.sku).trim() : null;
+      if (sku) {
+        const dup = await client.query('SELECT id FROM products WHERE sku = $1 LIMIT 1', [sku]);
+        if (dup.rows.length > 0) {
+          skipped++;
+          errors.push(`Row ${i + 1} (${sku}): SKU already exists`);
+          continue;
+        }
+      }
+
+      const id = require('crypto').randomUUID();
+      await client.query(
+        `INSERT INTO products
+           (id, name, price, compare_at_price, cost, category, brand,
+            description, image_url, stock_quantity, sku,
+            ingredients, usage_instructions, is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          id,
+          name,
+          price,
+          row.compare_at_price !== undefined && row.compare_at_price !== '' ? Number(row.compare_at_price) : null,
+          row.cost !== undefined && row.cost !== '' ? Number(row.cost) : null,
+          row.category ? String(row.category).trim() : 'Skincare',
+          row.brand ? String(row.brand).trim() : null,
+          row.description ? String(row.description).trim() : '',
+          row.image_url ? String(row.image_url).trim() : null,
+          Math.max(0, parseInt(row.stock_quantity, 10) || 0),
+          sku,
+          row.ingredients ? String(row.ingredients).trim() : null,
+          row.usage_instructions ? String(row.usage_instructions).trim() : null,
+          row.is_active !== false && row.is_active !== 'false',
+        ]
+      );
+      imported++;
+    }
+    await client.query('COMMIT');
+    bustCache();
+    res.status(201).json({ imported, skipped, errors: errors.slice(0, 10) });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    logger.error('bulkImportProducts error', { err: err.message });
+    res.status(500).json({ error: 'Bulk import failed.' });
+  } finally {
+    client.release();
+  }
+};
+
+module.exports = {
+  getProducts, suggestProducts, getCategories, getBrands, getProductById,
+  getRelatedProducts, createProduct, updateProduct, deleteProduct,
+  getAdminProducts, toggleProductVisibility, bulkImportProducts, bustCache,
+};

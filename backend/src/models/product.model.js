@@ -61,7 +61,7 @@ const PROMO_SUBQ = `(
 
 module.exports = {
   findAll: async ({
-    category, search, sort, limit, offset, includeInactive,
+    category, brand, search, sort, limit, offset, includeInactive,
     min_price, max_price, in_stock, skin_type, skin_concern,
   } = {}) => {
     const filterParams   = [];
@@ -73,6 +73,10 @@ module.exports = {
     if (category) {
       filterParams.push(category);
       filterClauses.push(`p.category = $${filterParams.length}`);
+    }
+    if (brand) {
+      filterParams.push(String(brand).trim());
+      filterClauses.push(`LOWER(TRIM(p.brand)) = LOWER($${filterParams.length})`);
     }
     if (skin_type) {
       filterParams.push(String(skin_type).trim().toLowerCase());
@@ -91,10 +95,10 @@ module.exports = {
         filterParams.push(cleanSearch);
         const rawIdx = filterParams.length;
         filterClauses.push(
-          `(p.name ILIKE $${likeIdx} OR p.description ILIKE $${likeIdx} OR similarity(p.name, $${rawIdx}) > 0.18)`
+          `(p.name ILIKE $${likeIdx} OR p.brand ILIKE $${likeIdx} OR p.description ILIKE $${likeIdx} OR similarity(p.name, $${rawIdx}) > 0.18)`
         );
       } else {
-        filterClauses.push(`(p.name ILIKE $${likeIdx} OR p.description ILIKE $${likeIdx})`);
+        filterClauses.push(`(p.name ILIKE $${likeIdx} OR p.brand ILIKE $${likeIdx} OR p.description ILIKE $${likeIdx})`);
       }
     }
     if (min_price !== undefined && min_price !== '') {

@@ -2,7 +2,7 @@ const express = require('express');
 const { verifyToken, optionalToken, requireAdmin, requireRoles } = require('../middleware/auth');
 const { makeRateLimiter } = require('../middleware/rateLimit');
 const { validateProduct } = require('../middleware/validation');
-const { getProducts, suggestProducts, getCategories, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility } = require('../controllers/product.controller');
+const { getProducts, suggestProducts, getCategories, getBrands, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility, bulkImportProducts } = require('../controllers/product.controller');
 const { getReviews, canReview, createReview, markHelpful, deleteReview } = require('../controllers/review.controller');
 const {
   getVariants, createVariant, updateVariant, deleteVariant,
@@ -16,8 +16,10 @@ const reviewWriteLimiter   = makeRateLimiter(60 * 60 * 1000, 10, 'Too many revie
 const reviewHelpfulLimiter = makeRateLimiter(15 * 60 * 1000, 30, 'Too many requests. Please try again later.');
 
 router.get('/admin', verifyToken, requireAdmin, requireMarketingOrAdmin, getAdminProducts);
+router.post('/bulk-import', verifyToken, requireAdmin, requireMarketingOrAdmin, bulkImportProducts);
 router.get('/suggest', suggestProducts);
 router.get('/categories', getCategories);
+router.get('/brands', getBrands);
 router.get('/', getProducts);
 router.get('/:id/related', getRelatedProducts);
 router.get('/:id', getProductById);

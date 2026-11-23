@@ -287,7 +287,7 @@ export default function ProductPage() {
         description: desc,
         sku: selectedVariant?.sku || product.sku || String(product.id),
         ...(absImage ? { image: [absImage] } : {}),
-        brand: { '@type': 'Brand', name: storeName },
+        brand: { '@type': 'Brand', name: product.brand || storeName },
         offers: {
           '@type': 'Offer',
           priceCurrency: 'GHS',
@@ -577,9 +577,38 @@ export default function ProductPage() {
 
           {/* ── Right: info ─────────────────────────── */}
           <div className="product-detail-info">
-            {product.category && (
-              <span className="section-label">{product.category}</span>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
+              {product.brand && (
+                <Link
+                  to={`/shop?brand=${encodeURIComponent(product.brand)}`}
+                  className="section-label"
+                  style={{ textDecoration: 'none', color: 'var(--color-accent-dark)', marginBottom: 0 }}
+                >
+                  {product.brand}
+                </Link>
+              )}
+              {product.brand && product.category && (
+                <span style={{ color: 'var(--color-muted)', fontSize: '0.78rem' }}>·</span>
+              )}
+              {product.category && (
+                <span className="section-label" style={{ marginBottom: 0 }}>{product.category}</span>
+              )}
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  background: 'var(--color-accent-light, #faf6ee)',
+                  color: 'var(--color-accent-dark, #8b6b23)',
+                  border: '1px solid rgba(201, 165, 90, 0.35)',
+                }}
+              >
+                ✓ 100% Authentic
+              </span>
+            </div>
 
             <h1 className="product-detail-name">{product.name}</h1>
             <div className="gold-divider" style={{ margin: '0 0 18px 0' }} />

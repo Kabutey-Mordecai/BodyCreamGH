@@ -44,6 +44,7 @@ export default function ProductEditor() {
   const [uploadingText, setUploadingText] = useState('');
   const [error,         setError]         = useState('');
   const [catOptions,    setCatOptions]    = useState([]);
+  const [brandOptions,  setBrandOptions]  = useState([]);
 
   const dirty = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(initialForm),
@@ -54,6 +55,11 @@ export default function ProductEditor() {
     productsAPI.getCategories()
       .then(({ data }) => {
         if (Array.isArray(data?.categories)) setCatOptions(data.categories);
+      })
+      .catch(() => {});
+    productsAPI.getBrands()
+      .then(({ data }) => {
+        if (Array.isArray(data?.brands)) setBrandOptions(data.brands);
       })
       .catch(() => {});
   }, []);
@@ -200,10 +206,14 @@ export default function ProductEditor() {
                   <label>Brand</label>
                   <input
                     type="text"
+                    list="brand-suggestions"
                     value={form.brand}
                     onChange={e => update('brand', e.target.value)}
-                    placeholder="Your brand name"
+                    placeholder="e.g. CeraVe, Fenty Beauty, SheaMoisture"
                   />
+                  <datalist id="brand-suggestions">
+                    {brandOptions.map(b => <option key={b} value={b} />)}
+                  </datalist>
                 </div>
               </div>
             </div>

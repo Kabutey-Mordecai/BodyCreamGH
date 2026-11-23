@@ -25,7 +25,9 @@ export default function Shop() {
   const [error, setError]       = useState('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [apiCategories, setApiCategories] = useState([]);
-  const [catQuery, setCatQuery] = useState('');
+  const [apiBrands, setApiBrands]         = useState([]);
+  const [catQuery, setCatQuery]           = useState('');
+  const [brandQuery, setBrandQuery]       = useState('');
 
   useEffect(() => {
     let active = true;
@@ -33,6 +35,13 @@ export default function Shop() {
       .then(({ data }) => {
         if (active && Array.isArray(data?.categories)) {
           setApiCategories(data.categories);
+        }
+      })
+      .catch(() => {});
+    productsAPI.getBrands()
+      .then(({ data }) => {
+        if (active && Array.isArray(data?.brands)) {
+          setApiBrands(data.brands);
         }
       })
       .catch(() => {});
@@ -46,6 +55,7 @@ export default function Shop() {
   const search    = searchParams.get('search')    || '';
   const sort      = searchParams.get('sort')      || 'newest';
   const category  = searchParams.get('category')  || '';
+  const brand     = searchParams.get('brand')     || '';
   const page      = parseInt(searchParams.get('page') || '1');
   const minPrice  = searchParams.get('min_price') || '';
   const maxPrice  = searchParams.get('max_price') || '';
@@ -74,6 +84,23 @@ export default function Shop() {
       (c) => c.value === '' || c.label.toLowerCase().includes(q)
     );
   }, [categoryOptions, catQuery]);
+
+  const visibleBrandOptions = useMemo(() => {
+    const list = [{ label: 'All Brands', value: '' }];
+    const seen = new Set();
+    apiBrands.forEach(b => {
+      const val = typeof b === 'string' ? b.trim() : '';
+      if (!val || seen.has(val.toLowerCase())) return;
+      seen.add(val.toLowerCase());
+      list.push({ label: val, value: val });
+    });
+    if (brand && !seen.has(brand.toLowerCase())) {
+      list.push({ label: brand, value: brand });
+    }
+    const q = brandQuery.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter(b => b.value === '' || b.label.toLowerCase().includes(q));
+  }, [apiBrands, brand, brandQuery]);
 
   const LIMIT     = 12;
 
@@ -126,6 +153,7 @@ export default function Shop() {
       if (search)   params.search    = search;
       if (sort)     params.sort      = sort;
       if (category) params.category  = category;
+      if (brand)    params.brand     = brand;
       if (minPrice) params.min_price = minPrice;
       if (maxPrice) params.max_price = maxPrice;
       if (inStock)  params.in_stock  = inStock;
@@ -143,7 +171,7 @@ export default function Shop() {
     } finally {
       setLoading(false);
     }
-  }, [search, sort, category, page, minPrice, maxPrice, inStock]);
+  }, [search, sort, category, brand, page, minPrice, maxPrice, inStock]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
@@ -186,9 +214,9 @@ export default function Shop() {
 
   const hasPriceFilter   = minPrice || maxPrice;
   const hasInStockFilter = inStock === 'true';
-  const hasActiveFilters = hasPriceFilter || hasInStockFilter || category || search;
+  const hasActiveFilters = hasPriceFilter || hasInStockFilter || category || brand || search;
 
-  const activeFiltersCount = (category ? 1 : 0) + (hasPriceFilter ? 1 : 0) + (hasInStockFilter ? 1 : 0) + (search ? 1 : 0);
+  const activeFiltersCount = (category ? 1 : 0) + (brand ? 1 : 0) + (hasPriceFilter ? 1 : 0) + (hasInStockFilter ? 1 : 0) + (search ? 1 : 0);
 
   const totalPages = Math.ceil(total / LIMIT);
 
@@ -305,6 +333,50 @@ export default function Shop() {
                   ))}
                 </ul>
               </div>
+
+              {/* Filter Group: Brands */}
+              {visibleBrandOptions.length > 1 && (
+                <div className="shop-filter-group">
+                  <h4 className="shop-filter-group-title">Brand</h4>
+                  {apiBrands.length > 6 && (
+                    <input
+                      id="shop-brand-query"
+                      name="brand_filter"
+                      type="search"
+                      value={brandQuery}
+                      onChange={(e) => setBrandQuery(e.target.value)}
+                      placeholder="Filter brands…"
+                      aria-label="Filter brands"
+                      style={{
+                        width: '100%',
+                        padding: '6px 10px',
+                        marginBottom: '8px',
+                        fontSize: '0.85rem',
+                        border: '1px solid var(--color-border, #e5e7eb)',
+                        borderRadius: '6px',
+                      }}
+                    />
+                  )}
+                  <ul className="shop-category-list" style={{ maxHeight: '220px', overflowY: 'auto' }}>
+                    {visibleBrandOptions.map(b => (
+                      <li key={b.value || 'all-brands'}>
+                        <button
+                          type="button"
+                          className={`shop-category-item ${brand.toLowerCase() === b.value.toLowerCase() ? 'active' : ''}`}
+                          onClick={() => {
+                            setParam('brand', b.value);
+                            setMobileFiltersOpen(false);
+                          }}
+                        >
+                          <span className="cat-bullet" />
+                          <span className="cat-name">{b.label}</span>
+                          {brand.toLowerCase() === b.value.toLowerCase() && <span className="cat-check">✓</span>}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {/* Filter Group: Price Range */}
               <div className="shop-filter-group">
@@ -470,6 +542,12 @@ export default function Shop() {
                     <button onClick={() => setParam('category', '')} aria-label="Remove category filter">✕</button>
                   </span>
                 )}
+                {brand && (
+                  <span className="shop-filter-pill">
+                    Brand: {brand}
+                    <button onClick={() => setParam('brand', '')} aria-label="Remove brand filter">✕</button>
+                  </span>
+                )}
                 {hasPriceFilter && (
                   <span className="shop-filter-pill">
                     GH₵{minPrice || '0'} – GH₵{maxPrice || '∞'}
@@ -499,6 +577,7 @@ export default function Shop() {
               <p className="shop-count">
                 Showing <strong>{products.length}</strong> of <strong>{total}</strong> product{total !== 1 ? 's' : ''}
                 {category && <> in <em>{category}</em></>}
+                {brand    && <> by <em>{brand}</em></>}
                 {search   && <> matching "<em>{search}</em>"</>}
               </p>
             )}
