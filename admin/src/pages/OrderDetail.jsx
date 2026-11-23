@@ -1205,26 +1205,10 @@ export default function OrderDetail() {
                       {deliverySaving ? 'Saving…' : 'Save changes'}
                     </button>
 
-                    {delivery.tracking_number && delivery.status !== 'delivered' && (
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        style={{ width: '100%', marginTop: 8, fontSize: '0.8rem' }}
-                        disabled={deliverySaving}
-                        onClick={handleAdvanceSimulation}
-                      >
-                        {delivery.status === 'pending'
-                          ? 'Advance to In Transit →'
-                          : delivery.status === 'in_transit'
-                            ? 'Advance to Out for Delivery →'
-                            : 'Mark as Delivered ✓'}
-                      </button>
-                    )}
-
                     {/* ── Multi-Layer Proof of Delivery (OTP + Rider Handoff Link + Photo + GPS) ── */}
-                    <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--ac-border)' }}>
-                      <div style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                        Proof of Delivery (POD)
+                    <div style={{ paddingTop: 12, borderTop: '1px solid var(--ac-border)' }}>
+                      <div style={{ fontSize: '0.74rem', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ac-text-muted)' }}>
+                        Proof of Delivery &amp; Rider Links
                       </div>
 
                       {delivery.pod_verified_at ? (
