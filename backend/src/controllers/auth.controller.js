@@ -124,8 +124,10 @@ const login = async (req, res) => {
     }
 
     // Admin/staff accounts require a second factor (Email OTP) before JWT is issued.
+    // Non-production buyer demos may explicitly opt in to DEMO_SKIP_ADMIN_MFA=true.
     const { ADMIN_ROLES } = require('../middleware/auth');
-    if (ADMIN_ROLES.has(user.role)) {
+    const skipDemoMfa = process.env.NODE_ENV !== 'production' && process.env.DEMO_SKIP_ADMIN_MFA === 'true';
+    if (ADMIN_ROLES.has(user.role) && !skipDemoMfa) {
       const otp = crypto.randomInt(100000, 1000000).toString();
       const otpHash = hashOtp(otp);
       const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
