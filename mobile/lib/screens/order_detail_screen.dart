@@ -1229,12 +1229,18 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         'Refunded',
                         '-${AppConfig.currencySymbol}${order.refundAmount!.toStringAsFixed(2)}',
                       ),
+                    if (order.paymentMethod == 'pay_on_delivery')
+                      const _MetaRow('Payment', 'Pay on Delivery'),
                     const SizedBox(height: 4),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Total paid',
-                            style: TextStyle(
+                        Text(
+                            order.paymentMethod == 'pay_on_delivery' &&
+                                    order.paymentStatus != 'paid'
+                                ? 'Total due'
+                                : 'Total paid',
+                            style: const TextStyle(
                                 fontSize: 16, fontWeight: FontWeight.w700)),
                         Text(
                           '${AppConfig.currencySymbol}${order.totalAmount.toStringAsFixed(2)}',

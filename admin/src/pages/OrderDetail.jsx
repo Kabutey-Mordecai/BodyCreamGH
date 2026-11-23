@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ordersAPI, settingsAPI, deliveriesAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
@@ -6,6 +6,7 @@ import StatusBadge from '../components/StatusBadge';
 import ConfirmDialog from '../components/ConfirmDialog';
 import Modal from '../components/Modal';
 import { printInvoice } from '../utils/printInvoice';
+import { printWaybill } from '../utils/printWaybill';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 // Fulfilment flow is strictly forward-moving. Skipping to "delivered" is allowed
@@ -360,6 +361,7 @@ export default function OrderDetail() {
             </svg>
             Print invoice
           </button>
+          <button className="btn btn-outline" onClick={() => printWaybill(order, store)} title="Print dispatch waybill (A4 / 80mm)">Print Waybill</button>
         </div>
       </div>
 
@@ -1413,3 +1415,4 @@ export default function OrderDetail() {
     </div>
   );
 }
+

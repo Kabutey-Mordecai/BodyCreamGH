@@ -506,7 +506,8 @@ class _OrderCard extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '${AppConfig.currencySymbol}${order.totalAmount.toStringAsFixed(2)}',
+                    '${AppConfig.currencySymbol}${order.totalAmount.toStringAsFixed(2)}'
+                    '${order.paymentMethod == 'pay_on_delivery' ? ' · Pay on Delivery' : ''}',
                     style: const TextStyle(
                       fontSize: 15,
                       fontWeight: FontWeight.w800,
