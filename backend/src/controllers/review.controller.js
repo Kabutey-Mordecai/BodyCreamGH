@@ -68,7 +68,7 @@ const getPendingReviewPrompts = async (req, res) => {
 const createReview = async (req, res) => {
   try {
     const { productId } = req.params;
-    const { rating, title, body } = req.body;
+    const { rating, title, body, images } = req.body;
 
     if (!rating || rating < 1 || rating > 5) {
       return res.status(400).json({ error: 'Rating must be between 1 and 5' });
@@ -92,6 +92,7 @@ const createReview = async (req, res) => {
       rating:     parseInt(rating),
       title,
       body,
+      images:     Array.isArray(images) ? images.filter(url => typeof url === 'string').slice(0, 5) : [],
       autoApprove,
     });
 

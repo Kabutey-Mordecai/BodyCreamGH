@@ -18,6 +18,7 @@ const ReviewModel = {
 
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body, r.helpful_count, r.created_at,
+              COALESCE(r.images, '[]'::jsonb) AS images,
               u.first_name,
               LEFT(u.last_name, 1) AS last_initial,
               (r.order_id IS NOT NULL) AS verified_purchase
@@ -43,6 +44,7 @@ const ReviewModel = {
     if (productId) {
       const { rows } = await pool.query(
         `SELECT r.id, r.rating, r.title, r.body,
+                COALESCE(r.images, '[]'::jsonb) AS images,
                 r.is_approved, r.is_rejected, r.created_at,
                 p.name AS product_name, p.id AS product_id, p.image_url
          FROM product_reviews r
@@ -56,6 +58,7 @@ const ReviewModel = {
     }
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body,
+              COALESCE(r.images, '[]'::jsonb) AS images,
               r.is_approved, r.is_rejected, r.created_at,
               p.name AS product_name, p.id AS product_id, p.image_url
        FROM product_reviews r
@@ -141,6 +144,7 @@ const ReviewModel = {
   getFeaturedReviews: async (limit = 8) => {
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body, r.created_at,
+              COALESCE(r.images, '[]'::jsonb) AS images,
               u.first_name,
               LEFT(u.last_name, 1) AS last_initial,
               p.id AS product_id,
@@ -160,12 +164,13 @@ const ReviewModel = {
     return rows;
   },
 
-  create: async ({ product_id, user_id, order_id, rating, title, body, autoApprove = false }) => {
+  create: async ({ product_id, user_id, order_id, rating, title, body, images = [], autoApprove = false }) => {
+    const imagesJson = JSON.stringify(Array.isArray(images) ? images : []);
     const { rows } = await pool.query(
-      `INSERT INTO product_reviews (product_id, user_id, order_id, rating, title, body, is_approved)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO product_reviews (product_id, user_id, order_id, rating, title, body, images, is_approved)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
        RETURNING id, product_id, is_approved`,
-      [product_id, user_id, order_id || null, rating, title || null, body || null, autoApprove]
+      [product_id, user_id, order_id || null, rating, title || null, body || null, imagesJson, autoApprove]
     );
     if (autoApprove) {
       await ReviewModel.recalculateProductRating(product_id);
@@ -278,6 +283,7 @@ const ReviewModel = {
 
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body,
+              COALESCE(r.images, '[]'::jsonb) AS images,
               r.is_approved, r.is_rejected, r.rejection_reason,
               r.helpful_count, r.created_at,
               u.first_name, u.last_name, u.email,

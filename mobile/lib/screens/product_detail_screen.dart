@@ -342,6 +342,34 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     );
   }
 
+  void _showReviewImageDialog(BuildContext context, String imageUrl) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(16),
+        child: Stack(
+          alignment: Alignment.topRight,
+          children: [
+            InteractiveViewer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: CachedNetworkImage(
+                  imageUrl: imageUrl,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 28),
+              onPressed: () => Navigator.of(ctx).pop(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _openWriteReviewSheet() async {
     final auth = context.read<AuthProvider>();
     if (!auth.isLoggedIn) {
@@ -1535,6 +1563,49 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                                 ),
                                               ),
                                             ),
+                                        ],
+                                        if ((r['images'] is List) &&
+                                            (r['images'] as List).isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          SizedBox(
+                                            height: 60,
+                                            child: ListView.separated(
+                                              scrollDirection: Axis.horizontal,
+                                              itemCount: (r['images'] as List).length,
+                                              separatorBuilder: (_, __) =>
+                                                  const SizedBox(width: 8),
+                                              itemBuilder: (ctx, imgIdx) {
+                                                final raw = (r['images'] as List)[imgIdx]
+                                                    .toString();
+                                                final resolved =
+                                                    AppConfig.resolveImageUrl(raw);
+                                                return GestureDetector(
+                                                  onTap: () => _showReviewImageDialog(
+                                                      context, resolved),
+                                                  child: ClipRRect(
+                                                    borderRadius:
+                                                        BorderRadius.circular(6),
+                                                    child: CachedNetworkImage(
+                                                      imageUrl: resolved,
+                                                      width: 60,
+                                                      height: 60,
+                                                      fit: BoxFit.cover,
+                                                      placeholder: (_, __) =>
+                                                          Container(
+                                                        width: 60,
+                                                        height: 60,
+                                                        color: Colors.grey.shade200,
+                                                      ),
+                                                      errorWidget: (_, __, ___) =>
+                                                          const Icon(
+                                                              Icons.broken_image,
+                                                              size: 24),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
                                         ],
                                         if (rid.isNotEmpty) ...[
                                           const SizedBox(height: 8),

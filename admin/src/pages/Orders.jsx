@@ -308,38 +308,62 @@ export default function Orders() {
               {
                 key: 'actions',
                 label: 'Recovery',
-                render: s => (
-                  <button
-                    type="button"
-                    className="btn btn-sm btn-outline"
-                    disabled={remindingId === s.id}
-                    onClick={async e => {
-                      e.stopPropagation();
-                      setRemindingId(s.id);
-                      try {
-                        await ordersAPI.sendAbandonedReminder(s.id);
-                        toast.success(`Recovery email sent to ${s.email}`);
-                        setAbandoned(prev =>
-                          prev.map(row =>
-                            row.id === s.id
-                              ? { ...row, reminder_sent_at: new Date().toISOString() }
-                              : row
-                          )
-                        );
-                      } catch (err) {
-                        toast.error(err.response?.data?.error || 'Failed to send reminder');
-                      } finally {
-                        setRemindingId(null);
-                      }
-                    }}
-                  >
-                    {remindingId === s.id
-                      ? 'Sending…'
-                      : s.reminder_sent_at
-                        ? 'Resend Email'
-                        : 'Send Recovery Email'}
-                  </button>
-                ),
+                render: s => {
+                  const cleanPhone = String(s.phone || '').replace(/\D/g, '');
+                  const waNumber = cleanPhone.length === 10 && cleanPhone.startsWith('0')
+                    ? `233${cleanPhone.slice(1)}`
+                    : cleanPhone;
+                  const customerName = s.first_name || 'there';
+                  const waText = `Hi ${customerName}, we noticed you left items in your BodyCream GH cart (${fmt(s.subtotal)}). Complete your order today and get 5% off with coupon code GLOW5! Visit: https://bodycreamgh.com/cart`;
+
+                  return (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        disabled={remindingId === s.id}
+                        onClick={async e => {
+                          e.stopPropagation();
+                          setRemindingId(s.id);
+                          try {
+                            await ordersAPI.sendAbandonedReminder(s.id);
+                            toast.success(`Recovery email sent to ${s.email}`);
+                            setAbandoned(prev =>
+                              prev.map(row =>
+                                row.id === s.id
+                                  ? { ...row, reminder_sent_at: new Date().toISOString() }
+                                  : row
+                              )
+                            );
+                          } catch (err) {
+                            toast.error(err.response?.data?.error || 'Failed to send reminder');
+                          } finally {
+                            setRemindingId(null);
+                          }
+                        }}
+                      >
+                        {remindingId === s.id
+                          ? 'Sending…'
+                          : s.reminder_sent_at
+                            ? 'Resend Email'
+                            : 'Send Recovery Email'}
+                      </button>
+                      {waNumber ? (
+                        <a
+                          href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waText)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-sm btn-outline"
+                          style={{ color: '#16a34a', borderColor: '#86efac', textDecoration: 'none' }}
+                          title="Open WhatsApp chat with pre-filled 5% recovery discount"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          WhatsApp Recovery
+                        </a>
+                      ) : null}
+                    </div>
+                  );
+                },
               },
             ]}
           />

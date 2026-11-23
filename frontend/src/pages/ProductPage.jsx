@@ -82,7 +82,10 @@ export default function ProductPage() {
 
   const [reviews, setReviews]       = useState([]);
   const [reviewMeta, setReviewMeta] = useState({ total: 0, totalPages: 1, summary: null });
-  const [reviewForm, setReviewForm] = useState({ rating: 0, title: '', body: '' });
+  const [reviewForm, setReviewForm] = useState({ rating: 0, title: '', body: '', images: [] });
+  const [reviewPhotoModal, setReviewPhotoModal] = useState(null); // { url, alt }
+  const [reviewUploading, setReviewUploading]   = useState(false);
+  const reviewDialogRef                         = useRef(null);
   const [submitting, setSubmitting] = useState(false);
   const [reviewSort, setReviewSort] = useState('recent');
   const [reviewPage, setReviewPage] = useState(1);
@@ -193,14 +196,65 @@ export default function ProductPage() {
     return () => clearInterval(interval);
   }, [product]);
 
+  useEffect(() => {
+    const dialog = reviewDialogRef.current;
+    if (!dialog) return;
+    if (reviewPhotoModal) {
+      if (!dialog.open) dialog.showModal();
+    } else {
+      if (dialog.open) dialog.close();
+    }
+  }, [reviewPhotoModal]);
+
+  const handleReviewPhotoUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    if ((reviewForm.images?.length || 0) + files.length > 3) {
+      return showToast('Maximum 3 photos per review.', 'error');
+    }
+    setReviewUploading(true);
+    try {
+      const newUrls = [];
+      for (const file of files) {
+        if (file.size > 5 * 1024 * 1024) {
+          showToast(`File ${file.name} exceeds 5MB limit.`, 'error');
+          continue;
+        }
+        const fd = new FormData();
+        fd.append('media', file);
+        const res = await reviewsAPI.uploadPhoto(fd);
+        if (res.data?.url) newUrls.push(res.data.url);
+      }
+      if (newUrls.length > 0) {
+        setReviewForm(f => ({ ...f, images: [...(f.images || []), ...newUrls] }));
+        showToast('Photo uploaded!', 'success');
+      }
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to upload photo.', 'error');
+    } finally {
+      setReviewUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveReviewPhoto = (index) => {
+    setReviewForm(f => ({
+      ...f,
+      images: (f.images || []).filter((_, i) => i !== index),
+    }));
+  };
+
   const submitReview = async (e) => {
     e.preventDefault();
     if (!reviewForm.rating) return showToast('Please select a star rating.', 'error');
     setSubmitting(true);
     try {
-      await reviewsAPI.create(id, reviewForm);
+      await reviewsAPI.create(id, {
+        ...reviewForm,
+        images: reviewForm.images || [],
+      });
       showToast('Review submitted and awaiting approval.', 'success');
-      setReviewForm({ rating: 0, title: '', body: '' });
+      setReviewForm({ rating: 0, title: '', body: '', images: [] });
       setCanReviewData({ can_review: false, already_reviewed: true });
     } catch (err) {
       showToast(err.response?.data?.error || 'Failed to submit review.', 'error');
@@ -993,6 +1047,21 @@ export default function ProductPage() {
                       )}
                     </p>
                   )}
+                  {Array.isArray(r.images) && r.images.length > 0 && (
+                    <div className="review-images-row" role="group" aria-label="Customer review photos">
+                      {r.images.map((imgUrl, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="review-thumb-btn"
+                          onClick={() => setReviewPhotoModal({ url: resolveImageUrl(imgUrl), alt: `${r.title || 'Review'} photo ${idx + 1}` })}
+                          aria-label={`View photo ${idx + 1} full screen`}
+                        >
+                          <img src={resolveImageUrl(imgUrl)} alt="" loading="lazy" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <button
                     className={`review-helpful-btn${helpfulSent[r.id] ? ' review-helpful-btn--sent' : ''}`}
                     onClick={() => handleHelpful(r.id)}
@@ -1058,6 +1127,39 @@ export default function ProductPage() {
                   value={reviewForm.body}
                   onChange={e => setReviewForm(f => ({ ...f, body: e.target.value }))}
                 />
+              </div>
+              <div className="field">
+                <label>Photos / Swatches <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional, up to 3)</span></label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <label className="btn btn-sm btn-outline" style={{ cursor: 'pointer', margin: 0 }}>
+                    {reviewUploading ? 'Uploading…' : '+ Add Photo'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      style={{ display: 'none' }}
+                      disabled={reviewUploading || (reviewForm.images?.length || 0) >= 3}
+                      onChange={handleReviewPhotoUpload}
+                    />
+                  </label>
+                  <span className="muted text-xs">JPG, PNG, or WebP up to 5MB</span>
+                </div>
+                {Array.isArray(reviewForm.images) && reviewForm.images.length > 0 && (
+                  <div className="review-upload-previews">
+                    {reviewForm.images.map((url, i) => (
+                      <div key={i} className="review-upload-thumb">
+                        <img src={resolveImageUrl(url)} alt={`Upload preview ${i + 1}`} />
+                        <button
+                          type="button"
+                          className="review-upload-remove"
+                          onClick={() => handleRemoveReviewPhoto(i)}
+                          aria-label="Remove photo"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <button type="submit" className="btn btn-accent" disabled={submitting}>
                 {submitting ? 'Submitting…' : 'Submit Review'}
@@ -1177,6 +1279,36 @@ export default function ProductPage() {
           </div>
         </div>
       )}
+
+      {/* ── Accessible Review Photo Lightbox Modal ──────── */}
+      <dialog
+        ref={reviewDialogRef}
+        className="review-lightbox-dialog"
+        closedby="any"
+        aria-label="Customer review photo preview"
+        onClick={e => {
+          if (e.target === reviewDialogRef.current) setReviewPhotoModal(null);
+        }}
+        onClose={() => setReviewPhotoModal(null)}
+      >
+        {reviewPhotoModal && (
+          <div className="review-lightbox-inner">
+            <button
+              type="button"
+              className="review-lightbox-close"
+              onClick={() => setReviewPhotoModal(null)}
+              aria-label="Close photo preview"
+            >
+              ✕
+            </button>
+            <img
+              src={reviewPhotoModal.url}
+              alt={reviewPhotoModal.alt || 'Review photo'}
+              className="review-lightbox-img"
+            />
+          </div>
+        )}
+      </dialog>
     </div>
   );
 }
