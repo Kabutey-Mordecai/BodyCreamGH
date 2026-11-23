@@ -55,6 +55,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
 
   bool _loading = true;
   bool _paying = false;
+  bool _confirmingReceipt = false;
   String? _loadError;
   String? _pickupLocation;
   String? _pickupHours;
@@ -223,6 +224,49 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _order!.paymentStatus == 'partially_refunded') &&
       (_order!.refundStatus == null ||
           _order!.refundStatus == 'not_requested');
+
+  Future<void> _confirmReceipt() async {
+    if (_order == null || _confirmingReceipt) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm Package Received'),
+        content: const Text(
+          'Have you inspected your parcel and confirmed all items are intact? This will mark your order as Delivered.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not Yet'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Yes, Received'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    setState(() => _confirmingReceipt = true);
+    try {
+      await ApiService.instance.confirmOrderReceipt(_order!.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Thank you! Order confirmed as delivered.'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      await _load(silent: true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(ApiService.formatError(e))),
+      );
+    } finally {
+      if (mounted) setState(() => _confirmingReceipt = false);
+    }
+  }
 
   Future<void> _payNow() async {
     if (_order == null) return;
@@ -1032,14 +1076,38 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'SHIPMENT PROGRESS',
-                        style: TextStyle(
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 1.5,
-                          color: AppColors.accentDark,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'SHIPMENT PROGRESS',
+                            style: TextStyle(
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.5,
+                              color: AppColors.accentDark,
+                            ),
+                          ),
+                          if (_delivery!['zone_code'] != null &&
+                              _delivery!['zone_code'].toString().trim().isNotEmpty)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                'ZONE ${_delivery!['zone_code'].toString().toUpperCase()}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 12),
                       Row(
@@ -1117,6 +1185,126 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                                   _delivery!['actual_delivery_date'].toString())
                               .toLocal()),
                         ),
+                      if (_delivery!['pod_verified_at'] != null) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.success.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppColors.success.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Row(
+                                children: [
+                                  Icon(Icons.verified_outlined,
+                                      size: 16, color: AppColors.success),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    'Proof of Delivery Verified',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: AppColors.success,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _delivery!['pod_verified_method'] ==
+                                        'rider_otp_photo'
+                                    ? 'Verified via 6-Digit Customer OTP + Live Parcel Photo'
+                                    : 'Confirmed received by customer',
+                                style: const TextStyle(
+                                    fontSize: 12, color: AppColors.primary),
+                              ),
+                              if (_delivery!['pod_recipient_name'] != null &&
+                                  _delivery!['pod_recipient_name']
+                                      .toString()
+                                      .trim()
+                                      .isNotEmpty)
+                                Text(
+                                  'Received by: ${_delivery!['pod_recipient_name']}',
+                                  style: const TextStyle(
+                                      fontSize: 12, color: AppColors.muted),
+                                ),
+                              if (_delivery!['pod_photo_url'] != null &&
+                                  _delivery!['pod_photo_url']
+                                      .toString()
+                                      .trim()
+                                      .isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: CachedNetworkImage(
+                                    imageUrl: AppConfig.resolveImageUrl(
+                                        _delivery!['pod_photo_url'].toString()),
+                                    height: 140,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                    errorWidget: (_, __, ___) =>
+                                        const SizedBox.shrink(),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ] else if (order.status == 'shipped') ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppColors.accent.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: const Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Icon(Icons.lock_outline,
+                                  size: 16, color: AppColors.accentDark),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Your 6-digit delivery code is sent via Email/SMS when the rider dispatches. Share it ONLY face-to-face after inspecting your parcel.',
+                                  style: TextStyle(
+                                      fontSize: 12, color: AppColors.primary),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                _confirmingReceipt ? null : _confirmReceipt,
+                            icon: _confirmingReceipt
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.check_circle_outline,
+                                    size: 18),
+                            label: Text(_confirmingReceipt
+                                ? 'Confirming…'
+                                : 'Confirm I Received My Package'),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),

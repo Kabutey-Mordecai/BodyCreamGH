@@ -667,6 +667,14 @@ class ApiService {
     return data is Map<String, dynamic> ? data : null;
   }
 
+  Future<Map<String, dynamic>> confirmOrderReceipt(String orderId) async {
+    final data = await _authed((token) => _client.post(
+          _uri('/deliveries/order/$orderId/confirm-receipt'),
+          headers: _headers(token: token),
+        ));
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
+  }
+
   /// Normalizes user-entered order numbers: strips leading '#', trims spaces, and uppercases.
   static String normalizeOrderNumber(String raw) {
     return raw.trim().replaceFirst(RegExp(r'^#+\s*'), '').trim().toUpperCase();
