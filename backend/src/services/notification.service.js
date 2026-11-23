@@ -28,6 +28,37 @@ function normalizeGhanaPhone(raw) {
 }
 
 /**
+ * Validates provider response payload and returns an error message if the
+ * gateway reported a failure inside an HTTP 2xx response.
+ */
+function validateSmsResponse(provider, data) {
+  if (!data || typeof data !== 'object') return null;
+
+  if (provider === 'arkesel' || provider === 'arkese') {
+    if (data.status === 'error') {
+      return data.message || data.error || 'Arkesel SMS gateway error';
+    }
+  } else if (provider === 'mnotify') {
+    if (
+      data.status === 'error' ||
+      (data.code !== undefined && data.code !== null && data.code !== '' && String(data.code) !== '2000')
+    ) {
+      return data.message || data.error || `mNotify SMS gateway error (code: ${data.code || 'unknown'})`;
+    }
+  } else if (provider === 'hubtel') {
+    if ((typeof data.Status === 'number' && data.Status !== 0) || data.status === 'error') {
+      return data.Message || data.message || `Hubtel SMS gateway error (status: ${data.Status ?? data.status})`;
+    }
+  } else if (provider === 'brevo') {
+    if (data.status === 'error' || (data.code && data.message && !data.messageId)) {
+      return data.message || `Brevo SMS gateway error (code: ${data.code})`;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Dispatches transactional SMS via Brevo, Arkesel, Hubtel, or mNotify.
  * If BREVO_API_KEY is configured and no separate SMS_PROVIDER is set,
  * automatically uses Brevo Transactional SMS so 1 key powers Email + SMS.
@@ -39,23 +70,25 @@ async function sendSms({ to, message }) {
   const provider = configuredProvider || (brevoKey ? 'brevo' : '');
   const apiKey = provider === 'brevo' ? (process.env.SMS_API_KEY || brevoKey) : process.env.SMS_API_KEY;
   const senderId = process.env.SMS_SENDER_ID || 'BodyCreamGH';
+  const cleanSender = String(senderId || 'BodyCreamGH').replace(/[^a-zA-Z0-9]/g, '').slice(0, 11) || 'BodyCreamGH';
   const recipient = normalizeGhanaPhone(to);
+  const maskedTo = recipient ? `${recipient.slice(0, 5)}***` : null;
 
   if (!provider || !apiKey || !recipient || !message) {
     log(LEVELS.INFO, 'sms.skipped', {
       provider: provider || 'none',
       hasTo: Boolean(recipient),
-      toPreview: recipient ? `${recipient.slice(0, 5)}***` : null,
+      toPreview: maskedTo,
       msgSample: message ? message.slice(0, 40) : null,
     });
     return { sent: false, reason: 'SMS provider not configured' };
   }
 
   try {
+    let response;
     if (provider === 'brevo') {
-      const cleanSender = senderId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 11) || 'BodyCreamGH';
       const e164 = recipient.startsWith('+') ? recipient : `+${recipient}`;
-      await axios.post(
+      response = await axios.post(
         'https://api.brevo.com/v3/transactionalSMS/sms',
         {
           sender: cleanSender,
@@ -73,37 +106,48 @@ async function sendSms({ to, message }) {
         }
       );
     } else if (provider === 'hubtel') {
-      await axios.get('https://smsc.hubtel.com/v1/messages/send', {
+      response = await axios.get('https://smsc.hubtel.com/v1/messages/send', {
         params: {
           clientid: process.env.SMS_CLIENT_ID || '',
           clientsecret: apiKey,
-          from: senderId,
+          from: cleanSender,
           to: recipient,
           content: message,
         },
         timeout: 10000,
       });
     } else if (provider === 'arkesel' || provider === 'arkese') {
-      await axios.post(
+      response = await axios.post(
         'https://sms.arkesel.com/api/v2/sms/send',
-        { sender: senderId, message, recipients: [recipient] },
+        { sender: cleanSender, message, recipients: [recipient] },
         { headers: { 'api-key': apiKey }, timeout: 10000 }
       );
     } else if (provider === 'mnotify') {
-      await axios.post(
+      response = await axios.post(
         `https://api.mnotify.com/api/sms/quick?key=${encodeURIComponent(apiKey)}`,
-        { recipient: [recipient], sender: senderId, message },
+        { recipient: [recipient], sender: cleanSender, message },
         { timeout: 10000 }
       );
     } else {
       log(LEVELS.WARN, 'sms.unknown_provider', { provider });
       return { sent: false, reason: `Unsupported SMS provider: ${provider}` };
     }
-    log(LEVELS.INFO, 'sms.sent', { provider, to: `${recipient.slice(0, 5)}***` });
+
+    const payloadError = validateSmsResponse(provider, response && response.data);
+    if (payloadError) {
+      log(LEVELS.ERROR, 'sms.failed', { provider, to: maskedTo, err: payloadError });
+      return { sent: false, reason: payloadError };
+    }
+
+    log(LEVELS.INFO, 'sms.sent', { provider, to: maskedTo });
     return { sent: true, provider };
   } catch (err) {
-    log(LEVELS.ERROR, 'sms.failed', { provider, to: recipient, err: err.message });
-    return { sent: false, reason: err.message };
+    const errMsg =
+      (err && err.response && err.response.data && err.response.data.message) ||
+      (err && err.message) ||
+      String(err);
+    log(LEVELS.ERROR, 'sms.failed', { provider, to: maskedTo, err: errMsg });
+    return { sent: false, reason: errMsg };
   }
 }
 
