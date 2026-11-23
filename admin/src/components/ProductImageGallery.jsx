@@ -18,6 +18,8 @@ export default function ProductImageGallery({
   const [images, setImages] = useState(initialImages);
   const [busy,   setBusy]   = useState(false);
   const [error,  setError]  = useState('');
+  const [dragIdx, setDragIdx] = useState(null);
+  const [dragOverIdx, setDragOverIdx] = useState(null);
   const fileRef = useRef(null);
 
   // Object URL tracking for staged files: Map<File, string>
@@ -194,6 +196,38 @@ export default function ProductImageGallery({
     }
   }
 
+  async function handleDropReorder(fromIdx, toIdx) {
+    if (fromIdx === null || toIdx === null || fromIdx === toIdx) return;
+    const prev = [...images];
+    const reordered = [...images];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+
+    syncImages(reordered);
+    setError('');
+    setBusy(true);
+    try {
+      const { data } = await productsAPI.reorderProductImages(
+        productId,
+        reordered.map(img => img.id)
+      );
+      syncImages(data.images);
+    } catch (err) {
+      syncImages(prev);
+      setError(err.response?.data?.error || 'Reorder failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleStagedDropReorder(fromIdx, toIdx) {
+    if (fromIdx === null || toIdx === null || fromIdx === toIdx) return;
+    const reordered = [...stagedFiles];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    onStagedChange?.(reordered);
+  }
+
   // ── Render: Staged Mode (Create Mode) ──────────────────────────────────────
   if (!productId) {
     return (
@@ -244,7 +278,18 @@ export default function ProductImageGallery({
               return (
                 <div
                   key={`${file.name}-${file.size}-${index}`}
-                  className={`pig-item${isPrimary ? ' pig-item--primary' : ''}`}
+                  className={`pig-item${isPrimary ? ' pig-item--primary' : ''}${dragIdx === index ? ' pig-item--dragging' : ''}${dragOverIdx === index ? ' pig-item--drag-over' : ''}`}
+                  draggable
+                  onDragStart={(e) => { setDragIdx(index); e.dataTransfer.effectAllowed = 'move'; }}
+                  onDragOver={(e) => { e.preventDefault(); if (dragOverIdx !== index) setDragOverIdx(index); }}
+                  onDragLeave={() => setDragOverIdx(null)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    handleStagedDropReorder(dragIdx, index);
+                    setDragIdx(null);
+                    setDragOverIdx(null);
+                  }}
+                  onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
                 >
                   <div className="pig-thumb">
                     <img
@@ -352,7 +397,18 @@ export default function ProductImageGallery({
           {images.map((img, index) => (
             <div
               key={img.id}
-              className={`pig-item${img.is_primary ? ' pig-item--primary' : ''}`}
+              className={`pig-item${img.is_primary ? ' pig-item--primary' : ''}${dragIdx === index ? ' pig-item--dragging' : ''}${dragOverIdx === index ? ' pig-item--drag-over' : ''}`}
+              draggable={!busy}
+              onDragStart={(e) => { setDragIdx(index); e.dataTransfer.effectAllowed = 'move'; }}
+              onDragOver={(e) => { e.preventDefault(); if (dragOverIdx !== index) setDragOverIdx(index); }}
+              onDragLeave={() => setDragOverIdx(null)}
+              onDrop={(e) => {
+                e.preventDefault();
+                handleDropReorder(dragIdx, index);
+                setDragIdx(null);
+                setDragOverIdx(null);
+              }}
+              onDragEnd={() => { setDragIdx(null); setDragOverIdx(null); }}
             >
               <div className="pig-thumb">
                 <img

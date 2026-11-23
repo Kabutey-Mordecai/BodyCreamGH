@@ -884,3 +884,87 @@ dialog.ac-modal .modal-inner {
     display: none;
   }
 }
+
+/* ── Modern Branded Native Controls ──────────────── */
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  accent-color: var(--ac-accent);
+  cursor: pointer;
+}
+
+/* ── Sticky Floating Unsaved Changes Bar ─────────── */
+.unsaved-bar {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ac-surface);
+  color: var(--ac-text);
+  border: 1px solid var(--ac-border);
+  box-shadow: var(--ac-shadow-lg);
+  border-radius: 9999px;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  z-index: 150;
+  max-width: calc(100% - 32px);
+  backdrop-filter: blur(12px);
+  animation: slideUpUnsaved 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.unsaved-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.86rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.unsaved-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ac-accent);
+  box-shadow: 0 0 0 3px var(--ac-accent-light);
+  flex-shrink: 0;
+}
+
+.unsaved-kbd {
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--ac-surface-2);
+  border: 1px solid var(--ac-border-strong);
+  color: var(--ac-text-muted);
+}
+
+.unsaved-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .unsaved-bar {
+    flex-direction: column;
+    border-radius: var(--ac-radius-lg);
+    padding: 12px 16px;
+    gap: 10px;
+    width: calc(100% - 24px);
+    bottom: 16px;
+  }
+  .unsaved-kbd { display: none; }
+  .unsaved-bar-actions { width: 100%; justify-content: flex-end; }
+}
+
+@keyframes slideUpUnsaved {
+  from { opacity: 0; transform: translate(-50%, 16px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}

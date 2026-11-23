@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { productsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import ProductImageGallery from '../components/ProductImageGallery';
 import ImageInput from '../components/ImageInput';
 import VariantManager from '../components/VariantManager';
+import UnsavedChangesBar from '../components/UnsavedChangesBar';
 
 // Slug-ish auto-SKU — "Shea Butter Cream 200g" → "SHE-BUT-CRE-200"
 const suggestSku = (name) => {
@@ -33,7 +34,9 @@ export default function ProductEditor() {
   const navigate = useNavigate();
   const toast = useToast();
 
+  const formRef = useRef(null);
   const [form,          setForm]          = useState(EMPTY);
+  const [initialForm,   setInitialForm]   = useState(EMPTY);
   const [initialImages, setInitialImages] = useState([]);
   const [stagedFiles,   setStagedFiles]   = useState([]);
   const [loading,       setLoading]       = useState(!isNew);
@@ -41,6 +44,11 @@ export default function ProductEditor() {
   const [uploadingText, setUploadingText] = useState('');
   const [error,         setError]         = useState('');
   const [catOptions,    setCatOptions]    = useState([]);
+
+  const dirty = useMemo(
+    () => JSON.stringify(form) !== JSON.stringify(initialForm),
+    [form, initialForm]
+  );
 
   useEffect(() => {
     productsAPI.getCategories()
@@ -54,7 +62,9 @@ export default function ProductEditor() {
     if (isNew) return;
     productsAPI.getById(id)
       .then(({ data }) => {
-        setForm({ ...EMPTY, ...data });
+        const loaded = { ...EMPTY, ...data };
+        setForm(loaded);
+        setInitialForm(loaded);
         setInitialImages(data.images || []);
       })
       .catch(() => setError('Product not found.'))
@@ -62,6 +72,11 @@ export default function ProductEditor() {
   }, [id, isNew]);
 
   const update = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  const discard = () => {
+    setForm(initialForm);
+    setError('');
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -103,6 +118,7 @@ export default function ProductEditor() {
         }
       } else {
         await productsAPI.update(id, payload);
+        setInitialForm(form);
         toast.success('Saved');
       }
     } catch (err) {
@@ -116,7 +132,7 @@ export default function ProductEditor() {
   if (loading) return <div className="spinner" />;
 
   return (
-    <form onSubmit={handleSubmit}>
+    <form ref={formRef} onSubmit={handleSubmit}>
       <div className="page-header">
         <div>
           <Link to="/products" className="muted text-sm" style={{ textDecoration: 'none' }}>← Back to products</Link>
@@ -402,6 +418,14 @@ export default function ProductEditor() {
           .pe-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
+
+      <UnsavedChangesBar
+        dirty={dirty}
+        saving={saving}
+        onSave={() => formRef.current?.requestSubmit()}
+        onDiscard={isNew ? undefined : discard}
+        saveLabel={isNew ? 'Create product' : 'Save changes'}
+      />
     </form>
   );
 }

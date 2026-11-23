@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { settingsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import UnsavedChangesBar from '../components/UnsavedChangesBar';
 
 /*
  Store-wide settings that don't fit under Storefront Editor or Theme.
@@ -46,6 +47,7 @@ const LOCAL_KEY = 'admin_settings_draft';
 export default function Settings() {
   const toast = useToast();
   const [data, setData] = useState(DEFAULTS);
+  const [initialData, setInitialData] = useState(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [dirty, setDirty]     = useState(false);
@@ -54,11 +56,17 @@ export default function Settings() {
     (async () => {
       try {
         const { data: remote } = await settingsAPI.getAll();
-        setData({ ...DEFAULTS, ...remote });
+        const merged = { ...DEFAULTS, ...remote };
+        setData(merged);
+        setInitialData(merged);
       } catch {
         const cached = localStorage.getItem(LOCAL_KEY);
         if (cached) {
-          try { setData({ ...DEFAULTS, ...JSON.parse(cached) }); } catch { /* ignore */ }
+          try {
+            const merged = { ...DEFAULTS, ...JSON.parse(cached) };
+            setData(merged);
+            setInitialData(merged);
+          } catch { /* ignore */ }
         }
       } finally {
         setLoading(false);
@@ -68,12 +76,18 @@ export default function Settings() {
 
   const update = (k, v) => { setData(p => ({ ...p, [k]: v })); setDirty(true); };
 
+  const discard = () => {
+    setData(initialData);
+    setDirty(false);
+  };
+
   const save = async () => {
     setSaving(true);
     try {
       const entries = Object.entries(data).map(([key, value]) => ({ key, value }));
       await settingsAPI.updateMany(entries);
       localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+      setInitialData(data);
       toast.success('Settings saved');
       setDirty(false);
     } catch {
@@ -310,6 +324,13 @@ export default function Settings() {
           </div>
         </div>
       </div>
+
+      <UnsavedChangesBar
+        dirty={dirty}
+        saving={saving}
+        onSave={save}
+        onDiscard={discard}
+      />
     </div>
   );
 }

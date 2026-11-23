@@ -90,6 +90,26 @@
   display: flex;
   flex-direction: column;
   gap: 5px;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.pig-item[draggable="true"] {
+  cursor: grab;
+}
+
+.pig-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.pig-item--dragging {
+  opacity: 0.45;
+  transform: scale(0.96);
+}
+
+.pig-item--drag-over .pig-thumb {
+  border-color: var(--ac-accent) !important;
+  box-shadow: 0 0 0 3px var(--ac-accent-light);
+  transform: scale(1.03);
 }
 
 /* Thumbnail */
