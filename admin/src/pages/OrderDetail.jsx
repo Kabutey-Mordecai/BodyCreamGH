@@ -1139,10 +1139,35 @@ export default function OrderDetail() {
                       No delivery record yet. Creating one will mark this order as <strong>shipped</strong> and notify the customer.
                     </p>
 
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                        onClick={() => setDeliveryForm(prev => ({
+                          ...prev,
+                          delivery_partner: 'In-house Dispatch Bike',
+                        }))}
+                      >
+                        In-house Bike Rider
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                        onClick={() => setDeliveryForm(prev => ({
+                          ...prev,
+                          delivery_partner: 'DHL / External Courier',
+                        }))}
+                      >
+                        External Courier
+                      </button>
+                    </div>
+
                     {[
-                      { name: 'delivery_partner',   label: 'Courier / delivery company', placeholder: 'e.g. DHL, Fedex GH, SkyNet' },
-                      { name: 'tracking_number',    label: 'Tracking number',            placeholder: 'e.g. GH-123456789' },
-                      { name: 'driver_phone',       label: 'Driver phone (optional)',     placeholder: '+233 XX XXX XXXX' },
+                      { name: 'delivery_partner',   label: 'Rider / courier name',                 placeholder: 'e.g. In-house Dispatch Bike, Kwame, DHL' },
+                      { name: 'tracking_number',    label: 'Tracking # (auto-generated if blank)', placeholder: 'Leave blank for own bike rider' },
+                      { name: 'driver_phone',       label: 'Rider / driver phone (optional)',      placeholder: '+233 XX XXX XXXX' },
                     ].map(f => (
                       <div className="form-group" key={f.name} style={{ marginBottom: 10 }}>
                         <label style={{ fontSize: '0.8rem' }}>{f.label}</label>

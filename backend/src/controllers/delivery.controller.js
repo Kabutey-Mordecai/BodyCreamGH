@@ -37,16 +37,15 @@ const createDelivery = async (req, res) => {
     const existing = await DeliveryModel.findByOrderId(order_id);
     if (existing) return res.status(400).json({ error: 'Delivery already exists for this order' });
 
-    const courierMode = (process.env.COURIER_MODE || (process.env.NODE_ENV === 'production' ? 'manual' : 'mock')).trim().toLowerCase();
     const providedTracking = typeof tracking_number === 'string' ? tracking_number.trim() : '';
-    if (courierMode === 'manual' && !providedTracking) {
-      return res.status(400).json({ error: 'tracking_number is required when COURIER_MODE=manual' });
-    }
     const finalTracking = providedTracking || generateTrackingNumber();
+    const finalPartner = (typeof delivery_partner === 'string' && delivery_partner.trim())
+      ? delivery_partner.trim()
+      : 'In-house Dispatch Bike';
 
     const deliveryId = await DeliveryModel.create({
       orderId:          order_id,
-      deliveryPartner:  delivery_partner,
+      deliveryPartner:  finalPartner,
       trackingNumber:   finalTracking,
       estimatedDelivery: estimated_delivery,
       driverPhone:      driver_phone,
