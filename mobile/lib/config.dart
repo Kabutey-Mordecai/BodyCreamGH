@@ -89,7 +89,7 @@ class AppConfig {
         Uri.parse(baseUrl),
       ];
 
-  static const String appName = 'BodyCream GH';
+  static const String appName = 'GlowHaus Beauty';
   static const String currency = 'GHS';
   static const String currencySymbol = '₵';
 

@@ -191,7 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (custom.isNotEmpty) return custom;
     }
 
-    final storeName = _str('store_name', 'BodyCream GH');
+    final storeName = _str('store_name', 'GlowHaus Beauty');
     final accraEta = _str('delivery_estimate_accra', '1–2 business days');
     final nationEta = _str('delivery_estimate_nationwide', '3–5 business days');
     final freeOver = double.tryParse((_settings['free_delivery_over'] ?? 200).toString()) ?? 200;
@@ -223,8 +223,8 @@ class _HomeScreenState extends State<HomeScreen> {
         'a': 'We accept MTN Mobile Money (MoMo), Telecel Cash, AirtelTigo Money, Visa, Mastercard, and Bank Transfer securely through Paystack.$podSentence',
       },
       {
-        'q': 'Are $storeName products safe for all skin types?',
-        'a': 'Yes. Every batch is handcrafted in Ghana with raw, unrefined Northern Ghana shea butter and cold-pressed botanical oils — free from hydroquinone, mercury, parabens, sulfates, and harsh bleaching agents.',
+        'q': 'Are all cosmetics on $storeName 100% authentic?',
+        'a': 'Yes. Every skincare, makeup, haircare, and fragrance item is sourced directly from verified brand distributors, factory-sealed, and stored in climate-controlled conditions.',
       },
       {
         'q': 'How do I track my order after checkout?',
@@ -257,7 +257,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final title = (s['promo_popup_title'] ?? 'Pure Shea Radiance.').toString();
     final highlight = (s['promo_popup_highlight'] ?? 'Slashed Prices').toString();
     final discount = (s['promo_popup_discount'] ?? 'UP TO 50% OFF').toString();
-    final subtext = (s['promo_popup_subtext'] ?? 'Limited quantity · Handcrafted in Ghana').toString();
+    final subtext = (s['promo_popup_subtext'] ?? '100% Authentic · Skincare, Makeup & Fragrance').toString();
     final ctaText = (s['promo_popup_cta_text'] ?? 'Claim Your Glow').toString();
     final rawImg = (s['promo_popup_image'] ?? _defaultHeroImg).toString();
     final img = rawImg.startsWith('http') ? rawImg : AppConfig.resolveImageUrl(rawImg);
@@ -545,13 +545,13 @@ class _HomeScreenState extends State<HomeScreen> {
       'announcement_text',
       'Free delivery on orders over GHS 800 · Shop now',
     );
-    final heroLabel = _str('hero_label', 'Handcrafted in Ghana');
-    final heroHeadline = _str('hero_headline', 'Reveal your natural glow.');
+    final heroLabel = _str('hero_label', 'Curated Beauty & Cosmetics');
+    final heroHeadline = _str('hero_headline', 'Every brand you love, in one place.');
     final heroSubtitle = _str(
       'hero_subtitle',
-      "Luxury body creams blended with shea butter, cocoa butter, and Africa's finest botanicals.",
+      'Shop 100% authentic skincare, makeup, haircare, body care, and fragrances — delivered fast.',
     );
-    final heroCta = _str('hero_cta_text', 'Shop the Collection');
+    final heroCta = _str('hero_cta_text', 'Shop All Cosmetics');
     final rawHeroImg = _str('hero_image', _defaultHeroImg);
     final heroImage = rawHeroImg.startsWith('http')
         ? rawHeroImg
@@ -579,11 +579,11 @@ class _HomeScreenState extends State<HomeScreen> {
         _settings['seo_editorial_enabled'] != 'false';
     final seoTitle = _str(
       'seo_editorial_title',
-      'Handcrafted Luxury Skincare & Organic Body Creams in Ghana',
+      'Authentic Cosmetics, Skincare, Makeup & Fragrances Online',
     );
     final seoText = _str(
       'seo_editorial_text',
-      "Welcome to BodyCream GH, Ghana's premier destination for raw, unrefined shea butter creams, botanical radiance oils, and whipped moisturizing butters. Every formulation is handcrafted in Ghana using sustainably wildcrafted shea nuts harvested by women cooperatives across the Northern Region. Whether you are in Accra, Tema, Kumasi, Takoradi, Sunyani, or Tamale, we deliver glowing, deeply nourished skin directly to your doorstep with same-day express delivery in Accra and swift nationwide dispatch.",
+      'Welcome to GlowHaus Beauty, your trusted destination for authentic skincare, makeup, haircare, body care, and fragrances. Every product in our catalog is sourced from verified brand distributors and sealed for freshness. Whether you are shopping from Accra, Tema, Kumasi, Takoradi, or anywhere nationwide, enjoy fast dispatch, secure Paystack checkout, and easy store pickup.',
     );
 
     return Scaffold(
