@@ -7,7 +7,19 @@ import SearchInput from '../components/SearchInput';
 import StatusBadge from '../components/StatusBadge';
 import StatCard from '../components/StatCard';
 
-const STATUS_FILTERS = ['all', 'pending', 'confirmed', 'processing', 'shipped', 'delivered', 'cancelled', 'refunded'];
+const STATUS_FILTERS = [
+  { key: 'open',         label: 'Active Queue' },
+  { key: 'needs_action', label: 'To Pack / Dispatch' },
+  { key: 'shipped',      label: 'In Transit / Pickup' },
+  { key: 'completed',    label: 'Completed' },
+  { key: 'all',          label: 'All Orders' },
+  { key: 'pending',      label: 'Pending' },
+  { key: 'confirmed',    label: 'Confirmed' },
+  { key: 'processing',   label: 'Processing' },
+  { key: 'delivered',    label: 'Delivered' },
+  { key: 'cancelled',    label: 'Cancelled' },
+  { key: 'refunded',     label: 'Refunded' },
+];
 const POLL_MS = 30_000;
 const PAGE_SIZE = 20;
 const fmt = (n) => `GHS ${Number(n || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -32,7 +44,9 @@ export default function Orders() {
   const [lastRefresh, setLastRefresh]       = useState(null);
   const [search, setSearch]                 = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [status, setStatus]                 = useState('all');
+  const [status, setStatus]                 = useState('open');
+  const [dateRange, setDateRange]           = useState('all');
+  const [queueCounts, setQueueCounts]       = useState(null);
   const [fulfillmentFilter, setFulfillmentFilter] = useState('all');
   const [paymentFilter, setPaymentFilter]   = useState('all');
   const [page, setPage]                     = useState(1);
@@ -65,7 +79,7 @@ export default function Orders() {
   useEffect(() => {
     setPage(1);
     setSelectedIds([]);
-  }, [status, fulfillmentFilter, paymentFilter, debouncedSearch]);
+  }, [status, dateRange, fulfillmentFilter, paymentFilter, debouncedSearch]);
 
   const fetchOrders = useCallback((silent = false) => {
     if (!silent) setLoading(true);
@@ -74,6 +88,7 @@ export default function Orders() {
       page,
       limit: PAGE_SIZE,
       ...(status !== 'all' && { status }),
+      ...(dateRange !== 'all' && { date_range: dateRange }),
       ...(fulfillmentFilter !== 'all' && { fulfillment_method: fulfillmentFilter }),
       ...(paymentFilter === 'unpaid_cod'
         ? { payment_status: 'unpaid', payment_method: 'pay_on_delivery' }
@@ -88,6 +103,7 @@ export default function Orders() {
         setOrders(data.orders || []);
         setTotal(data.total || 0);
         setTotalPages(data.totalPages || 1);
+        if (data.queue_counts) setQueueCounts(data.queue_counts);
         setLastRefresh(new Date());
       })
       .catch(() => {
@@ -97,7 +113,7 @@ export default function Orders() {
         setLoading(false);
         setRefreshing(false);
       });
-  }, [page, status, fulfillmentFilter, paymentFilter, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [page, status, dateRange, fulfillmentFilter, paymentFilter, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchOrders(false);
@@ -430,18 +446,35 @@ export default function Orders() {
 
           {/* Status Filter Tabs */}
           <div className="ord-status-tabs" role="tablist" aria-label="Filter orders by status">
-            {STATUS_FILTERS.map(s => (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={status === s}
-                className={`ord-status-tab ${status === s ? 'active' : ''}`}
-                onClick={() => setStatus(s)}
-              >
-                {s === 'all' ? 'All Orders' : s}
-              </button>
-            ))}
+            {STATUS_FILTERS.map(tab => {
+              const badgeCount = queueCounts && tab.key in queueCounts ? queueCounts[tab.key] : null;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  role="tab"
+                  aria-selected={status === tab.key}
+                  className={`ord-status-tab ${status === tab.key ? 'active' : ''}`}
+                  onClick={() => setStatus(tab.key)}
+                >
+                  {tab.label}
+                  {badgeCount !== null && (
+                    <span
+                      style={{
+                        marginLeft: 6,
+                        padding: '1px 6px',
+                        borderRadius: 999,
+                        fontSize: '0.7rem',
+                        fontWeight: 700,
+                        background: status === tab.key ? 'rgba(255,255,255,0.22)' : 'rgba(128,128,128,0.18)',
+                      }}
+                    >
+                      {badgeCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
           </div>
 
           {/* Search & Dropdown Filters Toolbar */}
@@ -453,7 +486,20 @@ export default function Orders() {
                 placeholder="Search by order #, customer name, email…"
               />
             </div>
-            <div className="toolbar-right" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div className="toolbar-right" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <select
+                value={dateRange}
+                onChange={e => setDateRange(e.target.value)}
+                aria-label="Filter by date"
+                style={{ width: 145 }}
+              >
+                <option value="all">All Dates</option>
+                <option value="today">Today{queueCounts ? ` (${queueCounts.today})` : ''}</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="7d">Last 7 Days</option>
+                <option value="30d">Last 30 Days</option>
+              </select>
+
               <select
                 value={paymentFilter}
                 onChange={e => setPaymentFilter(e.target.value)}

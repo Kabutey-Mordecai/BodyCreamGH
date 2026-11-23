@@ -339,14 +339,29 @@ const getAllOrders = async (req, res) => {
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
     const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const offset = (page - 1) * limit;
-    const { status, search, fulfillment_method, payment_status, payment_method } = req.query;
+    const { status, search, fulfillment_method, payment_status, payment_method, date_range } = req.query;
 
     const params = [];
     const clauses = [];
 
-    if (status) {
+    if (status === 'needs_action') {
+      clauses.push(`o.status IN ('pending', 'confirmed', 'processing')`);
+    } else if (status === 'open') {
+      clauses.push(`o.status IN ('pending', 'confirmed', 'processing', 'shipped')`);
+    } else if (status === 'completed') {
+      clauses.push(`o.status IN ('delivered', 'cancelled', 'refunded')`);
+    } else if (status) {
       params.push(status);
       clauses.push(`o.status = $${params.length}`);
+    }
+    if (date_range === 'today') {
+      clauses.push(`o.created_at >= CURRENT_DATE`);
+    } else if (date_range === 'yesterday') {
+      clauses.push(`o.created_at >= CURRENT_DATE - INTERVAL '1 day' AND o.created_at < CURRENT_DATE`);
+    } else if (date_range === '7d') {
+      clauses.push(`o.created_at >= NOW() - INTERVAL '7 days'`);
+    } else if (date_range === '30d') {
+      clauses.push(`o.created_at >= NOW() - INTERVAL '30 days'`);
     }
     if (fulfillment_method) {
       params.push(fulfillment_method);
@@ -374,11 +389,18 @@ const getAllOrders = async (req, res) => {
     }
 
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+    const orderBy = (!status || status === 'open')
+      ? `CASE
+           WHEN o.status IN ('pending', 'confirmed', 'processing') THEN 0
+           WHEN o.status = 'shipped' THEN 1
+           ELSE 2
+         END ASC, o.created_at DESC`
+      : `o.created_at DESC`;
 
     const countParams = [...params];
     params.push(limit, offset);
 
-    const [dataResult, countResult] = await Promise.all([
+    const [dataResult, countResult, queueResult] = await Promise.all([
       pool.query(`
         SELECT o.id, o.order_number, o.total_amount, o.status, o.payment_status,
                o.refund_status, o.fulfillment_method, o.payment_method, o.created_at,
@@ -393,7 +415,7 @@ const getAllOrders = async (req, res) => {
           FROM orders o
           LEFT JOIN users u ON o.customer_id = u.id
           ${where}
-         ORDER BY o.created_at DESC
+         ORDER BY ${orderBy}
          LIMIT $${params.length - 1} OFFSET $${params.length}
       `, params),
       pool.query(`
@@ -401,15 +423,34 @@ const getAllOrders = async (req, res) => {
         LEFT JOIN users u ON o.customer_id = u.id
         ${where}
       `, countParams),
+      pool.query(`
+        SELECT
+          COUNT(*)::int AS all_count,
+          COUNT(*) FILTER (WHERE status IN ('pending', 'confirmed', 'processing', 'shipped'))::int AS open_count,
+          COUNT(*) FILTER (WHERE status IN ('pending', 'confirmed', 'processing'))::int AS needs_action_count,
+          COUNT(*) FILTER (WHERE status = 'shipped')::int AS shipped_count,
+          COUNT(*) FILTER (WHERE status IN ('delivered', 'cancelled', 'refunded'))::int AS completed_count,
+          COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE)::int AS today_count
+        FROM orders
+      `),
     ]);
 
     const total = parseInt(countResult.rows[0].count);
+    const q = queueResult.rows[0] || {};
     res.json({
       orders:     dataResult.rows,
       total,
       page,
       limit,
       totalPages: Math.ceil(total / limit),
+      queue_counts: {
+        all:          q.all_count || 0,
+        open:         q.open_count || 0,
+        needs_action: q.needs_action_count || 0,
+        shipped:      q.shipped_count || 0,
+        completed:    q.completed_count || 0,
+        today:        q.today_count || 0,
+      },
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch orders' });
