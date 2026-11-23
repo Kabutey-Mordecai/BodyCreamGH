@@ -111,16 +111,22 @@ export default function ProductCard({ product }) {
 
       {/* ── Image ───────────────────────────── */}
       <div className={`product-card-img-wrap ${!imgLoaded ? 'img-placeholder-shimmer' : ''}`}>
-        <img
-          src={resolveImageUrl(product.image_url) || PLACEHOLDER_IMG}
-          alt={product.name}
-          width="400"
-          height="400"
-          loading="lazy"
-          decoding="async"
-          className={`img-fade-in ${imgLoaded ? 'is-loaded' : ''}`}
-          onLoad={() => setImgLoaded(true)}
-        />
+        <Link
+          to={`/products/${product.id}`}
+          className="product-card-img-link"
+          aria-label={`View ${product.name}`}
+        >
+          <img
+            src={resolveImageUrl(product.image_url) || PLACEHOLDER_IMG}
+            alt={product.name}
+            width="400"
+            height="400"
+            loading="lazy"
+            decoding="async"
+            className={`img-fade-in ${imgLoaded ? 'is-loaded' : ''}`}
+            onLoad={() => setImgLoaded(true)}
+          />
+        </Link>
 
         {/* Wishlist heart */}
         <button
@@ -188,8 +194,13 @@ export default function ProductCard({ product }) {
           </div>
         )}
 
-        {/* Hover / touch overlay */}
-        <div className="product-card-overlay">
+        {/* Hover / touch overlay — clicking empty area opens product details */}
+        <div
+          className="product-card-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) navigate(`/products/${product.id}`);
+          }}
+        >
           {isOutOfStock ? (
             <span className="overlay-sold-out">Out of Stock</span>
           ) : product.has_variants ? (
