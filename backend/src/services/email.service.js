@@ -1,21 +1,82 @@
+const axios = require('axios');
 const nodemailer = require('nodemailer');
 
 // Single transporter instance reused across all sends.
-// Env-configurable for Gmail, AWS SES, Resend, Brevo, or any SMTP provider:
-//   SMTP_HOST, SMTP_PORT (default 587), SMTP_SECURE ('true' for port 465),
-//   SMTP_REQUIRE_TLS (default 'true' when not secure), SMTP_USER, SMTP_PASS,
-//   EMAIL_FROM (e.g. "BodyCream GH <orders@yourdomain.com>"; required for SES/Resend/Brevo
-//   where SMTP_USER is an API key or IAM username rather than a From address).
+// Supports TWO modes automatically:
+//   1. Brevo HTTPS API (recommended on Railway / Render / serverless where SMTP port 587 is blocked):
+//      Just set BREVO_API_KEY (and EMAIL_FROM, e.g. "BodyCream GH <you@yourdomain.com>").
+//   2. Standard SMTP (Gmail, AWS SES, Resend, Brevo SMTP, Mailgun, etc.):
+//      Set SMTP_HOST, SMTP_PORT (default 587), SMTP_USER, SMTP_PASS, EMAIL_FROM.
 let _transporter = null;
+
+function parseAddress(raw) {
+  const str = String(raw || '').trim();
+  const match = str.match(/^(.*?)\s*<([^>]+)>$/);
+  if (match) {
+    return {
+      name: match[1].replace(/^["']|["']$/g, '').trim() || undefined,
+      email: match[2].trim(),
+    };
+  }
+  return { email: str };
+}
+
+function getBrevoApiKey() {
+  return (process.env.BREVO_API_KEY || '').trim();
+}
+
 function getFromAddress() {
   const configured = (process.env.EMAIL_FROM || '').trim();
   if (configured) return configured;
-  const brand = process.env.STORE_NAME || 'GlowHaus Beauty';
-  return `${brand} <${(process.env.SMTP_USER || '').trim()}>`;
+  const brand = process.env.STORE_NAME || 'BodyCream GH';
+  const fallbackEmail = (process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER || '').trim();
+  return fallbackEmail ? `${brand} <${fallbackEmail}>` : brand;
+}
+
+function createBrevoTransporter(apiKey) {
+  return {
+    async verify() {
+      const { data } = await axios.get('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': apiKey, accept: 'application/json' },
+        timeout: 10000,
+      });
+      return data;
+    },
+    async sendMail({ from, to, subject, html, text, replyTo }) {
+      const sender = parseAddress(from || getFromAddress());
+      const toList = (Array.isArray(to) ? to : String(to || '').split(','))
+        .map(addr => parseAddress(addr))
+        .filter(a => a.email);
+      if (!toList.length) return { skipped: true };
+
+      const payload = {
+        sender,
+        to: toList,
+        subject: subject || '(No subject)',
+        ...(html ? { htmlContent: html } : {}),
+        ...(text ? { textContent: text } : {}),
+        ...(replyTo ? { replyTo: parseAddress(replyTo) } : {}),
+      };
+      const { data } = await axios.post('https://api.brevo.com/v3/smtp/email', payload, {
+        headers: {
+          'api-key': apiKey,
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        timeout: 15000,
+      });
+      return data;
+    },
+  };
 }
 
 function getTransporter() {
   if (!_transporter) {
+    const brevoKey = getBrevoApiKey();
+    if (brevoKey) {
+      _transporter = createBrevoTransporter(brevoKey);
+      return _transporter;
+    }
     const port = parseInt(process.env.SMTP_PORT, 10) || 587;
     const secure = process.env.SMTP_SECURE === 'true' || port === 465;
     const requireTLS = process.env.SMTP_REQUIRE_TLS !== 'false' && !secure;
@@ -33,17 +94,23 @@ function getTransporter() {
   return _transporter;
 }
 
-// Call once at server startup. Logs a clear warning if SMTP credentials are
+// Call once at server startup. Logs a clear warning if email credentials are
 // wrong so the problem surfaces immediately rather than silently on first use.
 const verifyTransporter = async () => {
   if (!isConfigured()) return;
+  const logger = require('../utils/logger');
   try {
     await getTransporter().verify();
-    const logger = require('../utils/logger');
-    logger.info('SMTP connection verified', { user: process.env.SMTP_USER });
+    if (getBrevoApiKey()) {
+      logger.info('Brevo HTTPS email API verified', { from: getFromAddress() });
+    } else {
+      logger.info('SMTP connection verified', { user: process.env.SMTP_USER });
+    }
   } catch (err) {
-    const logger = require('../utils/logger');
-    logger.error('SMTP verification failed — emails will not send', { err: err.message });
+    logger.error('Email transport verification failed — emails will not send', {
+      mode: getBrevoApiKey() ? 'brevo_https' : 'smtp',
+      err: err.response?.data?.message || err.message,
+    });
     // Reset so the next send attempt gets a fresh transporter if config changes.
     _transporter = null;
   }
@@ -58,15 +125,14 @@ const PLACEHOLDER_PASSWORDS = new Set([
 ]);
 
 const isConfigured = () => {
+  if (getBrevoApiKey()) return true;
   const user = process.env.SMTP_USER;
   const pass = process.env.SMTP_PASS;
   if (!user || !pass) return false;
   if (PLACEHOLDER_PASSWORDS.has(pass.toLowerCase())) {
-    // Log once per process startup rather than on every email attempt.
-    // Uses console.error so it appears even before the logger is ready.
     console.error(
       '[email] SMTP_PASS appears to be a placeholder — email sending is disabled. ' +
-      'Set a real Gmail App Password in SMTP_PASS.'
+      'Set BREVO_API_KEY or a real SMTP password.'
     );
     return false;
   }

@@ -28,12 +28,16 @@ function normalizeGhanaPhone(raw) {
 }
 
 /**
- * Dispatches transactional SMS via Arkesel, Hubtel, or mNotify.
+ * Dispatches transactional SMS via Brevo, Arkesel, Hubtel, or mNotify.
+ * If BREVO_API_KEY is configured and no separate SMS_PROVIDER is set,
+ * automatically uses Brevo Transactional SMS so 1 key powers Email + SMS.
  * Gracefully logs and returns if provider is not configured.
  */
 async function sendSms({ to, message }) {
-  const provider = String(process.env.SMS_PROVIDER || '').trim().toLowerCase();
-  const apiKey = process.env.SMS_API_KEY;
+  const configuredProvider = String(process.env.SMS_PROVIDER || '').trim().toLowerCase();
+  const brevoKey = (process.env.BREVO_API_KEY || '').trim();
+  const provider = configuredProvider || (brevoKey ? 'brevo' : '');
+  const apiKey = provider === 'brevo' ? (process.env.SMS_API_KEY || brevoKey) : process.env.SMS_API_KEY;
   const senderId = process.env.SMS_SENDER_ID || 'BodyCreamGH';
   const recipient = normalizeGhanaPhone(to);
 
@@ -48,7 +52,27 @@ async function sendSms({ to, message }) {
   }
 
   try {
-    if (provider === 'hubtel') {
+    if (provider === 'brevo') {
+      const cleanSender = senderId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 11) || 'BodyCreamGH';
+      const e164 = recipient.startsWith('+') ? recipient : `+${recipient}`;
+      await axios.post(
+        'https://api.brevo.com/v3/transactionalSMS/sms',
+        {
+          sender: cleanSender,
+          recipient: e164,
+          content: message,
+          type: 'transactional',
+        },
+        {
+          headers: {
+            'api-key': apiKey,
+            'content-type': 'application/json',
+            accept: 'application/json',
+          },
+          timeout: 10000,
+        }
+      );
+    } else if (provider === 'hubtel') {
       await axios.get('https://smsc.hubtel.com/v1/messages/send', {
         params: {
           clientid: process.env.SMS_CLIENT_ID || '',
