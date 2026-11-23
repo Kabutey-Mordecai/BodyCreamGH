@@ -228,12 +228,13 @@ export default function OrderDetail() {
       if (data.alreadyDelivered) {
         toast.info('Shipment is already delivered');
       } else {
-        toast.success(`Courier advanced: ${data.from} → ${data.to}`);
+        setDelivery(prev => (prev ? { ...prev, status: data.to } : prev));
+        setDeliveryStatus(data.to);
+        toast.success(`Courier stage updated: ${data.from.replace(/_/g, ' ')} → ${data.to.replace(/_/g, ' ')}`);
       }
-      loadDelivery();
       load();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Simulation failed');
+      toast.error(err.response?.data?.error || 'Failed to advance courier stage');
     } finally {
       setDeliverySaving(false);
     }
@@ -1123,7 +1124,11 @@ export default function OrderDetail() {
                         disabled={deliverySaving}
                         onClick={handleAdvanceSimulation}
                       >
-                        ⚡ Advance Courier Stage (Simulation)
+                        {delivery.status === 'pending'
+                          ? 'Advance to In Transit →'
+                          : delivery.status === 'in_transit'
+                            ? 'Advance to Out for Delivery →'
+                            : 'Mark as Delivered ✓'}
                       </button>
                     )}
                   </form>

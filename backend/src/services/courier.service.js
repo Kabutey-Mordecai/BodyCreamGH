@@ -1,10 +1,18 @@
 const pool           = require('../config/database');
 const notify         = require('./notification.service');
+const emailService   = require('./email.service');
 const logger         = require('../utils/logger');
 const { logStatusChange } = require('../utils/audit');
 
-// Ordered shipment lifecycle understood by this mock courier
+// Ordered shipment lifecycle
 const SHIPMENT_FLOW = ['pending', 'in_transit', 'out_for_delivery', 'delivered'];
+
+const STAGE_LABELS = {
+  pending:          'Pending dispatch',
+  in_transit:       'In transit',
+  out_for_delivery: 'Out for delivery',
+  delivered:        'Delivered',
+};
 
 // Returns the next status in the flow, or null if already at the end
 function nextStatus(current) {
@@ -14,10 +22,11 @@ function nextStatus(current) {
 
 /**
  * Advance a shipment one step along the SHIPMENT_FLOW.
- * Called by the admin simulation endpoint or a timed job.
+ * Logs every stage to order_status_log, syncs orders.status on delivered,
+ * and dispatches customer SMS, FCM push, and email notifications.
  *
  * @param {string} trackingNumber
- * @returns {{ from, to, trackingNumber, orderId }} | null if not found / already delivered
+ * @returns {{ from, to, trackingNumber, orderId }} | { alreadyDelivered: true, ... }
  */
 async function advanceShipment(trackingNumber) {
   const { rows } = await pool.query(
@@ -44,29 +53,74 @@ async function advanceShipment(trackingNumber) {
 
   notify.shipmentUpdated({ trackingNumber, from: shipment.status, to: next });
 
-  if (next === 'delivered') {
-    try {
-      const { rows: orderRows } = await pool.query(
-        'SELECT status, order_number FROM orders WHERE id = $1',
-        [shipment.order_id]
-      );
-      if (orderRows.length) {
-        const { status: orderFrom, order_number: orderNumber } = orderRows[0];
+  try {
+    const { rows: orderRows } = await pool.query(
+      `SELECT o.status, o.order_number, o.customer_id, o.total_amount,
+              o.guest_email, o.guest_phone, o.fulfillment_method,
+              u.email AS user_email, u.first_name, u.phone AS user_phone
+         FROM orders o
+         LEFT JOIN users u ON u.id = o.customer_id
+        WHERE o.id = $1`,
+      [shipment.order_id]
+    );
+
+    if (orderRows.length) {
+      const ord = orderRows[0];
+      const orderFrom = ord.status;
+      const orderNumber = ord.order_number;
+      const nextOrderStatus = next === 'delivered' ? 'delivered' : orderFrom;
+      const stageNote = `Courier stage updated: ${STAGE_LABELS[next] || next} (Tracking: ${trackingNumber})`;
+
+      if (next === 'delivered') {
         await pool.query(
           `UPDATE orders SET status = 'delivered', delivered_at = COALESCE(delivered_at, NOW()), updated_at = NOW() WHERE id = $1`,
           [shipment.order_id]
         );
-        await logStatusChange(shipment.order_id, orderFrom, 'delivered', `Courier delivered. Tracking: ${trackingNumber}`);
         notify.shipmentDelivered({ trackingNumber, orderNumber });
         notify.orderStatusChanged({ orderNumber, from: orderFrom, to: 'delivered' });
       }
-    } catch (err) {
-      logger.error('advanceShipment: failed to sync order status to delivered', {
-        err: err.message,
-        orderId: shipment.order_id,
-        trackingNumber,
-      });
+
+      await logStatusChange(shipment.order_id, orderFrom, nextOrderStatus, stageNote);
+
+      // Best-effort customer alerts (SMS, FCM push, email on delivered)
+      const phone = ord.user_phone || ord.guest_phone;
+      const email = ord.user_email || ord.guest_email;
+      const smsStatus = next === 'delivered' ? 'delivered' : 'shipped';
+
+      if (phone) {
+        notify.sendOrderStatusSms({
+          phone,
+          orderNumber,
+          status: smsStatus,
+          amount: ord.total_amount,
+          courierNote: `${STAGE_LABELS[next] || next} · Tracking ${trackingNumber}`,
+        }).catch(err => logger.warn('advanceShipment SMS error', { err: err.message }));
+      }
+
+      if (ord.customer_id) {
+        notify.sendOrderStatusPush({
+          userId: ord.customer_id,
+          orderNumber,
+          status: next === 'delivered' ? 'delivered' : 'shipped',
+        }).catch(err => logger.warn('advanceShipment push error', { err: err.message }));
+      }
+
+      if (next === 'delivered' && email) {
+        emailService.sendOrderStatusUpdate(email, {
+          customerName:      ord.first_name || 'Valued Customer',
+          orderNumber,
+          status:            'delivered',
+          fulfillmentMethod: ord.fulfillment_method,
+          note:              stageNote,
+        }).catch(err => logger.warn('advanceShipment email error', { err: err.message }));
+      }
     }
+  } catch (err) {
+    logger.error('advanceShipment: failed to log/sync order stage', {
+      err: err.message,
+      orderId: shipment.order_id,
+      trackingNumber,
+    });
   }
 
   return { from: shipment.status, to: next, trackingNumber, orderId: shipment.order_id };
@@ -75,9 +129,6 @@ async function advanceShipment(trackingNumber) {
 /**
  * Simulate the full courier journey in the background with realistic delays.
  * Useful for demo/testing without manual API calls.
- *
- * @param {string} trackingNumber
- * @param {number} delayMs - milliseconds between each status step (default 3 s)
  */
 async function simulateFullJourney(trackingNumber, delayMs = 3000) {
   const delay = (ms) => new Promise((r) => setTimeout(r, ms));

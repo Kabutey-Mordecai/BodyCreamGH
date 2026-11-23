@@ -6,6 +6,7 @@ const OrderModel   = require('../models/order.model');
 const notify       = require('../services/notification.service');
 const { sendShippingNotification } = require('../services/email.service');
 const { logStatusChange } = require('../utils/audit');
+const { ADMIN_ROLES } = require('../middleware/auth');
 const { notificationQueue } = require('../queues');
 const logger      = require('../utils/logger');
 
@@ -140,7 +141,7 @@ const getDeliveryByOrder = async (req, res) => {
   try {
     const { orderId } = req.params;
 
-    if (req.user.role !== 'admin') {
+    if (!ADMIN_ROLES.has(req.user.role)) {
       const order = await OrderModel.findById(orderId, req.user.id);
       if (!order) return res.status(404).json({ error: 'Order not found' });
     }
