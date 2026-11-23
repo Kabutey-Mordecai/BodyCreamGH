@@ -1171,39 +1171,61 @@ export default function OrderDetail() {
                         </div>
                       )}
                     </div>
-
-                    <div className="form-group" style={{ marginBottom: 10 }}>
-                      <label style={{ fontSize: '0.8rem' }}>Update status</label>
-                      <select
-                        value={deliveryStatus}
-                        onChange={e => setDeliveryStatus(e.target.value)}
-                        style={{ width: '100%' }}
+                    {delivery.tracking_number && delivery.status !== 'delivered' && (
+                      <button
+                        type="button"
+                        className="btn btn-accent btn-sm"
+                        style={{ width: '100%', marginBottom: 10, fontSize: '0.84rem', fontWeight: 700 }}
+                        disabled={deliverySaving}
+                        onClick={handleAdvanceSimulation}
                       >
-                        <option value="pending">Pending</option>
-                        <option value="in_transit">In transit</option>
-                        <option value="out_for_delivery">Out for delivery</option>
-                        <option value="delivered">Delivered</option>
-                      </select>
-                    </div>
+                        {delivery.status === 'pending'
+                          ? 'Advance to In Transit →'
+                          : delivery.status === 'in_transit'
+                            ? 'Advance to Out for Delivery →'
+                            : 'Mark as Delivered ✓'}
+                      </button>
+                    )}
 
-                    <div className="form-group" style={{ marginBottom: 10 }}>
-                      <label style={{ fontSize: '0.8rem' }}>Tracking # (update)</label>
-                      <input
-                        type="text"
-                        placeholder={delivery.tracking_number || 'e.g. GH-12345'}
-                        value={deliveryForm.tracking_number}
-                        onChange={e => setDeliveryForm(f => ({ ...f, tracking_number: e.target.value }))}
-                      />
-                    </div>
+                    <details style={{ marginBottom: 12 }}>
+                      <summary className="muted text-xs" style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
+                        Edit status or tracking # manually
+                      </summary>
+                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--ac-border)' }}>
+                        <div className="form-group" style={{ marginBottom: 8 }}>
+                          <label style={{ fontSize: '0.78rem' }}>Status</label>
+                          <select
+                            value={deliveryStatus}
+                            onChange={e => setDeliveryStatus(e.target.value)}
+                            style={{ width: '100%' }}
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="in_transit">In transit</option>
+                            <option value="out_for_delivery">Out for delivery</option>
+                            <option value="delivered">Delivered</option>
+                          </select>
+                        </div>
 
-                    <button
-                      type="submit"
-                      className="btn btn-accent btn-sm"
-                      style={{ width: '100%' }}
-                      disabled={deliverySaving}
-                    >
-                      {deliverySaving ? 'Saving…' : 'Save changes'}
-                    </button>
+                        <div className="form-group" style={{ marginBottom: 10 }}>
+                          <label style={{ fontSize: '0.78rem' }}>Tracking #</label>
+                          <input
+                            type="text"
+                            placeholder={delivery.tracking_number || 'e.g. BC-ACC-...'}
+                            value={deliveryForm.tracking_number}
+                            onChange={e => setDeliveryForm(f => ({ ...f, tracking_number: e.target.value }))}
+                          />
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="btn btn-outline btn-sm"
+                          style={{ width: '100%' }}
+                          disabled={deliverySaving}
+                        >
+                          {deliverySaving ? 'Saving…' : 'Save manual changes'}
+                        </button>
+                      </div>
+                    </details>
 
                     {/* ── Multi-Layer Proof of Delivery (OTP + Rider Handoff Link + Photo + GPS) ── */}
                     <div style={{ paddingTop: 12, borderTop: '1px solid var(--ac-border)' }}>
