@@ -597,6 +597,27 @@ const updateOrderStatus = async (req, res) => {
     assertTransition(fromStatus, status);
 
     await OrderModel.updateStatus(req.params.orderId, status);
+
+    // Keep linked delivery status in sync so Order Progress and Shipment Progress never contradict.
+    if (status === 'delivered') {
+      await pool.query(
+        `UPDATE deliveries
+            SET status = 'delivered',
+                actual_delivery_date = COALESCE(actual_delivery_date, CURRENT_DATE),
+                updated_at = NOW()
+          WHERE order_id = $1 AND status <> 'delivered'`,
+        [req.params.orderId]
+      );
+    } else if (status === 'shipped') {
+      await pool.query(
+        `UPDATE deliveries
+            SET status = 'in_transit',
+                updated_at = NOW()
+          WHERE order_id = $1 AND status = 'pending'`,
+        [req.params.orderId]
+      );
+    }
+
     await logStatusChange(req.params.orderId, fromStatus, status, note || 'Manual update by admin');
     const { logAdminAction } = require('../utils/audit');
     await logAdminAction({
