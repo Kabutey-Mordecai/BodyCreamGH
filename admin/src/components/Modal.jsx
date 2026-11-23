@@ -1,30 +1,58 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
-// Generic modal. Closes on Escape key and backdrop click for keyboard/pointer UX parity.
+/**
+ * Modern HTML5 Native <dialog> Modal.
+ * Uses .showModal() for top-layer stacking, native focus-trapping,
+ * ::backdrop rendering, and Escape key handling.
+ */
 export default function Modal({ open, onClose, title, children, footer, size = 'md' }) {
+  const dialogRef = useRef(null);
+
   useEffect(() => {
-    if (!open) return;
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+    const dialog = dialogRef.current;
+    if (!dialog) return;
 
-  if (!open) return null;
+    if (open) {
+      if (!dialog.open) {
+        dialog.showModal();
+      }
+    } else {
+      if (dialog.open) {
+        dialog.close();
+      }
+    }
+  }, [open]);
 
-  const maxWidth = { sm: 380, md: 500, lg: 720, xl: 960 }[size] || 500;
+  const maxWidth = { sm: 400, md: 520, lg: 740, xl: 980 }[size] || 520;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal"
-        style={{ maxWidth }}
-        onClick={e => e.stopPropagation()}
-      >
+    <dialog
+      ref={dialogRef}
+      className={`ac-modal modal-${size}`}
+      style={{ maxWidth }}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose?.();
+      }}
+      onClick={(e) => {
+        // Direct click on the dialog element itself means the backdrop was clicked
+        if (e.target === dialogRef.current) {
+          onClose?.();
+        }
+      }}
+      aria-labelledby={title ? 'ac-modal-title' : undefined}
+    >
+      <div className="modal-inner">
         {title && (
           <div className="modal-header">
-            <h3>{title}</h3>
-            <button className="modal-close" onClick={onClose} aria-label="Close">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <h3 id="ac-modal-title">{title}</h3>
+            <button
+              type="button"
+              className="modal-close"
+              onClick={onClose}
+              aria-label="Close modal"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
@@ -34,6 +62,6 @@ export default function Modal({ open, onClose, title, children, footer, size = '
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-footer">{footer}</div>}
       </div>
-    </div>
+    </dialog>
   );
 }
