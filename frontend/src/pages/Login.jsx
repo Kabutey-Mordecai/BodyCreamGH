@@ -72,15 +72,16 @@ export default function Login() {
     <div className="auth-page">
       <div className="auth-card">
         {isCheckoutRedirect && (
-          <div className="alert alert-info" style={{ marginBottom: '20px', background: 'rgba(201, 165, 90, 0.12)', border: '1px solid rgba(201, 165, 90, 0.35)', color: '#e5c378', fontSize: '0.9rem', borderRadius: '8px', padding: '12px 16px' }}>
+          <div className="auth-checkout-banner" role="status">
             <strong>Sign in to complete your order</strong>
-            <p style={{ margin: '4px 0 0', fontSize: '0.82rem', opacity: 0.9 }}>
-              Like Jumia &amp; Temu, your basket is safely saved and will be ready for checkout as soon as you sign in.
+            <p>
+              Your basket is safely saved and will be ready for checkout as soon as you sign in.
             </p>
           </div>
         )}
+        <span className="auth-eyebrow">GlowHaus Beauty</span>
         <h1>{isCheckoutRedirect ? 'Sign in to Checkout' : 'Welcome back'}</h1>
-        <p>{isCheckoutRedirect ? 'Sign in to access your saved addresses, track your order, and complete payment.' : 'Sign in to your account to continue shopping.'}</p>
+        <p className="auth-subtitle">{isCheckoutRedirect ? 'Sign in to access your saved addresses, track your order, and complete payment.' : 'Sign in to your account to continue shopping.'}</p>
 
         {error && (
           <div className={`alert ${isLocked ? 'alert-warning' : 'alert-error'}`}>
