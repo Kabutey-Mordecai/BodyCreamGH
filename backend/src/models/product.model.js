@@ -252,6 +252,7 @@ module.exports = {
          ) pi_primary ON true
         WHERE p.category = (SELECT category FROM products WHERE id = $1)
           AND p.id != $1
+          AND p.is_active = TRUE
         GROUP BY p.id, pi_primary.url
         ORDER BY p.created_at DESC
         LIMIT 4`,

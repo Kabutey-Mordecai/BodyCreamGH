@@ -1225,10 +1225,15 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Text(
-                                  'Customer Reviews ($_reviewTotal)',
-                                  style: Theme.of(context).textTheme.titleLarge,
+                                Expanded(
+                                  child: Text(
+                                    'Customer Reviews ($_reviewTotal)',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.titleLarge,
+                                  ),
                                 ),
+                                const SizedBox(width: 8),
                                 if (!auth.isLoggedIn ||
                                     _canReviewData == null ||
                                     _canReviewData!['can_review'] == true)

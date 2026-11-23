@@ -200,7 +200,7 @@ const CURATED_PRODUCTS = [
     name: 'Bio-Oil Skincare Oil 125ml',
     description: 'Clinically proven specialist oil with PurCellin Oil to help fade stretch marks, surgical scars, and uneven skin tone.',
     price: 190.00, cost: 122.00, stock_quantity: 30,
-    image_url: 'https://images.unsplash.com/photo-1599305445671-ac291c95aaa9?auto=format&fit=crop&w=600&q=80',
+    image_url: 'https://images.unsplash.com/photo-1598440947619-2c35fc9aa908?auto=format&fit=crop&w=600&q=80',
     ingredients: 'PurCellin Oil, Vitamin A, Vitamin E, Calendula, Lavender, Rosemary, Chamomile Oils',
     usage_instructions: 'Massage in circular motions twice daily for a minimum of 3 months.',
   },
