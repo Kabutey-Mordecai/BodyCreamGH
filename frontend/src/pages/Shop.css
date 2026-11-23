@@ -679,3 +679,259 @@ input.shop-search-input:focus-visible {
     padding-right: 8px;
   }
 }
+
+/* ── Collapsible Sidebar Accordions & Scalable Brand Picker ── */
+.shop-filter-accordion-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 0 0 12px 0;
+  cursor: pointer;
+  text-align: left;
+}
+.shop-filter-accordion-btn .shop-filter-group-title {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.shop-filter-count {
+  font-weight: 500;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}
+.shop-filter-accordion-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.shop-filter-mini-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--color-blush, #fdf4f0);
+  color: var(--color-accent-dark, #a8863d);
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.shop-filter-chevron {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  transition: transform 0.2s ease;
+  display: inline-block;
+}
+.shop-filter-chevron.open {
+  transform: rotate(180deg);
+}
+.shop-sidebar-search-input {
+  width: 100%;
+  padding: 7px 10px !important;
+  margin-bottom: 10px;
+  font-size: 0.84rem !important;
+  border: 1px solid var(--color-border, #ede5db) !important;
+  border-radius: 7px !important;
+  background: var(--color-bg, #faf7f4) !important;
+}
+.shop-sidebar-search-input:focus {
+  background: #ffffff !important;
+  border-color: var(--color-accent, #c9a55a) !important;
+}
+.shop-filter-empty-note {
+  font-size: 0.82rem;
+  color: var(--color-muted);
+  padding: 8px 12px;
+}
+.shop-browse-brands-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(201, 165, 90, 0.55);
+  background: #fdf9f1;
+  color: var(--color-accent-dark, #8b6b23);
+  font-family: var(--font-body);
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.shop-browse-brands-btn:hover {
+  background: var(--color-accent, #c9a55a);
+  border-color: var(--color-accent, #c9a55a);
+  color: #ffffff;
+}
+
+/* ── A–Z Brand Directory Modal ───────────────────────────── */
+.brand-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(20, 16, 12, 0.55);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.brand-modal {
+  width: 100%;
+  max-width: 760px;
+  max-height: 84vh;
+  background: var(--color-surface, #ffffff);
+  border-radius: var(--radius-lg, 12px);
+  border: 1px solid var(--color-border, #ede5db);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.brand-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--color-border, #ede5db);
+}
+.brand-modal-title {
+  font-family: var(--font-display);
+  font-size: 1.55rem;
+  margin: 0;
+  color: var(--color-primary);
+}
+.brand-modal-close {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border, #ede5db);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+  font-size: 0.95rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.brand-modal-close:hover {
+  background: var(--color-blush, #fdf4f0);
+  color: var(--color-primary);
+}
+.brand-modal-controls {
+  padding: 14px 24px 12px;
+  background: var(--color-bg, #faf7f4);
+  border-bottom: 1px solid var(--color-border, #ede5db);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.brand-modal-search {
+  width: 100%;
+  padding: 10px 14px !important;
+  border-radius: 8px !important;
+  font-size: 0.9rem !important;
+}
+.brand-alpha-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.brand-alpha-btn {
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border, #ede5db);
+  background: #ffffff;
+  color: var(--color-primary);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.brand-alpha-btn:hover {
+  border-color: var(--color-accent, #c9a55a);
+  color: var(--color-accent-dark, #a8863d);
+}
+.brand-alpha-btn.active {
+  background: var(--color-primary, #1c1410);
+  border-color: var(--color-primary, #1c1410);
+  color: #ffffff;
+}
+.brand-modal-body {
+  padding: 18px 24px 24px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.brand-alpha-heading {
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--color-accent-dark, #a8863d);
+  border-bottom: 1px solid var(--color-border, #ede5db);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.brand-alpha-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+  gap: 8px;
+}
+.brand-modal-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border, #ede5db);
+  background: #ffffff;
+  color: var(--color-primary);
+  font-size: 0.86rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.brand-modal-pill:hover {
+  border-color: var(--color-accent, #c9a55a);
+  background: var(--color-blush, #fdf4f0);
+}
+.brand-modal-pill.active {
+  background: var(--color-primary, #1c1410);
+  border-color: var(--color-primary, #1c1410);
+  color: #ffffff;
+  font-weight: 600;
+}
+.brand-modal-empty {
+  text-align: center;
+  color: var(--color-muted);
+  padding: 32px 0;
+  font-size: 0.92rem;
+}
+
+@media (max-width: 640px) {
+  .brand-modal {
+    max-height: 90vh;
+  }
+  .brand-modal-header,
+  .brand-modal-controls,
+  .brand-modal-body {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .brand-alpha-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

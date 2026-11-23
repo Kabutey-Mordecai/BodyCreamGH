@@ -28,6 +28,18 @@ export default function Shop() {
   const [apiBrands, setApiBrands]         = useState([]);
   const [catQuery, setCatQuery]           = useState('');
   const [brandQuery, setBrandQuery]       = useState('');
+  const [brandModalOpen, setBrandModalOpen] = useState(false);
+  const [brandModalLetter, setBrandModalLetter] = useState('');
+  const [brandModalSearch, setBrandModalSearch] = useState('');
+  const [openSections, setOpenSections]   = useState({
+    category: true,
+    brand: true,
+    price: true,
+    availability: true,
+  });
+
+  const toggleSection = (key) =>
+    setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
 
   useEffect(() => {
     let active = true;
@@ -69,10 +81,11 @@ export default function Shop() {
       seen.add(val.toLowerCase());
       list.push({ label: val, value: val });
     };
-    if (Array.isArray(settings.categories)) {
+    if (apiCategories.length > 0) {
+      apiCategories.forEach(addCat);
+    } else if (Array.isArray(settings.categories)) {
       settings.categories.forEach((c) => addCat(typeof c === 'string' ? c : c?.label));
     }
-    apiCategories.forEach(addCat);
     if (category) addCat(category);
     return list;
   }, [settings.categories, apiCategories, category]);
@@ -230,8 +243,7 @@ export default function Shop() {
           <h1 className="page-title">Shop all products</h1>
           <div className="gold-divider" style={{ margin: '0 auto 16px' }} />
           <p className="page-subtitle">
-            Handcrafted body creams, oils, and scrubs — blended in small batches
-            with Ghana's finest botanicals.
+            Curated authentic skincare, makeup, haircare, body care, and fragrances — delivered across Ghana.
           </p>
         </div>
 
@@ -294,87 +306,148 @@ export default function Shop() {
 
               {/* Filter Group: Categories */}
               <div className="shop-filter-group">
-                <h4 className="shop-filter-group-title">Category</h4>
-                {categoryOptions.length > 8 && (
-                  <input
-                    id="shop-cat-query"
-                    name="category_filter"
-                    type="search"
-                    value={catQuery}
-                    onChange={(e) => setCatQuery(e.target.value)}
-                    placeholder="Filter categories…"
-                    aria-label="Filter categories"
-                    style={{
-                      width: '100%',
-                      padding: '6px 10px',
-                      marginBottom: '8px',
-                      fontSize: '0.85rem',
-                      border: '1px solid var(--color-border, #e5e7eb)',
-                      borderRadius: '6px',
-                    }}
-                  />
+                <button
+                  type="button"
+                  className="shop-filter-accordion-btn"
+                  onClick={() => toggleSection('category')}
+                  aria-expanded={openSections.category}
+                >
+                  <span className="shop-filter-group-title">Category</span>
+                  <span className="shop-filter-accordion-meta">
+                    {category && !openSections.category && (
+                      <span className="shop-filter-mini-badge">{category}</span>
+                    )}
+                    <span className={`shop-filter-chevron ${openSections.category ? 'open' : ''}`}>▾</span>
+                  </span>
+                </button>
+                {openSections.category && (
+                  <>
+                    {categoryOptions.length > 8 && (
+                      <input
+                        id="shop-cat-query"
+                        name="category_filter"
+                        type="search"
+                        value={catQuery}
+                        onChange={(e) => setCatQuery(e.target.value)}
+                        placeholder="Search categories…"
+                        aria-label="Filter categories"
+                        className="shop-sidebar-search-input"
+                      />
+                    )}
+                    <ul className="shop-category-list">
+                      {visibleCategoryOptions.map(cat => (
+                        <li key={cat.value}>
+                          <button
+                            type="button"
+                            className={`shop-category-item ${category === cat.value ? 'active' : ''}`}
+                            onClick={() => {
+                              setParam('category', cat.value);
+                              setMobileFiltersOpen(false);
+                            }}
+                          >
+                            <span className="cat-bullet" />
+                            <span className="cat-name">{cat.label}</span>
+                            {category === cat.value && <span className="cat-check">✓</span>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
-                <ul className="shop-category-list" style={{ maxHeight: '280px', overflowY: 'auto' }}>
-                  {visibleCategoryOptions.map(cat => (
-                    <li key={cat.value}>
-                      <button
-                        type="button"
-                        className={`shop-category-item ${category === cat.value ? 'active' : ''}`}
-                        onClick={() => {
-                          setParam('category', cat.value);
-                          setMobileFiltersOpen(false);
-                        }}
-                      >
-                        <span className="cat-bullet" />
-                        <span className="cat-name">{cat.label}</span>
-                        {category === cat.value && <span className="cat-check">✓</span>}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
               </div>
 
-              {/* Filter Group: Brands */}
+              {/* Filter Group: Brands — compact preview + A-Z Directory Modal for 100+ brands */}
               {visibleBrandOptions.length > 1 && (
                 <div className="shop-filter-group">
-                  <h4 className="shop-filter-group-title">Brand</h4>
-                  {apiBrands.length > 6 && (
-                    <input
-                      id="shop-brand-query"
-                      name="brand_filter"
-                      type="search"
-                      value={brandQuery}
-                      onChange={(e) => setBrandQuery(e.target.value)}
-                      placeholder="Filter brands…"
-                      aria-label="Filter brands"
-                      style={{
-                        width: '100%',
-                        padding: '6px 10px',
-                        marginBottom: '8px',
-                        fontSize: '0.85rem',
-                        border: '1px solid var(--color-border, #e5e7eb)',
-                        borderRadius: '6px',
-                      }}
-                    />
+                  <button
+                    type="button"
+                    className="shop-filter-accordion-btn"
+                    onClick={() => toggleSection('brand')}
+                    aria-expanded={openSections.brand}
+                  >
+                    <span className="shop-filter-group-title">
+                      Brand <span className="shop-filter-count">({apiBrands.length})</span>
+                    </span>
+                    <span className="shop-filter-accordion-meta">
+                      {brand && !openSections.brand && (
+                        <span className="shop-filter-mini-badge">{brand}</span>
+                      )}
+                      <span className={`shop-filter-chevron ${openSections.brand ? 'open' : ''}`}>▾</span>
+                    </span>
+                  </button>
+                  {openSections.brand && (
+                    <>
+                      {apiBrands.length > 6 && (
+                        <input
+                          id="shop-brand-query"
+                          name="brand_filter"
+                          type="search"
+                          value={brandQuery}
+                          onChange={(e) => setBrandQuery(e.target.value)}
+                          placeholder="Search brands…"
+                          aria-label="Filter brands"
+                          className="shop-sidebar-search-input"
+                        />
+                      )}
+                      {(() => {
+                        const SIDEBAR_BRAND_LIMIT = 6;
+                        const isSearching = brandQuery.trim().length > 0;
+                        let displayList = isSearching
+                          ? visibleBrandOptions.slice(0, 10)
+                          : visibleBrandOptions.slice(0, SIDEBAR_BRAND_LIMIT + 1); // All Brands + 6
+
+                        // Keep active brand visible even if it's beyond the first 6
+                        if (
+                          !isSearching &&
+                          brand &&
+                          !displayList.some(b => b.value.toLowerCase() === brand.toLowerCase())
+                        ) {
+                          const match = visibleBrandOptions.find(b => b.value.toLowerCase() === brand.toLowerCase());
+                          if (match) displayList = [displayList[0], match, ...displayList.slice(1, SIDEBAR_BRAND_LIMIT)];
+                        }
+
+                        return (
+                          <>
+                            <ul className="shop-category-list">
+                              {displayList.map(b => (
+                                <li key={b.value || 'all-brands'}>
+                                  <button
+                                    type="button"
+                                    className={`shop-category-item ${brand.toLowerCase() === b.value.toLowerCase() ? 'active' : ''}`}
+                                    onClick={() => {
+                                      setParam('brand', b.value);
+                                      setMobileFiltersOpen(false);
+                                    }}
+                                  >
+                                    <span className="cat-bullet" />
+                                    <span className="cat-name">{b.label}</span>
+                                    {brand.toLowerCase() === b.value.toLowerCase() && <span className="cat-check">✓</span>}
+                                  </button>
+                                </li>
+                              ))}
+                              {isSearching && visibleBrandOptions.length === 1 && (
+                                <li className="shop-filter-empty-note">No matching brands</li>
+                              )}
+                            </ul>
+                            {apiBrands.length > SIDEBAR_BRAND_LIMIT && (
+                              <button
+                                type="button"
+                                className="shop-browse-brands-btn"
+                                onClick={() => {
+                                  setBrandModalLetter('');
+                                  setBrandModalSearch('');
+                                  setBrandModalOpen(true);
+                                }}
+                              >
+                                <span>Browse all {apiBrands.length} brands (A–Z)</span>
+                                <span aria-hidden="true">→</span>
+                              </button>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </>
                   )}
-                  <ul className="shop-category-list" style={{ maxHeight: '220px', overflowY: 'auto' }}>
-                    {visibleBrandOptions.map(b => (
-                      <li key={b.value || 'all-brands'}>
-                        <button
-                          type="button"
-                          className={`shop-category-item ${brand.toLowerCase() === b.value.toLowerCase() ? 'active' : ''}`}
-                          onClick={() => {
-                            setParam('brand', b.value);
-                            setMobileFiltersOpen(false);
-                          }}
-                        >
-                          <span className="cat-bullet" />
-                          <span className="cat-name">{b.label}</span>
-                          {brand.toLowerCase() === b.value.toLowerCase() && <span className="cat-check">✓</span>}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               )}
 
@@ -640,6 +713,134 @@ export default function Shop() {
       </div>
 
       <TrustStrip />
+
+      {/* ── A–Z Brand Directory Modal (scales cleanly to 100+ brands) ── */}
+      {brandModalOpen && (
+        <div
+          className="brand-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Browse all brands"
+          onClick={() => setBrandModalOpen(false)}
+        >
+          <div className="brand-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="brand-modal-header">
+              <div>
+                <span className="section-label" style={{ marginBottom: 2 }}>Brand Directory</span>
+                <h3 className="brand-modal-title">All Brands ({apiBrands.length})</h3>
+              </div>
+              <button
+                type="button"
+                className="brand-modal-close"
+                onClick={() => setBrandModalOpen(false)}
+                aria-label="Close brand directory"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="brand-modal-controls">
+              <input
+                id="brand-modal-search"
+                name="brand_modal_search"
+                type="search"
+                value={brandModalSearch}
+                onChange={(e) => {
+                  setBrandModalSearch(e.target.value);
+                  setBrandModalLetter('');
+                }}
+                placeholder="Search any brand (e.g. CeraVe, Fenty, Nivea…)"
+                className="brand-modal-search"
+                autoFocus
+              />
+
+              {(() => {
+                const letters = Array.from(
+                  new Set(
+                    apiBrands
+                      .map(b => (b || '').trim().charAt(0).toUpperCase())
+                      .filter(ch => /[A-Z]/.test(ch))
+                  )
+                ).sort();
+
+                return (
+                  <div className="brand-alpha-bar" role="tablist" aria-label="Filter brands by letter">
+                    <button
+                      type="button"
+                      className={`brand-alpha-btn ${brandModalLetter === '' ? 'active' : ''}`}
+                      onClick={() => setBrandModalLetter('')}
+                    >
+                      All
+                    </button>
+                    {letters.map(ch => (
+                      <button
+                        key={ch}
+                        type="button"
+                        className={`brand-alpha-btn ${brandModalLetter === ch ? 'active' : ''}`}
+                        onClick={() => {
+                          setBrandModalSearch('');
+                          setBrandModalLetter(ch);
+                        }}
+                      >
+                        {ch}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+
+            <div className="brand-modal-body">
+              {(() => {
+                const q = brandModalSearch.trim().toLowerCase();
+                const filtered = apiBrands.filter(b => {
+                  if (q) return b.toLowerCase().includes(q);
+                  if (brandModalLetter) return b.trim().toUpperCase().startsWith(brandModalLetter);
+                  return true;
+                });
+
+                if (filtered.length === 0) {
+                  return <p className="brand-modal-empty">No brands match "{brandModalSearch}".</p>;
+                }
+
+                // Group alphabetically by first letter
+                const groups = {};
+                filtered.forEach(b => {
+                  const key = b.trim().charAt(0).toUpperCase() || '#';
+                  if (!groups[key]) groups[key] = [];
+                  groups[key].push(b);
+                });
+
+                return Object.keys(groups).sort().map(letter => (
+                  <div key={letter} className="brand-alpha-group">
+                    <h4 className="brand-alpha-heading">{letter}</h4>
+                    <div className="brand-alpha-grid">
+                      {groups[letter].map(b => {
+                        const isActive = brand.toLowerCase() === b.toLowerCase();
+                        return (
+                          <button
+                            key={b}
+                            type="button"
+                            className={`brand-modal-pill ${isActive ? 'active' : ''}`}
+                            onClick={() => {
+                              setParam('brand', b);
+                              setBrandModalOpen(false);
+                              setMobileFiltersOpen(false);
+                            }}
+                          >
+                            <span>{b}</span>
+                            {isActive && <span className="cat-check">✓</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
