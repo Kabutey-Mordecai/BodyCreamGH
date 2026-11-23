@@ -350,7 +350,7 @@ const getAllOrders = async (req, res) => {
       clauses.push(`o.status IN ('pending', 'confirmed', 'processing', 'shipped')`);
     } else if (status === 'completed') {
       clauses.push(`o.status IN ('delivered', 'cancelled', 'refunded')`);
-    } else if (status) {
+    } else if (status && status !== 'all') {
       params.push(status);
       clauses.push(`o.status = $${params.length}`);
     }

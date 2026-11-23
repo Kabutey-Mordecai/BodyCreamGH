@@ -838,7 +838,7 @@ export default function Orders() {
               <div className="text-xs" style={{ fontWeight: 700, marginBottom: 6, color: 'var(--ac-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 1. Choose Rider or Courier
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 8, marginBottom: 8 }}>
                 {(() => {
                   const totalActive = knownPartners.reduce((sum, p) => sum + (p.active_count || 0), 0);
                   const isAll = !manifestPartner.trim();
@@ -1016,7 +1016,7 @@ export default function Orders() {
                     const d = (manifestResult?.driver_phone || manifestPhone || '').replace(/\D/g, '');
                     return d.length === 10 && d.startsWith('0') ? `233${d.slice(1)}` : d;
                   })()}?text=${encodeURIComponent(
-                    `BodyCream GH Dispatch Route (${manifestResult?.active_count || 0} stops · ${manifestResult?.delivery_partner || 'All Stops'}):\n${manifestResult?.manifest_url || ''}\n\nOpen this link to view addresses, resend 6-digit OTPs at the doorstep, capture parcel photos, and track COD cash/MoMo.`
+                    `BodyCream GH Dispatch Route (${manifestResult?.active_count || 0} stop${manifestResult?.active_count === 1 ? '' : 's'} · ${manifestResult?.delivery_partner || 'All Stops'}):\n${manifestResult?.manifest_url || ''}\n\nOpen this link to view addresses, resend 6-digit OTPs at the doorstep, capture parcel photos, and track COD cash/MoMo.`
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"

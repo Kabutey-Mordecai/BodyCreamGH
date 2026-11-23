@@ -109,7 +109,7 @@ const ReviewModel = {
 
     const orderId = delivered.rows[0]?.id || null;
     return {
-      can_review: true,
+      can_review: Boolean(orderId),
       already_reviewed: false,
       order_id: orderId,
       verified_purchase: Boolean(orderId),
@@ -204,15 +204,16 @@ const ReviewModel = {
 
   reply: async (reviewId, replyText, adminUserId = null) => {
     const clean = typeof replyText === 'string' ? replyText.trim() : '';
+    const val = clean || null;
     const { rows } = await pool.query(
       `UPDATE product_reviews
-          SET admin_reply = $2,
-              admin_reply_at = CASE WHEN $2 IS NOT NULL THEN NOW() ELSE NULL END,
-              admin_reply_by = CASE WHEN $2 IS NOT NULL THEN $3 ELSE NULL END,
+          SET admin_reply = $2::text,
+              admin_reply_at = CASE WHEN $2::text IS NOT NULL THEN NOW() ELSE NULL END,
+              admin_reply_by = CASE WHEN $2::text IS NOT NULL THEN $3::uuid ELSE NULL END,
               updated_at = NOW()
         WHERE id = $1
         RETURNING id, product_id, admin_reply, admin_reply_at`,
-      [reviewId, clean || null, adminUserId]
+      [reviewId, val, adminUserId]
     );
     return rows[0] || null;
   },

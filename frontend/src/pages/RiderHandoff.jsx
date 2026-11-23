@@ -413,7 +413,7 @@ export default function RiderHandoff() {
               pattern="\d{6}"
               maxLength={6}
               required
-              placeholder="Enter 6-digit code from customer"
+              placeholder="6-digit code"
               value={otp}
               onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
               style={{ width: '100%', padding: '12px', fontSize: '1.25rem', letterSpacing: '0.3em', textAlign: 'center', fontWeight: 700 }}

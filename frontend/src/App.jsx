@@ -92,6 +92,8 @@ function AdminRedirect() {
 }
 
 export default function App() {
+  const { pathname } = useLocation();
+  const isRiderRoute = pathname.startsWith('/rider-manifest') || pathname.startsWith('/rider-handoff');
   return (
     <ErrorBoundary>
       <div className="app">
@@ -143,10 +145,12 @@ export default function App() {
         </main>
 
         <Footer />
-        <WhatsAppFloat />
-        <Suspense fallback={null}>
-          <PrivacyNotice />
-        </Suspense>
+        {!isRiderRoute && <WhatsAppFloat />}
+        {!isRiderRoute && (
+          <Suspense fallback={null}>
+            <PrivacyNotice />
+          </Suspense>
+        )}
       </div>
     </ErrorBoundary>
   );

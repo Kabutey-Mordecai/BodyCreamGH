@@ -81,6 +81,11 @@ const createReview = async (req, res) => {
     if (already_reviewed) {
       return res.status(409).json({ error: 'You have already reviewed this product' });
     }
+    if (!order_id) {
+      return res.status(403).json({
+        error: 'Only customers with a delivered order for this product can post a verified review.',
+      });
+    }
 
     // Transparent verified-review policy: every verified buyer review publishes
     // immediately so store admins cannot selectively hide honest negative ratings.
