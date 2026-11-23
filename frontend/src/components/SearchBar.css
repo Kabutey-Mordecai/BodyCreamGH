@@ -2,9 +2,10 @@
   position: relative;
 }
 .searchbar-wrap--nav {
-  flex: 1;
-  max-width: 440px;
-  margin: 0 32px;
+  flex: 1 1 200px;
+  min-width: 160px;
+  max-width: 340px;
+  margin: 0 20px;
 }
 .searchbar-wrap--hero {
   max-width: 520px;

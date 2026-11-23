@@ -67,18 +67,20 @@
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 20px;
   list-style: none;
+  flex-shrink: 0;
 }
 
 .nav-links a {
   font-size: 0.78rem;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--color-muted);
   transition: color 0.15s;
   position: relative;
+  white-space: nowrap;
 }
 /* Gold underline on active / hover */
 .nav-links a::after {
@@ -226,13 +228,24 @@ input.nav-search-input:focus {
 
 /* "Sign Up" gets the gold pill treatment */
 .nav-cta {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.2;
   background: var(--color-accent) !important;
   color: #fff !important;
-  padding: 8px 20px !important;
+  padding: 9px 18px !important;
   border-radius: var(--radius) !important;
 }
 .nav-cta::after { display: none; } /* No underline on the button */
 .nav-cta:hover { background: var(--color-accent-dark) !important; opacity: 1 !important; }
+
+@media (max-width: 1150px) {
+  .nav-links { gap: 14px; }
+  .searchbar-wrap--nav { margin: 0 14px; }
+}
 
 /* ── Hamburger ─────────────────────────────────── */
 .nav-hamburger {
@@ -253,8 +266,8 @@ input.nav-search-input:focus {
 .nav-hamburger.open span:nth-child(2) { opacity: 0; }
 .nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
 
-/* ── Mobile ────────────────────────────────────── */
-@media (max-width: 768px) {
+/* ── Mobile & Tablet ───────────────────────────── */
+@media (max-width: 960px) {
   .nav-hamburger { display: flex; }
 
   .nav-links {
@@ -270,7 +283,7 @@ input.nav-search-input:focus {
     overflow: hidden;
     transition: max-height 0.3s ease, padding 0.3s;
   }
-  .nav-links.open { max-height: 420px; padding: 8px 0 16px; }
+  .nav-links.open { max-height: 520px; padding: 8px 0 16px; }
   .nav-links li { width: 100%; }
 
   .nav-links a,
@@ -284,9 +297,10 @@ input.nav-search-input:focus {
     margin: 8px 24px;
     width: calc(100% - 48px);
     text-align: center;
-    display: block !important;
+    display: flex !important;
   }
   /* Hide desktop search, reveal mobile search inside dropdown */
+  .searchbar-wrap--nav,
   .nav-search:not(.nav-search--mobile) { display: none; }
   .nav-search-mobile-wrap {
     display: block;
