@@ -62,7 +62,7 @@ const PROMO_SUBQ = `(
 module.exports = {
   findAll: async ({
     category, brand, search, sort, limit, offset, includeInactive,
-    min_price, max_price, in_stock, skin_type, skin_concern,
+    min_price, max_price, in_stock, skin_type, skin_concern, min_rating, on_sale,
   } = {}) => {
     const filterParams   = [];
     const filterClauses  = [];
@@ -75,16 +75,48 @@ module.exports = {
       filterClauses.push(`p.category = $${filterParams.length}`);
     }
     if (brand) {
-      filterParams.push(String(brand).trim());
-      filterClauses.push(`LOWER(TRIM(p.brand)) = LOWER($${filterParams.length})`);
+      const brandList = String(brand)
+        .split(',')
+        .map(b => b.trim().toLowerCase())
+        .filter(Boolean);
+      if (brandList.length === 1) {
+        filterParams.push(brandList[0]);
+        filterClauses.push(`LOWER(TRIM(p.brand)) = $${filterParams.length}`);
+      } else if (brandList.length > 1) {
+        filterParams.push(brandList);
+        filterClauses.push(`LOWER(TRIM(p.brand)) = ANY($${filterParams.length}::text[])`);
+      }
     }
     if (skin_type) {
-      filterParams.push(String(skin_type).trim().toLowerCase());
-      filterClauses.push(`$${filterParams.length} = ANY(COALESCE(p.skin_types, '{}'::text[]))`);
+      const stList = String(skin_type).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      if (stList.length > 0) {
+        filterParams.push(stList);
+        filterClauses.push(`COALESCE(p.skin_types, '{}'::text[]) && $${filterParams.length}::text[]`);
+      }
     }
     if (skin_concern) {
-      filterParams.push(String(skin_concern).trim().toLowerCase());
-      filterClauses.push(`$${filterParams.length} = ANY(COALESCE(p.skin_concerns, '{}'::text[]))`);
+      const scList = String(skin_concern).split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+      if (scList.length > 0) {
+        filterParams.push(scList);
+        filterClauses.push(`COALESCE(p.skin_concerns, '{}'::text[]) && $${filterParams.length}::text[]`);
+      }
+    }
+    if (min_rating !== undefined && min_rating !== '' && !Number.isNaN(Number(min_rating))) {
+      filterParams.push(Number(min_rating));
+      filterClauses.push(
+        `COALESCE((SELECT AVG(r2.rating) FROM product_reviews r2 WHERE r2.product_id = p.id), p.avg_rating, 0) >= $${filterParams.length}`
+      );
+    }
+    if (on_sale === 'true' || on_sale === true) {
+      filterClauses.push(
+        `((p.compare_at_price IS NOT NULL AND p.compare_at_price > p.price) OR EXISTS (
+          SELECT 1 FROM promotions pr
+          WHERE pr.is_active = TRUE AND pr.starts_at <= NOW() AND pr.ends_at >= NOW()
+            AND (pr.scope_type = 'store'
+              OR (pr.scope_type = 'category' AND pr.scope_value = p.category)
+              OR (pr.scope_type = 'product'  AND pr.scope_value = p.id::text))
+        ))`
+      );
     }
     if (search) {
       const cleanSearch = String(search).trim();

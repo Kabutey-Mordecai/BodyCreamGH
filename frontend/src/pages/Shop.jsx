@@ -26,6 +26,10 @@ export default function Shop() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [apiCategories, setApiCategories] = useState([]);
   const [apiBrands, setApiBrands]         = useState([]);
+  const [facetCategories, setFacetCategories] = useState([]); // [{ category, count }]
+  const [facetBrands, setFacetBrands]         = useState([]); // [{ brand, count }]
+  const [facetSkinTypes, setFacetSkinTypes]   = useState([]); // [{ value, count }]
+  const [priceBounds, setPriceBounds]         = useState({ min: 0, max: 600 });
   const [catQuery, setCatQuery]           = useState('');
   const [brandQuery, setBrandQuery]       = useState('');
   const [brandModalOpen, setBrandModalOpen] = useState(false);
@@ -35,43 +39,67 @@ export default function Shop() {
     category: true,
     brand: true,
     price: true,
+    rating: false,
+    skin_type: false,
     availability: true,
   });
 
   const toggleSection = (key) =>
     setOpenSections(prev => ({ ...prev, [key]: !prev[key] }));
 
-  useEffect(() => {
-    let active = true;
-    productsAPI.getCategories()
-      .then(({ data }) => {
-        if (active && Array.isArray(data?.categories)) {
-          setApiCategories(data.categories);
-        }
-      })
-      .catch(() => {});
-    productsAPI.getBrands()
-      .then(({ data }) => {
-        if (active && Array.isArray(data?.brands)) {
-          setApiBrands(data.brands);
-        }
-      })
-      .catch(() => {});
-    return () => { active = false; };
-  }, []);
-
   // Local state for price range inputs — only committed to URL on "Apply"
   const [priceMinInput, setPriceMinInput] = useState('');
   const [priceMaxInput, setPriceMaxInput] = useState('');
 
-  const search    = searchParams.get('search')    || '';
-  const sort      = searchParams.get('sort')      || 'newest';
-  const category  = searchParams.get('category')  || '';
-  const brand     = searchParams.get('brand')     || '';
+  const search    = searchParams.get('search')     || '';
+  const sort      = searchParams.get('sort')       || 'newest';
+  const category  = searchParams.get('category')   || '';
+  const brand     = searchParams.get('brand')      || '';
   const page      = parseInt(searchParams.get('page') || '1');
-  const minPrice  = searchParams.get('min_price') || '';
-  const maxPrice  = searchParams.get('max_price') || '';
-  const inStock   = searchParams.get('in_stock')  || '';
+  const minPrice  = searchParams.get('min_price')  || '';
+  const maxPrice  = searchParams.get('max_price')  || '';
+  const inStock   = searchParams.get('in_stock')   || '';
+  const minRating = searchParams.get('min_rating') || '';
+  const onSale    = searchParams.get('on_sale')    || '';
+  const skinType  = searchParams.get('skin_type')  || '';
+
+  const selectedBrands = useMemo(
+    () => brand.split(',').map(b => b.trim()).filter(Boolean),
+    [brand]
+  );
+
+  const isBrandSelected = useCallback(
+    (name) => selectedBrands.some(b => b.toLowerCase() === name.toLowerCase()),
+    [selectedBrands]
+  );
+
+  useEffect(() => {
+    let active = true;
+    productsAPI.getFacets({
+      category: category || undefined,
+      search:   search   || undefined,
+      in_stock: inStock  || undefined,
+      on_sale:  onSale   || undefined,
+    })
+      .then(({ data }) => {
+        if (!active || !data) return;
+        const cats = Array.isArray(data.categories) ? data.categories : [];
+        const brs  = Array.isArray(data.brands) ? data.brands : [];
+        setFacetCategories(cats);
+        setFacetBrands(brs);
+        setApiCategories(cats.map(c => c.category));
+        setApiBrands(brs.map(b => b.brand));
+        setFacetSkinTypes(Array.isArray(data.skin_types) ? data.skin_types : []);
+        if (data.price && Number.isFinite(data.price.max)) {
+          setPriceBounds({
+            min: Math.max(0, Number(data.price.min) || 0),
+            max: Math.max(50, Number(data.price.max) || 600),
+          });
+        }
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [category, search, inStock, onSale]);
   const categoryOptions = useMemo(() => {
     const seen = new Set();
     const list = [{ label: 'All Products', value: '' }];
@@ -98,22 +126,37 @@ export default function Shop() {
     );
   }, [categoryOptions, catQuery]);
 
+  const brandCountMap = useMemo(() => {
+    const m = new Map();
+    facetBrands.forEach(b => m.set(b.brand.toLowerCase(), b.count));
+    return m;
+  }, [facetBrands]);
+
+  const catCountMap = useMemo(() => {
+    const m = new Map();
+    facetCategories.forEach(c => m.set(c.category.toLowerCase(), c.count));
+    return m;
+  }, [facetCategories]);
+
   const visibleBrandOptions = useMemo(() => {
-    const list = [{ label: 'All Brands', value: '' }];
+    const list = [];
     const seen = new Set();
     apiBrands.forEach(b => {
       const val = typeof b === 'string' ? b.trim() : '';
       if (!val || seen.has(val.toLowerCase())) return;
       seen.add(val.toLowerCase());
-      list.push({ label: val, value: val });
+      list.push({ label: val, value: val, count: brandCountMap.get(val.toLowerCase()) || 0 });
     });
-    if (brand && !seen.has(brand.toLowerCase())) {
-      list.push({ label: brand, value: brand });
-    }
+    selectedBrands.forEach(sb => {
+      if (!seen.has(sb.toLowerCase())) {
+        seen.add(sb.toLowerCase());
+        list.unshift({ label: sb, value: sb, count: brandCountMap.get(sb.toLowerCase()) || 0 });
+      }
+    });
     const q = brandQuery.trim().toLowerCase();
     if (!q) return list;
-    return list.filter(b => b.value === '' || b.label.toLowerCase().includes(q));
-  }, [apiBrands, brand, brandQuery]);
+    return list.filter(b => b.label.toLowerCase().includes(q));
+  }, [apiBrands, selectedBrands, brandQuery, brandCountMap]);
 
   const LIMIT     = 12;
 
@@ -167,9 +210,12 @@ export default function Shop() {
       if (sort)     params.sort      = sort;
       if (category) params.category  = category;
       if (brand)    params.brand     = brand;
-      if (minPrice) params.min_price = minPrice;
-      if (maxPrice) params.max_price = maxPrice;
-      if (inStock)  params.in_stock  = inStock;
+      if (minPrice)  params.min_price  = minPrice;
+      if (maxPrice)  params.max_price  = maxPrice;
+      if (inStock)   params.in_stock   = inStock;
+      if (minRating) params.min_rating = minRating;
+      if (onSale)    params.on_sale    = onSale;
+      if (skinType)  params.skin_type  = skinType;
 
       const { data } = await productsAPI.getAll(params);
       if (Array.isArray(data)) {
@@ -184,9 +230,14 @@ export default function Shop() {
     } finally {
       setLoading(false);
     }
-  }, [search, sort, category, brand, page, minPrice, maxPrice, inStock]);
+  }, [search, sort, category, brand, page, minPrice, maxPrice, inStock, minRating, onSale, skinType]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  const scrollToResults = () => {
+    const el = document.getElementById('shop-results');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const setParam = (key, value) => {
     const next = new URLSearchParams(searchParams);
@@ -194,9 +245,18 @@ export default function Shop() {
     else       next.delete(key);
     if (key !== 'page') next.set('page', '1');
     setSearchParams(next);
-    if (key === 'page') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (key === 'page' || key === 'category' || key === 'brand' || key === 'min_rating' || key === 'on_sale' || key === 'skin_type') {
+      scrollToResults();
     }
+  };
+
+  const toggleBrand = (brandName) => {
+    const lower = brandName.toLowerCase();
+    const exists = selectedBrands.some(b => b.toLowerCase() === lower);
+    const updated = exists
+      ? selectedBrands.filter(b => b.toLowerCase() !== lower)
+      : [...selectedBrands, brandName];
+    setParam('brand', updated.join(','));
   };
 
   const applyPriceFilter = () => {
@@ -227,9 +287,18 @@ export default function Shop() {
 
   const hasPriceFilter   = minPrice || maxPrice;
   const hasInStockFilter = inStock === 'true';
-  const hasActiveFilters = hasPriceFilter || hasInStockFilter || category || brand || search;
+  const hasOnSaleFilter  = onSale === 'true';
+  const hasActiveFilters = hasPriceFilter || hasInStockFilter || hasOnSaleFilter || category || selectedBrands.length > 0 || minRating || skinType || search;
 
-  const activeFiltersCount = (category ? 1 : 0) + (brand ? 1 : 0) + (hasPriceFilter ? 1 : 0) + (hasInStockFilter ? 1 : 0) + (search ? 1 : 0);
+  const activeFiltersCount =
+    (category ? 1 : 0) +
+    selectedBrands.length +
+    (hasPriceFilter ? 1 : 0) +
+    (hasInStockFilter ? 1 : 0) +
+    (hasOnSaleFilter ? 1 : 0) +
+    (minRating ? 1 : 0) +
+    (skinType ? 1 : 0) +
+    (search ? 1 : 0);
 
   const totalPages = Math.ceil(total / LIMIT);
 
@@ -277,7 +346,7 @@ export default function Shop() {
         </div>
 
         {/* ── Main Two-Column Layout ──────────────── */}
-        <div className="shop-layout">
+        <div id="shop-results" className="shop-layout">
 
           {/* ── SIDEBAR FILTERS ── */}
           <aside className={`shop-sidebar ${mobileFiltersOpen ? 'open' : ''}`}>
@@ -335,29 +404,33 @@ export default function Shop() {
                       />
                     )}
                     <ul className="shop-category-list">
-                      {visibleCategoryOptions.map(cat => (
-                        <li key={cat.value}>
-                          <button
-                            type="button"
-                            className={`shop-category-item ${category === cat.value ? 'active' : ''}`}
-                            onClick={() => {
-                              setParam('category', cat.value);
-                              setMobileFiltersOpen(false);
-                            }}
-                          >
-                            <span className="cat-bullet" />
-                            <span className="cat-name">{cat.label}</span>
-                            {category === cat.value && <span className="cat-check">✓</span>}
-                          </button>
-                        </li>
-                      ))}
+                      {visibleCategoryOptions.map(cat => {
+                        const cCount = cat.value ? catCountMap.get(cat.value.toLowerCase()) : null;
+                        return (
+                          <li key={cat.value}>
+                            <button
+                              type="button"
+                              className={`shop-category-item ${category === cat.value ? 'active' : ''}`}
+                              onClick={() => {
+                                setParam('category', cat.value);
+                                setMobileFiltersOpen(false);
+                              }}
+                            >
+                              <span className="cat-bullet" />
+                              <span className="cat-name">{cat.label}</span>
+                              {cCount != null && <span className="cat-count">{cCount}</span>}
+                              {category === cat.value && <span className="cat-check">✓</span>}
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </>
                 )}
               </div>
 
-              {/* Filter Group: Brands — compact preview + A-Z Directory Modal for 100+ brands */}
-              {visibleBrandOptions.length > 1 && (
+              {/* Filter Group: Brands — multi-select checkboxes + live counts + A-Z Directory Modal */}
+              {visibleBrandOptions.length > 0 && (
                 <div className="shop-filter-group">
                   <button
                     type="button"
@@ -369,8 +442,10 @@ export default function Shop() {
                       Brand <span className="shop-filter-count">({apiBrands.length})</span>
                     </span>
                     <span className="shop-filter-accordion-meta">
-                      {brand && !openSections.brand && (
-                        <span className="shop-filter-mini-badge">{brand}</span>
+                      {selectedBrands.length > 0 && (
+                        <span className="shop-filter-mini-badge">
+                          {selectedBrands.length === 1 ? selectedBrands[0] : `${selectedBrands.length} selected`}
+                        </span>
                       )}
                       <span className={`shop-filter-chevron ${openSections.brand ? 'open' : ''}`}>▾</span>
                     </span>
@@ -392,40 +467,38 @@ export default function Shop() {
                       {(() => {
                         const SIDEBAR_BRAND_LIMIT = 6;
                         const isSearching = brandQuery.trim().length > 0;
-                        let displayList = isSearching
-                          ? visibleBrandOptions.slice(0, 10)
-                          : visibleBrandOptions.slice(0, SIDEBAR_BRAND_LIMIT + 1); // All Brands + 6
-
-                        // Keep active brand visible even if it's beyond the first 6
-                        if (
-                          !isSearching &&
-                          brand &&
-                          !displayList.some(b => b.value.toLowerCase() === brand.toLowerCase())
-                        ) {
-                          const match = visibleBrandOptions.find(b => b.value.toLowerCase() === brand.toLowerCase());
-                          if (match) displayList = [displayList[0], match, ...displayList.slice(1, SIDEBAR_BRAND_LIMIT)];
-                        }
+                        // Pin selected brands to the top, then top brands by count
+                        const sorted = [...visibleBrandOptions].sort((a, b) => {
+                          const aSel = isBrandSelected(a.value) ? 1 : 0;
+                          const bSel = isBrandSelected(b.value) ? 1 : 0;
+                          if (aSel !== bSel) return bSel - aSel;
+                          return (b.count || 0) - (a.count || 0) || a.label.localeCompare(b.label);
+                        });
+                        const displayList = isSearching
+                          ? sorted.slice(0, 10)
+                          : sorted.slice(0, SIDEBAR_BRAND_LIMIT);
 
                         return (
                           <>
                             <ul className="shop-category-list">
-                              {displayList.map(b => (
-                                <li key={b.value || 'all-brands'}>
-                                  <button
-                                    type="button"
-                                    className={`shop-category-item ${brand.toLowerCase() === b.value.toLowerCase() ? 'active' : ''}`}
-                                    onClick={() => {
-                                      setParam('brand', b.value);
-                                      setMobileFiltersOpen(false);
-                                    }}
-                                  >
-                                    <span className="cat-bullet" />
-                                    <span className="cat-name">{b.label}</span>
-                                    {brand.toLowerCase() === b.value.toLowerCase() && <span className="cat-check">✓</span>}
-                                  </button>
-                                </li>
-                              ))}
-                              {isSearching && visibleBrandOptions.length === 1 && (
+                              {displayList.map(b => {
+                                const checked = isBrandSelected(b.value);
+                                return (
+                                  <li key={b.value}>
+                                    <label className={`shop-brand-check-item ${checked ? 'active' : ''}`}>
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => toggleBrand(b.value)}
+                                      />
+                                      <span className="shop-checkbox-custom" />
+                                      <span className="cat-name">{b.label}</span>
+                                      {b.count > 0 && <span className="cat-count">{b.count}</span>}
+                                    </label>
+                                  </li>
+                                );
+                              })}
+                              {isSearching && displayList.length === 0 && (
                                 <li className="shop-filter-empty-note">No matching brands</li>
                               )}
                             </ul>
@@ -451,74 +524,225 @@ export default function Shop() {
                 </div>
               )}
 
-              {/* Filter Group: Price Range */}
+              {/* Filter Group: Price Range (Dual-Thumb Slider + Min/Max + Apply) */}
               <div className="shop-filter-group">
                 <div className="shop-filter-group-header">
-                  <h4 className="shop-filter-group-title">Price (GH₵)</h4>
+                  <button
+                    type="button"
+                    className="shop-filter-accordion-btn"
+                    style={{ paddingBottom: 0 }}
+                    onClick={() => toggleSection('price')}
+                    aria-expanded={openSections.price}
+                  >
+                    <span className="shop-filter-group-title">Price (GH₵)</span>
+                    <span className={`shop-filter-chevron ${openSections.price ? 'open' : ''}`}>▾</span>
+                  </button>
                   {hasPriceFilter && (
                     <button type="button" className="shop-filter-clear-link" onClick={clearPriceFilter}>
                       Clear
                     </button>
                   )}
                 </div>
-                <div className="shop-price-inputs-row">
-                  <div className="shop-price-field">
-                    <span className="shop-price-sublabel">Min</span>
-                    <input
-                      id="shop-price-min"
-                      name="min_price"
-                      type="number"
-                      min="0"
-                      placeholder="0"
-                      value={priceMinInput}
-                      onChange={e => setPriceMinInput(e.target.value)}
-                      className="shop-price-input"
-                      aria-label="Minimum price"
-                    />
-                  </div>
-                  <span className="shop-price-sep">–</span>
-                  <div className="shop-price-field">
-                    <span className="shop-price-sublabel">Max</span>
-                    <input
-                      id="shop-price-max"
-                      name="max_price"
-                      type="number"
-                      min="0"
-                      placeholder="500"
-                      value={priceMaxInput}
-                      onChange={e => setPriceMaxInput(e.target.value)}
-                      className="shop-price-input"
-                      aria-label="Maximum price"
-                      onKeyDown={e => e.key === 'Enter' && applyPriceFilter()}
-                    />
-                  </div>
-                </div>
-                <button 
-                  type="button" 
-                  className="btn btn-sm btn-primary shop-price-apply-btn" 
-                  onClick={() => {
-                    applyPriceFilter();
-                    setMobileFiltersOpen(false);
-                  }}
-                >
-                  Apply Price
-                </button>
+                {openSections.price && (() => {
+                  const boundMin = priceBounds.min;
+                  const boundMax = Math.max(priceBounds.max, boundMin + 10);
+                  const curMin = priceMinInput !== '' ? Math.max(boundMin, Math.min(Number(priceMinInput) || boundMin, boundMax)) : boundMin;
+                  const curMax = priceMaxInput !== '' ? Math.max(curMin, Math.min(Number(priceMaxInput) || boundMax, boundMax)) : boundMax;
+                  const leftPct  = ((curMin - boundMin) / (boundMax - boundMin)) * 100;
+                  const rightPct = 100 - ((curMax - boundMin) / (boundMax - boundMin)) * 100;
+
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <div className="shop-dual-slider" aria-label="Price range slider">
+                        <div className="shop-dual-track" />
+                        <div
+                          className="shop-dual-fill"
+                          style={{ left: `${leftPct}%`, right: `${rightPct}%` }}
+                        />
+                        <input
+                          type="range"
+                          min={boundMin}
+                          max={boundMax}
+                          step={5}
+                          value={curMin}
+                          onChange={(e) => {
+                            const v = Math.min(Number(e.target.value), curMax);
+                            setPriceMinInput(String(v));
+                          }}
+                          aria-label="Minimum price slider"
+                          className="shop-dual-range"
+                        />
+                        <input
+                          type="range"
+                          min={boundMin}
+                          max={boundMax}
+                          step={5}
+                          value={curMax}
+                          onChange={(e) => {
+                            const v = Math.max(Number(e.target.value), curMin);
+                            setPriceMaxInput(String(v));
+                          }}
+                          aria-label="Maximum price slider"
+                          className="shop-dual-range"
+                        />
+                      </div>
+                      <div className="shop-price-inputs-row">
+                        <div className="shop-price-field">
+                          <span className="shop-price-sublabel">Min</span>
+                          <input
+                            id="shop-price-min"
+                            name="min_price"
+                            type="number"
+                            min="0"
+                            placeholder={String(boundMin)}
+                            value={priceMinInput}
+                            onChange={e => setPriceMinInput(e.target.value)}
+                            className="shop-price-input"
+                            aria-label="Minimum price"
+                          />
+                        </div>
+                        <span className="shop-price-sep">–</span>
+                        <div className="shop-price-field">
+                          <span className="shop-price-sublabel">Max</span>
+                          <input
+                            id="shop-price-max"
+                            name="max_price"
+                            type="number"
+                            min="0"
+                            placeholder={String(boundMax)}
+                            value={priceMaxInput}
+                            onChange={e => setPriceMaxInput(e.target.value)}
+                            className="shop-price-input"
+                            aria-label="Maximum price"
+                            onKeyDown={e => e.key === 'Enter' && applyPriceFilter()}
+                          />
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-primary shop-price-apply-btn"
+                        onClick={() => {
+                          applyPriceFilter();
+                          setMobileFiltersOpen(false);
+                        }}
+                      >
+                        Apply Price
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
 
-              {/* Filter Group: Availability */}
+              {/* Filter Group: Product Rating */}
               <div className="shop-filter-group">
-                <h4 className="shop-filter-group-title">Availability</h4>
-                <label className="shop-instock-checkbox" htmlFor="shop-instock-only">
-                  <input
-                    id="shop-instock-only"
-                    name="in_stock"
-                    type="checkbox"
-                    checked={hasInStockFilter}
-                    onChange={e => setParam('in_stock', e.target.checked ? 'true' : '')}
-                  />
-                  <span className="shop-checkbox-custom" />
-                  <span className="shop-checkbox-text">In stock only</span>
-                </label>
+                <button
+                  type="button"
+                  className="shop-filter-accordion-btn"
+                  onClick={() => toggleSection('rating')}
+                  aria-expanded={openSections.rating}
+                >
+                  <span className="shop-filter-group-title">Product Rating</span>
+                  <span className="shop-filter-accordion-meta">
+                    {minRating && <span className="shop-filter-mini-badge">{minRating}★+</span>}
+                    <span className={`shop-filter-chevron ${openSections.rating ? 'open' : ''}`}>▾</span>
+                  </span>
+                </button>
+                {openSections.rating && (
+                  <ul className="shop-category-list">
+                    {[4, 3, 2, 1].map(stars => {
+                      const active = minRating === String(stars);
+                      return (
+                        <li key={stars}>
+                          <button
+                            type="button"
+                            className={`shop-category-item ${active ? 'active' : ''}`}
+                            onClick={() => {
+                              setParam('min_rating', active ? '' : String(stars));
+                              setMobileFiltersOpen(false);
+                            }}
+                          >
+                            <span className="shop-rating-stars" aria-hidden="true">
+                              {'★'.repeat(stars)}{'☆'.repeat(5 - stars)}
+                            </span>
+                            <span className="cat-name">&amp; up</span>
+                            {active && <span className="cat-check">✓</span>}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              {/* Filter Group: Skin Type (dynamic — shown when products have skin_types tagged) */}
+              {facetSkinTypes.length > 0 && (
+                <div className="shop-filter-group">
+                  <button
+                    type="button"
+                    className="shop-filter-accordion-btn"
+                    onClick={() => toggleSection('skin_type')}
+                    aria-expanded={openSections.skin_type}
+                  >
+                    <span className="shop-filter-group-title">Skin Type</span>
+                    <span className="shop-filter-accordion-meta">
+                      {skinType && <span className="shop-filter-mini-badge">{skinType}</span>}
+                      <span className={`shop-filter-chevron ${openSections.skin_type ? 'open' : ''}`}>▾</span>
+                    </span>
+                  </button>
+                  {openSections.skin_type && (
+                    <ul className="shop-category-list">
+                      {facetSkinTypes.map(st => {
+                        const active = skinType.toLowerCase() === st.value.toLowerCase();
+                        return (
+                          <li key={st.value}>
+                            <button
+                              type="button"
+                              className={`shop-category-item ${active ? 'active' : ''}`}
+                              onClick={() => {
+                                setParam('skin_type', active ? '' : st.value);
+                                setMobileFiltersOpen(false);
+                              }}
+                            >
+                              <span className="cat-bullet" />
+                              <span className="cat-name" style={{ textTransform: 'capitalize' }}>{st.value}</span>
+                              <span className="cat-count">{st.count}</span>
+                              {active && <span className="cat-check">✓</span>}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {/* Filter Group: Availability & Deals */}
+              <div className="shop-filter-group">
+                <h4 className="shop-filter-group-title">Availability &amp; Deals</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <label className="shop-instock-checkbox" htmlFor="shop-instock-only">
+                    <input
+                      id="shop-instock-only"
+                      name="in_stock"
+                      type="checkbox"
+                      checked={hasInStockFilter}
+                      onChange={e => setParam('in_stock', e.target.checked ? 'true' : '')}
+                    />
+                    <span className="shop-checkbox-custom" />
+                    <span className="shop-checkbox-text">In stock only</span>
+                  </label>
+                  <label className="shop-instock-checkbox" htmlFor="shop-onsale-only">
+                    <input
+                      id="shop-onsale-only"
+                      name="on_sale"
+                      type="checkbox"
+                      checked={hasOnSaleFilter}
+                      onChange={e => setParam('on_sale', e.target.checked ? 'true' : '')}
+                    />
+                    <span className="shop-checkbox-custom" />
+                    <span className="shop-checkbox-text">On sale / deals</span>
+                  </label>
+                </div>
               </div>
 
               {/* Mobile Drawer Close / Apply */}
@@ -615,22 +839,40 @@ export default function Shop() {
                     <button onClick={() => setParam('category', '')} aria-label="Remove category filter">✕</button>
                   </span>
                 )}
-                {brand && (
-                  <span className="shop-filter-pill">
-                    Brand: {brand}
-                    <button onClick={() => setParam('brand', '')} aria-label="Remove brand filter">✕</button>
+                {selectedBrands.map(sb => (
+                  <span key={sb} className="shop-filter-pill">
+                    Brand: {sb}
+                    <button onClick={() => toggleBrand(sb)} aria-label={`Remove ${sb} filter`}>✕</button>
                   </span>
-                )}
+                ))}
                 {hasPriceFilter && (
                   <span className="shop-filter-pill">
                     GH₵{minPrice || '0'} – GH₵{maxPrice || '∞'}
                     <button onClick={clearPriceFilter} aria-label="Remove price filter">✕</button>
                   </span>
                 )}
+                {minRating && (
+                  <span className="shop-filter-pill">
+                    Rating: {minRating}★ &amp; up
+                    <button onClick={() => setParam('min_rating', '')} aria-label="Remove rating filter">✕</button>
+                  </span>
+                )}
+                {skinType && (
+                  <span className="shop-filter-pill">
+                    Skin: {skinType}
+                    <button onClick={() => setParam('skin_type', '')} aria-label="Remove skin type filter">✕</button>
+                  </span>
+                )}
                 {hasInStockFilter && (
                   <span className="shop-filter-pill">
                     In stock only
                     <button onClick={() => setParam('in_stock', '')} aria-label="Remove in-stock filter">✕</button>
+                  </span>
+                )}
+                {hasOnSaleFilter && (
+                  <span className="shop-filter-pill">
+                    On sale
+                    <button onClick={() => setParam('on_sale', '')} aria-label="Remove on-sale filter">✕</button>
                   </span>
                 )}
                 {search && (
@@ -816,20 +1058,21 @@ export default function Shop() {
                     <h4 className="brand-alpha-heading">{letter}</h4>
                     <div className="brand-alpha-grid">
                       {groups[letter].map(b => {
-                        const isActive = brand.toLowerCase() === b.toLowerCase();
+                        const isActive = isBrandSelected(b);
+                        const cnt = brandCountMap.get(b.toLowerCase()) || 0;
                         return (
                           <button
                             key={b}
                             type="button"
                             className={`brand-modal-pill ${isActive ? 'active' : ''}`}
-                            onClick={() => {
-                              setParam('brand', b);
-                              setBrandModalOpen(false);
-                              setMobileFiltersOpen(false);
-                            }}
+                            onClick={() => toggleBrand(b)}
+                            aria-pressed={isActive}
                           >
                             <span>{b}</span>
-                            {isActive && <span className="cat-check">✓</span>}
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                              {cnt > 0 && <span className="brand-modal-count">{cnt}</span>}
+                              {isActive && <span className="cat-check">✓</span>}
+                            </span>
                           </button>
                         );
                       })}

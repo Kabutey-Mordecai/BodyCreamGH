@@ -2,7 +2,7 @@ const express = require('express');
 const { verifyToken, optionalToken, requireAdmin, requireRoles } = require('../middleware/auth');
 const { makeRateLimiter } = require('../middleware/rateLimit');
 const { validateProduct } = require('../middleware/validation');
-const { getProducts, suggestProducts, getCategories, getBrands, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility, bulkImportProducts } = require('../controllers/product.controller');
+const { getProducts, suggestProducts, getCategories, getBrands, getFacets, getProductById, getRelatedProducts, createProduct, updateProduct, deleteProduct, getAdminProducts, toggleProductVisibility, bulkImportProducts } = require('../controllers/product.controller');
 const { getReviews, canReview, createReview, markHelpful, deleteReview } = require('../controllers/review.controller');
 const {
   getVariants, createVariant, updateVariant, deleteVariant,
@@ -20,6 +20,7 @@ router.post('/bulk-import', verifyToken, requireAdmin, requireMarketingOrAdmin, 
 router.get('/suggest', suggestProducts);
 router.get('/categories', getCategories);
 router.get('/brands', getBrands);
+router.get('/facets', getFacets);
 router.get('/', getProducts);
 router.get('/:id/related', getRelatedProducts);
 router.get('/:id', getProductById);

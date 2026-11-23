@@ -9,14 +9,14 @@ const suggestCache = new NodeCache({ stdTTL: 60, checkperiod: 60, maxKeys: 300 }
 
 const ALLOWED_PRODUCT_QUERY_KEYS = [
   'category', 'brand', 'search', 'sort', 'limit', 'offset', 'page', 'min_price', 'max_price', 'in_stock',
-  'skin_type', 'skin_concern',
+  'skin_type', 'skin_concern', 'min_rating', 'on_sale',
 ];
 
 function buildCanonicalProductKey(query = {}) {
   const normalized = {};
   for (const key of ALLOWED_PRODUCT_QUERY_KEYS) {
     if (query[key] !== undefined && query[key] !== '') {
-      normalized[key] = String(query[key]).slice(0, 120);
+      normalized[key] = String(query[key]).slice(0, 400);
     }
   }
   return `products:${JSON.stringify(normalized)}`;
@@ -260,6 +260,88 @@ const getBrands = async (req, res) => {
   }
 };
 
+// Context-aware facets for /shop sidebar (scoped brand/category counts + live price bounds)
+const getFacets = async (req, res) => {
+  try {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    const { category, search, in_stock, on_sale } = req.query;
+    const cacheKey = `facets:${JSON.stringify({ category: category || '', search: search || '', in_stock: in_stock || '', on_sale: on_sale || '' })}`;
+    const cached = cache.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const buildBaseWhere = ({ includeCategory = true } = {}) => {
+      const params = [];
+      const clauses = ['p.is_active = TRUE'];
+      if (includeCategory && category) {
+        params.push(String(category).trim());
+        clauses.push(`p.category = $${params.length}`);
+      }
+      if (search && String(search).trim()) {
+        params.push(`%${String(search).trim()}%`);
+        clauses.push(`(p.name ILIKE $${params.length} OR p.brand ILIKE $${params.length} OR p.description ILIKE $${params.length})`);
+      }
+      if (in_stock === 'true' || in_stock === true) {
+        clauses.push('p.stock_quantity > 0');
+      }
+      if (on_sale === 'true' || on_sale === true) {
+        clauses.push('(p.compare_at_price IS NOT NULL AND p.compare_at_price > p.price)');
+      }
+      return { where: `WHERE ${clauses.join(' AND ')}`, params };
+    };
+
+    const catScope   = buildBaseWhere({ includeCategory: false });
+    const brandScope = buildBaseWhere({ includeCategory: true });
+
+    const [catRes, brandRes, priceRes, skinRes] = await Promise.all([
+      pool.query(
+        `SELECT TRIM(p.category) AS category, COUNT(*)::int AS count
+           FROM products p ${catScope.where}
+            AND p.category IS NOT NULL AND TRIM(p.category) <> ''
+          GROUP BY TRIM(p.category)
+          ORDER BY count DESC, TRIM(p.category) ASC`,
+        catScope.params
+      ),
+      pool.query(
+        `SELECT TRIM(p.brand) AS brand, COUNT(*)::int AS count
+           FROM products p ${brandScope.where}
+            AND p.brand IS NOT NULL AND TRIM(p.brand) <> ''
+          GROUP BY TRIM(p.brand)
+          ORDER BY count DESC, TRIM(p.brand) ASC`,
+        brandScope.params
+      ),
+      pool.query(
+        `SELECT COALESCE(FLOOR(MIN(p.price)), 0)::int AS min_price,
+                COALESCE(CEIL(MAX(p.price)), 1000)::int AS max_price
+           FROM products p ${brandScope.where}`,
+        brandScope.params
+      ),
+      pool.query(
+        `SELECT LOWER(TRIM(st)) AS value, COUNT(*)::int AS count
+           FROM products p, LATERAL unnest(COALESCE(p.skin_types, '{}'::text[])) AS st
+          ${brandScope.where} AND TRIM(st) <> ''
+          GROUP BY LOWER(TRIM(st))
+          ORDER BY count DESC, value ASC`,
+        brandScope.params
+      ),
+    ]);
+
+    const payload = {
+      categories: catRes.rows,
+      brands:     brandRes.rows,
+      price: {
+        min: priceRes.rows[0]?.min_price ?? 0,
+        max: priceRes.rows[0]?.max_price ?? 1000,
+      },
+      skin_types: skinRes.rows,
+    };
+    try { cache.set(cacheKey, payload, 180); } catch { /* ignore */ }
+    res.json(payload);
+  } catch (err) {
+    logger.error('getFacets error', { err: err.message });
+    res.status(500).json({ error: 'Failed to load facets' });
+  }
+};
+
 const bulkImportProducts = async (req, res) => {
   const items = Array.isArray(req.body?.items) ? req.body.items : [];
   if (items.length === 0) {
@@ -335,7 +417,7 @@ const bulkImportProducts = async (req, res) => {
 };
 
 module.exports = {
-  getProducts, suggestProducts, getCategories, getBrands, getProductById,
+  getProducts, suggestProducts, getCategories, getBrands, getFacets, getProductById,
   getRelatedProducts, createProduct, updateProduct, deleteProduct,
   getAdminProducts, toggleProductVisibility, bulkImportProducts, bustCache,
 };
