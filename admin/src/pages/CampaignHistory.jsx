@@ -1,11 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { newsletterAPI } from '../services/api';
+import { useToast } from '../context/ToastContext';
+import StatCard from '../components/StatCard';
+import DataTable from '../components/DataTable';
+import Modal from '../components/Modal';
 
-const STATUS_BADGE = {
-  draft:   { label: 'Draft',   bg: '#f3f4f6', color: '#6b7280' },
-  sending: { label: 'Sending', bg: '#fef9c3', color: '#ca8a04' },
-  sent:    { label: 'Sent',    bg: '#dcfce7', color: '#16a34a' },
-  failed:  { label: 'Failed',  bg: '#fee2e2', color: '#dc2626' },
+const STATUS_MAP = {
+  draft:   { label: 'Draft',   cls: 'badge-neutral' },
+  sending: { label: 'Sending', cls: 'badge-warning' },
+  sent:    { label: 'Sent',    cls: 'badge-success' },
+  failed:  { label: 'Failed',  cls: 'badge-danger' },
 };
 
 const SEGMENT_LABEL = {
@@ -15,202 +20,416 @@ const SEGMENT_LABEL = {
   all_customers:    'All customers',
 };
 
-function StatusBadge({ status }) {
-  const b = STATUS_BADGE[status] || STATUS_BADGE.draft;
+function CampaignStatusBadge({ status }) {
+  const info = STATUS_MAP[status] || STATUS_MAP.draft;
   return (
-    <span style={{ background: b.bg, color: b.color, borderRadius: 20, padding: '2px 10px', fontSize: '0.75rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+    <span
+      className={`badge ${info.cls}`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}
+    >
       {status === 'sending' && (
-        <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', border: '2px solid currentColor', borderTopColor: 'transparent', animation: 'spin 0.7s linear infinite' }} />
+        <span
+          style={{
+            display: 'inline-block',
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            border: '2px solid currentColor',
+            borderTopColor: 'transparent',
+            animation: 'spin 0.7s linear infinite',
+          }}
+        />
       )}
-      {b.label}
+      {info.label}
     </span>
   );
 }
 
 export default function CampaignHistory() {
-  const [data, setData]             = useState([]);
-  const [total, setTotal]           = useState(0);
-  const [page, setPage]             = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
-  const [detail, setDetail]         = useState(null);   // full campaign detail for modal
+  const toast = useToast();
+
+  const [data, setData]                   = useState([]);
+  const [total, setTotal]                 = useState(0);
+  const [page, setPage]                   = useState(1);
+  const [totalPages, setTotalPages]       = useState(1);
+  const [loading, setLoading]             = useState(true);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [error, setError]                 = useState('');
+  const [detail, setDetail]               = useState(null);
+  const [detailOpen, setDetailOpen]       = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
 
-  const fetchData = useCallback(async (pg = page) => {
-    setLoading(true);
+  const fetchData = useCallback(async (pg = page, silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
     setError('');
     try {
       const { data: res } = await newsletterAPI.getCampaigns({ page: pg, limit: 20 });
-      setData(res.data);
-      setTotal(res.total);
-      setPage(res.page);
-      setTotalPages(res.totalPages);
+      setData(res.data || []);
+      setTotal(res.total || 0);
+      setPage(res.page || pg);
+      setTotalPages(res.totalPages || 1);
     } catch {
       setError('Failed to load campaigns.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [page]);
 
-  useEffect(() => { fetchData(1); }, []);
+  useEffect(() => {
+    fetchData(page, false);
+  }, [page]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Auto-refresh if any campaign is 'sending'
+  // Auto-refresh if any campaign is currently 'sending'
   useEffect(() => {
     const hasSending = data.some(c => c.status === 'sending');
     if (!hasSending) return;
-    const t = setInterval(() => fetchData(page), 5000);
+    const t = setInterval(() => fetchData(page, true), 5000);
     return () => clearInterval(t);
   }, [data, page, fetchData]);
 
   const openDetail = async (id) => {
     setDetail(null);
+    setDetailOpen(true);
     setLoadingDetail(true);
     try {
       const { data: res } = await newsletterAPI.getCampaignById(id);
       setDetail(res);
     } catch {
-      alert('Failed to load campaign details.');
+      toast.error('Failed to load campaign details.');
+      setDetailOpen(false);
     } finally {
       setLoadingDetail(false);
     }
   };
 
-  const fmt = (d) => d ? new Date(d).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+  const pageSummary = useMemo(() => {
+    const totalSent = data.reduce((s, c) => s + Number(c.sent_count || 0), 0);
+    const totalRecipients = data.reduce((s, c) => s + Number(c.recipient_count || 0), 0);
+    const completed = data.filter(c => c.status === 'sent').length;
+    const deliveryRate = totalRecipients > 0 ? Math.round((totalSent / totalRecipients) * 100) : 0;
+    return { totalSent, completed, deliveryRate };
+  }, [data]);
+
+  const fmt = (d) =>
+    d
+      ? new Date(d).toLocaleString('en-GH', {
+          day: '2-digit',
+          month: 'short',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        })
+      : '—';
 
   return (
     <div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      {/* Header */}
+      <div className="page-header">
+        <div>
+          <h1>Campaign History</h1>
+          <p className="muted">Track newsletter delivery &amp; past email broadcasts</p>
+        </div>
+        <div className="page-actions">
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => fetchData(page, true)}
+            disabled={refreshing}
+          >
+            {refreshing ? 'Refreshing…' : '↻ Refresh'}
+          </button>
+          <Link to="/newsletter/compose" className="btn btn-accent btn-sm">
+            + Compose Campaign
+          </Link>
+        </div>
+      </div>
 
-      <div style={{ marginBottom: 24 }}>
-        <h1 className="page-title">Campaign History</h1>
-        <p className="page-subtitle">All sent newsletter campaigns</p>
+      {/* Summary KPIs */}
+      <div className="stats-grid" style={{ marginBottom: 20 }}>
+        <StatCard
+          label="Total Campaigns"
+          value={total.toLocaleString()}
+          sub={`${pageSummary.completed} sent on this page`}
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+              <polyline points="22,6 12,13 2,6" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="Emails Delivered"
+          value={pageSummary.totalSent.toLocaleString()}
+          sub="Across displayed campaigns"
+          accent="var(--ac-success)"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <line x1="22" y1="2" x2="11" y2="13" />
+              <polygon points="22 2 15 22 11 13 2 9 22 2" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="Delivery Rate"
+          value={pageSummary.totalSent > 0 ? `${pageSummary.deliveryRate}%` : '—'}
+          sub="Sent vs total recipients"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          }
+        />
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Subject</th>
-              <th>Segment</th>
-              <th>Status</th>
-              <th>Recipients</th>
-              <th>Sent</th>
-              <th>Failed</th>
-              <th>Sent by</th>
-              <th>Date</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32 }}><div className="spinner" /></td></tr>
-            ) : data.length === 0 ? (
-              <tr><td colSpan={9} style={{ textAlign: 'center', padding: 32, color: 'var(--ac-text-muted)' }}>No campaigns yet.</td></tr>
-            ) : data.map(row => (
-              <tr key={row.id}>
-                <td style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {row.subject}
-                </td>
-                <td style={{ fontSize: '0.82rem', color: 'var(--ac-text-soft)' }}>
+      {/* Campaigns DataTable */}
+      <div className="card">
+        <DataTable
+          loading={loading}
+          rows={data}
+          onRowClick={row => openDetail(row.id)}
+          emptyMessage="No newsletter campaigns sent yet."
+          columns={[
+            {
+              key: 'subject',
+              label: 'Subject',
+              render: row => (
+                <div>
+                  <div className="cell-primary" style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {row.subject}
+                  </div>
+                  <div className="cell-muted text-xs">{row.sent_by_name || 'Admin'}</div>
+                </div>
+              ),
+            },
+            {
+              key: 'segment',
+              label: 'Audience',
+              render: row => (
+                <span className="badge badge-neutral">
                   {SEGMENT_LABEL[row.segment] || row.segment}
-                </td>
-                <td><StatusBadge status={row.status} /></td>
-                <td style={{ textAlign: 'right' }}>{row.recipient_count.toLocaleString()}</td>
-                <td style={{ textAlign: 'right', color: '#16a34a' }}>{row.sent_count.toLocaleString()}</td>
-                <td style={{ textAlign: 'right', color: row.failed_count > 0 ? '#dc2626' : 'var(--ac-text-muted)' }}>
-                  {row.failed_count.toLocaleString()}
-                </td>
-                <td style={{ fontSize: '0.82rem' }}>{row.sent_by_name || '—'}</td>
-                <td style={{ fontSize: '0.82rem', whiteSpace: 'nowrap' }}>{fmt(row.created_at)}</td>
-                <td>
-                  <button
-                    className="btn btn-sm"
-                    onClick={() => openDetail(row.id)}
-                    style={{ fontSize: '0.78rem', whiteSpace: 'nowrap' }}
-                  >
-                    View details
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </span>
+              ),
+            },
+            {
+              key: 'status',
+              label: 'Status',
+              render: row => <CampaignStatusBadge status={row.status} />,
+            },
+            {
+              key: 'recipient_count',
+              label: 'Recipients',
+              className: 'cell-right',
+              render: row => Number(row.recipient_count || 0).toLocaleString(),
+            },
+            {
+              key: 'sent_count',
+              label: 'Delivered',
+              className: 'cell-right',
+              render: row => (
+                <span style={{ color: 'var(--ac-success)', fontWeight: 600 }}>
+                  {Number(row.sent_count || 0).toLocaleString()}
+                </span>
+              ),
+            },
+            {
+              key: 'failed_count',
+              label: 'Failed',
+              className: 'cell-right',
+              render: row => (
+                <span style={{ color: row.failed_count > 0 ? 'var(--ac-danger)' : 'var(--ac-text-muted)' }}>
+                  {Number(row.failed_count || 0).toLocaleString()}
+                </span>
+              ),
+            },
+            {
+              key: 'created_at',
+              label: 'Date',
+              render: row => <span className="text-sm">{fmt(row.created_at)}</span>,
+            },
+            {
+              key: 'actions',
+              label: '',
+              width: 110,
+              className: 'cell-right',
+              render: row => (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={e => {
+                    e.stopPropagation();
+                    openDetail(row.id);
+                  }}
+                >
+                  View details
+                </button>
+              ),
+            },
+          ]}
+        />
+
+        {totalPages > 1 && (
+          <div className="pagination">
+            <span>
+              Page <strong>{page}</strong> of <strong>{totalPages}</strong> ({total.toLocaleString()} campaigns)
+            </span>
+            <div className="pagination-controls">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+              >
+                ← Prev
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
-          <button className="btn btn-sm" disabled={page <= 1} onClick={() => { setPage(p => p - 1); fetchData(page - 1); }}>Previous</button>
-          <span style={{ padding: '6px 12px', fontSize: '0.85rem', color: 'var(--ac-text-muted)' }}>Page {page} of {totalPages}</span>
-          <button className="btn btn-sm" disabled={page >= totalPages} onClick={() => { setPage(p => p + 1); fetchData(page + 1); }}>Next</button>
-        </div>
-      )}
-
-      {/* Detail modal */}
-      {(detail !== null || loadingDetail) && (
-        <div className="modal-overlay" onClick={() => setDetail(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 680, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0 }}>Campaign details</h3>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }} onClick={() => setDetail(null)}>×</button>
+      {/* Campaign Detail Modal (Native HTML5 <dialog>) */}
+      <Modal
+        open={detailOpen}
+        onClose={() => {
+          setDetailOpen(false);
+          setDetail(null);
+        }}
+        title={detail ? detail.subject : 'Campaign details'}
+        size="lg"
+        footer={
+          <button
+            type="button"
+            className="btn btn-outline"
+            onClick={() => {
+              setDetailOpen(false);
+              setDetail(null);
+            }}
+          >
+            Close
+          </button>
+        }
+      >
+        {loadingDetail ? (
+          <div style={{ padding: 36, textAlign: 'center' }}>
+            <div className="spinner" />
+          </div>
+        ) : detail ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {/* Meta */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, fontSize: '0.85rem' }}>
+              <div>
+                <div className="muted text-xs">Audience</div>
+                <div style={{ fontWeight: 500, marginTop: 2 }}>{SEGMENT_LABEL[detail.segment] || detail.segment}</div>
+              </div>
+              <div>
+                <div className="muted text-xs">Status</div>
+                <div style={{ marginTop: 2 }}><CampaignStatusBadge status={detail.status} /></div>
+              </div>
+              <div>
+                <div className="muted text-xs">Sent by</div>
+                <div style={{ fontWeight: 500, marginTop: 2 }}>{detail.sent_by_name || '—'}</div>
+              </div>
+              <div>
+                <div className="muted text-xs">Date</div>
+                <div style={{ fontWeight: 500, marginTop: 2 }}>{fmt(detail.created_at)}</div>
+              </div>
             </div>
 
-            {loadingDetail ? (
-              <div style={{ textAlign: 'center', padding: 32 }}><div className="spinner" /></div>
-            ) : detail && (
-              <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {/* Meta */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, fontSize: '0.85rem' }}>
-                  <div><strong>Subject:</strong><br />{detail.subject}</div>
-                  <div><strong>Segment:</strong><br />{SEGMENT_LABEL[detail.segment] || detail.segment}</div>
-                  <div><strong>Status:</strong><br /><StatusBadge status={detail.status} /></div>
-                  <div><strong>Sent by:</strong><br />{detail.sent_by_name || '—'}</div>
-                </div>
-
-                {/* Stats */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                  {[
-                    { label: 'Recipients', value: detail.recipient_count },
-                    { label: 'Sent',       value: detail.sent_count, color: '#16a34a' },
-                    { label: 'Failed',     value: detail.failed_count, color: detail.failed_count > 0 ? '#dc2626' : undefined },
-                  ].map(s => (
-                    <div key={s.label} style={{ background: 'var(--ac-bg)', borderRadius: 6, padding: '10px 14px' }}>
-                      <div style={{ fontSize: '1.4rem', fontWeight: 700, color: s.color }}>{s.value.toLocaleString()}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--ac-text-muted)' }}>{s.label}</div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Body preview */}
-                <div>
-                  <strong style={{ fontSize: '0.85rem' }}>Email body preview</strong>
-                  <div
-                    style={{ border: '1px solid var(--ac-border)', borderRadius: 4, padding: 16, marginTop: 8, fontFamily: 'sans-serif', fontSize: '0.9rem', lineHeight: 1.6, maxHeight: 240, overflowY: 'auto' }}
-                    dangerouslySetInnerHTML={{ __html: detail.body_html }}
-                  />
-                </div>
-
-                {/* Failed sends list */}
-                {detail.sends?.filter(s => s.status === 'failed').length > 0 && (
-                  <div>
-                    <strong style={{ fontSize: '0.85rem', color: '#dc2626' }}>Failed recipients</strong>
-                    <div style={{ border: '1px solid #fee2e2', borderRadius: 4, marginTop: 8, maxHeight: 160, overflowY: 'auto' }}>
-                      {detail.sends.filter(s => s.status === 'failed').map(s => (
-                        <div key={s.id} style={{ padding: '8px 12px', borderBottom: '1px solid #fee2e2', fontSize: '0.8rem', fontFamily: 'monospace' }}>
-                          {s.email}
-                          {s.error_message && <span style={{ color: '#9ca3af', marginLeft: 8 }}>— {s.error_message}</span>}
-                        </div>
-                      ))}
-                    </div>
+            {/* Delivery Breakdown */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+              {[
+                { label: 'Recipients', value: detail.recipient_count || 0 },
+                { label: 'Delivered',  value: detail.sent_count || 0, color: 'var(--ac-success)' },
+                { label: 'Failed',     value: detail.failed_count || 0, color: detail.failed_count > 0 ? 'var(--ac-danger)' : undefined },
+              ].map(s => (
+                <div
+                  key={s.label}
+                  style={{
+                    background: 'var(--ac-surface-2)',
+                    border: '1px solid var(--ac-border)',
+                    borderRadius: 'var(--ac-radius)',
+                    padding: '10px 14px',
+                  }}
+                >
+                  <div style={{ fontSize: '1.35rem', fontWeight: 700, color: s.color || 'var(--ac-text)' }}>
+                    {Number(s.value).toLocaleString()}
                   </div>
-                )}
+                  <div className="muted text-xs">{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Email Body Preview */}
+            <div>
+              <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 8 }}>Email body preview</div>
+              <div
+                style={{
+                  border: '1px solid var(--ac-border)',
+                  borderRadius: 'var(--ac-radius)',
+                  padding: 18,
+                  background: '#ffffff',
+                  color: '#111827',
+                  fontFamily: 'sans-serif',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.6,
+                  maxHeight: 260,
+                  overflowY: 'auto',
+                }}
+                dangerouslySetInnerHTML={{ __html: detail.body_html }}
+              />
+            </div>
+
+            {/* Failed sends log */}
+            {detail.sends?.filter(s => s.status === 'failed').length > 0 && (
+              <div>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--ac-danger)', marginBottom: 8 }}>
+                  Failed recipients
+                </div>
+                <div
+                  style={{
+                    border: '1px solid var(--ac-danger)',
+                    background: 'var(--ac-danger-soft)',
+                    borderRadius: 'var(--ac-radius)',
+                    maxHeight: 160,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {detail.sends
+                    .filter(s => s.status === 'failed')
+                    .map(s => (
+                      <div
+                        key={s.id}
+                        style={{
+                          padding: '8px 12px',
+                          borderBottom: '1px solid rgba(220, 38, 38, 0.15)',
+                          fontSize: '0.8rem',
+                          fontFamily: 'monospace',
+                        }}
+                      >
+                        {s.email}
+                        {s.error_message && (
+                          <span style={{ opacity: 0.8, marginLeft: 8 }}>— {s.error_message}</span>
+                        )}
+                      </div>
+                    ))}
+                </div>
               </div>
             )}
           </div>
-        </div>
-      )}
+        ) : null}
+      </Modal>
     </div>
   );
 }

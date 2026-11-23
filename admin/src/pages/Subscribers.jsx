@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { newsletterAPI } from '../services/api';
-
-const STATUS_BADGE = {
-  active:       { label: 'Active',       bg: '#dcfce7', color: '#16a34a' },
-  unsubscribed: { label: 'Unsubscribed', bg: '#fee2e2', color: '#dc2626' },
-};
+import { useToast } from '../context/ToastContext';
+import StatCard from '../components/StatCard';
+import DataTable from '../components/DataTable';
+import SearchInput from '../components/SearchInput';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const SOURCE_LABEL = {
   storefront: 'Storefront',
@@ -12,20 +14,28 @@ const SOURCE_LABEL = {
   import:     'Import',
 };
 
+const FILTER_TABS = [
+  { label: 'All',          value: '' },
+  { label: 'Active',       value: 'active' },
+  { label: 'Unsubscribed', value: 'unsubscribed' },
+];
+
 export default function Subscribers() {
+  const toast = useToast();
+
   const [data, setData]             = useState([]);
   const [stats, setStats]           = useState({ total: 0, active: 0, unsubscribed: 0 });
   const [total, setTotal]           = useState(0);
   const [page, setPage]             = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const [filter, setFilter]         = useState('');     // '' | 'active' | 'unsubscribed'
+  const [filter, setFilter]         = useState('');
   const [search, setSearch]         = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const [deleting, setDeleting]         = useState(false);
 
   // Import modal
   const [importOpen, setImportOpen]     = useState(false);
@@ -33,238 +43,400 @@ export default function Subscribers() {
   const [importing, setImporting]       = useState(false);
   const [importResult, setImportResult] = useState(null);
 
-  const searchRef = useRef(null);
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const fetchData = useCallback(async (pg = page) => {
     setLoading(true);
     setError('');
     try {
       const { data: res } = await newsletterAPI.getSubscribers({
-        page: pg, limit: 20,
+        page: pg,
+        limit: 20,
         status: filter,
-        search,
+        search: debouncedSearch,
       });
-      setData(res.data);
-      setTotal(res.total);
-      setPage(res.page);
-      setTotalPages(res.totalPages);
-      setStats(res.stats);
+      setData(res.data || []);
+      setTotal(res.total || 0);
+      setPage(res.page || pg);
+      setTotalPages(res.totalPages || 1);
+      setStats(res.stats || { total: 0, active: 0, unsubscribed: 0 });
     } catch {
       setError('Failed to load subscribers.');
     } finally {
       setLoading(false);
     }
-  }, [page, filter, search]);
+  }, [page, filter, debouncedSearch]);
 
-  useEffect(() => { fetchData(1); }, [filter]);
-
-  // Debounce search
   useEffect(() => {
-    const t = setTimeout(() => fetchData(1), 350);
-    return () => clearTimeout(t);
-  }, [search]);
+    fetchData(page);
+  }, [page, filter, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const parsedImportEmails = useMemo(() => {
+    const raw = importText.split(/[\n,;]+/).map(e => e.trim()).filter(Boolean);
+    return [...new Set(raw)];
+  }, [importText]);
 
   const handleDelete = async () => {
-    setDeleting(true);
+    if (!deleteTarget) return;
     try {
       await newsletterAPI.deleteSubscriber(deleteTarget.id);
+      toast.success(`Removed ${deleteTarget.email}`);
       setDeleteTarget(null);
       fetchData(1);
     } catch {
-      alert('Delete failed.');
-    } finally {
-      setDeleting(false);
+      toast.error('Failed to delete subscriber.');
     }
   };
 
   const handleImport = async () => {
-    const raw    = importText.split(/[\n,;]+/).map(e => e.trim()).filter(Boolean);
-    const emails = [...new Set(raw)];
-    if (emails.length === 0) return;
+    if (parsedImportEmails.length === 0) return;
     setImporting(true);
     try {
-      const { data: res } = await newsletterAPI.importSubscribers(emails);
+      const { data: res } = await newsletterAPI.importSubscribers(parsedImportEmails);
       setImportResult(res);
+      toast.success(`Imported ${res.imported} subscriber${res.imported !== 1 ? 's' : ''}`);
       fetchData(1);
     } catch {
-      alert('Import failed.');
+      toast.error('Failed to import email addresses.');
     } finally {
       setImporting(false);
     }
   };
 
-  const fmt = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+  const handleExportCSV = () => {
+    if (!data.length) return;
+    const headers = ['Email', 'Name', 'Status', 'Source', 'Subscribed At', 'Unsubscribed At'];
+    const csvRows = data.map(r => [
+      r.email,
+      r.name || '',
+      r.status,
+      SOURCE_LABEL[r.source] || r.source || '',
+      r.subscribed_at || '',
+      r.unsubscribed_at || '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+    const csv = [headers.join(','), ...csvRows].join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `subscribers-page-${page}-${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const fmt = (d) =>
+    d ? new Date(d).toLocaleDateString('en-GH', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+  const activeRate = stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      {/* Header */}
+      <div className="page-header">
         <div>
-          <h1 className="page-title">Subscribers</h1>
-          <p className="page-subtitle">Manage newsletter subscribers</p>
+          <h1>Subscribers</h1>
+          <p className="muted">Manage your newsletter audience &amp; email imports</p>
         </div>
-        <button className="btn btn-primary" onClick={() => { setImportOpen(true); setImportResult(null); setImportText(''); }}>
-          Import emails
-        </button>
+        <div className="page-actions">
+          <Link to="/newsletter/compose" className="btn btn-outline btn-sm">
+            ✉ Compose Campaign
+          </Link>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={handleExportCSV}
+            disabled={!data.length}
+          >
+            ↓ Export CSV
+          </button>
+          <button
+            type="button"
+            className="btn btn-accent btn-sm"
+            onClick={() => {
+              setImportOpen(true);
+              setImportResult(null);
+              setImportText('');
+            }}
+          >
+            + Import Emails
+          </button>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 24 }}>
-        {[
-          { label: 'Total',        value: stats.total },
-          { label: 'Active',       value: stats.active },
-          { label: 'Unsubscribed', value: stats.unsubscribed },
-        ].map(s => (
-          <div key={s.label} className="card" style={{ padding: '16px 20px' }}>
-            <div style={{ fontSize: '1.6rem', fontWeight: 700 }}>{s.value.toLocaleString()}</div>
-            <div style={{ fontSize: '0.8rem', color: 'var(--ac-text-muted)', marginTop: 4 }}>{s.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Filters */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {[{ label: 'All', value: '' }, { label: 'Active', value: 'active' }, { label: 'Unsubscribed', value: 'unsubscribed' }].map(f => (
-            <button
-              key={f.value}
-              onClick={() => { setFilter(f.value); setPage(1); }}
-              style={{
-                padding: '6px 14px', borderRadius: 20, fontSize: '0.82rem', fontWeight: 500,
-                border: '1px solid',
-                borderColor: filter === f.value ? 'var(--ac-accent)' : 'var(--ac-border)',
-                background: filter === f.value ? 'var(--ac-accent)' : 'transparent',
-                color: filter === f.value ? '#fff' : 'var(--ac-text)',
-                cursor: 'pointer',
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <input
-          ref={searchRef}
-          type="search"
-          className="form-input"
-          placeholder="Search by email…"
-          value={search}
-          onChange={e => { setSearch(e.target.value); setPage(1); }}
-          style={{ flex: 1, minWidth: 200, maxWidth: 320 }}
+      {/* KPI Summary Cards */}
+      <div className="stats-grid" style={{ marginBottom: 20 }}>
+        <StatCard
+          label="Total Subscribers"
+          value={Number(stats.total || 0).toLocaleString()}
+          sub="All recorded emails"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          }
         />
+        <StatCard
+          label="Active Audience"
+          value={Number(stats.active || 0).toLocaleString()}
+          sub={`${activeRate}% of total list`}
+          accent="var(--ac-success)"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+          }
+        />
+        <StatCard
+          label="Unsubscribed"
+          value={Number(stats.unsubscribed || 0).toLocaleString()}
+          sub="Opted out"
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07" />
+            </svg>
+          }
+        />
+      </div>
+
+      {/* Filter & Search Toolbar */}
+      <div className="toolbar">
+        <div className="toolbar-left" style={{ flexWrap: 'wrap' }}>
+          <div className="sub-tabs" role="tablist" aria-label="Filter subscribers by status">
+            {FILTER_TABS.map(f => (
+              <button
+                key={f.value}
+                type="button"
+                role="tab"
+                aria-selected={filter === f.value}
+                className={`sub-tab ${filter === f.value ? 'active' : ''}`}
+                onClick={() => {
+                  setFilter(f.value);
+                  setPage(1);
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="toolbar-right">
+          <SearchInput
+            value={search}
+            onChange={setSearch}
+            placeholder="Search by email or name…"
+          />
+        </div>
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
 
-      <div className="card" style={{ overflow: 'hidden' }}>
-        <table className="table">
-          <thead>
-            <tr>
-              <th>Email</th>
-              <th>Name</th>
-              <th>Status</th>
-              <th>Source</th>
-              <th>Subscribed</th>
-              <th>Unsubscribed</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32 }}><div className="spinner" /></td></tr>
-            ) : data.length === 0 ? (
-              <tr><td colSpan={7} style={{ textAlign: 'center', padding: 32, color: 'var(--ac-text-muted)' }}>No subscribers found.</td></tr>
-            ) : data.map(row => {
-              const badge = STATUS_BADGE[row.status] || STATUS_BADGE.active;
-              return (
-                <tr key={row.id}>
-                  <td style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}>{row.email}</td>
-                  <td>{row.name || <span style={{ color: 'var(--ac-text-muted)' }}>—</span>}</td>
-                  <td>
-                    <span style={{ background: badge.bg, color: badge.color, borderRadius: 20, padding: '2px 10px', fontSize: '0.75rem', fontWeight: 600 }}>
-                      {badge.label}
-                    </span>
-                  </td>
-                  <td style={{ fontSize: '0.82rem', color: 'var(--ac-text-soft)' }}>{SOURCE_LABEL[row.source] || row.source}</td>
-                  <td style={{ fontSize: '0.82rem' }}>{fmt(row.subscribed_at)}</td>
-                  <td style={{ fontSize: '0.82rem' }}>{fmt(row.unsubscribed_at)}</td>
-                  <td>
-                    <button
-                      className="btn btn-sm"
-                      style={{ color: 'var(--ac-danger)', background: 'none', border: 'none', cursor: 'pointer', padding: '4px 8px', fontSize: '0.78rem' }}
-                      onClick={() => setDeleteTarget(row)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      {/* Subscribers DataTable */}
+      <div className="card">
+        <DataTable
+          loading={loading}
+          rows={data}
+          emptyMessage={debouncedSearch || filter ? 'No subscribers match your filters.' : 'No subscribers yet.'}
+          columns={[
+            {
+              key: 'email',
+              label: 'Subscriber',
+              render: row => (
+                <div>
+                  <div className="cell-primary mono">{row.email}</div>
+                  {row.name && <div className="cell-muted text-xs">{row.name}</div>}
+                </div>
+              ),
+            },
+            {
+              key: 'status',
+              label: 'Status',
+              render: row =>
+                row.status === 'active' ? (
+                  <span className="badge badge-success">Active</span>
+                ) : (
+                  <span className="badge badge-danger">Unsubscribed</span>
+                ),
+            },
+            {
+              key: 'source',
+              label: 'Source',
+              render: row => (
+                <span className="badge badge-neutral">
+                  {SOURCE_LABEL[row.source] || row.source || '—'}
+                </span>
+              ),
+            },
+            {
+              key: 'subscribed_at',
+              label: 'Subscribed',
+              render: row => <span className="text-sm">{fmt(row.subscribed_at)}</span>,
+            },
+            {
+              key: 'unsubscribed_at',
+              label: 'Unsubscribed',
+              render: row => <span className="cell-muted text-sm">{fmt(row.unsubscribed_at)}</span>,
+            },
+            {
+              key: 'actions',
+              label: '',
+              width: 90,
+              className: 'cell-right',
+              render: row => (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ color: 'var(--ac-danger)' }}
+                  onClick={() => setDeleteTarget(row)}
+                >
+                  Delete
+                </button>
+              ),
+            },
+          ]}
+        />
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 20 }}>
-          <button className="btn btn-sm" disabled={page <= 1} onClick={() => { setPage(p => p - 1); fetchData(page - 1); }}>Previous</button>
-          <span style={{ padding: '6px 12px', fontSize: '0.85rem', color: 'var(--ac-text-muted)' }}>Page {page} of {totalPages}</span>
-          <button className="btn btn-sm" disabled={page >= totalPages} onClick={() => { setPage(p => p + 1); fetchData(page + 1); }}>Next</button>
-        </div>
-      )}
-
-      {/* Delete confirm modal */}
-      {deleteTarget && (
-        <div className="modal-overlay" onClick={() => setDeleteTarget(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 400 }}>
-            <h3 style={{ marginBottom: 12 }}>Delete subscriber?</h3>
-            <p style={{ color: 'var(--ac-text-soft)', marginBottom: 20 }}>
-              <strong>{deleteTarget.email}</strong> will be permanently removed.
-            </p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn" onClick={() => setDeleteTarget(null)}>Cancel</button>
-              <button className="btn btn-danger" disabled={deleting} onClick={handleDelete}>
-                {deleting ? 'Deleting…' : 'Delete'}
+        {totalPages > 1 && (
+          <div className="pagination">
+            <span>
+              Showing page <strong>{page}</strong> of <strong>{totalPages}</strong> ({total.toLocaleString()} total)
+            </span>
+            <div className="pagination-controls">
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+              >
+                ← Prev
+              </button>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={page >= totalPages}
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              >
+                Next →
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Import modal */}
-      {importOpen && (
-        <div className="modal-overlay" onClick={() => setImportOpen(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
-            <h3 style={{ marginBottom: 8 }}>Import email addresses</h3>
-            <p style={{ color: 'var(--ac-text-soft)', fontSize: '0.85rem', marginBottom: 16 }}>
-              Paste email addresses separated by commas, semicolons, or new lines.
-            </p>
-            {importResult ? (
-              <div>
-                <p style={{ color: '#16a34a', fontWeight: 600, marginBottom: 8 }}>
-                  Import complete: {importResult.imported} imported, {importResult.skipped} skipped.
-                </p>
-                <button className="btn btn-primary" style={{ width: '100%' }} onClick={() => setImportOpen(false)}>Done</button>
-              </div>
-            ) : (
-              <>
-                <textarea
-                  className="form-input"
-                  rows={8}
-                  placeholder="alice@example.com, bob@example.com&#10;carol@example.com"
-                  value={importText}
-                  onChange={e => setImportText(e.target.value)}
-                  style={{ width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: '0.85rem' }}
-                />
-                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16 }}>
-                  <button className="btn" onClick={() => setImportOpen(false)}>Cancel</button>
-                  <button className="btn btn-primary" disabled={importing || !importText.trim()} onClick={handleImport}>
-                    {importing ? 'Importing…' : 'Import'}
-                  </button>
-                </div>
-              </>
-            )}
+      {/* Delete Confirm Dialog (Native HTML5 <dialog>) */}
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleDelete}
+        danger
+        title="Delete subscriber?"
+        message={
+          deleteTarget
+            ? `${deleteTarget.email} will be permanently removed from your newsletter list.`
+            : ''
+        }
+        confirmLabel="Delete subscriber"
+      />
+
+      {/* Import Modal (Native HTML5 <dialog>) */}
+      <Modal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        title="Import email addresses"
+        size="md"
+        footer={
+          importResult ? (
+            <button
+              type="button"
+              className="btn btn-accent"
+              onClick={() => setImportOpen(false)}
+            >
+              Done
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => setImportOpen(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-accent"
+                disabled={importing || parsedImportEmails.length === 0}
+                onClick={handleImport}
+              >
+                {importing
+                  ? 'Importing…'
+                  : `Import ${parsedImportEmails.length > 0 ? parsedImportEmails.length : ''} Email${parsedImportEmails.length === 1 ? '' : 's'}`}
+              </button>
+            </>
+          )
+        }
+      >
+        {importResult ? (
+          <div className="alert alert-success" style={{ marginBottom: 0 }}>
+            <strong>Import complete:</strong> {importResult.imported} imported, {importResult.skipped} skipped.
           </div>
-        </div>
-      )}
+        ) : (
+          <div>
+            <p className="muted text-sm" style={{ marginBottom: 12 }}>
+              Paste email addresses separated by commas, semicolons, or new lines. Duplicates will be automatically skipped.
+            </p>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label htmlFor="import-emails-textarea">
+                Email list {parsedImportEmails.length > 0 && `(${parsedImportEmails.length} detected)`}
+              </label>
+              <textarea
+                id="import-emails-textarea"
+                rows={7}
+                placeholder={'alice@example.com, bob@example.com\ncarol@example.com'}
+                value={importText}
+                onChange={e => setImportText(e.target.value)}
+                style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <style>{`
+        .sub-tabs {
+          display: inline-flex;
+          background: var(--ac-surface-2);
+          border: 1px solid var(--ac-border);
+          border-radius: var(--ac-radius);
+          padding: 2px;
+        }
+        .sub-tab {
+          border: none;
+          background: transparent;
+          color: var(--ac-text-muted);
+          font-size: 0.78rem;
+          font-weight: 600;
+          padding: 5px 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.12s ease;
+        }
+        .sub-tab:hover { color: var(--ac-text); }
+        .sub-tab.active {
+          background: var(--ac-surface);
+          color: var(--ac-text);
+          box-shadow: var(--ac-shadow-sm);
+        }
+      `}</style>
     </div>
   );
 }
