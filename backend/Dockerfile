@@ -15,7 +15,7 @@
 # =============================================================================
 
 # ── Stage 1: install production dependencies ──────────────────────────────────
-FROM node:20-alpine AS deps
+FROM node:22-alpine AS deps
 WORKDIR /app
 
 # Copy manifests first so Docker caches this layer and only re-runs
@@ -24,7 +24,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev   # skip devDependencies (nodemon etc.)
 
 # ── Stage 2: production runner ────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 # Run as a non-root user — container breakout damage is contained if something
@@ -36,6 +36,9 @@ COPY --from=deps /app/node_modules ./node_modules
 
 # Copy application source (respects .dockerignore)
 COPY --chown=nodejs:nodejs . .
+
+# Pre-create writable runtime directories for logs and uploads
+RUN mkdir -p /app/logs /app/uploads/products /app/uploads/media && chown -R nodejs:nodejs /app/logs /app/uploads
 
 USER nodejs
 

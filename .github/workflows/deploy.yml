@@ -21,14 +21,7 @@
 name: Deploy
 
 on:
-  push:
-    branches: [main]
-    # Only trigger deploy when relevant files change — avoids a redeploy for
-    # docs-only or mobile-only commits
-    paths:
-      - "backend/**"
-      - "docker-compose.prod.yml"
-      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
 
 # Only one deploy at a time — a new push cancels a queued deploy but NOT an
 # in-progress one (cancel-in-progress: false keeps the server consistent)
