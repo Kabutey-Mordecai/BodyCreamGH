@@ -32,8 +32,10 @@ const {
 } = require('../controllers/return.controller');
 
 const router = express.Router();
-const trackLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many tracking requests. Please try again later.');
-const checkoutSessionLimiter = makeRateLimiter(15 * 60 * 1000, 15, 'Too many checkout session updates. Please try again later.');
+const trackLimiter = makeRateLimiter(15 * 60 * 1000, 60, 'Too many tracking requests. Please try again later.');
+const checkoutSessionLimiter = makeRateLimiter(15 * 60 * 1000, 60, 'Too many checkout session updates. Please try again later.', {
+  keyGenerator: (req, ip) => (req.user?.id ? `cs:user:${req.user.id}` : `cs:ip:${ip}`),
+});
 const returnCreateLimiter = makeRateLimiter(15 * 60 * 1000, 10, 'Too many return requests. Please try again later.', {
   keyGenerator: (req, ip) => `ret:create:${req.user?.id || ip}`,
 });

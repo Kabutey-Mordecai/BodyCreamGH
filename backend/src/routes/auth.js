@@ -5,11 +5,14 @@ const { verifyToken }                 = require('../middleware/auth');
 const { validateRegister, validateLogin } = require('../middleware/validation');
 const { makeRateLimiter }             = require('../middleware/rateLimit');
 
-const LOGIN_IP_MAX = Math.max(1, parseInt(process.env.LOGIN_IP_MAX, 10) || 300);
+const LOGIN_IP_MAX    = Math.max(1, parseInt(process.env.LOGIN_IP_MAX, 10) || 300);
+const LOGIN_ACCT_MAX  = Math.max(1, parseInt(process.env.LOGIN_ACCT_MAX, 10) || 60);
+const REGISTER_IP_MAX = Math.max(1, parseInt(process.env.REGISTER_IP_MAX, 10) || 40);
 
-// Login: two stacked limiters for CGNAT safety
-// 1) Per-account (IP + email): 10 attempts / 15 min
-// 2) Per-IP ceiling: LOGIN_IP_MAX (default 300) / 15 min
+// Login: three stacked limiters for CGNAT safety + account protection
+// 1) Per IP+email: 10 attempts / 15 min
+// 2) Per account ceiling (login:acct:<email>): LOGIN_ACCT_MAX (default 60) / 15 min
+// 3) Per IP ceiling: LOGIN_IP_MAX (default 300) / 15 min
 const loginAccountLimiter = makeRateLimiter(
   15 * 60 * 1000,
   10,
@@ -23,16 +26,29 @@ const loginAccountLimiter = makeRateLimiter(
     },
   }
 );
+const loginAcctCeilingLimiter = makeRateLimiter(
+  15 * 60 * 1000,
+  LOGIN_ACCT_MAX,
+  'Too many login attempts for this account. Please try again in 15 minutes.',
+  {
+    keyGenerator: (req, ip) => {
+      const email = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
+      return email ? `login:acct:${email}` : `login:ip:${ip}`;
+    },
+  }
+);
 const loginIpLimiter = makeRateLimiter(
   15 * 60 * 1000,
   LOGIN_IP_MAX,
   'Too many login attempts from this network. Please try again in 15 minutes.'
 );
 
-// Register: 40 / 60 min per IP + 3 / 60 min per email + silent honeypot
+// Register: REGISTER_IP_MAX (default 40) / 60 min per IP + 3 / 60 min per email + silent honeypot
 const registerIpLimiter = makeRateLimiter(
   60 * 60 * 1000,
-  40,
+  REGISTER_IP_MAX,
   'Too many registrations from this address. Please try again later.'
 );
 const registerEmailLimiter = makeRateLimiter(
@@ -116,7 +132,7 @@ const router = express.Router();
 const customerController = require('../controllers/customer.controller');
 
 router.post('/register',                  registerHoneypot, registerIpLimiter, registerEmailLimiter, validateRegister, register);
-router.post('/login',                     loginIpLimiter,   loginAccountLimiter, validateLogin, login);
+router.post('/login',                     loginIpLimiter,   loginAcctCeilingLimiter, loginAccountLimiter, validateLogin, login);
 router.post('/verify-otp',                otpLimiter,             verifyOtp);
 router.post('/refresh',                   refreshLimiter,         refresh);
 router.get ('/me',                        verifyToken,            getMe);

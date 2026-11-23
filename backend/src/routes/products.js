@@ -12,8 +12,12 @@ const {
 const router = express.Router();
 const requireMarketingOrAdmin = requireRoles('admin', 'super_admin', 'marketing');
 const requireSupportOrAdmin = requireRoles('admin', 'super_admin', 'support');
-const reviewWriteLimiter   = makeRateLimiter(60 * 60 * 1000, 10, 'Too many review submissions. Please try again later.');
-const reviewHelpfulLimiter = makeRateLimiter(15 * 60 * 1000, 30, 'Too many requests. Please try again later.');
+const reviewWriteLimiter   = makeRateLimiter(60 * 60 * 1000, 10, 'Too many review submissions. Please try again later.', {
+  keyGenerator: (req, ip) => (req.user?.id ? `rev:write:${req.user.id}` : `rev:write:ip:${ip}`),
+});
+const reviewHelpfulLimiter = makeRateLimiter(15 * 60 * 1000, 30, 'Too many requests. Please try again later.', {
+  keyGenerator: (req, ip) => (req.user?.id ? `rev:help:${req.user.id}` : `rev:help:ip:${ip}`),
+});
 
 router.get('/admin', verifyToken, requireAdmin, requireMarketingOrAdmin, getAdminProducts);
 router.post('/bulk-import', verifyToken, requireAdmin, requireMarketingOrAdmin, bulkImportProducts);
