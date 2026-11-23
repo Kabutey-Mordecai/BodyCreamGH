@@ -140,6 +140,7 @@ export default function Home() {
     categories, testimonials,
   } = settings;
   const [featured, setFeatured]             = useState([]);
+  const [brands, setBrands]                 = useState([]);
   const [customerReviews, setCustomerReviews] = useState([]);
   const [loading, setLoading]               = useState(true);
   const [saleProducts, setSaleProducts]     = useState([]);
@@ -250,6 +251,10 @@ export default function Home() {
 
     reviewsAPI.getFeatured({ limit: 8 })
       .then(({ data }) => setCustomerReviews(data.reviews || []))
+      .catch(() => {});
+
+    productsAPI.getBrands()
+      .then(({ data }) => setBrands(Array.isArray(data?.details) ? data.details : []))
       .catch(() => {});
   };
 
@@ -413,6 +418,41 @@ export default function Home() {
               </Reveal>
             ))}
           </div>
+
+          {brands.length > 0 && (
+            <div style={{ marginTop: 40, paddingTop: 32, borderTop: '1px solid var(--color-border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
+                <div>
+                  <span className="section-label" style={{ marginBottom: 4 }}>Featured Brands</span>
+                  <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', margin: 0 }}>Shop by brand</h3>
+                </div>
+                <Link to="/shop" style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--color-accent-dark)', textDecoration: 'none' }}>
+                  View all →
+                </Link>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+                {brands.map(b => (
+                  <Link
+                    key={b.brand}
+                    to={`/shop?brand=${encodeURIComponent(b.brand)}`}
+                    className="btn btn-outline btn-sm"
+                    style={{
+                      borderRadius: 9999,
+                      padding: '8px 18px',
+                      fontSize: '0.84rem',
+                      fontWeight: 500,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 8,
+                    }}
+                  >
+                    <span>{b.brand}</span>
+                    <span style={{ fontSize: '0.72rem', opacity: 0.65 }}>({b.count})</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </section>
 

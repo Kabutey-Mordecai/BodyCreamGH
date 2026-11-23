@@ -80,7 +80,7 @@ export default function Navigation() {
           </Link>
 
           {/* Search bar — desktop (hidden on mobile via CSS) */}
-          <SearchBar variant="nav" placeholder="Search products…" onNavigate={closeMenu} />
+          <SearchBar variant="nav" placeholder="Search brands, skincare, makeup…" onNavigate={closeMenu} />
 
           {/* Hamburger — mobile only */}
           <button
@@ -95,11 +95,13 @@ export default function Navigation() {
           <ul className={`nav-links ${menuOpen ? 'open' : ''}`}>
             {/* Mobile search — appears at top of hamburger dropdown */}
             <li className="nav-search-mobile-wrap">
-              <SearchBar variant="mobile" placeholder="Search products…" onNavigate={closeMenu} />
+              <SearchBar variant="mobile" placeholder="Search brands, skincare, makeup…" onNavigate={closeMenu} />
             </li>
 
-            <li><NavLink to="/"     end onClick={closeMenu}>Home</NavLink></li>
-            <li><NavLink to="/shop"     onClick={closeMenu}>Shop</NavLink></li>
+            <li><NavLink to="/" end onClick={closeMenu}>Home</NavLink></li>
+            <li><NavLink to="/shop" onClick={closeMenu}>Shop</NavLink></li>
+            <li><Link to="/shop?category=Skincare" onClick={closeMenu}>Skincare</Link></li>
+            <li><Link to="/shop?category=Makeup" onClick={closeMenu}>Makeup</Link></li>
 
             {/* Cart — always visible so guests can reach their localStorage cart */}
             <li>
