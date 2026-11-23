@@ -24,7 +24,7 @@ const boss = new PgBoss({
   max:      2,          // minimal pool — only used for boss.send() calls
   supervise: false,     // expiry/archiving belongs to worker.js
   schedule:  false,     // cron scheduling belongs to worker.js
-  migrate:   false,     // schema migrations belong to worker.js; this checks compat only
+  migrate:   process.env.PGBOSS_MIGRATE !== 'false', // auto-install pgboss schema on fresh DBs (e.g. Railway / Docker)
 });
 
 boss.on('error', err => {
