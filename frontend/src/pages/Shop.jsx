@@ -128,13 +128,21 @@ export default function Shop() {
 
   const brandCountMap = useMemo(() => {
     const m = new Map();
-    facetBrands.forEach(b => m.set(b.brand.toLowerCase(), b.count));
+    facetBrands.forEach(b => {
+      if (typeof b?.brand === 'string' && b.brand.trim()) {
+        m.set(b.brand.toLowerCase(), b.count || 0);
+      }
+    });
     return m;
   }, [facetBrands]);
 
   const catCountMap = useMemo(() => {
     const m = new Map();
-    facetCategories.forEach(c => m.set(c.category.toLowerCase(), c.count));
+    facetCategories.forEach(c => {
+      if (typeof c?.category === 'string' && c.category.trim()) {
+        m.set(c.category.toLowerCase(), c.count || 0);
+      }
+    });
     return m;
   }, [facetCategories]);
 

@@ -1,11 +1,13 @@
 import { Routes, Route, useLocation } from 'react-router-dom';
-import { lazy, Suspense, useEffect } from 'react';
+import { Suspense, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import WhatsAppFloat from './components/WhatsAppFloat';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
+import { lazyWithRetry } from './utils/lazyWithRetry';
 import Home from './pages/Home';
+import Shop from './pages/Shop';
 
 function ScrollToTop() {
   const { pathname, hash } = useLocation();
@@ -40,25 +42,25 @@ function PageFallback() {
 }
 
 // Route-level code splitting keeps the initial storefront JS lean on mobile networks.
-const Shop            = lazy(() => import('./pages/Shop'));
-const PolicyPage      = lazy(() => import('./pages/PolicyPage'));
-const ProductPage     = lazy(() => import('./pages/ProductPage'));
-const Cart            = lazy(() => import('./pages/Cart'));
-const Checkout        = lazy(() => import('./pages/Checkout'));
-const Login           = lazy(() => import('./pages/Login'));
-const Register        = lazy(() => import('./pages/Register'));
-const ForgotPassword  = lazy(() => import('./pages/ForgotPassword'));
-const ResetPassword   = lazy(() => import('./pages/ResetPassword'));
-const PaymentCallback = lazy(() => import('./pages/PaymentCallback'));
-const Account         = lazy(() => import('./pages/Account'));
-const Orders          = lazy(() => import('./pages/Orders'));
-const OrderDetail     = lazy(() => import('./pages/OrderDetail'));
-const Wishlist        = lazy(() => import('./pages/Wishlist'));
-const Unsubscribe     = lazy(() => import('./pages/Unsubscribe'));
-const TrackOrder      = lazy(() => import('./pages/TrackOrder'));
-const RiderHandoff    = lazy(() => import('./pages/RiderHandoff'));
-const RiderManifest   = lazy(() => import('./pages/RiderManifest'));
-const PrivacyNotice   = lazy(() =>
+// Shop & Home are eagerly loaded so switching between primary tabs is instant with zero chunk risk.
+const PolicyPage      = lazyWithRetry(() => import('./pages/PolicyPage'));
+const ProductPage     = lazyWithRetry(() => import('./pages/ProductPage'));
+const Cart            = lazyWithRetry(() => import('./pages/Cart'));
+const Checkout        = lazyWithRetry(() => import('./pages/Checkout'));
+const Login           = lazyWithRetry(() => import('./pages/Login'));
+const Register        = lazyWithRetry(() => import('./pages/Register'));
+const ForgotPassword  = lazyWithRetry(() => import('./pages/ForgotPassword'));
+const ResetPassword   = lazyWithRetry(() => import('./pages/ResetPassword'));
+const PaymentCallback = lazyWithRetry(() => import('./pages/PaymentCallback'));
+const Account         = lazyWithRetry(() => import('./pages/Account'));
+const Orders          = lazyWithRetry(() => import('./pages/Orders'));
+const OrderDetail     = lazyWithRetry(() => import('./pages/OrderDetail'));
+const Wishlist        = lazyWithRetry(() => import('./pages/Wishlist'));
+const Unsubscribe     = lazyWithRetry(() => import('./pages/Unsubscribe'));
+const TrackOrder      = lazyWithRetry(() => import('./pages/TrackOrder'));
+const RiderHandoff    = lazyWithRetry(() => import('./pages/RiderHandoff'));
+const RiderManifest   = lazyWithRetry(() => import('./pages/RiderManifest'));
+const PrivacyNotice   = lazyWithRetry(() =>
   import('./components/PrivacyNotice').catch((err) => {
     console.warn('[PrivacyNotice] Notice blocked by client adblocker or unavailable:', err?.message);
     return { default: () => null };
@@ -67,7 +69,11 @@ const PrivacyNotice   = lazy(() =>
 
 function RouteFade({ children }) {
   const { pathname } = useLocation();
-  return <div key={pathname} className="page-transition">{children}</div>;
+  return (
+    <ErrorBoundary resetKey={pathname}>
+      <div key={pathname} className="page-transition">{children}</div>
+    </ErrorBoundary>
+  );
 }
 
 function AdminRedirect() {

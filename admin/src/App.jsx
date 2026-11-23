@@ -1,33 +1,41 @@
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminLayout from './layout/AdminLayout';
 import ErrorBoundary from './components/ErrorBoundary';
+import { lazyWithRetry, triggerSingleChunkReload } from './utils/lazyWithRetry';
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault();
+    triggerSingleChunkReload();
+  });
+}
 
 // Route-level code splitting isolates heavy dependencies (e.g. Tiptap in Compose)
 // into on-demand chunks so initial admin boot stays fast.
-const Login           = lazy(() => import('./pages/Login'));
-const Dashboard       = lazy(() => import('./pages/Dashboard'));
-const Products        = lazy(() => import('./pages/Products'));
-const ProductEditor   = lazy(() => import('./pages/ProductEditor'));
-const Orders          = lazy(() => import('./pages/Orders'));
-const OrderDetail     = lazy(() => import('./pages/OrderDetail'));
-const Customers       = lazy(() => import('./pages/Customers'));
-const CustomerDetail  = lazy(() => import('./pages/CustomerDetail'));
-const Inventory       = lazy(() => import('./pages/Inventory'));
-const Analytics       = lazy(() => import('./pages/Analytics'));
-const Storefront      = lazy(() => import('./pages/Storefront'));
-const Theme           = lazy(() => import('./pages/Theme'));
-const Settings        = lazy(() => import('./pages/Settings'));
-const Reviews         = lazy(() => import('./pages/Reviews'));
-const Coupons         = lazy(() => import('./pages/Coupons'));
-const Requests        = lazy(() => import('./pages/Requests'));
-const Financials      = lazy(() => import('./pages/Financials'));
-const AdminAccounts   = lazy(() => import('./pages/AdminAccounts'));
-const Compose         = lazy(() => import('./pages/Compose'));
-const Subscribers     = lazy(() => import('./pages/Subscribers'));
-const CampaignHistory = lazy(() => import('./pages/CampaignHistory'));
-const Promotions      = lazy(() => import('./pages/Promotions'));
+const Login           = lazyWithRetry(() => import('./pages/Login'));
+const Dashboard       = lazyWithRetry(() => import('./pages/Dashboard'));
+const Products        = lazyWithRetry(() => import('./pages/Products'));
+const ProductEditor   = lazyWithRetry(() => import('./pages/ProductEditor'));
+const Orders          = lazyWithRetry(() => import('./pages/Orders'));
+const OrderDetail     = lazyWithRetry(() => import('./pages/OrderDetail'));
+const Customers       = lazyWithRetry(() => import('./pages/Customers'));
+const CustomerDetail  = lazyWithRetry(() => import('./pages/CustomerDetail'));
+const Inventory       = lazyWithRetry(() => import('./pages/Inventory'));
+const Analytics       = lazyWithRetry(() => import('./pages/Analytics'));
+const Storefront      = lazyWithRetry(() => import('./pages/Storefront'));
+const Theme           = lazyWithRetry(() => import('./pages/Theme'));
+const Settings        = lazyWithRetry(() => import('./pages/Settings'));
+const Reviews         = lazyWithRetry(() => import('./pages/Reviews'));
+const Coupons         = lazyWithRetry(() => import('./pages/Coupons'));
+const Requests        = lazyWithRetry(() => import('./pages/Requests'));
+const Financials      = lazyWithRetry(() => import('./pages/Financials'));
+const AdminAccounts   = lazyWithRetry(() => import('./pages/AdminAccounts'));
+const Compose         = lazyWithRetry(() => import('./pages/Compose'));
+const Subscribers     = lazyWithRetry(() => import('./pages/Subscribers'));
+const CampaignHistory = lazyWithRetry(() => import('./pages/CampaignHistory'));
+const Promotions      = lazyWithRetry(() => import('./pages/Promotions'));
 
 function AdminFallback() {
   return (

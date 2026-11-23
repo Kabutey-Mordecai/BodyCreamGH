@@ -8,7 +8,14 @@ import { CartProvider } from './context/CartContext';
 import { SettingsProvider } from './context/SettingsContext';
 import { WishlistProvider } from './context/WishlistContext';
 import { ToastProvider } from './context/ToastContext';
+import { triggerSingleChunkReload } from './utils/lazyWithRetry';
 import './index.css';
+
+// Recover automatically if Vite tries to preload a stale chunk after a new deployment
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  triggerSingleChunkReload();
+});
 
 if ('serviceWorker' in navigator) {
   if (import.meta.env.PROD) {
