@@ -33,6 +33,7 @@ const couponRoutes       = require('./routes/coupons');
 const newsletterRoutes   = require('./routes/newsletter');
 const promotionRoutes    = require('./routes/promotions');
 const reviewRoutes       = require('./routes/reviews');
+const notificationRoutes = require('./routes/notifications');
 
 const app = express();
 
@@ -136,8 +137,9 @@ app.use('/api/settings',   settingsRoutes);
 app.use('/api/wishlist',   wishlistRoutes);
 app.use('/api/coupons',     couponRoutes);
 app.use('/api/newsletter',  newsletterRoutes);
-app.use('/api/promotions', promotionRoutes);
-app.use('/api/reviews',    reviewRoutes);
+app.use('/api/promotions',    promotionRoutes);
+app.use('/api/reviews',       reviewRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 function escapeXml(str) {
   if (!str) return '';

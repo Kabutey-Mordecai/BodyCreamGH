@@ -45,6 +45,6 @@ EXPOSE 3000
 # Health check so Docker / Compose knows when the container is ready.
 # Waits 15s before the first check to give pg-boss time to start.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:3000/api/health || exit 1
+  CMD sh -c 'wget -qO- "http://localhost:${PORT:-3000}/api/health" || exit 1'
 
 CMD ["node", "src/server.js"]

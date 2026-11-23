@@ -1,41 +1,35 @@
 # =============================================================================
-# docker-compose.yml — Local development stack
+# docker-compose.yml — Turnkey Commercial E-Commerce Stack
 #
-# Starts PostgreSQL and the backend together.  The backend source is mounted
-# as a volume so nodemon picks up file changes without rebuilding the image.
+# Launches the complete 4-tier ecosystem in one command:
+#   1. PostgreSQL 15 Database (db)
+#   2. Node.js Express REST API & Worker (backend)
+#   3. Customer Storefront Web App (frontend)
+#   4. Multi-Role Admin ERP Dashboard (admin)
 #
 # USAGE:
-#   # Start everything
-#   docker-compose up
+#   docker-compose up --build
 #
-#   # Start only the database (run the backend natively with nodemon)
-#   docker-compose up db
-#
-#   # Run migrations after first start (only needed once per fresh volume)
-#   docker-compose exec backend npm run migrate
-#
-#   # Stop and remove containers (keeps the volume / data)
-#   docker-compose down
-#
-#   # Wipe everything including data
-#   docker-compose down -v
+# ACCESS:
+#   Storefront:      http://localhost:3000
+#   Admin Dashboard: http://localhost:3001
+#   Backend API:     http://localhost:5000/api
+#   Database:        localhost:5432 (cosmetics_db)
 # =============================================================================
 
 services:
 
-  # ── PostgreSQL 15 ───────────────────────────────────────────────────────────
+  # ── PostgreSQL 15 Database ──────────────────────────────────────────────────
   db:
     image: postgres:15-alpine
     restart: unless-stopped
     environment:
       POSTGRES_DB:       cosmetics_db
       POSTGRES_USER:     postgres
-      POSTGRES_PASSWORD: mord123   # dev-only password — fine for localhost
+      POSTGRES_PASSWORD: mord123
     ports:
-      # Expose 5432 so you can connect with pgAdmin or psql from your machine
       - "5432:5432"
     volumes:
-      # Named volume keeps data across `docker-compose down` restarts
       - postgres_dev_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d cosmetics_db"]
@@ -43,38 +37,50 @@ services:
       timeout: 3s
       retries: 10
 
-  # ── Node.js backend (development mode with hot-reload) ──────────────────────
+  # ── Node.js REST API & Queue Worker ─────────────────────────────────────────
   backend:
-    # Build the dev image inline — separate from the production Dockerfile
     build:
       context: ./backend
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
-      - "3000:3000"
-    volumes:
-      # Mount source so nodemon sees changes immediately
-      - ./backend:/app
-      # Prevent the host node_modules from shadowing the container's install
-      - /app/node_modules
+      - "5000:5000"
     environment:
-      NODE_ENV:  development
-      PORT:      3000
-      # Override DB host to use the Compose service name instead of localhost
-      DB_HOST:   db
-      DB_PORT:   5432
-      DB_NAME:   cosmetics_db
-      DB_USER:   postgres
+      NODE_ENV:    production
+      PORT:        5000
+      DB_HOST:     db
+      DB_PORT:     5432
+      DB_NAME:     cosmetics_db
+      DB_USER:     postgres
       DB_PASSWORD: mord123
-      # Read the rest from your local .env (JWT secret, Paystack keys, etc.)
-      # These take precedence over env_file when both are set
-    env_file:
-      - ./backend/.env
+      JWT_SECRET:  supersecretjwtkeyforbodycreamghana2026
+    volumes:
+      - ./backend/uploads:/app/uploads
     depends_on:
       db:
-        # Wait until PostgreSQL passes its health check before starting Node
         condition: service_healthy
+
+  # ── Customer Storefront Web App ─────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  # ── Multi-Role Admin ERP Dashboard ──────────────────────────────────────────
+  admin:
+    build:
+      context: ./admin
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "3001:80"
+    depends_on:
+      - backend
 
 volumes:
   postgres_dev_data:
-    # Persists across container restarts; deleted only with `docker-compose down -v`

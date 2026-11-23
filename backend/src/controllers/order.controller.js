@@ -642,6 +642,26 @@ const updateOrderStatus = async (req, res) => {
           });
           logger.info('Order status update email dispatched', { orderId: req.params.orderId, status, email: customerEmail });
 
+          // Dispatch SMS & FCM push notifications
+          const notificationService = require('../services/notification.service');
+          const customerPhone = orderData.customer_phone || orderData.guest_phone;
+          if (customerPhone) {
+            await notificationService.sendOrderStatusSms({
+              phone: customerPhone,
+              orderNumber: orderData.order_number,
+              status,
+              amount: orderData.total_amount,
+              courierNote: note,
+            }).catch(e => logger.warn('SMS dispatch error', { err: e.message }));
+          }
+          if (orderData.customer_id) {
+            await notificationService.sendOrderStatusPush({
+              userId: orderData.customer_id,
+              orderNumber: orderData.order_number,
+              status,
+            }).catch(e => logger.warn('Push notification dispatch error', { err: e.message }));
+          }
+
           if (status === 'delivered') {
             const orderItems = await OrderModel.getItems(req.params.orderId);
             if (orderItems.length > 0) {

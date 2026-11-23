@@ -1,0 +1,212 @@
+{
+  "info": {
+    "name": "BodyCream GH — Omnichannel E-Commerce API",
+    "description": "Complete REST API collection for BodyCream GH (Web Storefront, Admin ERP, and Flutter Mobile App). Set `baseUrl` to `http://localhost:5000/api` for local dev or your production API domain.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "accessToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "productId", "value": "" },
+    { "key": "orderId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Health & Public Settings",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": { "method": "GET", "url": "{{baseUrl}}/health" }
+        },
+        {
+          "name": "Get Public Store Settings (COD, WhatsApp, Theme)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/settings" }
+        }
+      ]
+    },
+    {
+      "name": "2. Authentication",
+      "item": [
+        {
+          "name": "Register Customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"first_name\": \"Ama\",\n  \"last_name\": \"Mensah\",\n  \"email\": \"ama@example.com\",\n  \"phone\": \"0241234567\",\n  \"password\": \"GlowHaus2026!\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login Customer",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ama@example.com\",\n  \"password\": \"GlowHaus2026!\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Catalog, Facets & Reviews (UGC)",
+      "item": [
+        {
+          "name": "List Products (Filtered)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/products?page=1&limit=12&on_sale=false&sort=newest"
+          }
+        },
+        {
+          "name": "Get Dynamic Filter Facets (Brands, Categories, Price Range)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/products/facets" }
+        },
+        {
+          "name": "Get Product Detail",
+          "request": { "method": "GET", "url": "{{baseUrl}}/products/{{productId}}" }
+        },
+        {
+          "name": "Get Product Reviews (with Customer Photos)",
+          "request": { "method": "GET", "url": "{{baseUrl}}/products/{{productId}}/reviews" }
+        },
+        {
+          "name": "Upload Review Photo",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+            "url": "{{baseUrl}}/reviews/upload",
+            "body": {
+              "mode": "formdata",
+              "formdata": [{ "key": "media", "type": "file", "src": "" }]
+            }
+          }
+        },
+        {
+          "name": "Create Product Review (with Photo URLs)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/products/{{productId}}/reviews",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rating\": 5,\n  \"title\": \"Instant glow!\",\n  \"body\": \"Absorbs cleanly and smells amazing.\",\n  \"images\": [\"/uploads/media/sample.webp\"]\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Cart, Coupons & Checkout (Paystack + COD)",
+      "item": [
+        {
+          "name": "Validate Coupon (e.g. GLOW5 / WELCOME10)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{baseUrl}}/coupons/validate",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"GLOW5\",\n  \"orderTotal\": 250\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Order (Cash on Delivery)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fulfillment_method\": \"delivery\",\n  \"payment_method\": \"pay_on_delivery\",\n  \"shipping_address\": \"Plot 12, East Legon\",\n  \"shipping_city\": \"Accra\",\n  \"shipping_region\": \"Greater Accra\",\n  \"notes\": \"Call on arrival\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Initialize Paystack Payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/payments/initialize",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"order_id\": \"{{orderId}}\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Push Notifications (FCM)",
+      "item": [
+        {
+          "name": "Register Mobile Device Push Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/notifications/register-device",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fcm_token\": \"sample_device_fcm_token_123\",\n  \"platform\": \"android\",\n  \"device_name\": \"Infinix X6895\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Admin ERP Operations",
+      "item": [
+        {
+          "name": "List Orders (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/orders/admin?page=1&limit=20"
+          }
+        },
+        {
+          "name": "Update Order Status (Triggers Email + SMS + FCM Push)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/orders/{{orderId}}/status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"shipped\",\n  \"note\": \"Dispatched with rider Kwame (0240000000)\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List Abandoned Checkouts",
+          "request": {
+            "method": "GET",
+            "header": [{ "key": "Authorization", "value": "Bearer {{adminToken}}" }],
+            "url": "{{baseUrl}}/orders/admin/abandoned"
+          }
+        }
+      ]
+    }
+  ]
+}

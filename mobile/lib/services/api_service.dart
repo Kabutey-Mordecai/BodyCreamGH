@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../config.dart';
@@ -876,5 +877,27 @@ class ApiService {
             'new_password': newPassword,
           }),
         ));
+  }
+
+  Future<void> registerDeviceToken({
+    required String fcmToken,
+    String? platform,
+    String? deviceName,
+  }) async {
+    final resolvedPlatform = platform ??
+        (defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android');
+    try {
+      await _authed((token) => _client.post(
+            _uri('/notifications/register-device'),
+            headers: _headers(token: token),
+            body: jsonEncode({
+              'fcm_token': fcmToken,
+              'platform': resolvedPlatform,
+              'device_name': deviceName,
+            }),
+          ));
+    } catch (_) {
+      // Best-effort push token registration
+    }
   }
 }
