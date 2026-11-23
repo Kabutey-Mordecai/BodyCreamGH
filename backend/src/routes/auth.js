@@ -5,9 +5,21 @@ const { verifyToken }                 = require('../middleware/auth');
 const { validateRegister, validateLogin } = require('../middleware/validation');
 const { makeRateLimiter }             = require('../middleware/rateLimit');
 
-// Rate limits — keyed per IP
-const loginLimiter          = makeRateLimiter(15 * 60 * 1000, 10, 'Too many login attempts. Please try again in 15 minutes.');
-const registerLimiter       = makeRateLimiter(60 * 60 * 1000, 5,  'Too many registrations from this address. Please try again later.');
+// Rate limits — keyed per IP (login is keyed per IP+email for CGNAT safety)
+const loginLimiter          = makeRateLimiter(
+  15 * 60 * 1000,
+  10,
+  'Too many login attempts. Please try again in 15 minutes.',
+  {
+    keyGenerator: (req, ip) => {
+      const email = typeof req.body?.email === 'string'
+        ? req.body.email.trim().toLowerCase()
+        : '';
+      return email ? `login:${ip}:${email}` : `login:ip:${ip}`;
+    },
+  }
+);
+const registerLimiter       = makeRateLimiter(60 * 60 * 1000, 15, 'Too many registrations from this address. Please try again later.');
 const forgotPasswordLimiter = makeRateLimiter(60 * 60 * 1000, 5,  'Too many password reset requests. Please try again later.');
 const forgotPasswordEmailLimiter = makeRateLimiter(
   60 * 60 * 1000,
