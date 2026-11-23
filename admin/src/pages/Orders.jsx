@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ordersAPI } from '../services/api';
+import { ordersAPI, deliveriesAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import DataTable from '../components/DataTable';
 import SearchInput from '../components/SearchInput';
@@ -42,6 +42,11 @@ export default function Orders() {
   const [abandonedLoading, setAbandonedLoading] = useState(false);
   const [remindingId, setRemindingId]       = useState(null);
   const [selectedIds, setSelectedIds]       = useState([]);
+  const [manifestOpen, setManifestOpen]     = useState(false);
+  const [manifestPartner, setManifestPartner] = useState('');
+  const [manifestPhone, setManifestPhone]   = useState('');
+  const [manifestBusy, setManifestBusy]     = useState(false);
+  const [manifestResult, setManifestResult] = useState(null);
 
   const timerRef = useRef(null);
   const debounceRef = useRef(null);
@@ -238,6 +243,16 @@ export default function Orders() {
 
           {viewMode === 'orders' && (
             <>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  setManifestResult(null);
+                  setManifestOpen(true);
+                }}
+              >
+                🏍️ Rider Manifest
+              </button>
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
@@ -682,6 +697,150 @@ export default function Orders() {
             )}
           </div>
         </>
+      )}
+
+      {manifestOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Generate Multi-Stop Rider Manifest"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => setManifestOpen(false)}
+        >
+          <div
+            className="card"
+            style={{ width: '100%', maxWidth: 480, padding: 20, margin: 0 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem' }}>🏍️ Multi-Stop Rider Manifest Link</h3>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                onClick={() => setManifestOpen(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <p className="muted text-xs" style={{ marginTop: 0, marginBottom: 14 }}>
+              Generate <strong>1 signed link</strong> for a rider delivering 10, 20, or 50+ orders today.
+              Leave both fields blank to include all active dispatches, or filter by rider name / phone.
+            </p>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+              <div>
+                <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                  Rider / Partner Name (optional)
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. In-house Dispatch Bike, Kwame Bike"
+                  value={manifestPartner}
+                  onChange={e => setManifestPartner(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                  Rider Phone (optional)
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="e.g. 0241234567"
+                  value={manifestPhone}
+                  onChange={e => setManifestPhone(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: '100%', marginBottom: 12 }}
+              disabled={manifestBusy}
+              onClick={async () => {
+                setManifestBusy(true);
+                try {
+                  const { data } = await deliveriesAPI.createManifestLink({
+                    delivery_partner: manifestPartner.trim() || undefined,
+                    driver_phone: manifestPhone.trim() || undefined,
+                  });
+                  setManifestResult(data);
+                  toast.success(`Manifest link ready (${data.active_count} active stop${data.active_count === 1 ? '' : 's'})`);
+                } catch (err) {
+                  toast.error(err.response?.data?.error || 'Failed to generate manifest link');
+                } finally {
+                  setManifestBusy(false);
+                }
+              }}
+            >
+              {manifestBusy ? 'Generating Link…' : 'Generate 24h Rider Manifest Link'}
+            </button>
+
+            {manifestResult && (
+              <div style={{ background: 'var(--ac-bg-subtle, #f8f7f4)', border: '1px solid var(--ac-border)', borderRadius: 8, padding: 12 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 6 }}>
+                  {manifestResult.delivery_partner} · {manifestResult.active_count} active stop{manifestResult.active_count === 1 ? '' : 's'}
+                </div>
+                <input
+                  type="text"
+                  readOnly
+                  className="input"
+                  value={manifestResult.manifest_url}
+                  onFocus={e => e.target.select()}
+                  style={{ width: '100%', fontSize: '0.75rem', fontFamily: 'monospace', marginBottom: 10 }}
+                />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(manifestResult.manifest_url);
+                      toast.success('Manifest link copied');
+                    }}
+                  >
+                    📋 Copy Link
+                  </button>
+                  <a
+                    href={manifestResult.manifest_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-outline btn-sm"
+                    style={{ textDecoration: 'none' }}
+                  >
+                    ↗ Open Manifest
+                  </a>
+                  <a
+                    href={`https://wa.me/${(() => {
+                      const d = (manifestResult.driver_phone || manifestPhone || '').replace(/\D/g, '');
+                      return d.length === 10 && d.startsWith('0') ? `233${d.slice(1)}` : d;
+                    })()}?text=${encodeURIComponent(
+                      `BodyCream GH Rider Route Manifest (${manifestResult.active_count} stops):\n${manifestResult.manifest_url}\n\nOpen this single link to view all stops, resend 6-digit OTPs at the doorstep, capture live parcel photos, and track your COD cash/MoMo tally.`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-primary btn-sm"
+                    style={{ textDecoration: 'none', marginLeft: 'auto' }}
+                  >
+                    💬 WhatsApp Rider
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <style>{`

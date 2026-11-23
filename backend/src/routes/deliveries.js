@@ -13,6 +13,9 @@ const {
   confirmRiderDelivery,
   confirmCustomerReceipt,
   requireRiderToken,
+  createRiderManifestLink,
+  getRiderManifest,
+  riderResendPodOtp,
 } = require('../controllers/delivery.controller');
 const { advanceShipment, simulateFullJourney } = require('../services/courier.service');
 
@@ -21,13 +24,16 @@ const router = express.Router();
 // ── Public — no auth needed ───────────────────────────────────────────────────
 router.get('/track/:tracking_number', trackShipment);
 
-// ── Signed Rider Proof-of-Delivery endpoints (authenticated via signed rider JWT) ──
-router.get('/rider/handoff', getRiderHandoff);
-router.post('/rider/photo',  requireRiderToken, uploadSingleMediaMiddleware, uploadGenericMedia);
-router.post('/rider/confirm', confirmRiderDelivery);
+// ── Signed Rider Proof-of-Delivery & Multi-Stop Manifest endpoints ────────────
+router.get('/rider/manifest',    getRiderManifest);
+router.post('/rider/resend-otp', riderResendPodOtp);
+router.get('/rider/handoff',     getRiderHandoff);
+router.post('/rider/photo',      requireRiderToken, uploadSingleMediaMiddleware, uploadGenericMedia);
+router.post('/rider/confirm',    confirmRiderDelivery);
 
 // ── Authenticated ─────────────────────────────────────────────────────────────
 router.post('/',                                verifyToken, requireAdmin, validateCreateDelivery, createDelivery);
+router.post('/manifest/link',                   verifyToken, requireAdmin, createRiderManifestLink);
 router.get('/order/:orderId',                   verifyToken, getDeliveryByOrder);
 router.post('/order/:orderId/confirm-receipt',  verifyToken, confirmCustomerReceipt);
 router.patch('/:deliveryId',                    verifyToken, requireAdmin, validateUpdateDelivery, updateDelivery);

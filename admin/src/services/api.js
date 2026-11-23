@@ -186,12 +186,13 @@ export const couponsAPI = {
 
 // ── Deliveries ────────────────────────────────────────────────────────
 export const deliveriesAPI = {
-  getByOrder:      (orderId)              => api.get(`/deliveries/order/${orderId}`),
-  create:          (data)                 => api.post('/deliveries', data),
-  update:          (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
-  simulateAdvance: (trackingNumber)       => api.post(`/deliveries/simulate/advance/${encodeURIComponent(trackingNumber)}`),
-  simulateFull:    (trackingNumber, delay) => api.post(`/deliveries/simulate/full/${encodeURIComponent(trackingNumber)}${delay ? `?delay=${delay}` : ''}`),
-  sendPodOtp:      (deliveryId)           => api.post(`/deliveries/${deliveryId}/pod/send-otp`),
+  getByOrder:         (orderId)              => api.get(`/deliveries/order/${orderId}`),
+  create:             (data)                 => api.post('/deliveries', data),
+  update:             (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
+  simulateAdvance:    (trackingNumber)       => api.post(`/deliveries/simulate/advance/${encodeURIComponent(trackingNumber)}`),
+  simulateFull:       (trackingNumber, delay) => api.post(`/deliveries/simulate/full/${encodeURIComponent(trackingNumber)}${delay ? `?delay=${delay}` : ''}`),
+  sendPodOtp:         (deliveryId)           => api.post(`/deliveries/${deliveryId}/pod/send-otp`),
+  createManifestLink: (data = {})            => api.post('/deliveries/manifest/link', data),
 };
 
 // ── Product variants ──────────────────────────────────────────────────────────

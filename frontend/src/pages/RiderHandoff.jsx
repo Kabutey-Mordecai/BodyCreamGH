@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { deliveriesAPI } from '../services/api';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 export default function RiderHandoff() {
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token') || '';
+  const manifestToken = searchParams.get('manifest') || '';
 
   const [info, setInfo]             = useState(null);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
+  const [resendingOtp, setResendingOtp] = useState(false);
+  const [otpNotice, setOtpNotice]       = useState('');
+  const [copiedReceipt, setCopiedReceipt] = useState(false);
 
   const [otp, setOtp]               = useState('');
   const [recipientName, setRecipientName] = useState('');
@@ -166,6 +170,22 @@ export default function RiderHandoff() {
     }
   };
 
+  const handleResendOtp = async () => {
+    setResendingOtp(true);
+    setOtpNotice('');
+    setError('');
+    try {
+      const { data } = await deliveriesAPI.riderResendOtp({ token });
+      const extra = data.demo_otp ? ` (Demo OTP: ${data.demo_otp})` : '';
+      setOtpNotice(`✓ Fresh 6-digit code sent to customer's email/SMS${extra}`);
+      setInfo(prev => prev ? { ...prev, attempts_remaining: 5 } : prev);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not resend 6-digit code.');
+    } finally {
+      setResendingOtp(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -233,23 +253,93 @@ export default function RiderHandoff() {
   }
 
   if (done || info.already_verified) {
+    const verifiedAtStr = done?.verified_at || info.pod_verified_at || new Date().toISOString();
+    const recName = done?.recipient_name || recipientName || info.recipient_first_name || 'Customer';
+    const recLat = done?.lat ?? gps.lat;
+    const recLng = done?.lng ?? gps.lng;
+    const mapsUrl = recLat != null && recLng != null
+      ? `https://www.google.com/maps?q=${recLat},${recLng}`
+      : null;
+    const codSummary = done?.cod_paid
+      ? `COD Collected: GH₵${Number(done.amount || info.cod_amount_due || 0).toFixed(2)} (${(done.collection_method || collectionMethod || 'cash').toUpperCase()}${done.payment_reference ? ` · Ref: ${done.payment_reference}` : ''})`
+      : (info.payment_status === 'paid' ? 'Payment: PAID ONLINE' : 'Payment: Settled');
+
+    const receiptText = [
+      `✅ BODYCREAM GH — PROOF OF DELIVERY RECEIPT`,
+      `Order: #${info.order_number}`,
+      `Tracking: ${info.tracking_number}`,
+      `Rider: ${done?.rider_name || info.delivery_partner || 'In-house Dispatch'}`,
+      `Received By: ${recName}`,
+      `Verified At: ${new Date(verifiedAtStr).toLocaleString()}`,
+      codSummary,
+      mapsUrl ? `GPS Pin: ${mapsUrl}` : null,
+    ].filter(Boolean).join('\n');
+
+    const copyReceipt = async () => {
+      try {
+        await navigator.clipboard.writeText(receiptText);
+        setCopiedReceipt(true);
+        setTimeout(() => setCopiedReceipt(false), 2500);
+      } catch {
+        // Fallback ignored on restricted webviews
+      }
+    };
+
     return (
       <div style={wrapStyle}>
         <div style={{ ...cardStyle, borderColor: '#10b981', background: '#ecfdf5' }}>
-          <h2 style={{ marginTop: 0, color: '#065f46' }}>✓ Delivery Verified</h2>
-          <p style={{ margin: '6px 0' }}>
-            Order <strong>#{info.order_number}</strong> ({info.tracking_number}) has been verified and closed.
+          <h2 style={{ marginTop: 0, color: '#065f46' }}>✓ Delivery Verified & Logged</h2>
+          <p style={{ margin: '6px 0', fontSize: '0.9rem' }}>
+            Order <strong>#{info.order_number}</strong> (<span style={{ fontFamily: 'monospace' }}>{info.tracking_number}</span>) is closed.
           </p>
-          {(done?.cod_paid || info.payment_status === 'paid') && (
-            <p style={{ margin: '6px 0', fontWeight: 700, color: '#047857' }}>
-              Payment status: PAID
-            </p>
+          <div style={{ background: '#fff', border: '1px solid #a7f3d0', borderRadius: 8, padding: 12, margin: '12px 0', fontSize: '0.84rem', lineHeight: 1.6 }}>
+            <div><strong>Received By:</strong> {recName}</div>
+            <div><strong>Verified At:</strong> {new Date(verifiedAtStr).toLocaleString()}</div>
+            <div><strong>{codSummary}</strong></div>
+            {mapsUrl && (
+              <div>
+                <strong>GPS Pin:</strong>{' '}
+                <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#047857', fontWeight: 600 }}>
+                  {Number(recLat).toFixed(5)}, {Number(recLng).toFixed(5)} ↗
+                </a>
+              </div>
+            )}
+          </div>
+
+          <div style={{ fontSize: '0.8rem', color: '#065f46', marginBottom: 10 }}>
+            📧 Verification copies have been automatically emailed to the <strong>Customer</strong> and <strong>Admin</strong>.
+          </div>
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
+            <button type="button" className="btn btn-outline" onClick={copyReceipt} style={{ flex: 1, fontSize: '0.82rem', fontWeight: 700 }}>
+              {copiedReceipt ? '✓ Receipt Copied!' : '📋 Copy Rider Receipt'}
+            </button>
+            <a
+              href={`https://wa.me/?text=${encodeURIComponent(receiptText)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn btn-outline"
+              style={{ flex: 1, fontSize: '0.82rem', fontWeight: 700, textAlign: 'center', textDecoration: 'none' }}
+            >
+              💬 Save to WhatsApp
+            </a>
+          </div>
+
+          {manifestToken && (
+            <Link
+              to={`/rider-manifest?token=${encodeURIComponent(manifestToken)}`}
+              className="btn btn-accent btn-full"
+              style={{ display: 'block', textAlign: 'center', textDecoration: 'none', fontWeight: 700, marginBottom: 10 }}
+            >
+              ← Back to Next Stop on Manifest
+            </Link>
           )}
+
           {(photoUrl || info.pod_photo_url) && (
             <img
               src={resolveImageUrl(photoUrl || info.pod_photo_url)}
               alt="Delivered parcel"
-              style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 8, marginTop: 12 }}
+              style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 8, marginTop: 8 }}
             />
           )}
         </div>
@@ -259,6 +349,16 @@ export default function RiderHandoff() {
 
   return (
     <div style={wrapStyle}>
+      {manifestToken && (
+        <div style={{ marginBottom: 10 }}>
+          <Link
+            to={`/rider-manifest?token=${encodeURIComponent(manifestToken)}`}
+            style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-ink, #111)', textDecoration: 'none' }}
+          >
+            ← Back to Rider Manifest
+          </Link>
+        </div>
+      )}
       <div style={cardStyle}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div>
@@ -318,9 +418,31 @@ export default function RiderHandoff() {
               onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
               style={{ width: '100%', padding: '12px', fontSize: '1.25rem', letterSpacing: '0.3em', textAlign: 'center', fontWeight: 700 }}
             />
-            <div style={{ fontSize: '0.75rem', color: 'var(--color-muted)', marginTop: 4 }}>
-              Attempts remaining: {info.attempts_remaining}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--color-muted)', marginTop: 6 }}>
+              <span>Attempts remaining: {info.attempts_remaining}</span>
+              <button
+                type="button"
+                disabled={resendingOtp}
+                onClick={handleResendOtp}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: 0,
+                  color: 'var(--color-accent-dark, #9a7428)',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  fontSize: '0.78rem',
+                }}
+              >
+                {resendingOtp ? 'Sending code…' : '🔑 Resend 6-digit code to customer'}
+              </button>
             </div>
+            {otpNotice && (
+              <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#065f46', background: '#ecfdf5', padding: '6px 8px', borderRadius: 6, fontWeight: 600 }}>
+                {otpNotice}
+              </div>
+            )}
           </div>
 
           <div className="field" style={{ marginBottom: 14 }}>

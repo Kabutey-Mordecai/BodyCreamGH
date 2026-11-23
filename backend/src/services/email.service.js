@@ -633,6 +633,55 @@ const sendPartialRefundCompleted = async (to, { customerName, orderNumber, refun
   });
 };
 
+const sendProofOfDeliveryReceipt = async (to, {
+  isAdmin = false,
+  customerName,
+  orderNumber,
+  trackingNumber,
+  riderName,
+  recipientName,
+  verifiedAt,
+  photoUrl,
+  lat,
+  lng,
+  codPaid,
+  collectionMethod,
+  paymentReference,
+  amount,
+}) => {
+  if (!isConfigured() || !to) return;
+  const baseUrl = (process.env.BASE_URL || '').replace(/\/$/, '');
+  const fullPhotoUrl = photoUrl && photoUrl.startsWith('/') && baseUrl ? `${baseUrl}${photoUrl}` : photoUrl;
+  const mapsUrl = lat != null && lng != null ? `https://www.google.com/maps?q=${lat},${lng}` : null;
+  const when = verifiedAt ? new Date(verifiedAt).toLocaleString('en-GH') : new Date().toLocaleString('en-GH');
+  const subject = isAdmin
+    ? `[POD Verified] Order #${orderNumber} delivered by ${riderName || 'Rider'}`
+    : `Delivery Confirmed — Order #${orderNumber}`;
+
+  const html = `<div style="font-family:system-ui,Arial,sans-serif;max-width:580px;margin:0 auto;color:#1c1410;border:1px solid #e5e0d8;border-radius:10px;padding:20px">
+    <h2 style="margin-top:0;color:#065f46">✓ Proof of Delivery Verified</h2>
+    <p>${isAdmin ? 'A delivery has been verified via 6-digit Customer OTP + Live Parcel Photo.' : `Hi ${escapeHtml(customerName || 'Valued Customer')}, your parcel has been verified as delivered.`}</p>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;margin:12px 0">
+      <tr><td style="padding:6px 0;color:#666">Order #</td><td style="padding:6px 0;font-weight:700">${escapeHtml(orderNumber)}</td></tr>
+      <tr><td style="padding:6px 0;color:#666">Tracking #</td><td style="padding:6px 0;font-family:monospace">${escapeHtml(trackingNumber || '—')}</td></tr>
+      <tr><td style="padding:6px 0;color:#666">Verified At</td><td style="padding:6px 0">${escapeHtml(when)}</td></tr>
+      <tr><td style="padding:6px 0;color:#666">Received By</td><td style="padding:6px 0">${escapeHtml(recipientName || customerName || '—')}</td></tr>
+      ${riderName ? `<tr><td style="padding:6px 0;color:#666">Rider / Courier</td><td style="padding:6px 0">${escapeHtml(riderName)}</td></tr>` : ''}
+      ${codPaid ? `<tr><td style="padding:6px 0;color:#666">COD Collected</td><td style="padding:6px 0;font-weight:700;color:#065f46">GHS ${Number(amount || 0).toFixed(2)} (${escapeHtml(collectionMethod || 'cash')}${paymentReference ? ` · Ref: ${escapeHtml(paymentReference)}` : ''})</td></tr>` : ''}
+      ${mapsUrl ? `<tr><td style="padding:6px 0;color:#666">GPS Location</td><td style="padding:6px 0"><a href="${mapsUrl}" style="color:#047857;font-weight:600">View Drop-off Pin on Google Maps</a></td></tr>` : ''}
+    </table>
+    ${fullPhotoUrl ? `<p style="margin:14px 0"><a href="${escapeHtml(fullPhotoUrl)}" style="display:inline-block;padding:10px 16px;background:#1c1410;color:#fff;text-decoration:none;border-radius:6px;font-weight:600">View Live Delivery Photo</a></p>` : ''}
+    ${!isAdmin ? `<p style="font-size:12px;color:#666;margin-top:16px">Didn&apos;t receive this package? Reply to this email or contact support immediately.</p>` : ''}
+  </div>`;
+
+  await getTransporter().sendMail({
+    from: getFromAddress(),
+    to,
+    subject,
+    html,
+  });
+};
+
 module.exports = {
   escapeHtml,
   verifyTransporter,
@@ -645,5 +694,6 @@ module.exports = {
   sendAdminOrderCancelled, sendAdminOrderRefunded, sendAdminOrderShipped, sendAdminOrderDelivered,
   sendAdminPaymentAlert,
   sendOtpEmail,
+  sendProofOfDeliveryReceipt,
   sendNewsletterWelcome, sendNewsletterEmail,
 };

@@ -84,6 +84,37 @@ function verifyRiderToken(rawToken) {
   }
 }
 
+function signRiderManifestToken({ deliveryPartner, driverPhone } = {}) {
+  return jwt.sign(
+    {
+      purpose: 'rider_manifest',
+      dp: deliveryPartner || null,
+      ph: driverPhone || null,
+    },
+    process.env.JWT_SECRET,
+    { algorithm: 'HS256', expiresIn: '24h' }
+  );
+}
+
+function verifyRiderManifestToken(rawToken) {
+  if (!rawToken || typeof rawToken !== 'string') {
+    const err = new Error('Missing rider manifest token');
+    err.status = 401;
+    throw err;
+  }
+  try {
+    const payload = jwt.verify(rawToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    if (payload?.purpose !== 'rider_manifest') {
+      throw new Error('Invalid manifest token');
+    }
+    return payload;
+  } catch {
+    const err = new Error('Invalid or expired rider manifest link');
+    err.status = 401;
+    throw err;
+  }
+}
+
 // Middleware for signed rider photo upload
 function requireRiderToken(req, res, next) {
   try {
@@ -475,7 +506,8 @@ const confirmRiderDelivery = async (req, res) => {
     const { rows } = await client.query(
       `SELECT d.*, o.order_number, o.status AS order_status, o.total_amount,
               o.payment_method, o.payment_status, o.customer_id, o.guest_email,
-              u.email AS user_email
+              o.guest_phone, o.guest_first_name,
+              u.email AS user_email, u.first_name AS user_first_name, u.phone AS user_phone
          FROM deliveries d
          JOIN orders o ON o.id = d.order_id
          LEFT JOIN users u ON u.id = o.customer_id
@@ -562,21 +594,23 @@ const confirmRiderDelivery = async (req, res) => {
       [markCodPaid, d.order_id]
     );
 
+    let finalMethod = null;
+    let finalRef = null;
     if (markCodPaid) {
-      const method = ['cash', 'momo', 'bank_transfer'].includes(collection_method) ? collection_method : 'cash';
-      const ref = (typeof payment_reference === 'string' && payment_reference.trim())
+      finalMethod = ['cash', 'momo', 'bank_transfer'].includes(collection_method) ? collection_method : 'cash';
+      finalRef = (typeof payment_reference === 'string' && payment_reference.trim())
         ? payment_reference.trim().slice(0, 80)
         : `COD-${d.order_number}-${Date.now().toString(36).toUpperCase()}`;
       await client.query(
         `INSERT INTO payments (order_id, amount, status, payment_method, paystack_reference, customer_email)
          VALUES ($1, $2, 'success', $3, $4, $5)
          ON CONFLICT (paystack_reference) DO NOTHING`,
-        [d.order_id, d.total_amount, `cod_${method}`, ref, d.user_email || d.guest_email || null]
+        [d.order_id, d.total_amount, `cod_${finalMethod}`, finalRef, d.user_email || d.guest_email || null]
       );
     }
 
     const gpsText = numLat !== null && numLng !== null ? ` · GPS: ${numLat.toFixed(5)}, ${numLng.toFixed(5)}` : '';
-    const codText = markCodPaid ? ` · COD Collected (${collection_method || 'cash'})` : '';
+    const codText = markCodPaid ? ` · COD Collected (${finalMethod || 'cash'})` : '';
     await logStatusChange(
       d.order_id,
       d.order_status,
@@ -588,12 +622,74 @@ const confirmRiderDelivery = async (req, res) => {
     await client.query('COMMIT');
     tx = false;
 
+    const verifiedAtIso = new Date().toISOString();
+    const proto = (req.headers['x-forwarded-proto'] || req.protocol || 'https').toString().split(',')[0].trim();
+    const host = req.get('host');
+    const absolutePhotoUrl = pod_photo_url.startsWith('http')
+      ? pod_photo_url
+      : (host ? `${proto}://${host}${pod_photo_url}` : pod_photo_url);
+
+    const customerEmail = d.user_email || d.guest_email || null;
+    const customerPhone = d.user_phone || d.guest_phone || null;
+    const customerName = d.user_first_name || d.guest_first_name || safeRecipient || 'Valued Customer';
+
+    const receiptPayload = {
+      customerName,
+      orderNumber: d.order_number,
+      trackingNumber: d.tracking_number,
+      riderName: d.delivery_partner || 'In-house Dispatch Bike',
+      recipientName: safeRecipient || customerName,
+      verifiedAt: verifiedAtIso,
+      photoUrl: absolutePhotoUrl,
+      lat: numLat,
+      lng: numLng,
+      codPaid: markCodPaid,
+      collectionMethod: finalMethod,
+      paymentReference: finalRef,
+      amount: Number(d.total_amount || 0),
+    };
+
+    // 1. Send Proof-of-Delivery verification receipt email to Customer
+    if (customerEmail && typeof emailService.sendProofOfDeliveryReceipt === 'function') {
+      emailService.sendProofOfDeliveryReceipt(customerEmail, { ...receiptPayload, isAdmin: false })
+        .catch(err => logger.warn('Customer POD receipt email failed', { err: err.message }));
+    }
+
+    // 2. Send Proof-of-Delivery verification copy to Admin
+    if (typeof emailService.sendProofOfDeliveryReceipt === 'function') {
+      pool.query(`SELECT setting_value FROM site_settings WHERE setting_key = 'order_notification_email' LIMIT 1`)
+        .then(({ rows: sRows }) => {
+          const adminEmail = sRows[0]?.setting_value?.trim() || process.env.ADMIN_EMAIL || process.env.SMTP_USER;
+          if (adminEmail) {
+            return emailService.sendProofOfDeliveryReceipt(adminEmail, { ...receiptPayload, isAdmin: true });
+          }
+        })
+        .catch(err => logger.warn('Admin POD receipt email failed', { err: err.message }));
+    }
+
+    // 3. Send SMS confirmation to Customer
+    if (customerPhone) {
+      notify.sendSms({
+        to: customerPhone,
+        message: `BodyCream GH: Order #${d.order_number} (${d.tracking_number}) was delivered & verified via 6-digit OTP${markCodPaid ? ` · COD GH₵${Number(d.total_amount).toFixed(2)} received` : ''}. Thank you for shopping with us!`,
+      }).catch(err => logger.warn('Customer POD SMS failed', { err: err.message }));
+    }
+
     notify.shipmentDelivered({ trackingNumber: d.tracking_number, orderNumber: d.order_number });
     res.json({
       message: 'Delivery verified and completed!',
       order_number: d.order_number,
-      verified_at: new Date().toISOString(),
+      tracking_number: d.tracking_number,
+      verified_at: verifiedAtIso,
       cod_paid: markCodPaid,
+      collection_method: finalMethod,
+      payment_reference: finalRef,
+      amount: Number(d.total_amount || 0),
+      recipient_name: safeRecipient || customerName,
+      rider_name: d.delivery_partner || 'In-house Dispatch Bike',
+      lat: numLat,
+      lng: numLng,
+      photo_url: absolutePhotoUrl,
     });
   } catch (err) {
     if (tx) await client.query('ROLLBACK').catch(() => {});
@@ -651,6 +747,271 @@ const confirmCustomerReceipt = async (req, res) => {
   }
 };
 
+// ── Admin: generate 1 signed Multi-Stop Rider Manifest link (20+ orders) ─────
+const createRiderManifestLink = async (req, res) => {
+  try {
+    const cleanPartner = typeof req.body?.delivery_partner === 'string' ? req.body.delivery_partner.trim() : '';
+    const cleanPhone = typeof req.body?.driver_phone === 'string' ? req.body.driver_phone.trim() : '';
+
+    const conditions = [`d.status IN ('pending', 'in_transit', 'out_for_delivery')`];
+    const params = [];
+    if (cleanPartner) {
+      params.push(`%${cleanPartner}%`);
+      conditions.push(`d.delivery_partner ILIKE $${params.length}`);
+    }
+    if (cleanPhone) {
+      params.push(`%${cleanPhone.replace(/\s+/g, '')}%`);
+      conditions.push(`REPLACE(COALESCE(d.driver_phone, ''), ' ', '') ILIKE $${params.length}`);
+    }
+
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS active_count FROM deliveries d WHERE ${conditions.join(' AND ')}`,
+      params
+    );
+
+    const token = signRiderManifestToken({
+      deliveryPartner: cleanPartner || null,
+      driverPhone: cleanPhone || null,
+    });
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const manifestUrl = `${frontendUrl}/rider-manifest?token=${encodeURIComponent(token)}`;
+
+    logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'delivery.rider_manifest_created',
+      resourceType: 'delivery',
+      resourceId: null,
+      details: {
+        delivery_partner: cleanPartner || 'ALL',
+        driver_phone: cleanPhone || null,
+        active_count: rows[0]?.active_count || 0,
+      },
+      ip: req.ip,
+    }).catch(() => {});
+
+    res.json({
+      manifest_url: manifestUrl,
+      active_count: rows[0]?.active_count || 0,
+      delivery_partner: cleanPartner || 'All Active Riders',
+      driver_phone: cleanPhone || null,
+      expires_in: '24h',
+    });
+  } catch (err) {
+    logger.error('createRiderManifestLink error', { err: err.message });
+    res.status(500).json({ error: 'Failed to generate rider manifest link' });
+  }
+};
+
+// ── Rider (signed manifest token): view all assigned stops + live COD tally ──
+const getRiderManifest = async (req, res) => {
+  try {
+    const payload = verifyRiderManifestToken(req.query.token || req.headers['x-rider-manifest']);
+
+    const conditions = [
+      `(d.status IN ('pending', 'in_transit', 'out_for_delivery') OR (d.status = 'delivered' AND d.pod_verified_at >= CURRENT_DATE))`,
+    ];
+    const params = [];
+    if (payload.dp) {
+      params.push(`%${payload.dp}%`);
+      conditions.push(`d.delivery_partner ILIKE $${params.length}`);
+    }
+    if (payload.ph) {
+      params.push(`%${String(payload.ph).replace(/\s+/g, '')}%`);
+      conditions.push(`REPLACE(COALESCE(d.driver_phone, ''), ' ', '') ILIKE $${params.length}`);
+    }
+
+    const { rows } = await pool.query(
+      `SELECT d.id, d.order_id, d.status, d.tracking_number, d.zone_code,
+              d.delivery_partner, d.driver_phone, d.pod_verified_at,
+              d.pod_otp_hash IS NOT NULL AS has_otp,
+              o.order_number, o.total_amount, o.payment_method, o.payment_status,
+              o.shipping_address, o.shipping_city, o.shipping_region,
+              COALESCE(u.first_name, o.guest_first_name, 'Customer') AS customer_first_name,
+              COALESCE(u.last_name, o.guest_last_name, '') AS customer_last_name,
+              COALESCE(u.phone, o.guest_phone) AS customer_phone,
+              (SELECT COALESCE(SUM(quantity), 0)::int FROM order_items WHERE order_id = o.id) AS item_count
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+         LEFT JOIN users u ON u.id = o.customer_id
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY
+          CASE WHEN d.pod_verified_at IS NULL THEN 0 ELSE 1 END ASC,
+          d.zone_code ASC NULLS LAST,
+          d.created_at DESC`,
+      params
+    );
+
+    let completedStops = 0;
+    let pendingStops = 0;
+    let codCollectedGhs = 0;
+    let codPendingGhs = 0;
+
+    const stops = rows.map(r => {
+      const isVerified = Boolean(r.pod_verified_at) || r.status === 'delivered';
+      const isCod = r.payment_method === 'pay_on_delivery';
+      const isPaid = ['paid', 'partially_refunded', 'refunded'].includes(r.payment_status);
+      const amount = Number(r.total_amount || 0);
+
+      if (isVerified) {
+        completedStops += 1;
+        if (isCod && isPaid) codCollectedGhs += amount;
+      } else {
+        pendingStops += 1;
+        if (isCod && !isPaid) codPendingGhs += amount;
+      }
+
+      const fullName = [r.customer_first_name, r.customer_last_name].filter(Boolean).join(' ').trim() || 'Customer';
+
+      return {
+        delivery_id: r.id,
+        order_number: r.order_number,
+        tracking_number: r.tracking_number,
+        zone_code: r.zone_code || resolveGhanaZone(r.shipping_region, r.shipping_city),
+        delivery_partner: r.delivery_partner,
+        status: r.status,
+        customer_name: fullName,
+        customer_phone: r.customer_phone || null,
+        address: [r.shipping_address, r.shipping_city, r.shipping_region].filter(Boolean).join(', '),
+        item_count: r.item_count,
+        total_amount: amount,
+        payment_method: r.payment_method,
+        payment_status: r.payment_status,
+        cod_amount_due: (isCod && !isPaid) ? amount : 0,
+        verified: isVerified,
+        pod_verified_at: r.pod_verified_at,
+        has_otp: Boolean(r.has_otp),
+        handoff_token: isVerified ? null : signRiderToken(r.id, r.tracking_number),
+      };
+    });
+
+    res.json({
+      rider_label: payload.dp || 'All Active Dispatches',
+      driver_phone: payload.ph || null,
+      summary: {
+        total_stops: stops.length,
+        completed_stops: completedStops,
+        pending_stops: pendingStops,
+        cod_collected_ghs: Number(codCollectedGhs.toFixed(2)),
+        cod_pending_ghs: Number(codPendingGhs.toFixed(2)),
+      },
+      stops,
+    });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Failed to load rider manifest' });
+  }
+};
+
+// ── Rider (signed pod OR manifest token): resend fresh 6-digit OTP at doorstep ─
+const riderResendPodOtp = async (req, res) => {
+  try {
+    const rawToken = req.body?.token || req.headers['x-rider-token'] || req.headers['x-rider-manifest'];
+    if (!rawToken || typeof rawToken !== 'string') {
+      return res.status(401).json({ error: 'Missing rider authentication token' });
+    }
+
+    let payload;
+    try {
+      payload = jwt.verify(rawToken, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    } catch {
+      return res.status(401).json({ error: 'Invalid or expired rider link' });
+    }
+
+    let deliveryId = null;
+    if (payload?.purpose === 'rider_pod' && payload?.sub) {
+      deliveryId = payload.sub;
+    } else if (payload?.purpose === 'rider_manifest' && req.body?.delivery_id) {
+      deliveryId = req.body.delivery_id;
+    } else {
+      return res.status(400).json({ error: 'delivery_id is required when using a manifest link' });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT d.*, o.order_number, o.customer_id, o.guest_email, o.guest_phone,
+              o.guest_first_name, o.shipping_city, o.shipping_region,
+              u.email AS user_email, u.first_name AS user_first_name, u.phone AS user_phone
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+         LEFT JOIN users u ON u.id = o.customer_id
+        WHERE d.id = $1`,
+      [deliveryId]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Delivery not found' });
+
+    const d = rows[0];
+    if (d.pod_verified_at) {
+      return res.status(409).json({ error: 'Delivery is already verified' });
+    }
+
+    // If using a scoped manifest token, ensure this delivery belongs to that rider scope
+    if (payload.purpose === 'rider_manifest') {
+      if (payload.dp && !String(d.delivery_partner || '').toLowerCase().includes(String(payload.dp).toLowerCase())) {
+        return res.status(403).json({ error: 'Delivery is not assigned to this rider manifest' });
+      }
+      if (payload.ph) {
+        const normAssigned = String(d.driver_phone || '').replace(/\s+/g, '');
+        const normScope = String(payload.ph).replace(/\s+/g, '');
+        if (!normAssigned.includes(normScope)) {
+          return res.status(403).json({ error: 'Delivery is not assigned to this rider phone' });
+        }
+      }
+    }
+
+    const otp = String(crypto.randomInt(100000, 1000000));
+    const otpHash = hashPodOtp(otp);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const zoneCode = d.zone_code || resolveGhanaZone(d.shipping_region, d.shipping_city);
+
+    await pool.query(
+      `UPDATE deliveries
+          SET pod_otp_hash = $1,
+              pod_otp_expires_at = $2,
+              pod_otp_attempts = 0,
+              zone_code = COALESCE(zone_code, $3),
+              updated_at = NOW()
+        WHERE id = $4`,
+      [otpHash, expiresAt, zoneCode, d.id]
+    );
+
+    const phone = d.user_phone || d.guest_phone;
+    const email = d.user_email || d.guest_email;
+    const firstName = d.user_first_name || d.guest_first_name || 'Valued Customer';
+
+    if (phone) {
+      notify.sendSms({
+        to: phone,
+        message: `BodyCream GH: Your rider is at the door! Your 6-digit delivery code for order #${d.order_number} is ${otp}. Share ONLY after inspecting your parcel.`,
+      }).catch(err => logger.warn('Rider resend OTP SMS failed', { err: err.message }));
+    }
+
+    if (email && typeof emailService.sendOtpEmail === 'function') {
+      emailService.sendOtpEmail(email, { firstName, otp })
+        .catch(err => logger.warn('Rider resend OTP email failed', { err: err.message }));
+    }
+
+    if (d.customer_id) {
+      notify.sendPushNotification({
+        userId: d.customer_id,
+        title: `Rider Arrived · Code: ${otp}`,
+        body: `Your 6-digit delivery code for order #${d.order_number} is ${otp}.`,
+        data: { order_number: d.order_number, type: 'pod_otp' },
+      }).catch(() => {});
+    }
+
+    const response = {
+      message: 'Fresh 6-digit delivery code sent to customer!',
+      expires_at: expiresAt.toISOString(),
+    };
+    if (process.env.NODE_ENV !== 'production' && !process.env.SMS_API_KEY) {
+      response.demo_otp = otp;
+    }
+    res.json(response);
+  } catch (err) {
+    logger.error('riderResendPodOtp error', { err: err.message });
+    res.status(500).json({ error: 'Failed to resend delivery code' });
+  }
+};
+
 module.exports = {
   createDelivery,
   trackShipment,
@@ -661,4 +1022,7 @@ module.exports = {
   confirmRiderDelivery,
   confirmCustomerReceipt,
   requireRiderToken,
+  createRiderManifestLink,
+  getRiderManifest,
+  riderResendPodOtp,
 };
