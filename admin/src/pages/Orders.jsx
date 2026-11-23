@@ -63,6 +63,12 @@ export default function Orders() {
   const [manifestBusy, setManifestBusy]     = useState(false);
   const [manifestResult, setManifestResult] = useState(null);
   const [knownPartners, setKnownPartners]   = useState([]);
+  const [bulkOpen, setBulkOpen]             = useState(false);
+  const [bulkPartner, setBulkPartner]       = useState('In-house Dispatch Bike');
+  const [bulkPhone, setBulkPhone]           = useState('');
+  const [bulkExpiry, setBulkExpiry]         = useState('7d');
+  const [bulkBusy, setBulkBusy]             = useState(false);
+  const [bulkResult, setBulkResult]         = useState(null);
 
   const timerRef = useRef(null);
   const debounceRef = useRef(null);
@@ -574,13 +580,25 @@ export default function Orders() {
               onToggleSelect={handleToggleSelect}
               onSelectAll={setSelectedIds}
               bulkActions={
-                <button
-                  type="button"
-                  className="btn btn-outline btn-sm"
-                  onClick={handleExportSelectedCSV}
-                >
-                  ↓ Export CSV
-                </button>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={() => {
+                      setBulkResult(null);
+                      setBulkOpen(true);
+                    }}
+                  >
+                    🚚 Dispatch Selected ({selectedIds.length})
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={handleExportSelectedCSV}
+                  >
+                    ↓ Export CSV
+                  </button>
+                </div>
               }
               onRowClick={row => navigate(`/orders/${row.id}`)}
               emptyMessage={total === 0 ? 'No orders yet.' : 'No orders match your filters.'}
@@ -845,7 +863,7 @@ export default function Orders() {
                     </button>
                   );
                 })()}
-                {knownPartners.map(p => {
+                {knownPartners.filter(p => (p.active_count || 0) > 0).map(p => {
                   const selected = manifestPartner.toLowerCase() === p.delivery_partner.toLowerCase();
                   return (
                     <button
@@ -1009,6 +1027,169 @@ export default function Orders() {
                 </a>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {bulkOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Dispatch Selected Orders"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.62)',
+            backdropFilter: 'blur(3px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => setBulkOpen(false)}
+        >
+          <div
+            className="card"
+            style={{ width: '100%', maxWidth: 460, padding: 22, margin: 0 }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem' }}>🚚 Dispatch {selectedIds.length} Selected Order{selectedIds.length === 1 ? '' : 's'}</h3>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setBulkOpen(false)}>✕</button>
+            </div>
+            <p className="muted text-xs" style={{ marginTop: 0, marginBottom: 14 }}>
+              Marks selected orders as <strong>Shipped</strong>, emails each customer their tracking # + 6-digit delivery code, and gives you <strong>1 WhatsApp link</strong> for the rider.
+            </p>
+
+            {!bulkResult ? (
+              <>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
+                  <div>
+                    <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                      Rider / Courier Name *
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      value={bulkPartner}
+                      onChange={e => setBulkPartner(e.target.value)}
+                      placeholder="e.g. In-house Dispatch Bike, Kwame Bike"
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
+                    <div>
+                      <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                        Rider WhatsApp Phone (optional)
+                      </label>
+                      <input
+                        type="text"
+                        className="input"
+                        value={bulkPhone}
+                        onChange={e => setBulkPhone(e.target.value)}
+                        placeholder="e.g. 0241234567"
+                        style={{ width: '100%' }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                        Link Validity
+                      </label>
+                      <select
+                        className="input"
+                        value={bulkExpiry}
+                        onChange={e => setBulkExpiry(e.target.value)}
+                        style={{ width: '100%' }}
+                      >
+                        <option value="24h">24 Hours</option>
+                        <option value="3d">3 Days</option>
+                        <option value="7d">7 Days</option>
+                        <option value="14d">14 Days</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ width: '100%' }}
+                  disabled={bulkBusy}
+                  onClick={async () => {
+                    setBulkBusy(true);
+                    try {
+                      const { data } = await deliveriesAPI.bulkDispatch({
+                        order_ids: selectedIds,
+                        delivery_partner: bulkPartner.trim() || 'In-house Dispatch Bike',
+                        driver_phone: bulkPhone.trim() || undefined,
+                        expires_in: bulkExpiry,
+                      });
+                      setBulkResult(data);
+                      setSelectedIds([]);
+                      fetchOrders(true);
+                      toast.success(`Dispatched ${data.dispatched_count} order${data.dispatched_count === 1 ? '' : 's'}!`);
+                    } catch (err) {
+                      toast.error(err.response?.data?.error || 'Bulk dispatch failed');
+                    } finally {
+                      setBulkBusy(false);
+                    }
+                  }}
+                >
+                  {bulkBusy ? 'Dispatching…' : `Dispatch & Get 1 Rider Link`}
+                </button>
+              </>
+            ) : (
+              <div style={{ background: 'var(--ac-surface-2)', border: '1px solid var(--ac-border)', borderRadius: 10, padding: 14 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#22c55e', marginBottom: 6 }}>
+                  ✓ Dispatched {bulkResult.dispatched_count} order{bulkResult.dispatched_count === 1 ? '' : 's'} to {bulkResult.delivery_partner}
+                  {bulkResult.skipped_count > 0 ? ` (${bulkResult.skipped_count} already shipped/closed skipped)` : ''}
+                </div>
+                <input
+                  type="text"
+                  readOnly
+                  className="input"
+                  value={bulkResult.manifest_url}
+                  onFocus={e => e.target.select()}
+                  style={{ width: '100%', fontSize: '0.74rem', fontFamily: 'monospace', marginBottom: 10 }}
+                />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: 8 }}>
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(bulkResult.manifest_url);
+                      toast.success('Rider link copied');
+                    }}
+                  >
+                    📋 Copy
+                  </button>
+                  <a
+                    href={bulkResult.manifest_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-outline btn-sm"
+                    style={{ textDecoration: 'none', textAlign: 'center' }}
+                  >
+                    ↗ Open
+                  </a>
+                  <a
+                    href={`https://wa.me/${(() => {
+                      const d = (bulkResult.driver_phone || bulkPhone || '').replace(/\D/g, '');
+                      return d.length === 10 && d.startsWith('0') ? `233${d.slice(1)}` : d;
+                    })()}?text=${encodeURIComponent(
+                      `BodyCream GH Dispatch Route (${bulkResult.dispatched_count} stops · ${bulkResult.delivery_partner}):\n${bulkResult.manifest_url}`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn btn-primary btn-sm"
+                    style={{ textDecoration: 'none', textAlign: 'center' }}
+                  >
+                    💬 WhatsApp Rider
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -5,6 +5,7 @@ const { uploadSingleMediaMiddleware } = require('../middleware/uploadFilter');
 const { uploadGenericMedia } = require('../controllers/admin.controller');
 const {
   createDelivery,
+  bulkDispatch,
   trackShipment,
   getDeliveryByOrder,
   updateDelivery,
@@ -34,6 +35,7 @@ router.post('/rider/confirm',    confirmRiderDelivery);
 
 // ── Authenticated ─────────────────────────────────────────────────────────────
 router.get('/partners',                         verifyToken, requireAdmin, getDeliveryPartners);
+router.post('/bulk-dispatch',                   verifyToken, requireAdmin, bulkDispatch);
 router.post('/',                                verifyToken, requireAdmin, validateCreateDelivery, createDelivery);
 router.post('/manifest/link',                   verifyToken, requireAdmin, createRiderManifestLink);
 router.get('/order/:orderId',                   verifyToken, getDeliveryByOrder);

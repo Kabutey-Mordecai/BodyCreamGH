@@ -134,6 +134,87 @@ function requireRiderToken(req, res, next) {
   }
 }
 
+async function dispatchOrderWithOtp({
+  order,
+  deliveryPartner,
+  trackingNumber,
+  estimatedDelivery,
+  driverPhone,
+}) {
+  const zoneCode = resolveGhanaZone(order.shipping_region, order.shipping_city);
+  const providedTracking = typeof trackingNumber === 'string' ? trackingNumber.trim() : '';
+  const finalTracking = providedTracking || generateTrackingNumber(zoneCode);
+  const finalPartner = (typeof deliveryPartner === 'string' && deliveryPartner.trim())
+    ? deliveryPartner.trim()
+    : 'In-house Dispatch Bike';
+
+  const deliveryId = await DeliveryModel.create({
+    orderId:           order.id,
+    deliveryPartner:   finalPartner,
+    trackingNumber:    finalTracking,
+    estimatedDelivery: estimatedDelivery,
+    driverPhone:       driverPhone,
+    zoneCode,
+  });
+
+  // Automatically generate & store a 7-day 6-digit Proof-of-Delivery OTP
+  const otp = String(crypto.randomInt(100000, 1000000));
+  const otpHash = hashPodOtp(otp);
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await pool.query(
+    `UPDATE deliveries
+        SET pod_otp_hash = $1,
+            pod_otp_expires_at = $2,
+            pod_otp_attempts = 0,
+            updated_at = NOW()
+      WHERE id = $3`,
+    [otpHash, expiresAt, deliveryId]
+  );
+
+  // Mark order as shipped and log the change
+  const prevStatus = order.status;
+  await OrderModel.updateStatus(order.id, 'shipped');
+  await logStatusChange(order.id, prevStatus, 'shipped', `Dispatch created (${finalPartner} · Zone ${zoneCode}). Tracking: ${finalTracking}`);
+
+  // Notify customer: Shipping email + automatic 6-digit Delivery Code (Email, SMS, Push)
+  const emailAddress = order.email || order.user_email || order.guest_email;
+  const phoneAddress = order.phone || order.user_phone || order.guest_phone;
+  const firstName = order.first_name || order.guest_first_name || 'Valued Customer';
+
+  if (emailAddress) {
+    sendShippingNotification(emailAddress, {
+      orderNumber:     order.order_number,
+      trackingNumber:  finalTracking,
+      deliveryPartner: finalPartner,
+    }).catch(err => logger.error('sendShippingNotification error', { err: err.message }));
+
+    if (typeof emailService.sendOtpEmail === 'function') {
+      emailService.sendOtpEmail(emailAddress, { firstName, otp })
+        .catch(err => logger.warn('Auto POD OTP email failed', { err: err.message }));
+    }
+  }
+
+  if (phoneAddress) {
+    notify.sendSms({
+      to: phoneAddress,
+      message: `BodyCream GH: Order #${order.order_number} (${finalTracking}) is dispatched! Your 6-digit delivery code is ${otp}. Share ONLY with the rider after inspecting your parcel.`,
+    }).catch(err => logger.warn('Auto POD OTP SMS failed', { err: err.message }));
+  }
+
+  if (order.customer_id) {
+    notify.sendPushNotification({
+      userId: order.customer_id,
+      title: `Dispatched · Code: ${otp}`,
+      body: `Order #${order.order_number} is on its way. Share code ${otp} with the rider after inspecting your parcel.`,
+      data: { order_number: order.order_number, type: 'pod_otp' },
+    }).catch(() => {});
+  }
+
+  notify.shipmentCreated({ orderNumber: order.order_number, trackingNumber: finalTracking, orderId: order.id });
+
+  return { deliveryId, trackingNumber: finalTracking, zoneCode, deliveryPartner: finalPartner };
+}
+
 // Admin: create a delivery record for an order and mark it as shipped
 const createDelivery = async (req, res) => {
   try {
@@ -153,48 +234,92 @@ const createDelivery = async (req, res) => {
     const existing = await DeliveryModel.findByOrderId(order_id);
     if (existing) return res.status(400).json({ error: 'Delivery already exists for this order' });
 
-    const zoneCode = resolveGhanaZone(order.shipping_region, order.shipping_city);
-    const providedTracking = typeof tracking_number === 'string' ? tracking_number.trim() : '';
-    const finalTracking = providedTracking || generateTrackingNumber(zoneCode);
-    const finalPartner = (typeof delivery_partner === 'string' && delivery_partner.trim())
-      ? delivery_partner.trim()
-      : 'In-house Dispatch Bike';
-
-    const deliveryId = await DeliveryModel.create({
-      orderId:          order_id,
-      deliveryPartner:  finalPartner,
-      trackingNumber:   finalTracking,
+    const result = await dispatchOrderWithOtp({
+      order,
+      deliveryPartner: delivery_partner,
+      trackingNumber: tracking_number,
       estimatedDelivery: estimated_delivery,
-      driverPhone:      driver_phone,
-      zoneCode,
+      driverPhone: driver_phone,
     });
 
-    // Mark order as shipped and log the change
-    const prevStatus = order.status;
-    await OrderModel.updateStatus(order_id, 'shipped');
-    await logStatusChange(order_id, prevStatus, 'shipped', `Dispatch created (${finalPartner} · Zone ${zoneCode}). Tracking: ${finalTracking}`);
-
-    // Notify customer
-    const emailAddress = order.email || order.user_email || order.guest_email;
-    if (emailAddress) {
-      sendShippingNotification(emailAddress, {
-        orderNumber:     order.order_number,
-        trackingNumber:  finalTracking,
-        deliveryPartner: finalPartner,
-      }).catch(err => logger.error('sendShippingNotification error', { err: err.message }));
-    }
-
-    notify.shipmentCreated({ orderNumber: order.order_number, trackingNumber: finalTracking, orderId: order_id });
-
     res.status(201).json({
-      deliveryId,
-      trackingNumber: finalTracking,
-      zoneCode,
-      message: 'Delivery created and order marked as shipped',
+      ...result,
+      message: 'Delivery created, order marked as shipped & 6-digit delivery code sent',
     });
   } catch (error) {
     logger.error('Create delivery error', { err: error.message });
     res.status(500).json({ error: 'Failed to create delivery' });
+  }
+};
+
+// Admin: bulk dispatch 1..100 selected orders to a rider & return 1 manifest link
+const bulkDispatch = async (req, res) => {
+  try {
+    const { order_ids, delivery_partner, driver_phone, expires_in } = req.body || {};
+    if (!Array.isArray(order_ids) || !order_ids.length) {
+      return res.status(400).json({ error: 'Select at least 1 order to dispatch' });
+    }
+
+    const cleanPartner = (typeof delivery_partner === 'string' && delivery_partner.trim())
+      ? delivery_partner.trim()
+      : 'In-house Dispatch Bike';
+    const cleanPhone = typeof driver_phone === 'string' ? driver_phone.trim() : '';
+    const safeExpiry = MANIFEST_EXPIRY_PRESETS[expires_in] || '7d';
+
+    let dispatched = 0;
+    let skipped = 0;
+    const dispatchedOrders = [];
+
+    for (const orderId of order_ids.slice(0, 100)) {
+      const order = await OrderModel.findById(orderId);
+      if (!order || ['cancelled', 'refunded', 'delivered'].includes(order.status)) {
+        skipped += 1;
+        continue;
+      }
+      const existing = await DeliveryModel.findByOrderId(orderId);
+      if (existing) {
+        skipped += 1;
+        continue;
+      }
+      const r = await dispatchOrderWithOtp({
+        order,
+        deliveryPartner: cleanPartner,
+        driverPhone: cleanPhone || undefined,
+      });
+      dispatched += 1;
+      dispatchedOrders.push({ order_number: order.order_number, tracking_number: r.trackingNumber });
+    }
+
+    const token = signRiderManifestToken({
+      deliveryPartner: cleanPartner,
+      driverPhone: cleanPhone || null,
+      expiresIn: safeExpiry,
+    });
+    const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const manifestUrl = `${frontendUrl}/rider-manifest?token=${encodeURIComponent(token)}`;
+
+    logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'delivery.bulk_dispatch',
+      resourceType: 'delivery',
+      resourceId: null,
+      details: { delivery_partner: cleanPartner, dispatched, skipped },
+      ip: req.ip,
+    }).catch(() => {});
+
+    res.status(201).json({
+      dispatched_count: dispatched,
+      skipped_count: skipped,
+      delivery_partner: cleanPartner,
+      driver_phone: cleanPhone || null,
+      expires_in: safeExpiry,
+      manifest_url: manifestUrl,
+      dispatched_orders: dispatchedOrders,
+    });
+  } catch (err) {
+    logger.error('bulkDispatch error', { err: err.message });
+    res.status(500).json({ error: 'Failed to bulk dispatch orders' });
   }
 };
 
@@ -1057,6 +1182,7 @@ const riderResendPodOtp = async (req, res) => {
 
 module.exports = {
   createDelivery,
+  bulkDispatch,
   trackShipment,
   getDeliveryByOrder,
   updateDelivery,
