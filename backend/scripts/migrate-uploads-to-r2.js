@@ -3,8 +3,25 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const pool = require('../config/database');
-const storage = require('../services/storage.service');
+
+const REQUIRED_ENV = [
+  'DATABASE_URL',
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET',
+  'R2_PUBLIC_BASE_URL',
+];
+const missingEnv = REQUIRED_ENV.filter((k) => !process.env[k] || !String(process.env[k]).trim());
+if (missingEnv.length > 0) {
+  console.error(
+    `[migrate-uploads-to-r2] Missing required environment variable(s): ${missingEnv.join(', ')}`
+  );
+  process.exit(1);
+}
+
+const pool = require('../src/config/database');
+const storage = require('../src/services/storage.service');
 
 const UPLOADS_ROOT = path.join(__dirname, '..', '..', 'uploads');
 const DRY_RUN = process.argv.includes('--dry-run');
