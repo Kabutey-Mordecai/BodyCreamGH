@@ -36,7 +36,7 @@ function getFromAddress() {
 function createBrevoTransporter(apiKey) {
   return {
     async verify() {
-      const { data } = await axios.get('https://api.brevo.com/v3/account', {
+      const { data } = await axios.get('https://api.brevo.com/v3/smtp/statistics/aggregatedReport', {
         headers: { 'api-key': apiKey, accept: 'application/json' },
         timeout: 10000,
       });
