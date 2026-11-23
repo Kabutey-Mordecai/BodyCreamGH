@@ -427,11 +427,11 @@ export default function Home() {
                   <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', margin: 0 }}>Shop by brand</h3>
                 </div>
                 <Link to="/shop" style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--color-accent-dark)', textDecoration: 'none' }}>
-                  View all →
+                  View all {brands.length} brands →
                 </Link>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {brands.map(b => (
+                {brands.slice(0, 18).map(b => (
                   <Link
                     key={b.brand}
                     to={`/shop?brand=${encodeURIComponent(b.brand)}`}
@@ -450,6 +450,22 @@ export default function Home() {
                     <span style={{ fontSize: '0.72rem', opacity: 0.65 }}>({b.count})</span>
                   </Link>
                 ))}
+                {brands.length > 18 && (
+                  <Link
+                    to="/shop"
+                    className="btn btn-outline-gold btn-sm"
+                    style={{
+                      borderRadius: 9999,
+                      padding: '8px 18px',
+                      fontSize: '0.84rem',
+                      fontWeight: 600,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                    }}
+                  >
+                    +{brands.length - 18} more brands →
+                  </Link>
+                )}
               </div>
             </div>
           )}
