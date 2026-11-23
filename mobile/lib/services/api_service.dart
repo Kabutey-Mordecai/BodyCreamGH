@@ -308,10 +308,12 @@ class ApiService {
     int limit = 20,
     int? offset,
     String? category,
+    String? brand,
     String? search,
     String? sort,
     String? minPrice,
     String? maxPrice,
+    String? minRating,
     bool? inStock,
     bool? onSale,
   }) async {
@@ -320,10 +322,12 @@ class ApiService {
       'offset': (offset ?? ((page - 1) * limit)).toString(),
       'page': page.toString(),
       if (category != null && category.isNotEmpty) 'category': category,
+      if (brand != null && brand.isNotEmpty) 'brand': brand,
       if (search != null && search.isNotEmpty) 'search': search,
       if (sort != null && sort.isNotEmpty) 'sort': sort,
       if (minPrice != null && minPrice.isNotEmpty) 'min_price': minPrice,
       if (maxPrice != null && maxPrice.isNotEmpty) 'max_price': maxPrice,
+      if (minRating != null && minRating.isNotEmpty) 'min_rating': minRating,
       if (inStock == true) 'in_stock': 'true',
       if (onSale == true) 'on_sale': 'true',
     };
@@ -349,6 +353,26 @@ class ApiService {
         .map((e) => e.toString().trim())
         .where((e) => e.isNotEmpty)
         .toList();
+  }
+
+  Future<Map<String, dynamic>> getFacets({
+    String? category,
+    String? search,
+    bool? inStock,
+    bool? onSale,
+  }) async {
+    final query = <String, String>{
+      if (category != null && category.isNotEmpty) 'category': category,
+      if (search != null && search.isNotEmpty) 'search': search,
+      if (inStock == true) 'in_stock': 'true',
+      if (onSale == true) 'on_sale': 'true',
+    };
+    final uri = query.isEmpty
+        ? _uri('/products/facets')
+        : _uri('/products/facets').replace(queryParameters: query);
+    final res = await _client.get(uri, headers: _headers());
+    final data = await _handleResponse(res);
+    return data is Map<String, dynamic> ? data : <String, dynamic>{};
   }
 
   Future<List<dynamic>> getProducts({

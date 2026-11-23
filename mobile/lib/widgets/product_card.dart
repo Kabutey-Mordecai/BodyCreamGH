@@ -220,13 +220,16 @@ class _ProductCardState extends State<ProductCard> {
                     children: [
                       Expanded(
                         child: Text(
-                          (product.category ?? 'SKINCARE').toUpperCase(),
+                          (product.brand != null && product.brand!.isNotEmpty
+                                  ? '${product.brand}${product.category != null && product.category!.isNotEmpty ? ' · ${product.category}' : ''}'
+                                  : (product.category ?? 'BEAUTY'))
+                              .toUpperCase(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
                             fontSize: 9.5,
                             fontWeight: FontWeight.w700,
-                            letterSpacing: 1.0,
+                            letterSpacing: 0.9,
                             color: AppColors.accentDark,
                           ),
                         ),
@@ -275,14 +278,24 @@ class _ProductCardState extends State<ProductCard> {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      Text(
-                        (product.hasVariants || product.variants.isNotEmpty)
-                            ? 'From ${AppConfig.currencySymbol}${(product.minPrice ?? product.price).toStringAsFixed(2)}'
-                            : '${AppConfig.currencySymbol}${product.price.toStringAsFixed(2)}',
-                        style: const TextStyle(
-                          color: AppColors.primary,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
+                      Flexible(
+                        child: Text(
+                          () {
+                            final hasVar = product.hasVariants || product.variants.isNotEmpty;
+                            final minP = product.minPrice ?? product.price;
+                            final maxP = product.maxPrice;
+                            if (hasVar && maxP != null && maxP > minP) {
+                              return '${AppConfig.currencySymbol}${minP.toStringAsFixed(0)} – ${AppConfig.currencySymbol}${maxP.toStringAsFixed(0)}';
+                            }
+                            return '${AppConfig.currencySymbol}${minP.toStringAsFixed(2)}';
+                          }(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.primary,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
                       if (product.originalPrice != null &&

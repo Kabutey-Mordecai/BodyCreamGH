@@ -82,11 +82,13 @@ class Product {
   final List<String> images;
   final int stockQuantity;
   final String? category;
+  final String? brand;
   final double? averageRating;
   final int reviewCount;
   final List<ProductVariant> variants;
   final bool hasVariants;
   final double? minPrice;
+  final double? maxPrice;
 
   const Product({
     required this.id,
@@ -102,11 +104,13 @@ class Product {
     this.images = const [],
     required this.stockQuantity,
     this.category,
+    this.brand,
     this.averageRating,
     this.reviewCount = 0,
     this.variants = const [],
     this.hasVariants = false,
     this.minPrice,
+    this.maxPrice,
   });
 
   bool get inStock => stockQuantity > 0;
@@ -211,12 +215,18 @@ class Product {
       images: allImages,
       stockQuantity: int.tryParse(json['stock_quantity']?.toString() ?? '0') ?? 0,
       category: json['category'] as String?,
+      brand: json['brand']?.toString().trim().isNotEmpty == true
+          ? json['brand'].toString().trim()
+          : null,
       averageRating: rawRating != null ? double.tryParse(rawRating.toString()) : null,
       reviewCount: int.tryParse(json['review_count']?.toString() ?? '0') ?? 0,
       variants: parsedVariants,
       hasVariants: json['has_variants'] == true || parsedVariants.isNotEmpty,
       minPrice: json['min_price'] != null
           ? double.tryParse(json['min_price'].toString())
+          : null,
+      maxPrice: json['max_price'] != null
+          ? double.tryParse(json['max_price'].toString())
           : null,
     );
   }
@@ -239,8 +249,11 @@ class Product {
         'images': images,
         'stock_quantity': stockQuantity,
         'category': category,
+        if (brand != null) 'brand': brand,
         'avg_rating': averageRating,
         'review_count': reviewCount,
         'variants': variants.map((v) => v.toJson()).toList(),
+        if (minPrice != null) 'min_price': minPrice,
+        if (maxPrice != null) 'max_price': maxPrice,
       };
 }

@@ -32,6 +32,8 @@ class _ShopScreenState extends State<ShopScreen> {
   int _page = 1;
   bool _loading = true;
   String? _selectedCategory;
+  final List<String> _selectedBrands = [];
+  String _minRating = '';
   String _sortBy = 'newest'; // newest | price_low | price_high | name_asc | top_rated
   bool _inStockOnly = false;
   bool _onSaleOnly = false;
@@ -39,7 +41,10 @@ class _ShopScreenState extends State<ShopScreen> {
   String _maxPrice = '';
 
   List<String> _apiCategories = const [];
-  String _storeName = 'BODYCREAM GH';
+  List<Map<String, dynamic>> _facetBrands = const [];
+  double _priceBoundMin = 0;
+  double _priceBoundMax = 600;
+  String _storeName = 'GLOWHAUS BEAUTY';
 
   List<String> get _categories {
     final set = <String>{'All'};
@@ -57,13 +62,52 @@ class _ShopScreenState extends State<ShopScreen> {
     return set.toList();
   }
 
-  Future<void> _fetchCategories() async {
+  Future<void> _fetchFacets() async {
     try {
-      final cats = await ApiService.instance.getCategories();
-      if (mounted && cats.isNotEmpty) {
-        setState(() => _apiCategories = cats);
-      }
-    } catch (_) {}
+      final data = await ApiService.instance.getFacets(
+        category: (_selectedCategory != null && _selectedCategory != 'All')
+            ? _selectedCategory
+            : null,
+        search: _searchCtrl.text.trim().isNotEmpty
+            ? _searchCtrl.text.trim()
+            : null,
+        inStock: _inStockOnly ? true : null,
+        onSale: _onSaleOnly ? true : null,
+      );
+      if (!mounted) return;
+      final cats = (data['categories'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((e) => e['category']?.toString().trim() ?? '')
+          .where((e) => e.isNotEmpty)
+          .toList();
+      final brs = (data['brands'] as List<dynamic>? ?? const [])
+          .whereType<Map>()
+          .map((e) => {
+                'brand': e['brand']?.toString().trim() ?? '',
+                'count': int.tryParse((e['count'] ?? 0).toString()) ?? 0,
+              })
+          .where((e) => (e['brand'] as String).isNotEmpty)
+          .toList();
+      final priceMap = data['price'] is Map ? data['price'] as Map : null;
+      setState(() {
+        if (cats.isNotEmpty) _apiCategories = cats;
+        _facetBrands = brs;
+        if (priceMap != null) {
+          final lo = double.tryParse((priceMap['min'] ?? 0).toString()) ?? 0;
+          final hi = double.tryParse((priceMap['max'] ?? 600).toString()) ?? 600;
+          _priceBoundMin = lo >= 0 ? lo : 0;
+          _priceBoundMax = hi > _priceBoundMin + 10 ? hi : _priceBoundMin + 100;
+        }
+      });
+    } catch (_) {
+      // Fallback to categories endpoint if facets is unavailable
+      try {
+        final cats = await ApiService.instance.getCategories();
+        if (mounted && cats.isNotEmpty) {
+          setState(() => _apiCategories = cats);
+        }
+      } catch (_) {}
+    }
   }
 
   Future<void> _fetchSettings() async {
@@ -86,7 +130,7 @@ class _ShopScreenState extends State<ShopScreen> {
     if (widget.initialSearch != null && widget.initialSearch!.isNotEmpty) {
       _searchCtrl.text = widget.initialSearch!;
     }
-    _fetchCategories();
+    _fetchFacets();
     _fetchSettings();
     _fetch();
   }
@@ -127,12 +171,14 @@ class _ShopScreenState extends State<ShopScreen> {
         category: (_selectedCategory != null && _selectedCategory != 'All')
             ? _selectedCategory
             : null,
+        brand: _selectedBrands.isNotEmpty ? _selectedBrands.join(',') : null,
         search: _searchCtrl.text.trim().isNotEmpty
             ? _searchCtrl.text.trim()
             : null,
         sort: _sortBy,
         minPrice: _minPrice.isNotEmpty ? _minPrice : null,
         maxPrice: _maxPrice.isNotEmpty ? _maxPrice : null,
+        minRating: _minRating.isNotEmpty ? _minRating : null,
         inStock: _inStockOnly ? true : null,
         onSale: _onSaleOnly ? true : null,
       );
@@ -195,6 +241,8 @@ class _ShopScreenState extends State<ShopScreen> {
 
   bool get _hasActiveFilters =>
       _selectedCategory != null ||
+      _selectedBrands.isNotEmpty ||
+      _minRating.isNotEmpty ||
       _searchCtrl.text.trim().isNotEmpty ||
       _inStockOnly ||
       _onSaleOnly ||
@@ -205,6 +253,8 @@ class _ShopScreenState extends State<ShopScreen> {
     _searchCtrl.clear();
     setState(() {
       _selectedCategory = null;
+      _selectedBrands.clear();
+      _minRating = '';
       _inStockOnly = false;
       _onSaleOnly = false;
       _minPrice = '';
@@ -212,12 +262,203 @@ class _ShopScreenState extends State<ShopScreen> {
       _sortBy = 'newest';
       _page = 1;
     });
+    _fetchFacets();
     _fetch();
+  }
+
+  Future<void> _openBrandFilterSheet() async {
+    final searchCtrl = TextEditingController();
+    final draft = List<String>.from(_selectedBrands);
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) {
+          final q = searchCtrl.text.trim().toLowerCase();
+          final filtered = _facetBrands.where((b) {
+            final name = (b['brand'] as String).toLowerCase();
+            return q.isEmpty || name.contains(q);
+          }).toList();
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.72,
+            minChildSize: 0.45,
+            maxChildSize: 0.92,
+            expand: false,
+            builder: (_, scrollCtrl) => Padding(
+              padding: EdgeInsets.fromLTRB(
+                18,
+                16,
+                18,
+                MediaQuery.of(ctx).viewInsets.bottom + 16,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Filter by Brand (${_facetBrands.length})',
+                        style: Theme.of(ctx).textTheme.titleLarge,
+                      ),
+                      if (draft.isNotEmpty)
+                        TextButton(
+                          onPressed: () => setSheetState(() => draft.clear()),
+                          child: const Text('Clear all'),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: searchCtrl,
+                    onChanged: (_) => setSheetState(() {}),
+                    decoration: const InputDecoration(
+                      prefixIcon: Icon(Icons.search, size: 19),
+                      hintText: 'Search brands (e.g. CeraVe, Fenty, Nivea…)',
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No matching brands',
+                              style: TextStyle(color: AppColors.muted),
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollCtrl,
+                            itemCount: filtered.length,
+                            itemBuilder: (_, i) {
+                              final name = filtered[i]['brand'] as String;
+                              final count = filtered[i]['count'] as int;
+                              final selected = draft.any(
+                                (d) => d.toLowerCase() == name.toLowerCase(),
+                              );
+                              return CheckboxListTile(
+                                value: selected,
+                                dense: true,
+                                controlAffinity: ListTileControlAffinity.leading,
+                                activeColor: AppColors.primary,
+                                title: Text(
+                                  name,
+                                  style: TextStyle(
+                                    fontWeight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                  ),
+                                ),
+                                secondary: Text(
+                                  '$count',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.muted,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                onChanged: (_) => setSheetState(() {
+                                  if (selected) {
+                                    draft.removeWhere((d) =>
+                                        d.toLowerCase() == name.toLowerCase());
+                                  } else {
+                                    draft.add(name);
+                                  }
+                                }),
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      setState(() {
+                        _selectedBrands
+                          ..clear()
+                          ..addAll(draft);
+                        _page = 1;
+                      });
+                      _fetch();
+                    },
+                    child: Text(
+                      draft.isEmpty
+                          ? 'Show All Brands'
+                          : 'Apply (${draft.length} selected)',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _openRatingFilterSheet() async {
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Product Rating',
+                style: Theme.of(ctx).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 10),
+              for (final stars in [4, 3, 2, 1])
+                ListTile(
+                  dense: true,
+                  leading: Text(
+                    '${'★' * stars}${'☆' * (5 - stars)}',
+                    style: const TextStyle(
+                      color: AppColors.accent,
+                      fontSize: 16,
+                      letterSpacing: 1.2,
+                    ),
+                  ),
+                  title: const Text('& up'),
+                  trailing: _minRating == '$stars'
+                      ? const Icon(Icons.check, color: AppColors.accentDark)
+                      : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    setState(() {
+                      _minRating = _minRating == '$stars' ? '' : '$stars';
+                      _page = 1;
+                    });
+                    _fetch();
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _openPriceFilterSheet() async {
     final minCtrl = TextEditingController(text: _minPrice);
     final maxCtrl = TextEditingController(text: _maxPrice);
+    double sliderStart =
+        (double.tryParse(_minPrice) ?? _priceBoundMin).clamp(_priceBoundMin, _priceBoundMax);
+    double sliderEnd =
+        (double.tryParse(_maxPrice) ?? _priceBoundMax).clamp(sliderStart, _priceBoundMax);
+
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -225,85 +466,105 @@ class _ShopScreenState extends State<ShopScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
       ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          MediaQuery.of(ctx).viewInsets.bottom + 20,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'Filter by Price (GH₵)',
-              style: Theme.of(ctx).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 14),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: minCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Min Price',
-                      hintText: '0',
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => Padding(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            20,
+            20,
+            MediaQuery.of(ctx).viewInsets.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Filter by Price (GH₵)',
+                style: Theme.of(ctx).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 10),
+              RangeSlider(
+                values: RangeValues(sliderStart, sliderEnd),
+                min: _priceBoundMin,
+                max: _priceBoundMax,
+                activeColor: AppColors.accent,
+                inactiveColor: AppColors.border,
+                labels: RangeLabels(
+                  'GH₵${sliderStart.round()}',
+                  'GH₵${sliderEnd.round()}',
+                ),
+                onChanged: (vals) => setSheetState(() {
+                  sliderStart = vals.start;
+                  sliderEnd = vals.end;
+                  minCtrl.text = vals.start.round().toString();
+                  maxCtrl.text = vals.end.round().toString();
+                }),
+              ),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: minCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Min Price',
+                        hintText: _priceBoundMin.round().toString(),
+                      ),
                     ),
                   ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 10),
-                  child: Text('–'),
-                ),
-                Expanded(
-                  child: TextField(
-                    controller: maxCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: 'Max Price',
-                      hintText: '500',
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10),
+                    child: Text('–'),
+                  ),
+                  Expanded(
+                    child: TextField(
+                      controller: maxCtrl,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Max Price',
+                        hintText: _priceBoundMax.round().toString(),
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      setState(() {
-                        _minPrice = '';
-                        _maxPrice = '';
-                        _page = 1;
-                      });
-                      _fetch();
-                    },
-                    child: const Text('Clear'),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _minPrice = '';
+                          _maxPrice = '';
+                          _page = 1;
+                        });
+                        _fetch();
+                      },
+                      child: const Text('Clear'),
+                    ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      setState(() {
-                        _minPrice = minCtrl.text.trim();
-                        _maxPrice = maxCtrl.text.trim();
-                        _page = 1;
-                      });
-                      _fetch();
-                    },
-                    child: const Text('Apply Price'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _minPrice = minCtrl.text.trim();
+                          _maxPrice = maxCtrl.text.trim();
+                          _page = 1;
+                        });
+                        _fetch();
+                      },
+                      child: const Text('Apply Price'),
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -500,27 +761,71 @@ class _ShopScreenState extends State<ShopScreen> {
             ),
           ),
 
-          // Active category pill (when a category is chosen from the side drawer or picker)
-          if (_selectedCategory != null)
+          // Active category / brand / rating pills
+          if (_selectedCategory != null ||
+              _selectedBrands.isNotEmpty ||
+              _minRating.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 0, 14, 4),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: InputChip(
-                  label: Text(
-                    _selectedCategory!,
-                    style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  onDeleted: () {
-                    setState(() {
-                      _selectedCategory = null;
-                      _page = 1;
-                    });
-                    _fetch();
-                  },
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (_selectedCategory != null)
+                      InputChip(
+                        label: Text(
+                          _selectedCategory!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        onDeleted: () {
+                          setState(() {
+                            _selectedCategory = null;
+                            _page = 1;
+                          });
+                          _fetchFacets();
+                          _fetch();
+                        },
+                      ),
+                    for (final b in _selectedBrands)
+                      InputChip(
+                        label: Text(
+                          'Brand: $b',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        onDeleted: () {
+                          setState(() {
+                            _selectedBrands.remove(b);
+                            _page = 1;
+                          });
+                          _fetch();
+                        },
+                      ),
+                    if (_minRating.isNotEmpty)
+                      InputChip(
+                        label: Text(
+                          '$_minRating★ & up',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        onDeleted: () {
+                          setState(() {
+                            _minRating = '';
+                            _page = 1;
+                          });
+                          _fetch();
+                        },
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -532,6 +837,49 @@ class _ShopScreenState extends State<ShopScreen> {
               scrollDirection: Axis.horizontal,
               child: Row(
                 children: [
+                  if (_facetBrands.isNotEmpty) ...[
+                    FilterChip(
+                      showCheckmark: false,
+                      label: Text(
+                        _selectedBrands.isEmpty
+                            ? 'Brand'
+                            : _selectedBrands.length == 1
+                                ? _selectedBrands.first
+                                : 'Brands (${_selectedBrands.length})',
+                        style: TextStyle(
+                          color: _selectedBrands.isNotEmpty
+                              ? Colors.white
+                              : AppColors.text,
+                          fontWeight: _selectedBrands.isNotEmpty
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          fontSize: 12,
+                        ),
+                      ),
+                      selected: _selectedBrands.isNotEmpty,
+                      visualDensity: VisualDensity.compact,
+                      onSelected: (_) => _openBrandFilterSheet(),
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                  FilterChip(
+                    showCheckmark: false,
+                    label: Text(
+                      _minRating.isNotEmpty ? '$_minRating★+' : 'Rating',
+                      style: TextStyle(
+                        color:
+                            _minRating.isNotEmpty ? Colors.white : AppColors.text,
+                        fontWeight: _minRating.isNotEmpty
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                        fontSize: 12,
+                      ),
+                    ),
+                    selected: _minRating.isNotEmpty,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => _openRatingFilterSheet(),
+                  ),
+                  const SizedBox(width: 6),
                   FilterChip(
                     showCheckmark: false,
                     label: Text(
