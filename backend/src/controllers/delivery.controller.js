@@ -353,16 +353,10 @@ const sendPodOtp = async (req, res) => {
       }).catch(err => logger.warn('POD OTP SMS failed', { err: err.message }));
     }
 
-    if (email) {
-      emailService.sendEmail({
-        to: email,
-        subject: `Your Delivery Verification Code for Order #${d.order_number}`,
-        html: `
-          <p>Hi ${d.first_name || 'Valued Customer'},</p>
-          <p>Your parcel <strong>${d.tracking_number}</strong> is preparing for handoff.</p>
-          <p style="font-size:24px;font-weight:800;letter-spacing:4px;background:#f7f4ef;padding:12px 18px;display:inline-block;border:1px solid #d4af37;">${otp}</p>
-          <p><strong>Security notice:</strong> Share this 6-digit code with your rider <em>only</em> face-to-face after you receive and inspect your package. Never share it over the phone before arrival.</p>
-        `,
+    if (email && typeof emailService.sendOtpEmail === 'function') {
+      emailService.sendOtpEmail(email, {
+        firstName: d.first_name || 'Valued Customer',
+        otp,
       }).catch(err => logger.warn('POD OTP email failed', { err: err.message }));
     }
 
