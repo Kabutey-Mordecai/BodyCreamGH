@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { deliveriesAPI } from '../services/api';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
@@ -17,12 +17,100 @@ export default function RiderHandoff() {
   const [uploading, setUploading]   = useState(false);
   const [gps, setGps]               = useState({ lat: null, lng: null, accuracy: null, status: 'pending' });
 
+  // Live in-page camera state (prevents gallery uploads on phones & desktop)
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraError, setCameraError]   = useState('');
+  const videoRef  = useRef(null);
+  const streamRef = useRef(null);
+
   const [codCollected, setCodCollected] = useState(true);
   const [collectionMethod, setCollectionMethod] = useState('cash');
   const [paymentRef, setPaymentRef] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone]             = useState(null);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setCameraActive(false);
+  };
+
+  useEffect(() => () => stopCamera(), []);
+
+  const startLiveCamera = async () => {
+    setCameraError('');
+    setError('');
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('Live camera API is unavailable in this browser. Use the fallback button below.');
+      return;
+    }
+    try {
+      stopCamera();
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: 'environment' },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCameraActive(true);
+      // Attach stream once <video> mounts
+      requestAnimationFrame(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          videoRef.current.play().catch(() => {});
+        }
+      });
+    } catch (err) {
+      setCameraError(
+        err?.name === 'NotAllowedError'
+          ? 'Camera permission denied. Please allow camera access in your browser settings.'
+          : 'Could not open rear camera. Ensure no other app is using the camera.'
+      );
+    }
+  };
+
+  const captureLiveFrame = async () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) {
+      setCameraError('Camera is still warming up — try tapping Capture again.');
+      return;
+    }
+    setUploading(true);
+    setError('');
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob(
+          b => (b ? resolve(b) : reject(new Error('Failed to capture image'))),
+          'image/jpeg',
+          0.88
+        );
+      });
+
+      const fd = new FormData();
+      fd.append('media', blob, `pod-${Date.now()}.jpg`);
+      const { data } = await deliveriesAPI.uploadRiderPhoto(token, fd);
+      if (data?.url) {
+        setPhotoUrl(data.url);
+        stopCamera();
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to upload captured photo.');
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const captureGps = () => {
     if (!navigator.geolocation) {
@@ -60,7 +148,7 @@ export default function RiderHandoff() {
       .finally(() => setLoading(false));
   }, [token]);
 
-  const handlePhotoChange = async (e) => {
+  const handleFallbackPhotoChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setUploading(true);
@@ -86,7 +174,7 @@ export default function RiderHandoff() {
       return;
     }
     if (!photoUrl) {
-      setError('Please snap a live photo of the parcel before confirming.');
+      setError('Please capture a live photo of the parcel before confirming.');
       return;
     }
     if (info?.cod_amount_due > 0 && codCollected && collectionMethod === 'momo' && !paymentRef.trim()) {
@@ -107,6 +195,7 @@ export default function RiderHandoff() {
         collection_method: collectionMethod,
         payment_reference: paymentRef.trim(),
       });
+      stopCamera();
       setDone(data);
     } catch (err) {
       setError(err.response?.data?.error || 'Verification failed. Please check the 6-digit code.');
@@ -236,24 +325,73 @@ export default function RiderHandoff() {
 
           <div className="field" style={{ marginBottom: 14 }}>
             <label style={{ fontWeight: 700, display: 'block', marginBottom: 6 }}>
-              2. Live Photo of Parcel / Label *
+              2. Live Camera Photo of Parcel / Label *
             </label>
-            <label className="btn btn-outline btn-full" style={{ cursor: 'pointer', display: 'block', textAlign: 'center' }}>
-              {uploading ? 'Uploading photo…' : photoUrl ? 'Retake Parcel Photo' : '📷 Snap Live Parcel Photo'}
-              <input
-                type="file"
-                accept="image/*"
-                capture="environment"
-                style={{ display: 'none' }}
+
+            {cameraActive ? (
+              <div style={{ borderRadius: 10, overflow: 'hidden', border: '2px solid #111', background: '#000' }}>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  style={{ width: '100%', display: 'block', maxHeight: 280, objectFit: 'cover' }}
+                />
+                <div style={{ display: 'flex', gap: 8, padding: 10, background: '#111' }}>
+                  <button
+                    type="button"
+                    className="btn btn-accent"
+                    style={{ flex: 1, fontWeight: 700 }}
+                    disabled={uploading}
+                    onClick={captureLiveFrame}
+                  >
+                    {uploading ? 'Uploading…' : '📸 Capture Live Photo'}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    style={{ color: '#fff', borderColor: '#555' }}
+                    disabled={uploading}
+                    onClick={stopCamera}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="btn btn-outline btn-full"
                 disabled={uploading}
-                onChange={handlePhotoChange}
-              />
-            </label>
-            {photoUrl && (
+                onClick={startLiveCamera}
+                style={{ fontWeight: 700 }}
+              >
+                {photoUrl ? '📷 Retake Live Camera Photo' : '📷 Open Live Camera'}
+              </button>
+            )}
+
+            {cameraError && (
+              <div style={{ marginTop: 8, fontSize: '0.8rem', color: '#92400e', background: '#fef3c7', padding: '8px 10px', borderRadius: 6 }}>
+                <div>{cameraError}</div>
+                <label style={{ display: 'inline-block', marginTop: 6, textDecoration: 'underline', cursor: 'pointer', fontWeight: 700 }}>
+                  Fallback: Open Device Camera / Upload
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    style={{ display: 'none' }}
+                    disabled={uploading}
+                    onChange={handleFallbackPhotoChange}
+                  />
+                </label>
+              </div>
+            )}
+
+            {photoUrl && !cameraActive && (
               <img
                 src={resolveImageUrl(photoUrl)}
-                alt="Uploaded parcel proof"
-                style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8, marginTop: 8, border: '1px solid var(--color-border)' }}
+                alt="Captured parcel proof"
+                style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8, marginTop: 8, border: '1px solid var(--color-border)' }}
               />
             )}
           </div>
@@ -325,7 +463,7 @@ export default function RiderHandoff() {
           <button
             type="submit"
             className="btn btn-accent btn-full"
-            disabled={submitting || uploading}
+            disabled={submitting || uploading || cameraActive}
             style={{ padding: '12px 16px', fontSize: '1rem', fontWeight: 700 }}
           >
             {submitting ? 'Verifying…' : '✓ Verify & Complete Delivery'}
