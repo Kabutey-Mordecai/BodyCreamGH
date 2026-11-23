@@ -72,16 +72,15 @@ async function sendSms({ to, message }) {
   const senderId = process.env.SMS_SENDER_ID || 'BodyCreamGH';
   const cleanSender = String(senderId || 'BodyCreamGH').replace(/[^a-zA-Z0-9]/g, '').slice(0, 11) || 'BodyCreamGH';
   const recipient = normalizeGhanaPhone(to);
-  const maskedTo = recipient ? `${recipient.slice(0, 5)}***` : null;
+  const maskedTo = recipient ? `***${recipient.slice(-3)}` : null;
 
   if (!provider || !apiKey || !recipient || !message) {
     log(LEVELS.INFO, 'sms.skipped', {
       provider: provider || 'none',
       hasTo: Boolean(recipient),
       toPreview: maskedTo,
-      msgSample: message ? message.slice(0, 40) : null,
     });
-    return { sent: false, reason: 'SMS provider not configured' };
+    return { sent: false, provider: provider || 'none', reason: 'SMS provider not configured' };
   }
 
   try {
@@ -130,24 +129,24 @@ async function sendSms({ to, message }) {
       );
     } else {
       log(LEVELS.WARN, 'sms.unknown_provider', { provider });
-      return { sent: false, reason: `Unsupported SMS provider: ${provider}` };
+      return { sent: false, provider, reason: `Unsupported SMS provider: ${provider}` };
     }
 
     const payloadError = validateSmsResponse(provider, response && response.data);
     if (payloadError) {
       log(LEVELS.ERROR, 'sms.failed', { provider, to: maskedTo, err: payloadError });
-      return { sent: false, reason: payloadError };
+      return { sent: false, provider, reason: payloadError };
     }
 
     log(LEVELS.INFO, 'sms.sent', { provider, to: maskedTo });
-    return { sent: true, provider };
+    return { sent: true, provider, reason: null };
   } catch (err) {
     const errMsg =
       (err && err.response && err.response.data && err.response.data.message) ||
       (err && err.message) ||
       String(err);
     log(LEVELS.ERROR, 'sms.failed', { provider, to: maskedTo, err: errMsg });
-    return { sent: false, reason: errMsg };
+    return { sent: false, provider, reason: errMsg };
   }
 }
 
