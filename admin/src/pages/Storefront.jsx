@@ -1567,15 +1567,25 @@ export default function Storefront() {
                 >+ Add</button>
               </div>
               <div className="card-body">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontWeight: 600, fontSize: '0.88rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={data.trust_strip_enabled !== false}
+                    onChange={e => update('trust_strip_enabled', e.target.checked)}
+                  />
+                  Show Trust Promises strip on Storefront (Home & Shop)
+                </label>
                 {(data.trust_items || []).map((t, i) => (
                   <div key={i} style={{ display: 'grid', gridTemplateColumns: '60px 1fr 2fr auto', gap: 10, marginBottom: 8, alignItems: 'center' }}>
                     <input value={t.icon} onChange={e => updateArray('trust_items', i, 'icon', e.target.value)} maxLength={4} style={{ textAlign: 'center', fontSize: '1.1rem' }} />
-                    <input value={t.label} onChange={e => updateArray('trust_items', i, 'label', e.target.value)} placeholder="Free delivery" />
-                    <input value={t.sub}   onChange={e => updateArray('trust_items', i, 'sub', e.target.value)} placeholder="Over GHS 200" />
+                    <input value={t.label} onChange={e => updateArray('trust_items', i, 'label', e.target.value)} placeholder="Fast delivery" />
+                    <input value={t.sub}   onChange={e => updateArray('trust_items', i, 'sub', e.target.value)} placeholder="Free over {free_delivery_over}" />
                     <button className="btn btn-ghost btn-sm" style={{ color: 'var(--ac-danger)' }} onClick={() => removeFromArray('trust_items', i)}>×</button>
                   </div>
                 ))}
-                <div className="hint" style={{ marginTop: 8 }}>Icons can be emoji (🚚) or single characters (✦, ↩).</div>
+                <div className="hint" style={{ marginTop: 8 }}>
+                  Icons can be emoji (🚚) or single characters (✦, ↩). Use <code>{'{free_delivery_over}'}</code> in any subtitle to auto-sync with your live Shipping threshold in Settings (or type any custom text).
+                </div>
               </div>
             </div>
           )}

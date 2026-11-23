@@ -52,9 +52,33 @@ function renderBadgeIcon(item) {
 }
 
 export default function TrustStrip() {
-  const { trust_items } = useSettings();
+  const {
+    trust_items,
+    trust_strip_enabled = true,
+    free_delivery_over,
+    pay_on_delivery_enabled,
+  } = useSettings();
+
+  if (trust_strip_enabled === false) return null;
+
   const items = trust_items || [];
   if (!items.length) return null;
+
+  const freeOverNum = Number(free_delivery_over);
+  const formatSub = (rawSub) => {
+    let sub = String(rawSub || '');
+    if (sub.includes('{free_delivery_over}')) {
+      sub = freeOverNum > 0
+        ? sub.replace(/\{free_delivery_over\}/g, `GHS ${freeOverNum}`)
+        : 'Nationwide delivery';
+    } else if (/^free over ghs\s*\d+(\.\d+)?$/i.test(sub.trim())) {
+      sub = freeOverNum > 0 ? `Free over GHS ${freeOverNum}` : 'Nationwide delivery';
+    }
+    if (pay_on_delivery_enabled && /^paystack\s*&\s*momo$/i.test(sub.trim())) {
+      sub = 'Paystack, MoMo & COD';
+    }
+    return sub;
+  };
 
   return (
     <section className="trust-strip" aria-label="Store highlights">
@@ -66,7 +90,7 @@ export default function TrustStrip() {
             </div>
             <div className="trust-badge-text">
               <strong>{b.label}</strong>
-              <span>{b.sub}</span>
+              <span>{formatSub(b.sub)}</span>
             </div>
           </li>
         ))}
