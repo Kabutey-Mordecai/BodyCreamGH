@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { variantsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import ConfirmDialog from './ConfirmDialog';
 
 // Cartesian product of arrays of option values
 function cartesian(arrays) {
   if (arrays.length === 0) return [];
   return arrays.reduce(
-    (acc, arr) => acc.flatMap(a => arr.map(b => [...a, b])), [[]]
+    (acc, arr) => acc.flatMap(a => arr.map(b => [...a, b])),
+    [[]]
   );
 }
 
@@ -30,9 +32,22 @@ export default function VariantManager({ productId }) {
   const [typeInput, setTypeInput]     = useState('');
   const [savingType, setSavingType]   = useState(false);
 
+  // Inline add-value to existing option type: { [typeId]: string }
+  const [addValueText, setAddValueText]   = useState({});
+  const [addingValueId, setAddingValueId] = useState(null);
+
+  // Delete option confirm dialog
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
   // Per-row edits keyed by comboKey
-  const [rowEdits, setRowEdits]   = useState({});
-  const [rowSaving, setRowSaving] = useState({});
+  const [rowEdits, setRowEdits]     = useState({});
+  const [savedEdits, setSavedEdits] = useState({});
+  const [rowSaving, setRowSaving]   = useState({});
+  const [savingAll, setSavingAll]   = useState(false);
+
+  // Bulk fill bar
+  const [bulkPrice, setBulkPrice] = useState('');
+  const [bulkStock, setBulkStock] = useState('');
 
   const load = useCallback(async () => {
     if (!productId) return;
@@ -40,18 +55,18 @@ export default function VariantManager({ productId }) {
     try {
       const { data: d } = await variantsAPI.getByProduct(productId);
       setData(d);
-      // Seed row-edit state from saved variants
       const edits = {};
-      d.variants.forEach(v => {
+      (d.variants || []).forEach(v => {
         const key = v.option_values.map(ov => ov.option_value_id).sort().join('|');
         edits[key] = {
-          price:            String(v.price),
+          price:            String(v.price ?? ''),
           compare_at_price: v.compare_at_price ? String(v.compare_at_price) : '',
           sku:              v.sku || '',
-          stock_quantity:   String(v.stock_quantity),
+          stock_quantity:   String(v.stock_quantity ?? '0'),
         };
       });
       setRowEdits(edits);
+      setSavedEdits(edits);
     } catch {
       toast.error('Failed to load variants');
     } finally {
@@ -61,24 +76,39 @@ export default function VariantManager({ productId }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // All option-value combinations from current option types
   const combinations = useMemo(() => {
-    const valueArrays = data.option_types.map(t =>
+    const valueArrays = (data.option_types || []).map(t =>
       (t.values || []).filter(Boolean)
     );
     if (valueArrays.length === 0 || valueArrays.some(a => a.length === 0)) return [];
     return cartesian(valueArrays);
   }, [data.option_types]);
 
-  // Map comboKey → existing saved variant
   const existingByKey = useMemo(() => {
     const map = {};
-    data.variants.forEach(v => {
+    (data.variants || []).forEach(v => {
       const key = v.option_values.map(ov => ov.option_value_id).sort().join('|');
       map[key] = v;
     });
     return map;
   }, [data.variants]);
+
+  const dirtyCombos = useMemo(() => {
+    return combinations.filter(combo => {
+      const key = comboKey(combo);
+      const cur = rowEdits[key] || EMPTY_ROW;
+      const prev = savedEdits[key];
+      if (!prev) {
+        return cur.price !== '';
+      }
+      return (
+        cur.price !== prev.price ||
+        cur.compare_at_price !== prev.compare_at_price ||
+        cur.sku !== prev.sku ||
+        cur.stock_quantity !== prev.stock_quantity
+      );
+    });
+  }, [combinations, rowEdits, savedEdits]);
 
   // ── Add option type helpers ──────────────────────────────────────────────────
   const commitTypeInput = () => {
@@ -91,7 +121,7 @@ export default function VariantManager({ productId }) {
 
   const handleTypeInputKeyDown = (e) => {
     if (e.key === 'Enter' && !e.nativeEvent?.isComposing) { e.preventDefault(); commitTypeInput(); }
-    if (e.key === ',' )    { e.preventDefault(); commitTypeInput(); }
+    if (e.key === ',') { e.preventDefault(); commitTypeInput(); }
     if (e.key === 'Backspace' && !typeInput && typeValues.length) {
       setTypeValues(prev => prev.slice(0, -1));
     }
@@ -140,11 +170,35 @@ export default function VariantManager({ productId }) {
     }
   };
 
-  const handleDeleteOptionType = async (typeId, typeName) => {
-    if (!window.confirm(`Delete option "${typeName}"? All variants using it will also be removed.`)) return;
+  const handleAddValueToExisting = async (optType) => {
+    const val = (addValueText[optType.id] || '').trim();
+    if (!val) return;
+    if ((optType.values || []).some(v => v.value.toLowerCase() === val.toLowerCase())) {
+      toast.error(`"${val}" already exists in ${optType.name}`);
+      return;
+    }
+    setAddingValueId(optType.id);
     try {
-      await variantsAPI.deleteOptionType(productId, typeId);
-      toast.success('Option deleted');
+      await variantsAPI.createOptionValue(productId, optType.id, {
+        value: val,
+        position: (optType.values || []).length,
+      });
+      setAddValueText(prev => ({ ...prev, [optType.id]: '' }));
+      toast.success(`Added "${val}" to ${optType.name}`);
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to add value');
+    } finally {
+      setAddingValueId(null);
+    }
+  };
+
+  const confirmDeleteOptionType = async () => {
+    if (!deleteTarget) return;
+    try {
+      await variantsAPI.deleteOptionType(productId, deleteTarget.id);
+      toast.success(`Option "${deleteTarget.name}" deleted`);
+      setDeleteTarget(null);
       await load();
     } catch {
       toast.error('Failed to delete option');
@@ -159,13 +213,9 @@ export default function VariantManager({ productId }) {
     }));
   };
 
-  const handleSaveRow = async (combo) => {
-    const key   = comboKey(combo);
-    const edits = rowEdits[key] || EMPTY_ROW;
-    if (!edits.price || isNaN(Number(edits.price))) {
-      toast.error('Price is required');
-      return;
-    }
+  const saveSingleCombo = async (combo) => {
+    const key      = comboKey(combo);
+    const edits    = rowEdits[key] || EMPTY_ROW;
     const existing = existingByKey[key];
     const payload  = {
       price:            Number(edits.price),
@@ -174,13 +224,23 @@ export default function VariantManager({ productId }) {
       stock_quantity:   Number(edits.stock_quantity) || 0,
       option_value_ids: combo.map(v => v.id),
     };
+    if (existing) {
+      await variantsAPI.update(productId, existing.id, payload);
+    } else {
+      await variantsAPI.create(productId, payload);
+    }
+  };
+
+  const handleSaveRow = async (combo) => {
+    const key   = comboKey(combo);
+    const edits = rowEdits[key] || EMPTY_ROW;
+    if (!edits.price || isNaN(Number(edits.price))) {
+      toast.error('Price is required');
+      return;
+    }
     setRowSaving(prev => ({ ...prev, [key]: true }));
     try {
-      if (existing) {
-        await variantsAPI.update(productId, existing.id, payload);
-      } else {
-        await variantsAPI.create(productId, payload);
-      }
+      await saveSingleCombo(combo);
       toast.success('Variant saved');
       await load();
     } catch (err) {
@@ -190,16 +250,59 @@ export default function VariantManager({ productId }) {
     }
   };
 
+  const handleSaveAllDirty = async () => {
+    if (dirtyCombos.length === 0) return;
+    for (const combo of dirtyCombos) {
+      const edits = rowEdits[comboKey(combo)] || EMPTY_ROW;
+      if (!edits.price || isNaN(Number(edits.price))) {
+        toast.error(`Price is required for "${combo.map(v => v.value).join(' / ')}"`);
+        return;
+      }
+    }
+    setSavingAll(true);
+    try {
+      for (const combo of dirtyCombos) {
+        await saveSingleCombo(combo);
+      }
+      toast.success(`Saved ${dirtyCombos.length} variant${dirtyCombos.length !== 1 ? 's' : ''}`);
+      await load();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Bulk save failed');
+    } finally {
+      setSavingAll(false);
+    }
+  };
+
+  const handleApplyBulk = () => {
+    if (bulkPrice === '' && bulkStock === '') return;
+    setRowEdits(prev => {
+      const next = { ...prev };
+      combinations.forEach(combo => {
+        const key = comboKey(combo);
+        const cur = next[key] || { ...EMPTY_ROW };
+        next[key] = {
+          ...cur,
+          ...(bulkPrice !== '' && { price: bulkPrice }),
+          ...(bulkStock !== '' && { stock_quantity: bulkStock }),
+        };
+      });
+      return next;
+    });
+    toast.success('Applied to all rows — click "Save all" to commit');
+    setBulkPrice('');
+    setBulkStock('');
+  };
+
   const handleToggleVariant = async (combo) => {
     const key      = comboKey(combo);
     const existing = existingByKey[key];
     if (!existing) return;
     try {
       await variantsAPI.update(productId, existing.id, {
-        ...rowEdits[key] && {
+        ...(rowEdits[key] && {
           price:          Number(rowEdits[key].price) || existing.price,
           stock_quantity: Number(rowEdits[key].stock_quantity) || 0,
-        },
+        }),
         is_active:        !existing.is_active,
         option_value_ids: combo.map(v => v.id),
       });
@@ -210,7 +313,6 @@ export default function VariantManager({ productId }) {
     }
   };
 
-  // ── Render ───────────────────────────────────────────────────────────────────
   if (loading) return <div className="spinner" style={{ margin: '24px auto' }} />;
 
   return (
@@ -218,36 +320,48 @@ export default function VariantManager({ productId }) {
       {/* ── Option types ──────────────────────────────── */}
       <div style={{ marginBottom: 16 }}>
         {data.option_types.map(t => (
-          <div key={t.id} style={{
-            background: 'var(--ac-bg)',
-            border: '1px solid var(--ac-border)',
-            borderRadius: 8,
-            padding: '10px 14px',
-            marginBottom: 8,
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 10,
-          }}>
+          <div key={t.id} className="vm-option-card">
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: 6 }}>{t.name}</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+              <div style={{ fontWeight: 600, fontSize: '0.88rem', marginBottom: 8 }}>{t.name}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                 {(t.values || []).map(v => (
-                  <span key={v.id} style={{
-                    background: 'var(--ac-surface)',
-                    border: '1px solid var(--ac-border)',
-                    borderRadius: 99,
-                    padding: '2px 10px',
-                    fontSize: '0.8rem',
-                  }}>
+                  <span key={v.id} className="vm-val-chip">
                     {v.value}
                   </span>
                 ))}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <input
+                    type="text"
+                    placeholder={`+ Add ${t.name.toLowerCase()}…`}
+                    value={addValueText[t.id] || ''}
+                    onChange={e => setAddValueText(prev => ({ ...prev, [t.id]: e.target.value }))}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleAddValueToExisting(t);
+                      }
+                    }}
+                    disabled={addingValueId === t.id}
+                    style={{ width: 130, padding: '3px 8px', fontSize: '0.78rem' }}
+                  />
+                  {(addValueText[t.id] || '').trim() && (
+                    <button
+                      type="button"
+                      className="btn btn-accent btn-sm"
+                      disabled={addingValueId === t.id}
+                      onClick={() => handleAddValueToExisting(t)}
+                    >
+                      {addingValueId === t.id ? '…' : 'Add'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
             <button
+              type="button"
               className="btn btn-outline btn-sm"
-              style={{ color: 'var(--ac-danger)', borderColor: 'var(--ac-danger)', flexShrink: 0 }}
-              onClick={() => handleDeleteOptionType(t.id, t.name)}
+              style={{ color: 'var(--ac-danger)', flexShrink: 0 }}
+              onClick={() => setDeleteTarget(t)}
             >
               Delete option
             </button>
@@ -255,19 +369,15 @@ export default function VariantManager({ productId }) {
         ))}
 
         {!showAddType ? (
-          <button className="btn btn-outline btn-sm" onClick={() => setShowAddType(true)}>
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAddType(true)}>
             + Add option
           </button>
         ) : (
-          <div style={{
-            background: 'var(--ac-bg)',
-            border: '1px solid var(--ac-border)',
-            borderRadius: 8,
-            padding: 14,
-          }}>
+          <div className="vm-option-card" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
             <div className="field" style={{ marginBottom: 10 }}>
-              <label>Option name</label>
+              <label htmlFor="vm-new-option-name">Option name</label>
               <input
+                id="vm-new-option-name"
                 type="text"
                 value={typeName}
                 onChange={e => setTypeName(e.target.value)}
@@ -277,36 +387,20 @@ export default function VariantManager({ productId }) {
             </div>
             <div className="field" style={{ marginBottom: 12 }}>
               <label>Values</label>
-              <div style={{
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 5,
-                border: '1px solid var(--ac-border)',
-                borderRadius: 6,
-                padding: '6px 8px',
-                minHeight: 38,
-                alignItems: 'center',
-                cursor: 'text',
-              }}
+              <div
+                className="vm-chip-input-box"
                 onClick={e => e.currentTarget.querySelector('input')?.focus()}
               >
                 {typeValues.map((v, i) => (
-                  <span key={i} style={{
-                    background: 'var(--ac-accent)',
-                    color: '#fff',
-                    borderRadius: 99,
-                    padding: '1px 8px',
-                    fontSize: '0.8rem',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 4,
-                  }}>
+                  <span key={i} className="vm-chip-active">
                     {v}
                     <button
                       type="button"
                       onClick={() => setTypeValues(prev => prev.filter((_, j) => j !== i))}
-                      style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, lineHeight: 1, fontSize: '0.9rem' }}
-                    >×</button>
+                      aria-label={`Remove ${v}`}
+                    >
+                      ×
+                    </button>
                   </span>
                 ))}
                 <input
@@ -314,14 +408,15 @@ export default function VariantManager({ productId }) {
                   value={typeInput}
                   onChange={handleTypeInputChange}
                   onKeyDown={handleTypeInputKeyDown}
-                  placeholder={typeValues.length === 0 ? 'Type a value, press Enter' : ''}
-                  style={{ border: 'none', outline: 'none', background: 'transparent', flexGrow: 1, minWidth: 80, fontSize: '0.88rem' }}
+                  placeholder={typeValues.length === 0 ? 'Type a value, press Enter or comma' : ''}
+                  className="vm-chip-raw-input"
                 />
               </div>
-              <div className="hint">Press Enter or comma to add each value.</div>
+              <div className="hint">Press Enter or comma after each value (e.g. 100ml, 200ml, 500ml).</div>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <button
+                type="button"
                 className="btn btn-accent btn-sm"
                 onClick={handleAddOptionType}
                 disabled={savingType || !typeName.trim()}
@@ -329,6 +424,7 @@ export default function VariantManager({ productId }) {
                 {savingType ? 'Saving…' : 'Add option'}
               </button>
               <button
+                type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => { setShowAddType(false); setTypeName(''); setTypeValues([]); setTypeInput(''); }}
                 disabled={savingType}
@@ -340,19 +436,69 @@ export default function VariantManager({ productId }) {
         )}
       </div>
 
+      {/* ── Bulk Fill & Save All Bar ──────────────────── */}
+      {combinations.length > 0 && (
+        <div className="vm-bulk-bar">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span className="muted text-xs" style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Bulk fill:
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Price (GHS)"
+              value={bulkPrice}
+              onChange={e => setBulkPrice(e.target.value)}
+              style={{ width: 115, padding: '4px 8px', fontSize: '0.82rem' }}
+            />
+            <input
+              type="number"
+              min="0"
+              step="1"
+              placeholder="Stock"
+              value={bulkStock}
+              onChange={e => setBulkStock(e.target.value)}
+              style={{ width: 85, padding: '4px 8px', fontSize: '0.82rem' }}
+            />
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={handleApplyBulk}
+              disabled={bulkPrice === '' && bulkStock === ''}
+            >
+              Apply to all
+            </button>
+          </div>
+
+          {dirtyCombos.length > 0 && (
+            <button
+              type="button"
+              className="btn btn-accent btn-sm"
+              onClick={handleSaveAllDirty}
+              disabled={savingAll}
+            >
+              {savingAll
+                ? 'Saving all…'
+                : `Save all (${dirtyCombos.length})`}
+            </button>
+          )}
+        </div>
+      )}
+
       {/* ── Variant table ─────────────────────────────── */}
       {combinations.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        <div className="data-table-scroll">
+          <table className="data-table">
             <thead>
-              <tr style={{ borderBottom: '2px solid var(--ac-border)' }}>
-                <th style={th}>Variant</th>
-                <th style={th}>Price (GHS) *</th>
-                <th style={th}>Was (GHS)</th>
-                <th style={th}>SKU</th>
-                <th style={th}>Stock</th>
-                <th style={th}>Status</th>
-                <th style={th}></th>
+              <tr>
+                <th>Variant</th>
+                <th style={{ width: 120 }}>Price (GHS) *</th>
+                <th style={{ width: 115 }}>Was (GHS)</th>
+                <th style={{ width: 135 }}>SKU</th>
+                <th style={{ width: 90 }}>Stock</th>
+                <th style={{ width: 100 }}>Status</th>
+                <th style={{ width: 150 }}></th>
               </tr>
             </thead>
             <tbody>
@@ -360,78 +506,89 @@ export default function VariantManager({ productId }) {
                 const key      = comboKey(combo);
                 const existing = existingByKey[key];
                 const edits    = rowEdits[key] || EMPTY_ROW;
+                const prev     = savedEdits[key];
+                const isDirty  = prev
+                  ? (edits.price !== prev.price ||
+                     edits.compare_at_price !== prev.compare_at_price ||
+                     edits.sku !== prev.sku ||
+                     edits.stock_quantity !== prev.stock_quantity)
+                  : edits.price !== '';
                 const isSaving = rowSaving[key];
                 const label    = combo.map(v => v.value).join(' / ');
+
                 return (
-                  <tr key={key} style={{ borderBottom: '1px solid var(--ac-border)', opacity: existing && !existing.is_active ? 0.6 : 1 }}>
-                    <td style={td}>
-                      <span style={{ fontWeight: 500 }}>{label}</span>
+                  <tr
+                    key={key}
+                    className={isDirty ? 'selected' : ''}
+                    style={{ opacity: existing && !existing.is_active ? 0.6 : 1 }}
+                  >
+                    <td>
+                      <div className="cell-primary">{label}</div>
+                      {isDirty && <div style={{ fontSize: '0.7rem', color: 'var(--ac-accent-dark)', fontWeight: 600 }}>Unsaved</div>}
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
-                        type="number" min="0" step="0.01"
+                        type="number"
+                        min="0"
+                        step="0.01"
                         value={edits.price}
                         onChange={e => updRow(key, 'price', e.target.value)}
-                        style={inputStyle}
                         placeholder="0.00"
+                        style={{ padding: '5px 8px', fontSize: '0.84rem' }}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
-                        type="number" min="0" step="0.01"
+                        type="number"
+                        min="0"
+                        step="0.01"
                         value={edits.compare_at_price}
                         onChange={e => updRow(key, 'compare_at_price', e.target.value)}
-                        style={inputStyle}
                         placeholder="—"
+                        style={{ padding: '5px 8px', fontSize: '0.84rem' }}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
                         type="text"
                         value={edits.sku}
                         onChange={e => updRow(key, 'sku', e.target.value)}
-                        style={{ ...inputStyle, fontFamily: 'monospace' }}
                         placeholder="SKU"
+                        style={{ padding: '5px 8px', fontSize: '0.84rem', fontFamily: 'monospace' }}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       <input
-                        type="number" min="0" step="1"
+                        type="number"
+                        min="0"
+                        step="1"
                         value={edits.stock_quantity}
                         onChange={e => updRow(key, 'stock_quantity', e.target.value)}
-                        style={{ ...inputStyle, width: 64 }}
+                        style={{ padding: '5px 8px', fontSize: '0.84rem', width: 72 }}
                       />
                     </td>
-                    <td style={td}>
+                    <td>
                       {existing ? (
-                        <span style={{
-                          padding: '2px 9px',
-                          borderRadius: 99,
-                          fontSize: '0.72rem',
-                          fontWeight: 700,
-                          letterSpacing: '0.06em',
-                          textTransform: 'uppercase',
-                          background: existing.is_active
-                            ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
-                          color: existing.is_active ? '#16a34a' : '#dc2626',
-                        }}>
+                        <span className={`badge ${existing.is_active ? 'badge-success' : 'badge-danger'}`}>
                           {existing.is_active ? 'Active' : 'Disabled'}
                         </span>
                       ) : (
-                        <span style={{ color: 'var(--ac-muted)', fontSize: '0.78rem' }}>Not saved</span>
+                        <span className="badge badge-neutral">Not saved</span>
                       )}
                     </td>
-                    <td style={{ ...td, whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', gap: 4 }}>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         <button
-                          className="btn btn-accent btn-sm"
+                          type="button"
+                          className={`btn btn-sm ${isDirty || !existing ? 'btn-accent' : 'btn-outline'}`}
                           onClick={() => handleSaveRow(combo)}
-                          disabled={isSaving}
+                          disabled={isSaving || savingAll}
                         >
                           {isSaving ? '…' : existing ? 'Update' : 'Save'}
                         </button>
                         {existing && (
                           <button
+                            type="button"
                             className="btn btn-outline btn-sm"
                             onClick={() => handleToggleVariant(combo)}
                           >
@@ -459,10 +616,97 @@ export default function VariantManager({ productId }) {
           Add options above (e.g. Size, Scent) to generate variants automatically.
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={confirmDeleteOptionType}
+        danger
+        title="Delete variant option?"
+        message={
+          deleteTarget
+            ? `Delete option "${deleteTarget.name}"? All saved variants using this option will also be permanently removed.`
+            : ''
+        }
+        confirmLabel="Delete option"
+      />
+
+      <style>{`
+        .vm-option-card {
+          background: var(--ac-surface-2);
+          border: 1px solid var(--ac-border);
+          border-radius: var(--ac-radius);
+          padding: 12px 14px;
+          margin-bottom: 10px;
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+        }
+        .vm-val-chip {
+          background: var(--ac-surface);
+          border: 1px solid var(--ac-border-strong);
+          color: var(--ac-text);
+          border-radius: 99px;
+          padding: 2px 10px;
+          font-size: 0.8rem;
+          font-weight: 500;
+        }
+        .vm-chip-input-box {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          border: 1px solid var(--ac-input-border);
+          background: var(--ac-input-bg);
+          border-radius: var(--ac-radius);
+          padding: 6px 8px;
+          min-height: 38px;
+          align-items: center;
+          cursor: text;
+        }
+        .vm-chip-active {
+          background: var(--ac-accent);
+          color: #fff;
+          border-radius: 99px;
+          padding: 2px 10px;
+          font-size: 0.78rem;
+          font-weight: 600;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .vm-chip-active button {
+          background: none;
+          border: none;
+          color: inherit;
+          cursor: pointer;
+          padding: 0;
+          line-height: 1;
+          font-size: 0.95rem;
+        }
+        .vm-chip-raw-input {
+          border: none !important;
+          outline: none !important;
+          box-shadow: none !important;
+          background: transparent !important;
+          flex-grow: 1;
+          min-width: 100px;
+          width: auto !important;
+          padding: 2px 4px !important;
+          font-size: 0.86rem;
+        }
+        .vm-bulk-bar {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-wrap: wrap;
+          gap: 12px;
+          padding: 10px 14px;
+          margin-bottom: 12px;
+          background: var(--ac-surface-2);
+          border: 1px solid var(--ac-border);
+          border-radius: var(--ac-radius);
+        }
+      `}</style>
     </div>
   );
 }
-
-const th = { textAlign: 'left', padding: '8px 10px', fontWeight: 600, color: 'var(--ac-muted)', fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.05em' };
-const td = { padding: '8px 10px', verticalAlign: 'middle' };
-const inputStyle = { width: '100%', minWidth: 80, padding: '4px 7px', border: '1px solid var(--ac-border)', borderRadius: 5, fontSize: '0.84rem', background: 'var(--ac-surface)' };
