@@ -79,7 +79,14 @@ export default function OrderDetail() {
   const [podSending, setPodSending]         = useState(false);
   const [podLinkInfo, setPodLinkInfo]       = useState(null);
 
+  const [knownPartners, setKnownPartners]   = useState([]);
+  const [manifestInfo, setManifestInfo]     = useState(null);
+  const [manifestLoading, setManifestLoading] = useState(false);
+
   const loadDelivery = () => {
+    deliveriesAPI.getPartners()
+      .then(({ data }) => setKnownPartners(Array.isArray(data?.partners) ? data.partners : []))
+      .catch(() => {});
     deliveriesAPI.getByOrder(id)
       .then(({ data }) => {
         setDelivery(data);
@@ -338,6 +345,24 @@ export default function OrderDetail() {
       toast.error(err.response?.data?.error || 'Failed to send delivery OTP');
     } finally {
       setPodSending(false);
+    }
+  };
+
+  const handleGetRiderManifest = async () => {
+    if (!delivery) return;
+    setManifestLoading(true);
+    try {
+      const { data } = await deliveriesAPI.createManifestLink({
+        delivery_partner: delivery.delivery_partner || undefined,
+        driver_phone: delivery.driver_phone || undefined,
+        expires_in: '7d',
+      });
+      setManifestInfo(data);
+      toast.success(`Rider Manifest ready (${data.active_count} active stop${data.active_count === 1 ? '' : 's'})`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to generate Rider Manifest link');
+    } finally {
+      setManifestLoading(false);
     }
   };
 
@@ -1243,12 +1268,63 @@ export default function OrderDetail() {
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
-                            style={{ width: '100%', fontSize: '0.8rem' }}
+                            style={{ width: '100%', fontSize: '0.8rem', marginBottom: 6 }}
                             disabled={podSending}
                             onClick={handleSendPodOtp}
                           >
                             {podSending ? 'Generating OTP & Link…' : '🔐 Send 6-Digit Delivery OTP & Get Rider Link'}
                           </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            style={{ width: '100%', fontSize: '0.8rem' }}
+                            disabled={manifestLoading}
+                            onClick={handleGetRiderManifest}
+                          >
+                            {manifestLoading
+                              ? 'Generating Manifest…'
+                              : `🏍️ Multi-Stop Rider Manifest (${delivery.delivery_partner || 'All Stops'})`}
+                          </button>
+
+                          {manifestInfo?.manifest_url && (
+                            <div style={{ marginTop: 8, padding: 10, background: 'var(--ac-surface-2, #f8f7f4)', borderRadius: 6, border: '1px solid var(--ac-border)', fontSize: '0.78rem' }}>
+                              <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                                🏍️ {manifestInfo.delivery_partner} Manifest ({manifestInfo.active_count} active stop{manifestInfo.active_count === 1 ? '' : 's'} · valid {manifestInfo.expires_in}):
+                              </div>
+                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm"
+                                  style={{ fontSize: '0.75rem' }}
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(manifestInfo.manifest_url);
+                                    toast.success('Rider Manifest link copied');
+                                  }}
+                                >
+                                  Copy Manifest Link
+                                </button>
+                                <a
+                                  href={manifestInfo.manifest_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-outline btn-sm"
+                                  style={{ fontSize: '0.75rem', textDecoration: 'none' }}
+                                >
+                                  Open Manifest ↗
+                                </a>
+                                <a
+                                  href={`https://wa.me/${String(delivery.driver_phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Multi-Stop Rider Manifest (${manifestInfo.active_count} stops for ${manifestInfo.delivery_partner}):\n${manifestInfo.manifest_url}`)}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-outline btn-sm"
+                                  style={{ fontSize: '0.75rem', color: '#16a34a', borderColor: '#86efac', textDecoration: 'none' }}
+                                >
+                                  WhatsApp Manifest
+                                </a>
+                              </div>
+                            </div>
+                          )}
 
                           {podLinkInfo?.rider_url && (
                             <div style={{ marginTop: 8, padding: 10, background: 'var(--ac-surface-2, #f8f7f4)', borderRadius: 6, border: '1px solid var(--ac-border)', fontSize: '0.78rem' }}>
@@ -1316,6 +1392,23 @@ export default function OrderDetail() {
                       >
                         In-house Bike Rider
                       </button>
+                      {knownPartners
+                        .filter(p => p.delivery_partner.toLowerCase() !== 'in-house dispatch bike')
+                        .map(p => (
+                          <button
+                            key={p.delivery_partner}
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                            onClick={() => setDeliveryForm(prev => ({
+                              ...prev,
+                              delivery_partner: p.delivery_partner,
+                              driver_phone: p.driver_phone || prev.driver_phone,
+                            }))}
+                          >
+                            {p.delivery_partner}
+                          </button>
+                        ))}
                       <button
                         type="button"
                         className="btn btn-outline btn-sm"

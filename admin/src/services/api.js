@@ -186,6 +186,7 @@ export const couponsAPI = {
 // ── Deliveries ────────────────────────────────────────────────────────
 export const deliveriesAPI = {
   getByOrder:         (orderId)              => api.get(`/deliveries/order/${orderId}`),
+  getPartners:        ()                     => api.get('/deliveries/partners'),
   create:             (data)                 => api.post('/deliveries', data),
   update:             (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
   simulateAdvance:    (trackingNumber)       => api.post(`/deliveries/simulate/advance/${encodeURIComponent(trackingNumber)}`),

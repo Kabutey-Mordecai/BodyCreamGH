@@ -755,6 +755,32 @@ const confirmCustomerReceipt = async (req, res) => {
   }
 };
 
+// ── Admin: list distinct riders / courier partners from deliveries table ──────
+const getDeliveryPartners = async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT TRIM(d.delivery_partner) AS delivery_partner,
+              MAX(NULLIF(TRIM(d.driver_phone), '')) AS driver_phone,
+              COUNT(*) FILTER (
+                WHERE d.status IN ('pending', 'in_transit', 'out_for_delivery')
+                  AND d.pod_verified_at IS NULL
+                  AND o.status NOT IN ('delivered', 'cancelled', 'refunded')
+              )::int AS active_count,
+              COUNT(*)::int AS total_count
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+        WHERE d.delivery_partner IS NOT NULL
+          AND TRIM(d.delivery_partner) <> ''
+        GROUP BY TRIM(d.delivery_partner)
+        ORDER BY active_count DESC, TRIM(d.delivery_partner) ASC`
+    );
+    res.json({ partners: rows });
+  } catch (err) {
+    logger.error('getDeliveryPartners error', { err: err.message });
+    res.status(500).json({ error: 'Failed to load delivery partners' });
+  }
+};
+
 // ── Admin: generate 1 signed Multi-Stop Rider Manifest link (20+ orders) ─────
 const createRiderManifestLink = async (req, res) => {
   try {
@@ -762,7 +788,11 @@ const createRiderManifestLink = async (req, res) => {
     const cleanPhone = typeof req.body?.driver_phone === 'string' ? req.body.driver_phone.trim() : '';
     const expiresIn = MANIFEST_EXPIRY_PRESETS[req.body?.expires_in] || '7d';
 
-    const conditions = [`d.status IN ('pending', 'in_transit', 'out_for_delivery')`];
+    const conditions = [
+      `d.status IN ('pending', 'in_transit', 'out_for_delivery')`,
+      `d.pod_verified_at IS NULL`,
+      `o.status NOT IN ('delivered', 'cancelled', 'refunded')`,
+    ];
     const params = [];
     if (cleanPartner) {
       params.push(`%${cleanPartner}%`);
@@ -774,7 +804,10 @@ const createRiderManifestLink = async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT COUNT(*)::int AS active_count FROM deliveries d WHERE ${conditions.join(' AND ')}`,
+      `SELECT COUNT(*)::int AS active_count
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+        WHERE ${conditions.join(' AND ')}`,
       params
     );
 
@@ -836,7 +869,7 @@ const getRiderManifest = async (req, res) => {
       `SELECT d.id, d.order_id, d.status, d.tracking_number, d.zone_code,
               d.delivery_partner, d.driver_phone, d.pod_verified_at,
               d.pod_otp_hash IS NOT NULL AS has_otp,
-              o.order_number, o.total_amount, o.payment_method, o.payment_status,
+              o.order_number, o.status AS order_status, o.total_amount, o.payment_method, o.payment_status,
               o.shipping_address, o.shipping_city, o.shipping_region,
               COALESCE(u.first_name, o.guest_first_name, 'Customer') AS customer_first_name,
               COALESCE(u.last_name, o.guest_last_name, '') AS customer_last_name,
@@ -845,9 +878,10 @@ const getRiderManifest = async (req, res) => {
          FROM deliveries d
          JOIN orders o ON o.id = d.order_id
          LEFT JOIN users u ON u.id = o.customer_id
-        WHERE ${conditions.join(' AND ')}
+        WHERE o.status NOT IN ('cancelled', 'refunded')
+          AND ${conditions.join(' AND ')}
         ORDER BY
-          CASE WHEN d.pod_verified_at IS NULL THEN 0 ELSE 1 END ASC,
+          CASE WHEN d.pod_verified_at IS NULL AND o.status <> 'delivered' THEN 0 ELSE 1 END ASC,
           d.zone_code ASC NULLS LAST,
           d.created_at DESC`,
       params
@@ -859,7 +893,7 @@ const getRiderManifest = async (req, res) => {
     let codPendingGhs = 0;
 
     const stops = rows.map(r => {
-      const isVerified = Boolean(r.pod_verified_at) || r.status === 'delivered';
+      const isVerified = Boolean(r.pod_verified_at) || r.status === 'delivered' || r.order_status === 'delivered';
       const isCod = r.payment_method === 'pay_on_delivery';
       const isPaid = ['paid', 'partially_refunded', 'refunded'].includes(r.payment_status);
       const amount = Number(r.total_amount || 0);
@@ -1033,6 +1067,7 @@ module.exports = {
   confirmRiderDelivery,
   confirmCustomerReceipt,
   requireRiderToken,
+  getDeliveryPartners,
   createRiderManifestLink,
   getRiderManifest,
   riderResendPodOtp,

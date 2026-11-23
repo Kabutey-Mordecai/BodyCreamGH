@@ -13,6 +13,7 @@ const {
   confirmRiderDelivery,
   confirmCustomerReceipt,
   requireRiderToken,
+  getDeliveryPartners,
   createRiderManifestLink,
   getRiderManifest,
   riderResendPodOtp,
@@ -32,6 +33,7 @@ router.post('/rider/photo',      requireRiderToken, uploadSingleMediaMiddleware,
 router.post('/rider/confirm',    confirmRiderDelivery);
 
 // ── Authenticated ─────────────────────────────────────────────────────────────
+router.get('/partners',                         verifyToken, requireAdmin, getDeliveryPartners);
 router.post('/',                                verifyToken, requireAdmin, validateCreateDelivery, createDelivery);
 router.post('/manifest/link',                   verifyToken, requireAdmin, createRiderManifestLink);
 router.get('/order/:orderId',                   verifyToken, getDeliveryByOrder);

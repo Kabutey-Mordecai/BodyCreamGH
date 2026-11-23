@@ -62,6 +62,7 @@ export default function Orders() {
   const [manifestExpiry, setManifestExpiry] = useState('7d');
   const [manifestBusy, setManifestBusy]     = useState(false);
   const [manifestResult, setManifestResult] = useState(null);
+  const [knownPartners, setKnownPartners]   = useState([]);
 
   const timerRef = useRef(null);
   const debounceRef = useRef(null);
@@ -266,6 +267,9 @@ export default function Orders() {
                 onClick={() => {
                   setManifestResult(null);
                   setManifestOpen(true);
+                  deliveriesAPI.getPartners()
+                    .then(({ data }) => setKnownPartners(Array.isArray(data?.partners) ? data.partners : []))
+                    .catch(() => {});
                 }}
               >
                 🏍️ Rider Manifest
@@ -797,17 +801,54 @@ export default function Orders() {
                   style={{ width: '100%', marginBottom: 6 }}
                 />
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  {['In-house Dispatch Bike', 'Speedaf Ghana', 'DHL', 'VIP / STC Parcel', 'Bolt / Yango'].map(preset => (
+                  <button
+                    type="button"
+                    className="btn btn-outline btn-sm"
+                    style={{
+                      fontSize: '0.7rem',
+                      padding: '2px 8px',
+                      background: !manifestPartner ? 'var(--ac-accent)' : undefined,
+                      color: !manifestPartner ? '#fff' : undefined,
+                    }}
+                    onClick={() => {
+                      setManifestPartner('');
+                      setManifestPhone('');
+                    }}
+                  >
+                    All Active Dispatches
+                  </button>
+                  {knownPartners.map(p => (
                     <button
-                      key={preset}
+                      key={p.delivery_partner}
                       type="button"
                       className="btn btn-outline btn-sm"
-                      style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                      onClick={() => setManifestPartner(preset)}
+                      style={{
+                        fontSize: '0.7rem',
+                        padding: '2px 8px',
+                        fontWeight: p.active_count > 0 ? 700 : 500,
+                        borderColor: p.active_count > 0 ? 'var(--ac-accent)' : undefined,
+                      }}
+                      onClick={() => {
+                        setManifestPartner(p.delivery_partner);
+                        if (p.driver_phone) setManifestPhone(p.driver_phone);
+                      }}
                     >
-                      {preset}
+                      {p.delivery_partner} ({p.active_count} active)
                     </button>
                   ))}
+                  {['In-house Dispatch Bike', 'Speedaf Ghana', 'DHL', 'VIP / STC Parcel', 'Bolt / Yango']
+                    .filter(preset => !knownPartners.some(p => p.delivery_partner.toLowerCase() === preset.toLowerCase()))
+                    .map(preset => (
+                      <button
+                        key={preset}
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                        onClick={() => setManifestPartner(preset)}
+                      >
+                        {preset}
+                      </button>
+                    ))}
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
