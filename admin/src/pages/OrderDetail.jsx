@@ -1264,16 +1264,69 @@ export default function OrderDetail() {
                           )}
                         </div>
                       ) : (
-                        <>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div style={{ fontSize: '0.76rem', color: 'var(--ac-text-muted)', marginBottom: 2 }}>
+                            Send the customer their 6-digit code &amp; share a link with the rider:
+                          </div>
+
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
-                            style={{ width: '100%', fontSize: '0.8rem', marginBottom: 6 }}
+                            style={{ width: '100%', fontSize: '0.8rem' }}
                             disabled={podSending}
                             onClick={handleSendPodOtp}
                           >
-                            {podSending ? 'Generating OTP & Link…' : '🔐 Send 6-Digit Delivery OTP & Get Rider Link'}
+                            {podSending ? 'Sending 6-Digit Code…' : '🔐 Send 6-Digit Code & Get This Order’s Link'}
                           </button>
+
+                          {podLinkInfo?.rider_url && (
+                            <div style={{ padding: 10, background: 'var(--ac-surface-2, #181b20)', borderRadius: 8, border: '1px solid var(--ac-border)', fontSize: '0.76rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <span style={{ fontWeight: 700 }}>This Order Handoff Link</span>
+                                <span className="muted">Valid 14d</span>
+                              </div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-outline btn-sm"
+                                  style={{ fontSize: '0.74rem', justifyContent: 'center' }}
+                                  onClick={() => {
+                                    navigator.clipboard?.writeText(podLinkInfo.rider_url);
+                                    toast.success('Handoff link copied');
+                                  }}
+                                >
+                                  📋 Copy
+                                </button>
+                                <a
+                                  href={podLinkInfo.rider_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-outline btn-sm"
+                                  style={{ fontSize: '0.74rem', textDecoration: 'none', justifyContent: 'center' }}
+                                >
+                                  ↗ Open
+                                </a>
+                                {delivery.driver_phone ? (
+                                  <a
+                                    href={`https://wa.me/${String(delivery.driver_phone).replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Dispatch (${podLinkInfo.tracking_number} · Zone ${podLinkInfo.zone_code}): Verify the customer's 6-digit OTP & snap parcel photo here: ${podLinkInfo.rider_url}`)}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-outline btn-sm"
+                                    style={{ fontSize: '0.74rem', color: '#22c55e', borderColor: 'rgba(34,197,94,0.4)', textDecoration: 'none', justifyContent: 'center' }}
+                                  >
+                                    💬 Rider
+                                  </a>
+                                ) : (
+                                  <span />
+                                )}
+                              </div>
+                              {podLinkInfo.demo_otp && (
+                                <div style={{ marginTop: 8, color: '#92400e', background: '#fef3c7', padding: '4px 8px', borderRadius: 4 }}>
+                                  Demo OTP (SMS unconfigured): <strong>{podLinkInfo.demo_otp}</strong>
+                                </div>
+                              )}
+                            </div>
+                          )}
 
                           <button
                             type="button"
@@ -1283,93 +1336,52 @@ export default function OrderDetail() {
                             onClick={handleGetRiderManifest}
                           >
                             {manifestLoading
-                              ? 'Generating Manifest…'
-                              : `🏍️ Multi-Stop Rider Manifest (${delivery.delivery_partner || 'All Stops'})`}
+                              ? 'Loading Rider Route…'
+                              : `🏍️ All Stops for ${delivery.delivery_partner || 'Rider'} (Route Manifest)`}
                           </button>
 
                           {manifestInfo?.manifest_url && (
-                            <div style={{ marginTop: 8, padding: 10, background: 'var(--ac-surface-2, #f8f7f4)', borderRadius: 6, border: '1px solid var(--ac-border)', fontSize: '0.78rem' }}>
-                              <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                                🏍️ {manifestInfo.delivery_partner} Manifest ({manifestInfo.active_count} active stop{manifestInfo.active_count === 1 ? '' : 's'} · valid {manifestInfo.expires_in}):
+                            <div style={{ padding: 10, background: 'var(--ac-surface-2, #181b20)', borderRadius: 8, border: '1px solid var(--ac-border)', fontSize: '0.76rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                                <span style={{ fontWeight: 700 }}>{manifestInfo.delivery_partner}</span>
+                                <span style={{ color: '#22c55e', fontWeight: 700 }}>
+                                  {manifestInfo.active_count} stop{manifestInfo.active_count === 1 ? '' : 's'} · {manifestInfo.expires_in}
+                                </span>
                               </div>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
                                 <button
                                   type="button"
                                   className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.75rem' }}
+                                  style={{ fontSize: '0.74rem', justifyContent: 'center' }}
                                   onClick={() => {
                                     navigator.clipboard?.writeText(manifestInfo.manifest_url);
-                                    toast.success('Rider Manifest link copied');
+                                    toast.success('Route manifest link copied');
                                   }}
                                 >
-                                  Copy Manifest Link
+                                  📋 Copy
                                 </button>
                                 <a
                                   href={manifestInfo.manifest_url}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.75rem', textDecoration: 'none' }}
+                                  style={{ fontSize: '0.74rem', textDecoration: 'none', justifyContent: 'center' }}
                                 >
-                                  Open Manifest ↗
+                                  ↗ Route
                                 </a>
                                 <a
-                                  href={`https://wa.me/${String(delivery.driver_phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Multi-Stop Rider Manifest (${manifestInfo.active_count} stops for ${manifestInfo.delivery_partner}):\n${manifestInfo.manifest_url}`)}`}
+                                  href={`https://wa.me/${String(delivery.driver_phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Rider Route (${manifestInfo.active_count} stops · ${manifestInfo.delivery_partner}):\n${manifestInfo.manifest_url}`)}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.75rem', color: '#16a34a', borderColor: '#86efac', textDecoration: 'none' }}
+                                  style={{ fontSize: '0.74rem', color: '#22c55e', borderColor: 'rgba(34,197,94,0.4)', textDecoration: 'none', justifyContent: 'center' }}
                                 >
-                                  WhatsApp Manifest
+                                  💬 WhatsApp
                                 </a>
                               </div>
                             </div>
                           )}
-
-                          {podLinkInfo?.rider_url && (
-                            <div style={{ marginTop: 8, padding: 10, background: 'var(--ac-surface-2, #f8f7f4)', borderRadius: 6, border: '1px solid var(--ac-border)', fontSize: '0.78rem' }}>
-                              <div style={{ fontWeight: 600, marginBottom: 4 }}>Signed Rider Handoff Link (72h):</div>
-                              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                                <button
-                                  type="button"
-                                  className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.75rem' }}
-                                  onClick={() => {
-                                    navigator.clipboard?.writeText(podLinkInfo.rider_url);
-                                    toast.success('Rider link copied');
-                                  }}
-                                >
-                                  Copy Link
-                                </button>
-                                <a
-                                  href={podLinkInfo.rider_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.75rem', textDecoration: 'none' }}
-                                >
-                                  Open Rider Page
-                                </a>
-                                {delivery.driver_phone && (
-                                  <a
-                                    href={`https://wa.me/${String(delivery.driver_phone).replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Dispatch (${podLinkInfo.tracking_number} · Zone ${podLinkInfo.zone_code}): Use this secure link at the customer's door to verify their 6-digit OTP & snap parcel photo: ${podLinkInfo.rider_url}`)}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="btn btn-outline btn-sm"
-                                    style={{ fontSize: '0.75rem', color: '#16a34a', borderColor: '#86efac', textDecoration: 'none' }}
-                                  >
-                                    WhatsApp to Rider
-                                  </a>
-                                )}
-                              </div>
-                              {podLinkInfo.demo_otp && (
-                                <div style={{ color: '#92400e', background: '#fef3c7', padding: '4px 8px', borderRadius: 4 }}>
-                                  Demo OTP (SMS unconfigured): <strong>{podLinkInfo.demo_otp}</strong>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </>
+                        </div>
                       )}
                     </div>
                   </form>
