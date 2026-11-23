@@ -117,6 +117,27 @@ export default function Orders() {
       });
   }, [page, status, dateRange, fulfillmentFilter, paymentFilter, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-generate manifest link whenever modal opens or rider/expiry selection changes
+  useEffect(() => {
+    if (!manifestOpen) return;
+    const t = setTimeout(async () => {
+      setManifestBusy(true);
+      try {
+        const { data } = await deliveriesAPI.createManifestLink({
+          delivery_partner: manifestPartner.trim() || undefined,
+          driver_phone: manifestPhone.trim() || undefined,
+          expires_in: manifestExpiry,
+        });
+        setManifestResult(data);
+      } catch {
+        // handled silently on auto-refresh
+      } finally {
+        setManifestBusy(false);
+      }
+    }, 180);
+    return () => clearTimeout(t);
+  }, [manifestOpen, manifestPartner, manifestPhone, manifestExpiry]);
+
   useEffect(() => {
     fetchOrders(false);
     clearInterval(timerRef.current);
@@ -754,11 +775,12 @@ export default function Orders() {
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Generate Multi-Stop Rider Manifest"
+          aria-label="Multi-Stop Rider Manifest"
           style={{
             position: 'fixed',
             inset: 0,
-            background: 'rgba(0,0,0,0.5)',
+            background: 'rgba(0,0,0,0.62)',
+            backdropFilter: 'blur(3px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -769,196 +791,224 @@ export default function Orders() {
         >
           <div
             className="card"
-            style={{ width: '100%', maxWidth: 480, padding: 20, margin: 0 }}
+            style={{ width: '100%', maxWidth: 540, padding: 22, margin: 0, boxShadow: '0 20px 50px rgba(0,0,0,0.45)' }}
             onClick={e => e.stopPropagation()}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <h3 style={{ margin: 0, fontSize: '1.05rem' }}>🏍️ Multi-Stop Rider Manifest Link</h3>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ac-accent)' }}>
+                  Dispatch Route Sharing
+                </div>
+                <h3 style={{ margin: '2px 0 4px', fontSize: '1.15rem' }}>🏍️ Rider & Courier Manifest</h3>
+                <p className="muted text-xs" style={{ margin: 0 }}>
+                  One link for all assigned stops — works for in-house riders &amp; 3rd-party couriers (no login needed).
+                </p>
+              </div>
               <button
                 type="button"
                 className="btn btn-outline btn-sm"
                 onClick={() => setManifestOpen(false)}
+                aria-label="Close modal"
               >
                 ✕
               </button>
             </div>
-            <p className="muted text-xs" style={{ marginTop: 0, marginBottom: 14 }}>
-              Generate <strong>1 signed link</strong> for an in-house rider OR a <strong>3rd-party courier company</strong> (Speedaf, DHL, VIP/STC, Bolt/Yango — no login required).
-              For external couriers who don&apos;t use links, customers can also tap <em>Confirm Package Received</em> in the storefront/app.
-            </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
-              <div>
-                <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
-                  Rider or 3rd-Party Courier Company (optional)
-                </label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="Leave blank for all active dispatches, or type company/rider"
-                  value={manifestPartner}
-                  onChange={e => setManifestPartner(e.target.value)}
-                  style={{ width: '100%', marginBottom: 6 }}
-                />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    style={{
-                      fontSize: '0.7rem',
-                      padding: '2px 8px',
-                      background: !manifestPartner ? 'var(--ac-accent)' : undefined,
-                      color: !manifestPartner ? '#fff' : undefined,
-                    }}
-                    onClick={() => {
-                      setManifestPartner('');
-                      setManifestPhone('');
-                    }}
-                  >
-                    All Active Dispatches
-                  </button>
-                  {knownPartners.map(p => (
+            {/* 1. Rider / Courier Quick-Select Cards */}
+            <div style={{ marginBottom: 14 }}>
+              <div className="text-xs" style={{ fontWeight: 700, marginBottom: 6, color: 'var(--ac-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                1. Choose Rider or Courier
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, marginBottom: 8 }}>
+                {(() => {
+                  const totalActive = knownPartners.reduce((sum, p) => sum + (p.active_count || 0), 0);
+                  const isAll = !manifestPartner.trim();
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => { setManifestPartner(''); setManifestPhone(''); }}
+                      style={{
+                        textAlign: 'left',
+                        padding: '9px 11px',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        border: isAll ? '1.5px solid var(--ac-accent)' : '1px solid var(--ac-border)',
+                        background: isAll ? 'rgba(201,165,90,0.14)' : 'var(--ac-surface-2)',
+                        color: 'var(--ac-text)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>All Dispatches</div>
+                      <div style={{ fontSize: '0.72rem', color: isAll ? 'var(--ac-accent)' : 'var(--ac-text-muted)', fontWeight: 600 }}>
+                        {totalActive} active stop{totalActive === 1 ? '' : 's'}
+                      </div>
+                    </button>
+                  );
+                })()}
+                {knownPartners.map(p => {
+                  const selected = manifestPartner.toLowerCase() === p.delivery_partner.toLowerCase();
+                  return (
                     <button
                       key={p.delivery_partner}
                       type="button"
-                      className="btn btn-outline btn-sm"
-                      style={{
-                        fontSize: '0.7rem',
-                        padding: '2px 8px',
-                        fontWeight: p.active_count > 0 ? 700 : 500,
-                        borderColor: p.active_count > 0 ? 'var(--ac-accent)' : undefined,
-                      }}
                       onClick={() => {
                         setManifestPartner(p.delivery_partner);
-                        if (p.driver_phone) setManifestPhone(p.driver_phone);
+                        setManifestPhone(p.driver_phone || '');
+                      }}
+                      style={{
+                        textAlign: 'left',
+                        padding: '9px 11px',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        border: selected ? '1.5px solid var(--ac-accent)' : '1px solid var(--ac-border)',
+                        background: selected ? 'rgba(201,165,90,0.14)' : 'var(--ac-surface-2)',
+                        color: 'var(--ac-text)',
                       }}
                     >
-                      {p.delivery_partner} ({p.active_count} active)
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {p.delivery_partner}
+                      </div>
+                      <div style={{ fontSize: '0.72rem', color: p.active_count > 0 ? '#22c55e' : 'var(--ac-text-muted)', fontWeight: 600 }}>
+                        {p.active_count} active stop{p.active_count === 1 ? '' : 's'}
+                      </div>
                     </button>
-                  ))}
-                  {['In-house Dispatch Bike', 'Speedaf Ghana', 'DHL', 'VIP / STC Parcel', 'Bolt / Yango']
-                    .filter(preset => !knownPartners.some(p => p.delivery_partner.toLowerCase() === preset.toLowerCase()))
-                    .map(preset => (
-                      <button
-                        key={preset}
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                        onClick={() => setManifestPartner(preset)}
-                      >
-                        {preset}
-                      </button>
-                    ))}
-                </div>
+                  );
+                })}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                <div>
-                  <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
-                    Courier / Driver Phone (optional)
-                  </label>
-                  <input
-                    type="text"
-                    className="input"
-                    placeholder="e.g. 0241234567"
-                    value={manifestPhone}
-                    onChange={e => setManifestPhone(e.target.value)}
-                    style={{ width: '100%' }}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
-                    Link Validity (Transit Time)
-                  </label>
-                  <select
-                    className="input"
-                    value={manifestExpiry}
-                    onChange={e => setManifestExpiry(e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                    <option value="24h">24 Hours (Same-Day Accra)</option>
-                    <option value="3d">3 Days (Kumasi / Intercity)</option>
-                    <option value="7d">7 Days (Nationwide / 3rd-Party)</option>
-                    <option value="14d">14 Days (Extended Transit)</option>
-                  </select>
-                </div>
+
+              {/* Compact custom filter + WhatsApp phone row */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 8 }}>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Or type courier / rider name…"
+                  value={manifestPartner}
+                  onChange={e => setManifestPartner(e.target.value)}
+                  style={{ width: '100%', fontSize: '0.82rem', padding: '7px 10px' }}
+                />
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Rider WhatsApp phone (optional)"
+                  value={manifestPhone}
+                  onChange={e => setManifestPhone(e.target.value)}
+                  style={{ width: '100%', fontSize: '0.82rem', padding: '7px 10px' }}
+                />
               </div>
             </div>
 
-            <button
-              type="button"
-              className="btn btn-primary"
-              style={{ width: '100%', marginBottom: 12 }}
-              disabled={manifestBusy}
-              onClick={async () => {
-                setManifestBusy(true);
-                try {
-                  const { data } = await deliveriesAPI.createManifestLink({
-                    delivery_partner: manifestPartner.trim() || undefined,
-                    driver_phone: manifestPhone.trim() || undefined,
-                    expires_in: manifestExpiry,
-                  });
-                  setManifestResult(data);
-                  toast.success(`Manifest link ready (${data.active_count} active stop${data.active_count === 1 ? '' : 's'} · valid ${data.expires_in})`);
-                } catch (err) {
-                  toast.error(err.response?.data?.error || 'Failed to generate manifest link');
-                } finally {
-                  setManifestBusy(false);
-                }
+            {/* 2. Segmented Transit Validity Pills (no truncated dropdown) */}
+            <div style={{ marginBottom: 16 }}>
+              <div className="text-xs" style={{ fontWeight: 700, marginBottom: 6, color: 'var(--ac-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                2. Link Validity (Transit Window)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                {[
+                  { key: '24h', label: '24 Hours', sub: 'Same-Day' },
+                  { key: '3d',  label: '3 Days',   sub: 'Intercity' },
+                  { key: '7d',  label: '7 Days',   sub: 'Nationwide' },
+                  { key: '14d', label: '14 Days',  sub: 'Extended' },
+                ].map(opt => {
+                  const active = manifestExpiry === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      onClick={() => setManifestExpiry(opt.key)}
+                      style={{
+                        padding: '7px 6px',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                        textAlign: 'center',
+                        border: active ? '1.5px solid var(--ac-accent)' : '1px solid var(--ac-border)',
+                        background: active ? 'rgba(201,165,90,0.14)' : 'var(--ac-surface-2)',
+                        color: 'var(--ac-text)',
+                      }}
+                    >
+                      <div style={{ fontSize: '0.8rem', fontWeight: 700 }}>{opt.label}</div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--ac-text-muted)' }}>{opt.sub}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3. Always-On Ready Link Box */}
+            <div
+              style={{
+                background: 'var(--ac-surface-2)',
+                border: '1px solid var(--ac-border)',
+                borderRadius: 10,
+                padding: 14,
               }}
             >
-              {manifestBusy ? 'Generating Link…' : `Generate ${manifestExpiry.toUpperCase()} Courier / Rider Manifest Link`}
-            </button>
-
-            {manifestResult && (
-              <div style={{ background: 'var(--ac-bg-subtle, #f8f7f4)', border: '1px solid var(--ac-border)', borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 6 }}>
-                  {manifestResult.delivery_partner} · {manifestResult.active_count} active stop{manifestResult.active_count === 1 ? '' : 's'} · Valid {manifestResult.expires_in}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700 }}>
+                  {manifestBusy
+                    ? 'Updating link…'
+                    : `${manifestResult?.delivery_partner || 'All Active Riders'} · ${manifestResult?.active_count ?? 0} Active Stop${manifestResult?.active_count === 1 ? '' : 's'}`}
                 </div>
-                <input
-                  type="text"
-                  readOnly
-                  className="input"
-                  value={manifestResult.manifest_url}
-                  onFocus={e => e.target.select()}
-                  style={{ width: '100%', fontSize: '0.75rem', fontFamily: 'monospace', marginBottom: 10 }}
-                />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  <button
-                    type="button"
-                    className="btn btn-outline btn-sm"
-                    onClick={() => {
-                      navigator.clipboard?.writeText(manifestResult.manifest_url);
-                      toast.success('Manifest link copied');
-                    }}
-                  >
-                    📋 Copy Link
-                  </button>
-                  <a
-                    href={manifestResult.manifest_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-outline btn-sm"
-                    style={{ textDecoration: 'none' }}
-                  >
-                    ↗ Open Manifest
-                  </a>
-                  <a
-                    href={`https://wa.me/${(() => {
-                      const d = (manifestResult.driver_phone || manifestPhone || '').replace(/\D/g, '');
-                      return d.length === 10 && d.startsWith('0') ? `233${d.slice(1)}` : d;
-                    })()}?text=${encodeURIComponent(
-                      `BodyCream GH Rider Route Manifest (${manifestResult.active_count} stops):\n${manifestResult.manifest_url}\n\nOpen this single link to view all stops, resend 6-digit OTPs at the doorstep, capture live parcel photos, and track your COD cash/MoMo tally.`
-                    )}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-primary btn-sm"
-                    style={{ textDecoration: 'none', marginLeft: 'auto' }}
-                  >
-                    💬 WhatsApp Rider
-                  </a>
-                </div>
+                <span
+                  style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: 999,
+                    background: (manifestResult?.active_count || 0) > 0 ? 'rgba(34,197,94,0.16)' : 'rgba(156,163,175,0.16)',
+                    color: (manifestResult?.active_count || 0) > 0 ? '#22c55e' : 'var(--ac-text-muted)',
+                  }}
+                >
+                  Valid {manifestExpiry.toUpperCase()}
+                </span>
               </div>
-            )}
+
+              <input
+                type="text"
+                readOnly
+                className="input"
+                value={manifestResult?.manifest_url || 'Generating signed link…'}
+                onFocus={e => e.target.select()}
+                style={{ width: '100%', fontSize: '0.74rem', fontFamily: 'monospace', marginBottom: 10, opacity: manifestBusy ? 0.6 : 1 }}
+              />
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  disabled={!manifestResult?.manifest_url}
+                  onClick={() => {
+                    navigator.clipboard?.writeText(manifestResult.manifest_url);
+                    toast.success('Manifest link copied to clipboard');
+                  }}
+                  style={{ justifyContent: 'center' }}
+                >
+                  📋 Copy Link
+                </button>
+                <a
+                  href={manifestResult?.manifest_url || '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-outline btn-sm"
+                  style={{ textDecoration: 'none', textAlign: 'center', justifyContent: 'center', pointerEvents: manifestResult?.manifest_url ? 'auto' : 'none' }}
+                >
+                  ↗ Open Route
+                </a>
+                <a
+                  href={`https://wa.me/${(() => {
+                    const d = (manifestResult?.driver_phone || manifestPhone || '').replace(/\D/g, '');
+                    return d.length === 10 && d.startsWith('0') ? `233${d.slice(1)}` : d;
+                  })()}?text=${encodeURIComponent(
+                    `BodyCream GH Dispatch Route (${manifestResult?.active_count || 0} stops · ${manifestResult?.delivery_partner || 'All Stops'}):\n${manifestResult?.manifest_url || ''}\n\nOpen this link to view addresses, resend 6-digit OTPs at the doorstep, capture parcel photos, and track COD cash/MoMo.`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="btn btn-primary btn-sm"
+                  style={{ textDecoration: 'none', textAlign: 'center', justifyContent: 'center', pointerEvents: manifestResult?.manifest_url ? 'auto' : 'none' }}
+                >
+                  💬 Send WhatsApp
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       )}
