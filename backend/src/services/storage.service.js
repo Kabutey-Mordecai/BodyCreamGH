@@ -1,21 +1,54 @@
+'use strict';
+
 const fs = require('fs');
 const path = require('path');
-const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
 const UPLOADS_ROOT = path.join(__dirname, '..', '..', 'uploads');
+const REQUIRED_R2_VARS = [
+  'R2_ACCOUNT_ID',
+  'R2_ACCESS_KEY_ID',
+  'R2_SECRET_ACCESS_KEY',
+  'R2_BUCKET',
+];
+
+function getR2PublicBaseUrl() {
+  const raw = (process.env.R2_PUBLIC_BASE_URL || process.env.R2_PUBLIC_URL || '').trim();
+  return raw ? raw.replace(/\/+$/, '') : '';
+}
+
+function getStorageDriver() {
+  const raw = String(process.env.STORAGE_DRIVER || '').trim().toLowerCase();
+  if (raw) return raw;
+  return isR2Configured() ? 'r2' : 'local';
+}
 
 function isR2Configured() {
   return Boolean(
-    process.env.R2_ACCOUNT_ID &&
-    process.env.R2_ACCESS_KEY_ID &&
-    process.env.R2_SECRET_ACCESS_KEY &&
-    process.env.R2_BUCKET &&
-    process.env.R2_PUBLIC_URL
+    REQUIRED_R2_VARS.every((k) => Boolean((process.env[k] || '').trim())) &&
+    getR2PublicBaseUrl()
   );
 }
 
-// Self-initialize local upload directories when operating in local fallback mode
-if (!isR2Configured()) {
+function assertStorageConfig() {
+  const driver = getStorageDriver();
+  if (driver === 'r2') {
+    const missing = REQUIRED_R2_VARS.filter((k) => !(process.env[k] || '').trim());
+    if (!getR2PublicBaseUrl()) missing.push('R2_PUBLIC_BASE_URL');
+    if (missing.length > 0) {
+      throw new Error(
+        `[storage] STORAGE_DRIVER=r2 is set but required env var(s) are missing: ${missing.join(', ')}`
+      );
+    }
+  } else if (driver !== 'local') {
+    throw new Error(`[storage] Unsupported STORAGE_DRIVER="${driver}". Must be "local" or "r2".`);
+  }
+}
+
+// Self-initialize on module load: fail fast if STORAGE_DRIVER=r2 with missing vars,
+// or ensure local upload directories exist when operating in local mode.
+assertStorageConfig();
+if (getStorageDriver() === 'local') {
   fs.mkdirSync(path.join(UPLOADS_ROOT, 'products'), { recursive: true });
   fs.mkdirSync(path.join(UPLOADS_ROOT, 'media'), { recursive: true });
 }
@@ -24,14 +57,14 @@ let s3Client = null;
 let s3AccountId = null;
 
 function getR2Client() {
-  const accountId = process.env.R2_ACCOUNT_ID;
+  const accountId = process.env.R2_ACCOUNT_ID.trim();
   if (!s3Client || s3AccountId !== accountId) {
     s3Client = new S3Client({
       region: 'auto',
       endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
       credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+        accessKeyId: process.env.R2_ACCESS_KEY_ID.trim(),
+        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY.trim(),
       },
     });
     s3AccountId = accountId;
@@ -39,47 +72,80 @@ function getR2Client() {
   return s3Client;
 }
 
-/**
- * Upload a buffer to Cloudflare R2 (when configured) or local disk fallback.
- * @param {Object} params
- * @param {string} params.folder - Subfolder under uploads/ or R2 key prefix (e.g. 'products', 'media')
- * @param {string} params.filename - Target filename
- * @param {Buffer} params.buffer - File contents
- * @param {string} [params.contentType] - MIME type
- * @returns {Promise<{ url: string, storage: 'r2' | 'local' }>}
- */
-async function uploadFile({ folder, filename, buffer, contentType }) {
-  const cleanFolder = String(folder || '').replace(/^\/+|\/+$/g, '');
-  const key = cleanFolder ? `${cleanFolder}/${filename}` : filename;
+function getPublicUrl(key) {
+  const cleanKey = String(key || '').replace(/^\/+/, '');
+  if (getStorageDriver() === 'r2') {
+    return `${getR2PublicBaseUrl()}/${cleanKey}`;
+  }
+  return `/uploads/${cleanKey}`;
+}
 
-  if (isR2Configured()) {
+async function put({ key, folder, filename, buffer, contentType }) {
+  const cleanFolder = String(folder || '').replace(/^\/+|\/+$/g, '');
+  const resolvedKey = key
+    ? String(key).replace(/^\/+/, '')
+    : (cleanFolder ? `${cleanFolder}/${filename}` : filename);
+
+  const driver = getStorageDriver();
+  if (driver === 'r2') {
     const client = getR2Client();
     await client.send(
       new PutObjectCommand({
-        Bucket: process.env.R2_BUCKET,
-        Key: key,
+        Bucket: process.env.R2_BUCKET.trim(),
+        Key: resolvedKey,
         Body: buffer,
         ContentType: contentType,
       })
     );
-    const baseUrl = process.env.R2_PUBLIC_URL.replace(/\/$/, '');
-    return {
-      url: `${baseUrl}/${key}`,
-      storage: 'r2',
-    };
+    return { url: getPublicUrl(resolvedKey), key: resolvedKey, storage: 'r2' };
   }
 
-  const targetDir = cleanFolder ? path.join(UPLOADS_ROOT, cleanFolder) : UPLOADS_ROOT;
-  await fs.promises.mkdir(targetDir, { recursive: true });
-  await fs.promises.writeFile(path.join(targetDir, filename), buffer);
+  const targetPath = path.join(UPLOADS_ROOT, resolvedKey);
+  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
+  await fs.promises.writeFile(targetPath, buffer);
+  return { url: getPublicUrl(resolvedKey), key: resolvedKey, storage: 'local' };
+}
 
-  return {
-    url: `/uploads/${key}`,
-    storage: 'local',
-  };
+async function del(keyOrUrl) {
+  if (!keyOrUrl || typeof keyOrUrl !== 'string') return false;
+  let cleanKey = keyOrUrl.trim();
+  const r2Base = getR2PublicBaseUrl();
+  if (r2Base && cleanKey.startsWith(`${r2Base}/`)) {
+    cleanKey = cleanKey.slice(r2Base.length + 1);
+  } else if (cleanKey.startsWith('/uploads/')) {
+    cleanKey = cleanKey.slice('/uploads/'.length);
+  }
+  cleanKey = cleanKey.replace(/^\/+/, '');
+  if (!cleanKey || cleanKey.includes('..')) return false;
+
+  if (getStorageDriver() === 'r2') {
+    const client = getR2Client();
+    await client.send(
+      new DeleteObjectCommand({
+        Bucket: process.env.R2_BUCKET.trim(),
+        Key: cleanKey,
+      })
+    );
+    return true;
+  }
+
+  const targetPath = path.join(UPLOADS_ROOT, cleanKey);
+  await fs.promises.unlink(targetPath).catch(() => {});
+  return true;
+}
+
+// Backwards-compatible alias used by admin.controller.js
+async function uploadFile(params) {
+  return put(params);
 }
 
 module.exports = {
+  put,
+  getPublicUrl,
+  delete: del,
   uploadFile,
   isR2Configured,
+  getStorageDriver,
+  getR2PublicBaseUrl,
+  assertStorageConfig,
 };
