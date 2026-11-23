@@ -18,9 +18,20 @@ async function buildTokenMap(emails) {
 
 // Resolve the recipient list based on campaign segment.
 async function resolveRecipients(segment) {
-  if (segment === 'all' || segment === 'subscribers_only') {
+  if (segment === 'all') {
     const { rows } = await pool.query(
       `SELECT email FROM newsletter_subscribers WHERE status = 'active'`
+    );
+    return rows;
+  }
+  if (segment === 'subscribers_only') {
+    const { rows } = await pool.query(
+      `SELECT ns.email FROM newsletter_subscribers ns
+       WHERE ns.status = 'active'
+         AND NOT EXISTS (
+           SELECT 1 FROM users u
+           WHERE LOWER(u.email) = LOWER(ns.email) AND u.role = 'customer'
+         )`
     );
     return rows;
   }

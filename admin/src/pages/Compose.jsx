@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Link as RouterLink } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Underline from '@tiptap/extension-underline';
@@ -6,6 +7,8 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import TextAlign from '@tiptap/extension-text-align';
 import { newsletterAPI } from '../services/api';
+import Modal from '../components/Modal';
+import ConfirmDialog from '../components/ConfirmDialog';
 
 const SEGMENTS = [
   { value: 'all',              label: 'All subscribers' },
@@ -229,10 +232,15 @@ export default function Compose() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      <div className="page-header">
         <div>
-          <h1 className="page-title">Compose Newsletter</h1>
-          <p className="page-subtitle">Write and send a newsletter campaign</p>
+          <h1>Compose Newsletter</h1>
+          <p className="muted">Write and broadcast an email campaign to your audience</p>
+        </div>
+        <div className="page-actions">
+          <RouterLink to="/newsletter/history" className="btn btn-outline btn-sm">
+            Campaign History →
+          </RouterLink>
         </div>
       </div>
 
@@ -240,7 +248,7 @@ export default function Compose() {
       {sending && (
         <div className="card" style={{ padding: 24, marginBottom: 24, maxWidth: 560 }}>
           <p style={{ fontWeight: 600, marginBottom: 12 }}>Sending campaign…</p>
-          <div style={{ background: 'var(--ac-bg)', borderRadius: 4, height: 8, overflow: 'hidden', marginBottom: 8 }}>
+          <div style={{ background: 'var(--ac-surface-2)', borderRadius: 4, height: 8, overflow: 'hidden', marginBottom: 8 }}>
             <div style={{ width: `${pct}%`, height: '100%', background: 'var(--ac-accent)', transition: 'width 0.5s' }} />
           </div>
           {progress && (
@@ -254,17 +262,15 @@ export default function Compose() {
 
       {sendError && <div className="alert alert-error" style={{ marginBottom: 16 }}>{sendError}</div>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 24, alignItems: 'start' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-
+      <div className="compose-grid">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 18, minWidth: 0 }}>
           {/* Subject */}
           <div className="card" style={{ padding: 20 }}>
-            <div className="form-group" style={{ margin: 0 }}>
+            <div className="field" style={{ margin: 0 }}>
               <label htmlFor="nl-subject">Subject line</label>
               <input
                 id="nl-subject"
                 type="text"
-                className="form-input"
                 placeholder="Your email subject…"
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
@@ -278,17 +284,15 @@ export default function Compose() {
             <EditorToolbar editor={editor} />
             <EditorContent editor={editor} />
           </div>
-
         </div>
 
         {/* Right panel */}
-        <div style={{ width: 260, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="compose-sidebar">
           <div className="card" style={{ padding: 20 }}>
-            <div className="form-group" style={{ marginBottom: 16 }}>
+            <div className="field" style={{ marginBottom: 14 }}>
               <label htmlFor="nl-segment">Send to</label>
               <select
                 id="nl-segment"
-                className="form-input"
                 value={segment}
                 onChange={e => setSegment(e.target.value)}
                 disabled={sending}
@@ -298,63 +302,114 @@ export default function Compose() {
                 ))}
               </select>
             </div>
-            <p style={{ fontSize: '0.82rem', color: 'var(--ac-text-muted)', margin: 0 }}>
-              {loadingCount ? 'Calculating…' : recipientCount !== null
-                ? `This will send to ~${recipientCount.toLocaleString()} recipient${recipientCount !== 1 ? 's' : ''}`
-                : '—'}
-            </p>
+            <div
+              style={{
+                padding: '10px 12px',
+                borderRadius: 'var(--ac-radius)',
+                background: 'var(--ac-surface-2)',
+                border: '1px solid var(--ac-border)',
+                fontSize: '0.82rem',
+                color: 'var(--ac-text-muted)',
+              }}
+            >
+              {loadingCount ? (
+                'Calculating recipients…'
+              ) : recipientCount !== null ? (
+                <>
+                  Will send to{' '}
+                  <strong style={{ color: 'var(--ac-text)' }}>
+                    {recipientCount.toLocaleString()}
+                  </strong>{' '}
+                  recipient{recipientCount !== 1 ? 's' : ''}
+                </>
+              ) : (
+                'Unable to load count'
+              )}
+            </div>
           </div>
 
-          <button className="btn" style={{ width: '100%' }} onClick={() => setShowPreview(true)} disabled={sending}>
+          <button
+            type="button"
+            className="btn btn-outline btn-full"
+            onClick={() => setShowPreview(true)}
+            disabled={sending}
+          >
             Preview email
           </button>
-          <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleSend} disabled={sending}>
+          <button
+            type="button"
+            className="btn btn-accent btn-full"
+            onClick={handleSend}
+            disabled={sending || loadingCount || recipientCount === 0}
+          >
             Send campaign
           </button>
         </div>
       </div>
 
-      {/* Preview modal */}
-      {showPreview && (
-        <div className="modal-overlay" onClick={() => setShowPreview(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640, maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ margin: 0 }}>Email preview</h3>
-              <button style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }} onClick={() => setShowPreview(false)}>×</button>
-            </div>
-            <div style={{ borderBottom: '1px solid var(--ac-border)', paddingBottom: 12, marginBottom: 16 }}>
-              <strong>Subject:</strong> {subject || <em style={{ color: 'var(--ac-text-muted)' }}>No subject</em>}
-            </div>
-            <div
-              style={{ flex: 1, overflowY: 'auto', fontFamily: 'sans-serif', fontSize: '0.95rem', lineHeight: 1.6, border: '1px solid var(--ac-border)', borderRadius: 4, padding: 20 }}
-              dangerouslySetInnerHTML={{ __html: editor?.getHTML() || '<p><em>Empty</em></p>' }}
-            />
-            <div style={{ marginTop: 16, padding: '12px 0 0', borderTop: '1px solid var(--ac-border)', fontSize: '0.75rem', color: '#9ca3af', textAlign: 'center' }}>
-              You're receiving this because you subscribed to BodyCreamGH updates. <span style={{ textDecoration: 'underline' }}>Unsubscribe here</span>
-            </div>
-          </div>
+      {/* Preview modal (Native HTML5 <dialog>) */}
+      <Modal
+        open={showPreview}
+        onClose={() => setShowPreview(false)}
+        title="Email preview"
+        size="lg"
+        footer={
+          <button type="button" className="btn btn-outline" onClick={() => setShowPreview(false)}>
+            Close
+          </button>
+        }
+      >
+        <div style={{ borderBottom: '1px solid var(--ac-border)', paddingBottom: 12, marginBottom: 16 }}>
+          <strong>Subject:</strong>{' '}
+          {subject || <em style={{ color: 'var(--ac-text-muted)' }}>No subject</em>}
         </div>
-      )}
+        <div
+          style={{
+            background: '#ffffff',
+            color: '#111827',
+            fontFamily: 'sans-serif',
+            fontSize: '0.95rem',
+            lineHeight: 1.6,
+            border: '1px solid var(--ac-border)',
+            borderRadius: 'var(--ac-radius)',
+            padding: 20,
+            maxHeight: 340,
+            overflowY: 'auto',
+          }}
+          dangerouslySetInnerHTML={{ __html: editor?.getHTML() || '<p><em>Empty</em></p>' }}
+        />
+        <div style={{ marginTop: 14, fontSize: '0.75rem', color: 'var(--ac-text-muted)', textAlign: 'center' }}>
+          You're receiving this because you subscribed to BodyCreamGH updates.{' '}
+          <span style={{ textDecoration: 'underline' }}>Unsubscribe here</span>
+        </div>
+      </Modal>
 
-      {/* Confirm send modal */}
-      {showConfirm && (
-        <div className="modal-overlay" onClick={() => setShowConfirm(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
-            <h3 style={{ marginBottom: 12 }}>Send this campaign?</h3>
-            <p style={{ color: 'var(--ac-text-soft)', marginBottom: 8 }}>
-              <strong>Subject:</strong> {subject}
-            </p>
-            <p style={{ color: 'var(--ac-text-soft)', marginBottom: 20 }}>
-              This will send to approximately <strong>{recipientCount?.toLocaleString() ?? '?'}</strong> recipients.
-              This cannot be undone.
-            </p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn" onClick={() => setShowConfirm(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={confirmSend}>Send now</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirm send dialog (Native HTML5 <dialog>) */}
+      <ConfirmDialog
+        open={showConfirm}
+        onClose={() => setShowConfirm(false)}
+        onConfirm={confirmSend}
+        title="Send this campaign?"
+        message={`Subject: "${subject}". This will queue delivery to approximately ${recipientCount?.toLocaleString() ?? '?'} recipient(s). This cannot be undone.`}
+        confirmLabel="Send now"
+      />
+
+      <style>{`
+        .compose-grid {
+          display: grid;
+          grid-template-columns: 1fr 280px;
+          gap: 20px;
+          align-items: start;
+        }
+        .compose-sidebar {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+        @media (max-width: 900px) {
+          .compose-grid { grid-template-columns: 1fr; }
+        }
+      `}</style>
     </div>
   );
 }

@@ -9,9 +9,20 @@ const logger       = require('../utils/logger');
 // ── Shared segment helpers ────────────────────────────────────────────────────
 
 async function resolveRecipientCount(segment) {
-  if (segment === 'all' || segment === 'subscribers_only') {
+  if (segment === 'all') {
     const { rows } = await pool.query(
       `SELECT COUNT(*) FROM newsletter_subscribers WHERE status = 'active'`
+    );
+    return parseInt(rows[0].count, 10);
+  }
+  if (segment === 'subscribers_only') {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) FROM newsletter_subscribers ns
+       WHERE ns.status = 'active'
+         AND NOT EXISTS (
+           SELECT 1 FROM users u
+           WHERE LOWER(u.email) = LOWER(ns.email) AND u.role = 'customer'
+         )`
     );
     return parseInt(rows[0].count, 10);
   }
