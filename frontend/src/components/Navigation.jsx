@@ -100,8 +100,6 @@ export default function Navigation() {
 
             <li><NavLink to="/" end onClick={closeMenu}>Home</NavLink></li>
             <li><NavLink to="/shop" onClick={closeMenu}>Shop</NavLink></li>
-            <li><Link to="/shop?category=Skincare" onClick={closeMenu}>Skincare</Link></li>
-            <li><Link to="/shop?category=Makeup" onClick={closeMenu}>Makeup</Link></li>
 
             {/* Cart — always visible so guests can reach their localStorage cart */}
             <li>
