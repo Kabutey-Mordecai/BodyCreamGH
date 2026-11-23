@@ -141,7 +141,7 @@ export const ordersAPI = {
   refundOrder:         (id, data)          => api.post(`/orders/${id}/refund`, data),
   refundDuplicatePayment: (orderId, paymentId, data = {}) =>
     api.post(`/orders/${orderId}/payments/${paymentId}/refund-duplicate`, data),
-  markPaid:            (id, note)          => api.post(`/orders/${id}/mark-paid`, { note }),
+  markPaid:            (id, data = {})     => api.post(`/orders/${id}/mark-paid`, typeof data === 'string' ? { note: data } : data),
   getStatusLog:        (id)                => api.get(`/orders/${id}/log`),
   approveCancelRequest:(id)                => api.post(`/orders/${id}/approve-cancel`),
   rejectCancelRequest: (id, data)          => api.post(`/orders/${id}/reject-cancel`, data),

@@ -70,7 +70,11 @@ export default function Orders() {
       limit: PAGE_SIZE,
       ...(status !== 'all' && { status }),
       ...(fulfillmentFilter !== 'all' && { fulfillment_method: fulfillmentFilter }),
-      ...(paymentFilter !== 'all' && { payment_status: paymentFilter }),
+      ...(paymentFilter === 'unpaid_cod'
+        ? { payment_status: 'unpaid', payment_method: 'pay_on_delivery' }
+        : paymentFilter !== 'all'
+          ? { payment_status: paymentFilter }
+          : {}),
       ...(debouncedSearch && { search: debouncedSearch }),
     };
     return ordersAPI
@@ -442,6 +446,7 @@ export default function Orders() {
                 style={{ width: 155 }}
               >
                 <option value="all">All Payments</option>
+                <option value="unpaid_cod">Unpaid COD (With Riders)</option>
                 <option value="unpaid">Unpaid</option>
                 <option value="pending">Pending</option>
                 <option value="paid">Paid</option>

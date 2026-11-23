@@ -339,7 +339,7 @@ const getAllOrders = async (req, res) => {
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
     const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 20));
     const offset = (page - 1) * limit;
-    const { status, search, fulfillment_method, payment_status } = req.query;
+    const { status, search, fulfillment_method, payment_status, payment_method } = req.query;
 
     const params = [];
     const clauses = [];
@@ -355,6 +355,10 @@ const getAllOrders = async (req, res) => {
     if (payment_status) {
       params.push(payment_status);
       clauses.push(`o.payment_status = $${params.length}`);
+    }
+    if (payment_method) {
+      params.push(payment_method);
+      clauses.push(`o.payment_method = $${params.length}`);
     }
     if (search) {
       params.push(`%${search}%`);
@@ -2029,23 +2033,86 @@ const markOrderPaid = async (req, res) => {
       return res.status(400).json({ error: 'Only Pay on Delivery orders can be manually marked paid' });
     }
 
-    const nextStatus = order.status === 'pending' ? 'confirmed' : order.status;
-    const note = (req.body?.note && String(req.body.note).trim().slice(0, 500))
-      || 'Cash/MoMo collected on delivery (marked paid by admin)';
+    const rawMethod = String(req.body?.collection_method || 'cash').trim().toLowerCase();
+    const collectionMethod = ['cash', 'momo', 'bank_transfer'].includes(rawMethod) ? rawMethod : 'cash';
+    const methodLabel = collectionMethod === 'momo'
+      ? 'Mobile Money (MoMo)'
+      : collectionMethod === 'bank_transfer'
+        ? 'Bank Transfer'
+        : 'Cash';
+    const reference = typeof req.body?.reference === 'string' ? req.body.reference.trim().slice(0, 80) : '';
+    const collectedBy = typeof req.body?.collected_by === 'string' ? req.body.collected_by.trim().slice(0, 80) : '';
+    const markDelivered = req.body?.mark_delivered === true;
+    const extraNote = typeof req.body?.note === 'string' ? req.body.note.trim().slice(0, 250) : '';
+
+    const noteParts = [`COD collected via ${methodLabel}`];
+    if (reference) noteParts.push(`Ref: ${reference}`);
+    if (collectedBy) noteParts.push(`Collected by: ${collectedBy}`);
+    if (extraNote) noteParts.push(extraNote);
+    const note = noteParts.join(' · ');
+
+    const nextStatus = markDelivered
+      ? 'delivered'
+      : (order.status === 'pending' ? 'confirmed' : order.status);
 
     const { rows: updatedRows } = await client.query(
       `UPDATE orders
           SET payment_status = 'paid',
               status = $1,
+              delivered_at = CASE WHEN $1 = 'delivered' THEN COALESCE(delivered_at, NOW()) ELSE delivered_at END,
               updated_at = NOW()
         WHERE id = $2
         RETURNING *`,
       [nextStatus, order.id]
     );
 
+    // Record a verifiable payment receipt row in payments for financials & reconciliation
+    const paymentRef = reference || `COD-${order.order_number}-${Date.now().toString(36).toUpperCase()}`;
+    const emailRes = await client.query(
+      `SELECT COALESCE(u.email, o.guest_email) AS email
+         FROM orders o LEFT JOIN users u ON u.id = o.customer_id
+        WHERE o.id = $1`,
+      [order.id]
+    );
+    await client.query(
+      `INSERT INTO payments (order_id, amount, status, payment_method, paystack_reference, customer_email)
+       VALUES ($1, $2, 'success', $3, $4, $5)
+       ON CONFLICT (paystack_reference) DO NOTHING`,
+      [order.id, order.total_amount, `cod_${collectionMethod}`, paymentRef, emailRes.rows[0]?.email || null]
+    );
+
+    // Keep linked delivery row synced when marking delivered in the same step
+    if (markDelivered) {
+      await client.query(
+        `UPDATE deliveries
+            SET status = 'delivered',
+                actual_delivery_date = COALESCE(actual_delivery_date, CURRENT_DATE),
+                updated_at = NOW()
+          WHERE order_id = $1 AND status <> 'delivered'`,
+        [order.id]
+      );
+    }
+
     await logStatusChange(order.id, order.status, nextStatus, note, client);
     await client.query('COMMIT');
     transactionStarted = false;
+
+    const { logAdminAction } = require('../utils/audit');
+    logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'order.cod_mark_paid',
+      resourceType: 'order',
+      resourceId: order.id,
+      details: {
+        collection_method: collectionMethod,
+        reference: reference || null,
+        collected_by: collectedBy || null,
+        mark_delivered: markDelivered,
+        amount: order.total_amount,
+      },
+      ip: req.ip,
+    }).catch(() => {});
 
     if (order.customer_id) {
       pool.query(

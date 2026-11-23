@@ -50,6 +50,15 @@ export default function OrderDetail() {
 
   const [requestActionSaving, setRequestActionSaving] = useState(false);
   const [markPaidSaving, setMarkPaidSaving] = useState(false);
+  const [codModalOpen, setCodModalOpen]     = useState(false);
+  const [codFromDeliver, setCodFromDeliver] = useState(false);
+  const [codForm, setCodForm]               = useState({
+    collection_method: 'cash',
+    reference: '',
+    collected_by: '',
+    mark_delivered: false,
+    note: '',
+  });
   const [payments, setPayments] = useState([]);
   const [dupRefundingId, setDupRefundingId] = useState(null);
   const [partialReturns, setPartialReturns] = useState([]);
@@ -173,7 +182,28 @@ export default function OrderDetail() {
     }
   };
 
-  const changeStatus = async (next, note = '') => {
+  const openCodModal = (fromDeliver = false) => {
+    setCodFromDeliver(fromDeliver);
+    setCodForm({
+      collection_method: 'cash',
+      reference: '',
+      collected_by: delivery?.delivery_partner || '',
+      mark_delivered: fromDeliver || order?.status === 'shipped',
+      note: '',
+    });
+    setCodModalOpen(true);
+  };
+
+  const changeStatus = async (next, note = '', { bypassCodGuard = false } = {}) => {
+    if (
+      !bypassCodGuard &&
+      next === 'delivered' &&
+      order?.payment_method === 'pay_on_delivery' &&
+      !['paid', 'partially_refunded', 'refunded'].includes(order?.payment_status)
+    ) {
+      openCodModal(true);
+      return;
+    }
     setSaving(true);
     try {
       await ordersAPI.updateStatus(id, next, note || `Status changed to ${next} by admin`);
@@ -295,11 +325,29 @@ export default function OrderDetail() {
     }
   };
 
-  const handleMarkPaid = async () => {
+  const handleMarkPaid = () => openCodModal(false);
+
+  const handleConfirmCodPayment = async (e) => {
+    e.preventDefault();
+    if (codForm.collection_method === 'momo' && !codForm.reference.trim()) {
+      toast.error('Please enter the MoMo Transaction ID / Reference');
+      return;
+    }
     setMarkPaidSaving(true);
     try {
-      await ordersAPI.markPaid(id);
-      toast.success('Order marked as paid (Cash/MoMo collected)');
+      await ordersAPI.markPaid(id, {
+        collection_method: codForm.collection_method,
+        reference: codForm.reference.trim(),
+        collected_by: codForm.collected_by.trim(),
+        mark_delivered: codForm.mark_delivered,
+        note: codForm.note.trim(),
+      });
+      toast.success(
+        codForm.mark_delivered
+          ? 'Payment recorded & order marked Delivered'
+          : 'COD payment confirmed and receipt recorded'
+      );
+      setCodModalOpen(false);
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to mark order as paid');
@@ -1252,6 +1300,122 @@ export default function OrderDetail() {
         message={`This will update the order status and may trigger customer notifications.`}
         confirmLabel={`Mark ${pendingStatus}`}
       />
+
+      <Modal
+        open={codModalOpen}
+        onClose={() => { if (!markPaidSaving) setCodModalOpen(false); }}
+        title="Confirm Pay-on-Delivery Collection"
+      >
+        <form onSubmit={handleConfirmCodPayment}>
+          {codFromDeliver && (
+            <div
+              style={{
+                background: '#fef3c7',
+                border: '1px solid #f59e0b',
+                color: '#92400e',
+                borderRadius: 6,
+                padding: '10px 12px',
+                fontSize: '0.84rem',
+                marginBottom: 14,
+              }}
+            >
+              <strong>Unpaid COD Order ({fmt(order.total_amount)}):</strong> Confirm how the rider collected payment before marking this order delivered.
+            </div>
+          )}
+
+          <div className="form-group" style={{ marginBottom: 12 }}>
+            <label>Amount Collected</label>
+            <input type="text" value={fmt(order.total_amount)} disabled />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 12 }}>
+            <label>Payment Method Received</label>
+            <select
+              value={codForm.collection_method}
+              onChange={e => setCodForm(f => ({ ...f, collection_method: e.target.value }))}
+            >
+              <option value="cash">Cash on Delivery</option>
+              <option value="momo">Mobile Money (MTN / Telecel / AT)</option>
+              <option value="bank_transfer">Bank Transfer</option>
+            </select>
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 12 }}>
+            <label>
+              {codForm.collection_method === 'momo'
+                ? 'MoMo Transaction ID / Reference *'
+                : 'Receipt / Reference # (optional)'}
+            </label>
+            <input
+              type="text"
+              required={codForm.collection_method === 'momo'}
+              placeholder={codForm.collection_method === 'momo' ? 'e.g. 48291047219' : 'e.g. Cash slip #12'}
+              value={codForm.reference}
+              onChange={e => setCodForm(f => ({ ...f, reference: e.target.value }))}
+            />
+          </div>
+
+          <div className="form-group" style={{ marginBottom: 12 }}>
+            <label>Collected By (Rider / Staff Name)</label>
+            <input
+              type="text"
+              placeholder="e.g. Kwame (In-house Bike)"
+              value={codForm.collected_by}
+              onChange={e => setCodForm(f => ({ ...f, collected_by: e.target.value }))}
+            />
+          </div>
+
+          {order.status !== 'delivered' && (
+            <div className="form-group" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                id="cod-mark-delivered"
+                type="checkbox"
+                style={{ width: 'auto' }}
+                checked={codForm.mark_delivered}
+                onChange={e => setCodForm(f => ({ ...f, mark_delivered: e.target.checked }))}
+              />
+              <label htmlFor="cod-mark-delivered" style={{ margin: 0, cursor: 'pointer', fontSize: '0.86rem' }}>
+                Also mark order &amp; delivery as <strong>Delivered</strong>
+              </label>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {codFromDeliver && (
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={markPaidSaving || saving}
+                onClick={async () => {
+                  setCodModalOpen(false);
+                  await changeStatus('delivered', 'Marked delivered before COD settlement', { bypassCodGuard: true });
+                }}
+              >
+                Deliver Without Payment
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              disabled={markPaidSaving}
+              onClick={() => setCodModalOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="btn btn-accent btn-sm"
+              disabled={markPaidSaving}
+            >
+              {markPaidSaving
+                ? 'Saving…'
+                : codForm.mark_delivered
+                  ? 'Confirm Payment & Deliver'
+                  : 'Confirm Payment Received'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         open={cancelOpen}
