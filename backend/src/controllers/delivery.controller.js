@@ -57,11 +57,18 @@ function verifyPodOtp(submitted, storedHash) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+const MANIFEST_EXPIRY_PRESETS = {
+  '24h': '24h',
+  '3d':  '3d',
+  '7d':  '7d',
+  '14d': '14d',
+};
+
 function signRiderToken(deliveryId, trackingNumber) {
   return jwt.sign(
     { sub: deliveryId, tn: trackingNumber, purpose: 'rider_pod' },
     process.env.JWT_SECRET,
-    { algorithm: 'HS256', expiresIn: '72h' }
+    { algorithm: 'HS256', expiresIn: '14d' }
   );
 }
 
@@ -84,7 +91,8 @@ function verifyRiderToken(rawToken) {
   }
 }
 
-function signRiderManifestToken({ deliveryPartner, driverPhone } = {}) {
+function signRiderManifestToken({ deliveryPartner, driverPhone, expiresIn = '7d' } = {}) {
+  const safeExpiry = MANIFEST_EXPIRY_PRESETS[expiresIn] || '7d';
   return jwt.sign(
     {
       purpose: 'rider_manifest',
@@ -92,7 +100,7 @@ function signRiderManifestToken({ deliveryPartner, driverPhone } = {}) {
       ph: driverPhone || null,
     },
     process.env.JWT_SECRET,
-    { algorithm: 'HS256', expiresIn: '24h' }
+    { algorithm: 'HS256', expiresIn: safeExpiry }
   );
 }
 
@@ -355,7 +363,7 @@ const sendPodOtp = async (req, res) => {
 
     const otp = String(crypto.randomInt(100000, 1000000));
     const otpHash = hashPodOtp(otp);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days (supports intercity & 3rd-party couriers)
     const zoneCode = d.zone_code || resolveGhanaZone(d.shipping_region, d.shipping_city);
 
     await pool.query(
@@ -752,6 +760,7 @@ const createRiderManifestLink = async (req, res) => {
   try {
     const cleanPartner = typeof req.body?.delivery_partner === 'string' ? req.body.delivery_partner.trim() : '';
     const cleanPhone = typeof req.body?.driver_phone === 'string' ? req.body.driver_phone.trim() : '';
+    const expiresIn = MANIFEST_EXPIRY_PRESETS[req.body?.expires_in] || '7d';
 
     const conditions = [`d.status IN ('pending', 'in_transit', 'out_for_delivery')`];
     const params = [];
@@ -772,6 +781,7 @@ const createRiderManifestLink = async (req, res) => {
     const token = signRiderManifestToken({
       deliveryPartner: cleanPartner || null,
       driverPhone: cleanPhone || null,
+      expiresIn,
     });
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
     const manifestUrl = `${frontendUrl}/rider-manifest?token=${encodeURIComponent(token)}`;
@@ -785,6 +795,7 @@ const createRiderManifestLink = async (req, res) => {
       details: {
         delivery_partner: cleanPartner || 'ALL',
         driver_phone: cleanPhone || null,
+        expires_in: expiresIn,
         active_count: rows[0]?.active_count || 0,
       },
       ip: req.ip,
@@ -795,7 +806,7 @@ const createRiderManifestLink = async (req, res) => {
       active_count: rows[0]?.active_count || 0,
       delivery_partner: cleanPartner || 'All Active Riders',
       driver_phone: cleanPhone || null,
-      expires_in: '24h',
+      expires_in: expiresIn,
     });
   } catch (err) {
     logger.error('createRiderManifestLink error', { err: err.message });
@@ -959,7 +970,7 @@ const riderResendPodOtp = async (req, res) => {
 
     const otp = String(crypto.randomInt(100000, 1000000));
     const otpHash = hashPodOtp(otp);
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
     const zoneCode = d.zone_code || resolveGhanaZone(d.shipping_region, d.shipping_city);
 
     await pool.query(

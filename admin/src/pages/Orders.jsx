@@ -59,6 +59,7 @@ export default function Orders() {
   const [manifestOpen, setManifestOpen]     = useState(false);
   const [manifestPartner, setManifestPartner] = useState('');
   const [manifestPhone, setManifestPhone]   = useState('');
+  const [manifestExpiry, setManifestExpiry] = useState('7d');
   const [manifestBusy, setManifestBusy]     = useState(false);
   const [manifestResult, setManifestResult] = useState(null);
 
@@ -778,36 +779,67 @@ export default function Orders() {
               </button>
             </div>
             <p className="muted text-xs" style={{ marginTop: 0, marginBottom: 14 }}>
-              Generate <strong>1 signed link</strong> for a rider delivering 10, 20, or 50+ orders today.
-              Leave both fields blank to include all active dispatches, or filter by rider name / phone.
+              Generate <strong>1 signed link</strong> for an in-house rider OR a <strong>3rd-party courier company</strong> (Speedaf, DHL, VIP/STC, Bolt/Yango — no login required).
+              For external couriers who don&apos;t use links, customers can also tap <em>Confirm Package Received</em> in the storefront/app.
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 14 }}>
               <div>
                 <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
-                  Rider / Partner Name (optional)
+                  Rider or 3rd-Party Courier Company (optional)
                 </label>
                 <input
                   type="text"
                   className="input"
-                  placeholder="e.g. In-house Dispatch Bike, Kwame Bike"
+                  placeholder="Leave blank for all active dispatches, or type company/rider"
                   value={manifestPartner}
                   onChange={e => setManifestPartner(e.target.value)}
-                  style={{ width: '100%' }}
+                  style={{ width: '100%', marginBottom: 6 }}
                 />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
+                  {['In-house Dispatch Bike', 'Speedaf Ghana', 'DHL', 'VIP / STC Parcel', 'Bolt / Yango'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                      onClick={() => setManifestPartner(preset)}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
-                  Rider Phone (optional)
-                </label>
-                <input
-                  type="text"
-                  className="input"
-                  placeholder="e.g. 0241234567"
-                  value={manifestPhone}
-                  onChange={e => setManifestPhone(e.target.value)}
-                  style={{ width: '100%' }}
-                />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                    Courier / Driver Phone (optional)
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. 0241234567"
+                    value={manifestPhone}
+                    onChange={e => setManifestPhone(e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>
+                    Link Validity (Transit Time)
+                  </label>
+                  <select
+                    className="input"
+                    value={manifestExpiry}
+                    onChange={e => setManifestExpiry(e.target.value)}
+                    style={{ width: '100%' }}
+                  >
+                    <option value="24h">24 Hours (Same-Day Accra)</option>
+                    <option value="3d">3 Days (Kumasi / Intercity)</option>
+                    <option value="7d">7 Days (Nationwide / 3rd-Party)</option>
+                    <option value="14d">14 Days (Extended Transit)</option>
+                  </select>
+                </div>
               </div>
             </div>
 
@@ -822,9 +854,10 @@ export default function Orders() {
                   const { data } = await deliveriesAPI.createManifestLink({
                     delivery_partner: manifestPartner.trim() || undefined,
                     driver_phone: manifestPhone.trim() || undefined,
+                    expires_in: manifestExpiry,
                   });
                   setManifestResult(data);
-                  toast.success(`Manifest link ready (${data.active_count} active stop${data.active_count === 1 ? '' : 's'})`);
+                  toast.success(`Manifest link ready (${data.active_count} active stop${data.active_count === 1 ? '' : 's'} · valid ${data.expires_in})`);
                 } catch (err) {
                   toast.error(err.response?.data?.error || 'Failed to generate manifest link');
                 } finally {
@@ -832,13 +865,13 @@ export default function Orders() {
                 }
               }}
             >
-              {manifestBusy ? 'Generating Link…' : 'Generate 24h Rider Manifest Link'}
+              {manifestBusy ? 'Generating Link…' : `Generate ${manifestExpiry.toUpperCase()} Courier / Rider Manifest Link`}
             </button>
 
             {manifestResult && (
               <div style={{ background: 'var(--ac-bg-subtle, #f8f7f4)', border: '1px solid var(--ac-border)', borderRadius: 8, padding: 12 }}>
                 <div style={{ fontSize: '0.82rem', fontWeight: 700, marginBottom: 6 }}>
-                  {manifestResult.delivery_partner} · {manifestResult.active_count} active stop{manifestResult.active_count === 1 ? '' : 's'}
+                  {manifestResult.delivery_partner} · {manifestResult.active_count} active stop{manifestResult.active_count === 1 ? '' : 's'} · Valid {manifestResult.expires_in}
                 </div>
                 <input
                   type="text"
