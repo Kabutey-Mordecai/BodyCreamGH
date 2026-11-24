@@ -330,6 +330,8 @@ export default function Checkout() {
       redirecting = true;
       window.location.assign(payment.authorization_url);
     } catch (err) {
+      setTurnstileToken('');
+      setTurnstileReset(k => k + 1);
       setError(err.response?.data?.error || err.message || 'Checkout failed. Please try again.');
     } finally {
       if (!redirecting) {

@@ -4,7 +4,7 @@ const express = require('express');
 const { verifyToken }                 = require('../middleware/auth');
 const { validateRegister, validateLogin } = require('../middleware/validation');
 const { makeRateLimiter }             = require('../middleware/rateLimit');
-const { verifyTurnstile }             = require('../middleware/botProtection');
+const { verifyTurnstileOptionalForMobile } = require('../middleware/botProtection');
 
 const LOGIN_IP_MAX    = Math.max(1, parseInt(process.env.LOGIN_IP_MAX, 10) || 300);
 const LOGIN_ACCT_MAX  = Math.max(1, parseInt(process.env.LOGIN_ACCT_MAX, 10) || 60);
@@ -132,7 +132,7 @@ const {
 const router = express.Router();
 const customerController = require('../controllers/customer.controller');
 
-router.post('/register',                  registerHoneypot, verifyTurnstile, registerIpLimiter, registerEmailLimiter, validateRegister, register);
+router.post('/register',                  registerHoneypot, verifyTurnstileOptionalForMobile, registerIpLimiter, registerEmailLimiter, validateRegister, register);
 router.post('/login',                     loginIpLimiter,   loginAcctCeilingLimiter, loginAccountLimiter, validateLogin, login);
 router.post('/verify-otp',                otpLimiter,             verifyOtp);
 router.post('/refresh',                   refreshLimiter,         refresh);

@@ -83,6 +83,8 @@ export default function Register() {
       });
       navigate(from, { replace: true });
     } catch (err) {
+      setTurnstileToken('');
+      setTurnstileReset(k => k + 1);
       if (err.response?.status === 429) {
         const wait = parseInt(
           err.response.headers?.['retry-after'] || err.response.data?.retryAfter || 60,
