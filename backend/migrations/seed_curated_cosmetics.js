@@ -589,17 +589,8 @@ const CURATED_PRODUCTS = [
 ];
 
 async function run() {
-  const curatedSkus = CURATED_PRODUCTS.map(p => p.sku);
-
-  // Deactivate bulk-seeded rows that aren't in the curated 24 (preserves order integrity)
-  const { rowCount: deactivated } = await pool.query(
-    `UPDATE products
-        SET is_active = FALSE, updated_at = NOW()
-      WHERE is_active = TRUE
-        AND sku IS NOT NULL
-        AND NOT (sku = ANY($1::text[]))`,
-    [curatedSkus]
-  );
+  // Never deactivate admin-created products on startup/redeploy
+  const deactivated = 0;
 
   let inserted = 0;
   let updated = 0;
