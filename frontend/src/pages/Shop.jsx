@@ -4,7 +4,6 @@ import { productsAPI } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductCard from '../components/ProductCard';
-import TrustStrip from '../components/TrustStrip';
 import './Shop.css';
 
 const SORT_OPTIONS = [
@@ -944,9 +943,10 @@ export default function Shop() {
                 </div>
 
                 {totalPages > 1 && (
-                  <div className="pagination">
+                  <nav className="pagination" aria-label="Product pagination">
                     <button
-                      className="btn btn-outline"
+                      type="button"
+                      className="pagination-btn"
                       disabled={page <= 1}
                       onClick={() => setParam('page', page - 1)}
                     >← Prev</button>
@@ -954,19 +954,18 @@ export default function Shop() {
                       Page <strong>{page}</strong> of {totalPages}
                     </span>
                     <button
-                      className="btn btn-outline"
+                      type="button"
+                      className="pagination-btn pagination-btn--next"
                       disabled={page >= totalPages}
                       onClick={() => setParam('page', page + 1)}
                     >Next →</button>
-                  </div>
+                  </nav>
                 )}
               </>
             )}
           </main>
         </div>
       </div>
-
-      <TrustStrip />
 
       {/* ── A–Z Brand Directory Modal (scales cleanly to 100+ brands) ── */}
       {brandModalOpen && (

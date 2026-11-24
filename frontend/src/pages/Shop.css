@@ -1059,3 +1059,42 @@ input.shop-search-input:focus-visible {
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22);
 }
+
+/* ── Improved Pagination Buttons & Spacing ──────── */
+.pagination {
+  padding: 28px 0 48px;
+  gap: 16px;
+}
+.pagination-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: #fff;
+  color: var(--color-primary);
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+.pagination-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--color-primary);
+  box-shadow: 0 6px 16px rgba(28, 20, 16, 0.08);
+}
+.pagination-btn--next:not(:disabled) {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+.pagination-btn--next:hover:not(:disabled) {
+  background: var(--color-accent-dark);
+  border-color: var(--color-accent-dark);
+}
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
