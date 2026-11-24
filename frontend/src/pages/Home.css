@@ -1140,3 +1140,15 @@ input.hero-search-input:focus {
     to   { opacity: 1; transform: translateY(0); }
   }
 }
+
+@media (max-width: 768px) {
+  .sticky-cart-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .sticky-cart-actions {
+    justify-content: space-between;
+  }
+}

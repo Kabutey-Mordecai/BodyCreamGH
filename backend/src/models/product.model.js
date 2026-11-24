@@ -307,7 +307,27 @@ module.exports = {
   },
 
   delete: async (id) => {
-    await pool.query('DELETE FROM products WHERE id = $1', [id]);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: ordered } = await client.query(
+        'SELECT 1 FROM order_items WHERE product_id = $1 LIMIT 1',
+        [id]
+      );
+      if (ordered.length > 0) {
+        const err = new Error('Cannot delete a product with existing orders. Hide/deactivate it instead.');
+        err.status = 409;
+        throw err;
+      }
+      await client.query('DELETE FROM inventory_logs WHERE product_id = $1', [id]);
+      await client.query('DELETE FROM products WHERE id = $1', [id]);
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      client.release();
+    }
   },
 
   _setPgTrgmForTesting,

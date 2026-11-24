@@ -180,7 +180,7 @@ const deleteProduct = async (req, res) => {
     });
     res.json({ message: 'Product deleted' });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to delete product' });
+    res.status(error.status || 500).json({ error: error.status ? error.message : 'Failed to delete product' });
   }
 };
 
