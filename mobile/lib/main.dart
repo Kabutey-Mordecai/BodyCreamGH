@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import 'config.dart';
 import 'main_shell.dart';
+import 'services/api_service.dart';
 import 'providers/auth_provider.dart';
 import 'providers/cart_provider.dart';
 import 'providers/theme_provider.dart';
@@ -111,6 +112,7 @@ bool _isProtectedRoute(String path) =>
 
 GoRouter _buildRouter(BuildContext ctx) {
   final authProvider = ctx.read<AuthProvider>();
+  String? lastTrackedRoute;
   return GoRouter(
     initialLocation: '/',
     refreshListenable: authProvider,
@@ -136,6 +138,11 @@ GoRouter _buildRouter(BuildContext ctx) {
       final loc = state.matchedLocation;
       if (_isProtectedRoute(loc) && !isAuth) {
         return '/login?redirect=${Uri.encodeComponent(state.uri.toString())}';
+      }
+
+      if (loc.isNotEmpty && loc != lastTrackedRoute) {
+        lastTrackedRoute = loc;
+        ApiService.instance.recordVisit(loc);
       }
 
       if (isAuth && loc == '/login') {

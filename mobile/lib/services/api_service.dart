@@ -737,7 +737,41 @@ class ApiService {
         ));
   }
 
-  // ── Settings ──────────────────────────────────────────────────────────────
+  // ── Settings & Traffic ────────────────────────────────────────────────────
+
+  String? _cachedVisitorId;
+
+  Future<void> recordVisit(String path) async {
+    try {
+      var vid = _cachedVisitorId;
+      if (vid == null || vid.isEmpty) {
+        try {
+          vid = await _storage.read(key: 'bc_mobile_vid');
+        } catch (_) {}
+        if (vid == null || vid.isEmpty) {
+          vid = 'mob_${DateTime.now().millisecondsSinceEpoch}_${path.hashCode.abs()}';
+          try {
+            await _storage.write(key: 'bc_mobile_vid', value: vid);
+          } catch (_) {}
+        }
+        _cachedVisitorId = vid;
+      }
+      final cleanPath = path.trim().isEmpty ? '/' : path.trim();
+      await _client
+          .post(
+            _uri('/traffic/visit'),
+            headers: _headers(),
+            body: jsonEncode({
+              'path': '/app${cleanPath.startsWith('/') ? cleanPath : '/$cleanPath'}',
+              'visitor_id': vid,
+              'referrer': 'mobile_app',
+            }),
+          )
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {
+      // Never block app navigation on analytics
+    }
+  }
 
   Future<Map<String, dynamic>> getSettings() async {
     final res = await _client.get(_uri('/settings'), headers: _headers());
