@@ -36,8 +36,8 @@ const changePassword = async (req, res) => {
     if (!current_password || !new_password) {
       return res.status(400).json({ error: 'current_password and new_password are required' });
     }
-    if (new_password.length < 6) {
-      return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    if (typeof new_password !== 'string' || new_password.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
     }
 
     const user = await UserModel.findByIdWithHash(req.user.id);
@@ -48,6 +48,7 @@ const changePassword = async (req, res) => {
 
     const hash = await bcrypt.hash(new_password, 10);
     await UserModel.updatePassword(req.user.id, hash);
+    await pool.query('UPDATE refresh_tokens SET revoked = true WHERE user_id = $1', [req.user.id]);
 
     res.json({ message: 'Password changed successfully' });
   } catch (error) {

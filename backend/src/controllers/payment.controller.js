@@ -6,6 +6,7 @@ const pool = require('../config/database');
 const paystackAPI = require('../config/paystack');
 const OrderModel = require('../models/order.model');
 const { logStatusChange } = require('../utils/audit');
+const { isAdminRole } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -614,7 +615,7 @@ const verifyPayment = async (req, res) => {
 
     const isAuthorizedOwner = Boolean(
       req.user &&
-      (req.user.role === 'admin' ||
+      (isAdminRole(req.user.role) ||
         (lockedOrder?.customer_id && String(lockedOrder.customer_id) === String(req.user.id)))
     );
 

@@ -378,7 +378,7 @@ export default function ProductEditor() {
                 <input
                   type="text"
                   value={form.sku}
-                  onChange={e => update('sku', e.target.value)}
+                  onChange={e => { setSkuTouched(true); update('sku', e.target.value); }}
                   style={{ fontFamily: 'SF Mono, Menlo, monospace' }}
                   placeholder="SKU-CODE"
                 />

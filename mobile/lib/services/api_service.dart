@@ -500,7 +500,7 @@ class ApiService {
 
   Future<List<dynamic>> getPendingReviewPrompts() async {
     final data = await _authed((token) => _client.get(
-          _uri('/products/reviews/pending-prompts'),
+          _uri('/reviews/pending-prompts'),
           headers: _headers(token: token),
         ));
     if (data is Map) return data['prompts'] as List<dynamic>? ?? [];

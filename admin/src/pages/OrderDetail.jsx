@@ -178,7 +178,8 @@ export default function OrderDetail() {
   };
 
   const handleRejectPartialReturn = async (rr) => {
-    const reason = window.prompt('Reason for rejecting this return request (optional):') ?? '';
+    const reason = window.prompt('Reason for rejecting this return request (optional):');
+    if (reason === null) return;
     setRetActionId(rr.id);
     try {
       await ordersAPI.rejectPartialReturn(rr.id, { reason });

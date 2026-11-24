@@ -80,6 +80,10 @@ class WishlistScreen extends StatelessWidget {
                   onTap: () => context.push('/product/${p.id}'),
                   onAddToCart: p.inStock
                       ? () {
+                          if (p.hasVariants) {
+                            context.push('/product/${p.id}');
+                            return;
+                          }
                           context.read<CartProvider>().add(p);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('${p.name} added to cart')),

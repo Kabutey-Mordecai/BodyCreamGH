@@ -10,6 +10,7 @@ import StarRating from '../components/StarRating';
 import ProductCard from '../components/ProductCard';
 import { useSeo } from '../utils/seo';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { toFiniteNumber } from '../utils/number';
 import './ProductPage.css';
 
 // TO CUSTOMIZE: Placeholder shown when the product has no image
@@ -61,6 +62,7 @@ export default function ProductPage() {
   const navigate        = useNavigate();
   const { savedIds, toggle } = useWishlist();
   const settings        = useSettings();
+  const freeDeliveryOver = toFiniteNumber(settings?.free_delivery_over, 200);
 
   const [product, setProduct]   = useState(null);
   const [loading, setLoading]   = useState(true);
@@ -869,7 +871,11 @@ export default function ProductPage() {
                   <span className="product-trust-icon">{t.icon}</span>
                   <div>
                     <strong>{t.icon === '↩' ? `${returnDays}-day returns` : t.label}</strong>
-                    <span>{t.sub}</span>
+                    <span>
+                      {t.icon === '🚚'
+                        ? (freeDeliveryOver > 0 ? `Free over GHS ${freeDeliveryOver}` : 'Free delivery')
+                        : t.sub}
+                    </span>
                   </div>
                 </div>
               ))}

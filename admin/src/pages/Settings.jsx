@@ -48,6 +48,14 @@ const DEFAULTS = {
   order_notification_email:     '',
 };
 
+const NUMERIC_FIELDS = [
+  'delivery_fee_accra',
+  'delivery_fee_flat',
+  'free_delivery_over',
+  'return_window_days',
+  'low_stock_threshold',
+];
+
 const LOCAL_KEY = 'admin_settings_draft';
 
 export default function Settings() {
@@ -66,6 +74,7 @@ export default function Settings() {
         setData(merged);
         setInitialData(merged);
       } catch {
+        toast.warning('Could not load settings from server; showing locally cached values.');
         const cached = localStorage.getItem(LOCAL_KEY);
         if (cached) {
           try {
@@ -88,16 +97,35 @@ export default function Settings() {
   };
 
   const save = async () => {
+    const returnDays = Number(data.return_window_days);
+    if (!Number.isFinite(returnDays) || returnDays < 1 || returnDays > 365) {
+      toast.error('Return window must be between 1 and 365 days.');
+      return;
+    }
+
+    const sanitized = Object.fromEntries(
+      Object.entries(data)
+        .filter(([key]) => Object.prototype.hasOwnProperty.call(DEFAULTS, key))
+        .map(([key, value]) => {
+          if (NUMERIC_FIELDS.includes(key)) {
+            const num = Number(value);
+            return [key, Number.isFinite(num) ? num : DEFAULTS[key]];
+          }
+          return [key, value];
+        })
+    );
+
     setSaving(true);
     try {
-      const entries = Object.entries(data).map(([key, value]) => ({ key, value }));
+      const entries = Object.entries(sanitized).map(([key, value]) => ({ key, value }));
       await settingsAPI.updateMany(entries);
-      localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
-      setInitialData(data);
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(sanitized));
+      setData(sanitized);
+      setInitialData(sanitized);
       toast.success('Settings saved');
       setDirty(false);
     } catch {
-      localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(sanitized));
       toast.error('Failed to save settings to server. Changes kept locally.');
     } finally {
       setSaving(false);

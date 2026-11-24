@@ -24,7 +24,27 @@ api.interceptors.request.use((config) => {
 // A pending-queue prevents concurrent 401s from each firing a separate refresh.
 
 const AUTH_PATHS = ['/auth/refresh', '/auth/login', '/auth/register'];
-const PUBLIC_ROUTES = ['/login', '/register', '/forgot-password', '/reset-password', '/payment/callback'];
+const PUBLIC_ROUTES = [
+  '/',
+  '/shop',
+  '/products',
+  '/cart',
+  '/track',
+  '/privacy-policy',
+  '/terms',
+  '/refund-policy',
+  '/shipping-policy',
+  '/contact',
+  '/unsubscribe',
+  '/rider-handoff',
+  '/rider-manifest',
+  '/payment/callback',
+  '/payment-callback',
+  '/login',
+  '/register',
+  '/forgot-password',
+  '/reset-password',
+];
 
 let isRefreshing = false;
 let pendingQueue = []; // [{ resolve, reject }]
@@ -38,7 +58,10 @@ function clearSession() {
   localStorage.removeItem('token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
-  const isPublic = PUBLIC_ROUTES.some(p => window.location.pathname.startsWith(p));
+  const { pathname } = window.location;
+  const isPublic = PUBLIC_ROUTES.some(p =>
+    p === '/' ? pathname === '/' : pathname.startsWith(p)
+  );
   if (!isPublic) window.location.href = '/login';
 }
 

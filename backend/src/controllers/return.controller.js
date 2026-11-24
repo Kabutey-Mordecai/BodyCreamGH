@@ -6,6 +6,7 @@ const InventoryModel = require('../models/inventory.model');
 const { createRefund, fetchRefundById, fetchRefundsByTransaction } = require('../services/paystack.service');
 const { calculateReturnRefund } = require('../utils/returnMath');
 const { logStatusChange } = require('../utils/audit');
+const { isAdminRole } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 const MAX_RETURN_ITEMS = 50;
@@ -153,7 +154,7 @@ function matchPaystackRefundByRefAndAmount(refundList, expectedRef, expectedAmou
 const getOrderReturns = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = isAdminRole(req.user?.role);
 
     const { rows: orderRows } = await pool.query(
       `SELECT id, customer_id, status, payment_status, total_amount, discount_amount,
@@ -449,7 +450,7 @@ const cancelReturnRequest = async (req, res) => {
 
 // ── POST /api/orders/admin/:orderId/returns (admin-only, bypasses window/delivered_at) ──
 const adminCreateReturnRequest = async (req, res) => {
-  if (!req.user || req.user.role !== 'admin') {
+  if (!req.user || !isAdminRole(req.user.role)) {
     return res.status(403).json({ error: 'Admin access required' });
   }
   const { orderId } = req.params;

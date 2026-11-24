@@ -122,6 +122,9 @@ GoRouter _buildRouter(BuildContext ctx) {
       final normalized = normalizeDeepLinkPath(state.uri);
       if (normalized != null) {
         debugPrint('[DeepLink] ${state.uri} -> $normalized');
+        if (normalized == '/payment' && state.extra is! Map<String, dynamic>) {
+          return '/orders';
+        }
         if (!isInitializing && !isAuth && _isProtectedRoute(normalized)) {
           return '/login?redirect=${Uri.encodeComponent(normalized)}';
         }
@@ -201,6 +204,15 @@ GoRouter _buildRouter(BuildContext ctx) {
       ),
       GoRoute(
         path: '/payment',
+        redirect: (_, state) {
+          final extra = state.extra;
+          if (extra is! Map<String, dynamic> ||
+              extra['url'] is! String ||
+              extra['order_id'] is! String) {
+            return '/orders';
+          }
+          return null;
+        },
         builder: (_, state) {
           final extra = state.extra as Map<String, dynamic>;
           return PaymentScreen(

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { adminAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const TABS = [
   { key: 'all',         label: 'All Live Reviews' },
@@ -31,6 +32,7 @@ export default function Reviews() {
   const toast = useToast();
   const [tab,     setTab]     = useState('all');
   const [search,  setSearch]  = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page,    setPage]    = useState(1);
   const [data,    setData]    = useState({
     reviews: [],
@@ -48,12 +50,22 @@ export default function Reviews() {
   const [acting, setActing] = useState(null);
 
   const searchRef = useRef(null);
+  const debounceRef = useRef(null);
+
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 350);
+    return () => clearTimeout(debounceRef.current);
+  }, [search]);
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const { data: res } = await adminAPI.getReviews({
-        status: tab, page, limit: 20, search,
+        status: tab, page, limit: 20, search: debouncedSearch,
       });
       setData(res);
     } catch {
@@ -61,11 +73,11 @@ export default function Reviews() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [tab, page, search]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tab, page, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setPage(1);
-  }, [tab, search]);
+  }, [tab]);
 
   useEffect(() => {
     load();
@@ -205,7 +217,7 @@ export default function Reviews() {
                     <td style={{ padding: '12px 14px', maxWidth: 170 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <img
-                          src={r.image_url || PLACEHOLDER}
+                          src={resolveImageUrl(r.image_url) || PLACEHOLDER}
                           alt=""
                           style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }}
                           onError={e => { e.currentTarget.src = PLACEHOLDER; }}

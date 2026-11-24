@@ -169,7 +169,7 @@ export default function Footer() {
           <div className="footer-col">
             <h4 className="footer-col-head">Account</h4>
             <ul>
-              {ACCOUNT_LINKS.slice(0, 3).map(l => (
+              {ACCOUNT_LINKS.map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>
@@ -181,7 +181,7 @@ export default function Footer() {
           <div id="contact-footer" className="footer-col">
             <h4 className="footer-col-head">Help &amp; Support</h4>
             <ul>
-              {INFO_LINKS.slice(0, 3).map(l => (
+              {INFO_LINKS.map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>
@@ -189,6 +189,11 @@ export default function Footer() {
               {cleanPhone && (
                 <li>
                   <a href={`tel:${cleanPhone.replace(/\s+/g, '')}`}>{cleanPhone}</a>
+                </li>
+              )}
+              {cleanEmail && (
+                <li>
+                  <a href={`mailto:${cleanEmail}`}>{cleanEmail}</a>
                 </li>
               )}
             </ul>

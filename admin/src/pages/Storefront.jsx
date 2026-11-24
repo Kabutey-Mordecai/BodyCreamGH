@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { settingsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import ImageInput from '../components/ImageInput';
+import UnsavedChangesBar from '../components/UnsavedChangesBar';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'https://bodycreamgh-shop.vercel.app';
@@ -208,6 +209,7 @@ export default function Storefront() {
   const toast = useToast();
   const [active, setActive] = useState('hero');
   const [data, setData]     = useState(DEFAULTS);
+  const [initialData, setInitialData] = useState(DEFAULTS);
   const [dirty, setDirty]   = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -219,18 +221,30 @@ export default function Storefront() {
       try {
         const { data: remote } = await settingsAPI.getAll();
         // Backend returns { key1: value1, ... } — merge into defaults so new keys show up
-        setData({ ...DEFAULTS, ...remote });
+        const merged = { ...DEFAULTS, ...remote };
+        setData(merged);
+        setInitialData(merged);
       } catch {
+        toast.warning('Could not load storefront settings from server; showing locally cached values.');
         const cached = localStorage.getItem(LOCAL_KEY);
         if (cached) {
-          try { setData({ ...DEFAULTS, ...JSON.parse(cached) }); }
+          try {
+            const merged = { ...DEFAULTS, ...JSON.parse(cached) };
+            setData(merged);
+            setInitialData(merged);
+          }
           catch { /* fall through to defaults */ }
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const discard = () => {
+    setData(initialData);
+    setDirty(false);
+  };
 
   const update = (key, value) => {
     setData(prev => ({ ...prev, [key]: value }));
@@ -352,16 +366,20 @@ export default function Storefront() {
 
   const save = async () => {
     setSaving(true);
+    const filteredData = Object.fromEntries(
+      Object.entries(data).filter(([key]) => Object.prototype.hasOwnProperty.call(DEFAULTS, key))
+    );
     try {
       // Try the bulk endpoint, falling back to localStorage if backend isn't ready.
-      const entries = Object.entries(data).map(([key, value]) => ({ key, value }));
+      const entries = Object.entries(filteredData).map(([key, value]) => ({ key, value }));
       await settingsAPI.updateMany(entries);
-      localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(filteredData));
+      setInitialData(data);
       toast.success('Storefront updated');
       setDirty(false);
     } catch {
       // Backend endpoint may not exist yet — persist locally so the editor still demos.
-      localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
+      localStorage.setItem(LOCAL_KEY, JSON.stringify(filteredData));
       toast.error('Failed to save storefront settings to server. Changes kept locally.');
     } finally {
       setSaving(false);
@@ -585,7 +603,7 @@ export default function Storefront() {
                   <label style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--ac-text-muted)' }}>
                     Live Modal Preview {data.promo_popup_enabled ? '' : '(Currently Disabled on Live Site)'}
                   </label>
-                  <div style={{
+                  <div className="sf-popup-preview-grid" style={{
                     marginTop: 8,
                     background: '#14110f',
                     border: '1px solid rgba(201, 165, 90, 0.3)',
@@ -1840,6 +1858,9 @@ export default function Storefront() {
         @media (max-width: 1024px) {
           .sf-grid { grid-template-columns: 1fr !important; }
         }
+        @media (max-width: 640px) {
+          .sf-popup-preview-grid { grid-template-columns: 1fr !important; }
+        }
         .sf-tab {
           width: 100%;
           padding: 10px 12px;
@@ -1865,6 +1886,13 @@ export default function Storefront() {
           border-radius: 8px;
         }
       `}</style>
+      <UnsavedChangesBar
+        dirty={dirty}
+        saving={saving}
+        onSave={save}
+        onDiscard={discard}
+        saveLabel="Publish changes"
+      />
     </div>
   );
 }

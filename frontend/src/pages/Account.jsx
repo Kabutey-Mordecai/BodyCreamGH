@@ -25,13 +25,20 @@ export default function Account() {
 
   // Load current profile data when the page mounts
   useEffect(() => {
-    customerAPI.getProfile().then(({ data }) => {
-      setProfile({
-        first_name: data.first_name || '',
-        last_name:  data.last_name  || '',
-        phone:      data.phone      || '',
+    customerAPI.getProfile()
+      .then(({ data }) => {
+        setProfile({
+          first_name: data.first_name || '',
+          last_name:  data.last_name  || '',
+          phone:      data.phone      || '',
+        });
+      })
+      .catch((err) => {
+        setProfileMsg({
+          type: 'error',
+          text: err?.response?.data?.error || 'Could not load your profile. Please refresh and try again.',
+        });
       });
-    });
   }, []);
 
   const handleProfileChange = e =>

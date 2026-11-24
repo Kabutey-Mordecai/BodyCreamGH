@@ -98,9 +98,11 @@ export default function Navigation() {
 
           {/* Hamburger — mobile only */}
           <button
+            type="button"
             className={`nav-hamburger ${menuOpen ? 'open' : ''}`}
             onClick={() => setMenuOpen(prev => !prev)}
             aria-label="Toggle menu"
+            aria-expanded={menuOpen}
           >
             <span /><span /><span />
           </button>

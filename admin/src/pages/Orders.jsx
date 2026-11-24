@@ -225,8 +225,13 @@ export default function Orders() {
     try {
       const params = {
         ...(status !== 'all' && { status }),
+        ...(dateRange !== 'all' && { date_range: dateRange }),
         ...(fulfillmentFilter !== 'all' && { fulfillment_method: fulfillmentFilter }),
-        ...(paymentFilter !== 'all' && { payment_status: paymentFilter }),
+        ...(paymentFilter === 'unpaid_cod'
+          ? { payment_status: 'unpaid', payment_method: 'pay_on_delivery' }
+          : paymentFilter !== 'all'
+            ? { payment_status: paymentFilter }
+            : {}),
         ...(debouncedSearch && { search: debouncedSearch }),
       };
       const { data } = await ordersAPI.exportOrders(params);

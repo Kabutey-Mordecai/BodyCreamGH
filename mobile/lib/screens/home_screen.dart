@@ -121,6 +121,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Map<String, dynamic>> _reviews = [];
   Map<String, dynamic> _settings = {};
   bool _loading = true;
+  String? _loadError;
   String _activeCategory = 'All';
 
   final _heroSearchCtrl = TextEditingController();
@@ -396,14 +397,24 @@ class _HomeScreenState extends State<HomeScreen> {
           _settings = settings;
           _reviews = rawReviews.whereType<Map<String, dynamic>>().toList();
           _loading = false;
+          _loadError = null;
         });
         if (settings.isNotEmpty) {
           context.read<ThemeProvider>().applyFromSettings(settings);
         }
         _maybeSchedulePromoPopup(settings);
       }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          if (_products.isEmpty) {
+            _loadError = e
+                .toString()
+                .replaceFirst(RegExp(r'ApiException\(\d+\): '), '');
+          }
+        });
+      }
     }
   }
 
@@ -945,6 +956,36 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Padding(
                     padding: EdgeInsets.all(40),
                     child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (_loadError != null && _products.isEmpty)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.wifi_off_outlined,
+                            size: 40, color: AppColors.muted),
+                        const SizedBox(height: 10),
+                        Text(
+                          _loadError!,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 12),
+                        OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _loading = true;
+                              _loadError = null;
+                            });
+                            _load();
+                          },
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
                   ),
                 )
               else

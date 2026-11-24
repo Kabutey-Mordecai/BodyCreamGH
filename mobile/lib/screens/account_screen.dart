@@ -12,6 +12,7 @@ class AccountScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final auth = context.watch<AuthProvider>();
     final wishlist = context.watch<WishlistProvider>();
 
@@ -26,8 +27,8 @@ class AccountScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(24),
                 child: Column(
                   children: [
-                    const Icon(Icons.person_outline,
-                        size: 56, color: AppColors.accentDark),
+                    Icon(Icons.person_outline,
+                        size: 56, color: cs.secondary),
                     const SizedBox(height: 12),
                     Text(
                       'Welcome to BodyCream GH',
@@ -65,8 +66,8 @@ class AccountScreen extends StatelessWidget {
               child: Column(
                 children: [
                   ListTile(
-                    leading: const Icon(Icons.local_shipping_outlined,
-                        color: AppColors.accentDark),
+                    leading: Icon(Icons.local_shipping_outlined,
+                        color: cs.secondary),
                     title: const Text('Track an Order'),
                     subtitle: const Text('Look up any guest or account order'),
                     trailing: const Icon(Icons.chevron_right),
@@ -74,8 +75,8 @@ class AccountScreen extends StatelessWidget {
                   ),
                   const Divider(height: 1),
                   ListTile(
-                    leading: const Icon(Icons.favorite_border,
-                        color: AppColors.accentDark),
+                    leading: Icon(Icons.favorite_border,
+                        color: cs.secondary),
                     title: Text('Saved Wishlist (${wishlist.count})'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => context.push('/wishlist'),
@@ -124,24 +125,24 @@ class AccountScreen extends StatelessWidget {
         children: [
           // Profile header
           Container(
-            color: AppColors.primary,
+            color: cs.primary,
             padding: const EdgeInsets.all(24),
             child: Row(
               children: [
                 CircleAvatar(
                   radius: 30,
-                  backgroundColor: AppColors.accent,
+                  backgroundColor: cs.secondary,
                   child: Text(
                     user.firstName.isNotEmpty
                         ? user.firstName[0].toUpperCase()
                         : (user.email.isNotEmpty
                             ? user.email[0].toUpperCase()
                             : 'U'),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontFamily: 'serif',
                       fontSize: 26,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.primary,
+                      color: cs.onSecondary,
                     ),
                   ),
                 ),
@@ -155,13 +156,13 @@ class AccountScreen extends StatelessWidget {
                         style: Theme.of(context)
                             .textTheme
                             .titleLarge
-                            ?.copyWith(color: Colors.white),
+                            ?.copyWith(color: cs.onPrimary),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         user.email,
-                        style: const TextStyle(
-                          color: AppColors.accentLight,
+                        style: TextStyle(
+                          color: cs.primaryContainer,
                           fontSize: 13,
                         ),
                       ),
@@ -236,14 +237,6 @@ class _StoreSupportAndPaymentsCard extends StatefulWidget {
 
 class _StoreSupportAndPaymentsCardState
     extends State<_StoreSupportAndPaymentsCard> {
-  static const _paymentBadges = [
-    '🔒 Paystack',
-    '📱 MTN MoMo',
-    '💳 Visa / Mastercard',
-    '🏪 Pickup Station',
-    '💵 Pay on Delivery',
-  ];
-
   Map<String, dynamic> _settings = const {};
 
   @override
@@ -271,14 +264,32 @@ class _StoreSupportAndPaymentsCardState
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final returnDays =
         int.tryParse(_settings['return_window_days']?.toString() ?? '') ?? 3;
     final address =
         _setting(const ['store_address', 'pickup_location'], 'Accra, Ghana');
     final phone = _setting(
-        const ['contact_phone', 'whatsapp_number'], '+233 24 585 2804');
+        const ['store_phone', 'contact_phone', 'whatsapp_number'],
+        '+233 24 585 2804');
     final telDigits = phone.replaceAll(RegExp(r'[^0-9+]'), '');
-    final email = _setting(const ['contact_email'], 'hello@bodycreamgh.com');
+    final email = _setting(
+        const ['store_email', 'contact_email'], 'hello@bodycreamgh.com');
+    final pickupEnabled = _settings['pickup_enabled'] != false &&
+        _settings['pickup_enabled'] != 'false';
+    final podEnabled = _settings['pay_on_delivery_enabled'] == true ||
+        _settings['pay_on_delivery_enabled'] == 'true';
+    final paymentBadges = [
+      '🔒 Paystack',
+      '📱 MTN MoMo',
+      '💳 Visa / Mastercard',
+      if (pickupEnabled) '🏪 Pickup Station',
+      if (podEnabled) '💵 Pay on Delivery',
+    ];
+    final accraEta =
+        _setting(const ['delivery_estimate_accra'], '1–2 business days');
+    final nationwideEta =
+        _setting(const ['delivery_estimate_nationwide'], '3–5 business days');
 
     return Card(
       child: Padding(
@@ -286,20 +297,20 @@ class _StoreSupportAndPaymentsCardState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'CUSTOMER SUPPORT & CONTACT',
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: FontWeight.w700,
                 letterSpacing: 1.5,
-                color: AppColors.accentDark,
+                color: cs.secondary,
               ),
             ),
             const SizedBox(height: 10),
             Row(
               children: [
-                const Icon(Icons.place_outlined,
-                    size: 16, color: AppColors.muted),
+                Icon(Icons.place_outlined,
+                    size: 16, color: cs.onSurfaceVariant),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(address, style: const TextStyle(fontSize: 13)),
@@ -311,15 +322,15 @@ class _StoreSupportAndPaymentsCardState
               onTap: () => WhatsAppHelper.openUrl('tel:$telDigits'),
               child: Row(
                 children: [
-                  const Icon(Icons.phone_outlined,
-                      size: 16, color: AppColors.accentDark),
+                  Icon(Icons.phone_outlined,
+                      size: 16, color: cs.secondary),
                   const SizedBox(width: 8),
                   Text(
                     phone,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
+                      color: cs.primary,
                     ),
                   ),
                 ],
@@ -330,16 +341,16 @@ class _StoreSupportAndPaymentsCardState
               onTap: () => WhatsAppHelper.openUrl('mailto:$email'),
               child: Row(
                 children: [
-                  const Icon(Icons.email_outlined,
-                      size: 16, color: AppColors.accentDark),
+                  Icon(Icons.email_outlined,
+                      size: 16, color: cs.secondary),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       email,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.primary,
+                        color: cs.primary,
                       ),
                     ),
                   ),
@@ -362,22 +373,22 @@ class _StoreSupportAndPaymentsCardState
             Wrap(
               spacing: 6,
               runSpacing: 6,
-              children: _paymentBadges
+              children: paymentBadges
                   .map(
                     (b) => Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
-                        color: AppColors.blush,
+                        color: cs.secondaryContainer,
                         borderRadius: BorderRadius.circular(4),
-                        border: Border.all(color: AppColors.border),
+                        border: Border.all(color: cs.outline),
                       ),
                       child: Text(
                         b,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
+                          color: cs.primary,
                         ),
                       ),
                     ),
@@ -423,7 +434,7 @@ class _StoreSupportAndPaymentsCardState
                   context,
                   'Shipping Policy',
                   _setting(const ['policy_shipping'],
-                      'Greater Accra deliveries arrive in 1–2 business days; nationwide orders arrive in 3–5 business days. Providing your GhanaPostGPS code and nearest landmark speeds up dispatch.'),
+                      'Greater Accra deliveries arrive in $accraEta; nationwide orders arrive in $nationwideEta. Providing your GhanaPostGPS code and nearest landmark speeds up dispatch.'),
                 ),
               ],
             ),
@@ -466,10 +477,10 @@ class _StoreSupportAndPaymentsCardState
       ),
       child: Text(
         title,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: AppColors.accentDark,
+          color: Theme.of(context).colorScheme.secondary,
         ),
       ),
     );

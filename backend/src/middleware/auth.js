@@ -41,6 +41,7 @@ const verifyToken = async (req, res, next) => {
 };
 
 const ADMIN_ROLES = new Set(['admin', 'super_admin', 'fulfillment', 'support', 'marketing']);
+const isAdminRole = (role) => ADMIN_ROLES.has(role);
 
 const requireAdmin = async (req, res, next) => {
   if (!req.user || !req.user.id) {
@@ -87,4 +88,4 @@ const optionalToken = async (req, res, next) => {
   next();
 };
 
-module.exports = { verifyToken, requireAdmin, requireRoles, ADMIN_ROLES, optionalToken };
+module.exports = { verifyToken, requireAdmin, requireRoles, ADMIN_ROLES, isAdminRole, optionalToken };

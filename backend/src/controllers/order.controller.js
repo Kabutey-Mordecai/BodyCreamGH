@@ -9,6 +9,7 @@ const { logStatusChange } = require('../utils/audit');
 const { assertTransition } = require('../utils/stateMachine');
 const { createFullRefund, fetchRefundsByTransaction } = require('../services/paystack.service');
 const { insertOrderWithUniqueNumber } = require('../utils/orderNumber');
+const { isAdminRole } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 function parseSettingNumber(value, fallback) {
@@ -121,6 +122,7 @@ const createOrder = async (req, res) => {
     const cartResult = await client.query(
       `SELECT ci.quantity, ci.variant_id, ci.variant_label,
               p.id AS product_id,
+              p.is_active AS product_is_active,
               COALESCE(pv.price,          p.price)          AS price,
               COALESCE(pv.stock_quantity, p.stock_quantity)  AS stock_quantity
          FROM cart_items ci
@@ -137,9 +139,45 @@ const createOrder = async (req, res) => {
       return res.status(400).json({ error: 'Cart is empty' });
     }
 
-    // Validate stock for every item before writing anything
+    // PostgreSQL does not allow FOR UPDATE OF pv on the nullable side of a LEFT JOIN,
+    // so explicitly lock any non-null variant rows before checking/deducting stock.
+    const variantIds = [...new Set(cartResult.rows.map(r => r.variant_id).filter(Boolean))];
+    let variantMap = {};
+    if (variantIds.length > 0) {
+      const { rows: variants } = await client.query(
+        `SELECT id, stock_quantity, is_active FROM product_variants WHERE id = ANY($1) FOR UPDATE`,
+        [variantIds]
+      );
+      variantMap = Object.fromEntries(variants.map(v => [v.id, v]));
+    }
+
+    const requestedQtyByKey = new Map();
     for (const item of cartResult.rows) {
-      if (item.stock_quantity < item.quantity) {
+      const key = `${item.product_id}:${item.variant_id || ''}`;
+      requestedQtyByKey.set(key, (requestedQtyByKey.get(key) || 0) + item.quantity);
+    }
+
+    // Validate active status and stock for every item before writing anything
+    for (const item of cartResult.rows) {
+      if (item.product_is_active !== true) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(400).json({ error: 'One or more products in your cart are not available' });
+      }
+
+      let effectiveStock = item.stock_quantity;
+      if (item.variant_id) {
+        const v = variantMap[item.variant_id];
+        if (!v || v.is_active !== true) {
+          await client.query('ROLLBACK');
+          transactionStarted = false;
+          return res.status(400).json({ error: 'Selected variant is not available' });
+        }
+        effectiveStock = v.stock_quantity;
+      }
+
+      const key = `${item.product_id}:${item.variant_id || ''}`;
+      if (effectiveStock < requestedQtyByKey.get(key)) {
         await client.query('ROLLBACK');
         transactionStarted = false;
         return res.status(400).json({ error: 'Insufficient stock for one or more items' });
@@ -313,7 +351,7 @@ const getOrders = async (req, res) => {
 const getOrderById = async (req, res) => {
   try {
     // Admins can see any order; customers only see their own
-    const isAdmin = req.user.role === 'admin';
+    const isAdmin = isAdminRole(req.user?.role);
     const customerId = isAdmin ? null : req.user.id;
     const order = await OrderModel.findById(req.params.orderId, customerId);
     if (!order) return res.status(404).json({ error: 'Order not found' });
@@ -1442,7 +1480,7 @@ const getOrderStatusLog = async (req, res) => {
   try {
     const { orderId } = req.params;
     // Admins can see any order; customers only their own
-    if (req.user.role !== 'admin') {
+    if (!isAdminRole(req.user?.role)) {
       const order = await OrderModel.findById(orderId, req.user.id);
       if (!order) return res.status(404).json({ error: 'Order not found' });
     }
@@ -1510,13 +1548,13 @@ const createGuestOrder = async (req, res) => {
     // Fetch and lock products
     const productIds = [...new Set(items.map(i => i.product_id))];
     const { rows: products } = await client.query(
-      `SELECT id, price, stock_quantity FROM products WHERE id = ANY($1) FOR UPDATE`,
+      `SELECT id, price, stock_quantity, is_active FROM products WHERE id = ANY($1) FOR UPDATE`,
       [productIds]
     );
     const productMap = Object.fromEntries(products.map(p => [p.id, p]));
 
     // Fetch and lock variants when present
-    const variantIds = items.map(i => i.variant_id).filter(Boolean);
+    const variantIds = [...new Set(items.map(i => i.variant_id).filter(Boolean))];
     let variantMap = {};
     if (variantIds.length > 0) {
       const { rows: variants } = await client.query(
@@ -1526,12 +1564,24 @@ const createGuestOrder = async (req, res) => {
       variantMap = Object.fromEntries(variants.map(v => [v.id, v]));
     }
 
+    // Aggregate requested quantities by (product_id, variant_id) so duplicate lines cannot bypass stock checks
+    const requestedQtyByKey = new Map();
+    for (const item of items) {
+      const key = `${item.product_id}:${item.variant_id || ''}`;
+      requestedQtyByKey.set(key, (requestedQtyByKey.get(key) || 0) + item.quantity);
+    }
+
     for (const item of items) {
       const p = productMap[item.product_id];
       if (!p) {
         await client.query('ROLLBACK');
         transactionStarted = false;
         return res.status(400).json({ error: `Product not found: ${item.product_id}` });
+      }
+      if (p.is_active !== true) {
+        await client.query('ROLLBACK');
+        transactionStarted = false;
+        return res.status(400).json({ error: 'One or more selected products are not available' });
       }
 
       if (item.variant_id) {
@@ -1541,7 +1591,7 @@ const createGuestOrder = async (req, res) => {
           transactionStarted = false;
           return res.status(400).json({ error: `Selected variant does not belong to product ${item.product_id}` });
         }
-        if (!v.is_active) {
+        if (v.is_active !== true) {
           await client.query('ROLLBACK');
           transactionStarted = false;
           return res.status(400).json({ error: 'Selected variant is not available' });
@@ -1551,7 +1601,8 @@ const createGuestOrder = async (req, res) => {
       const effectiveStock = item.variant_id && variantMap[item.variant_id]
         ? variantMap[item.variant_id].stock_quantity
         : p.stock_quantity;
-      if (effectiveStock < item.quantity) {
+      const key = `${item.product_id}:${item.variant_id || ''}`;
+      if (effectiveStock < requestedQtyByKey.get(key)) {
         await client.query('ROLLBACK');
         transactionStarted = false;
         return res.status(400).json({ error: 'Insufficient stock for one or more items' });

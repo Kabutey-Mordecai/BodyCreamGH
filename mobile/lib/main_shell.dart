@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'providers/cart_provider.dart';
-import 'theme/app_theme.dart';
 
 // Persistent bottom navigation shell — wraps the main tab screens.
 // Screens that live outside the shell (login, product detail, checkout,
@@ -13,12 +12,13 @@ class MainShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final cartCount = context.watch<CartProvider>().itemCount;
     return Scaffold(
       body: navigationShell,
       bottomNavigationBar: Container(
-        decoration: const BoxDecoration(
-          border: Border(top: BorderSide(color: AppColors.border, width: 1)),
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: cs.outline, width: 1)),
         ),
         child: NavigationBar(
           selectedIndex: navigationShell.currentIndex,
@@ -42,15 +42,15 @@ class MainShell extends StatelessWidget {
               icon: Badge.count(
                 count: cartCount,
                 isLabelVisible: cartCount > 0,
-                backgroundColor: AppColors.accent,
-                textColor: AppColors.primary,
+                backgroundColor: cs.secondary,
+                textColor: cs.onSecondary,
                 child: const Icon(Icons.shopping_bag_outlined),
               ),
               selectedIcon: Badge.count(
                 count: cartCount,
                 isLabelVisible: cartCount > 0,
-                backgroundColor: AppColors.accent,
-                textColor: AppColors.primary,
+                backgroundColor: cs.secondary,
+                textColor: cs.onSecondary,
                 child: const Icon(Icons.shopping_bag),
               ),
               label: 'Cart',

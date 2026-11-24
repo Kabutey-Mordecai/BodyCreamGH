@@ -15,12 +15,14 @@ export default function Wishlist() {
   const [items, setItems]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [adding, setAdding]   = useState(null);
+  const [error, setError]     = useState('');
 
   useEffect(() => {
     setLoading(true);
+    setError('');
     wishlistAPI.getAll()
       .then(({ data }) => setItems(data))
-      .catch(() => {})
+      .catch((err) => setError(err?.response?.data?.error || 'Could not load your wishlist. Please try again.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -38,8 +40,11 @@ export default function Wishlist() {
     e.preventDefault();
     const item = items.find(i => i.product_id === productId);
     setAdding(productId);
+    setError('');
     try {
       await addItem(productId, 1, item ? { id: item.product_id, name: item.name, price: item.price, image_url: item.image_url, stock_quantity: item.stock_quantity } : null);
+    } catch (err) {
+      setError(err?.response?.data?.error || 'Could not add item to cart. Please try again.');
     } finally {
       setAdding(null);
     }
@@ -52,6 +57,12 @@ export default function Wishlist() {
       <div className="container">
         <h1 className="section-title" style={{ textAlign: 'left', marginBottom: 8 }}>My Wishlist</h1>
         <div className="gold-divider" style={{ margin: '0 0 32px' }} />
+
+        {error && (
+          <div className="alert alert-error" role="alert" style={{ marginBottom: 20 }}>
+            {error}
+          </div>
+        )}
 
         {items.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '64px 0' }}>

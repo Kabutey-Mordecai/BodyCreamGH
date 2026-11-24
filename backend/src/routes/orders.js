@@ -5,6 +5,7 @@ const requireFulfillmentOrAdmin = requireRoles('admin', 'super_admin', 'fulfillm
 const requireSupportOrAdmin = requireRoles('admin', 'super_admin', 'support');
 const requireOrderOps = requireRoles('admin', 'super_admin', 'fulfillment', 'support');
 const { makeRateLimiter } = require('../middleware/rateLimit');
+const { isPartialReturnsEnabled } = require('../controllers/settings.controller');
 const {
   validateCreateOrder, validateCreateGuest, validateOrderStatus,
   validateCancelOrder, validateRefundOrder,
@@ -42,8 +43,13 @@ const returnCreateLimiter = makeRateLimiter(15 * 60 * 1000, 10, 'Too many return
 const returnCancelLimiter = makeRateLimiter(15 * 60 * 1000, 20, 'Too many return cancellation requests. Please try again later.', {
   keyGenerator: (req, ip) => `ret:cancel:${req.user?.id || ip}`,
 });
-const requirePartialReturnsEnabled = (_req, res, next) => {
-  if (process.env.PARTIAL_RETURNS_ENABLED !== 'true') {
+const guestOrderLimiter = makeRateLimiter(
+  15 * 60 * 1000,
+  10,
+  'Too many guest orders from this IP. Please try again later.'
+);
+const requirePartialReturnsEnabled = async (_req, res, next) => {
+  if (!(await isPartialReturnsEnabled())) {
     return res.status(404).json({ error: 'Not found' });
   }
   next();
@@ -74,7 +80,7 @@ router.delete('/checkout-session', trackLimiter, optionalToken, deleteCheckoutSe
 router.get('/checkout-session/opt-out', trackLimiter, optOutCsp, showCheckoutSessionOptOut);
 router.post('/checkout-session/opt-out', trackLimiter, optOutCsp, confirmCheckoutSessionOptOut);
 
-router.post('/guest', validateCreateGuest, createGuestOrder);  // no auth — guest checkout
+router.post('/guest', guestOrderLimiter, validateCreateGuest, createGuestOrder);  // no auth — guest checkout
 router.post('/', verifyToken, validateCreateOrder, createOrder);
 router.get('/', verifyToken, getOrders);
 router.get('/admin/all',              verifyToken, requireAdmin, requireOrderOps, getAllOrders);

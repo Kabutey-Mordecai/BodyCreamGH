@@ -15,7 +15,9 @@ export default function Financials() {
 
   const load = () => {
     setLoading(true);
-    const params = rangeMode === 'custom' && from && to ? { from, to } : { days };
+    const params = rangeMode === 'custom' && (from || to)
+      ? { ...(from && { from }), ...(to && { to }) }
+      : { days };
     adminAPI.getFinancials(params)
       .then(({ data: d }) => setData(d))
       .catch(() => setData(null))
@@ -24,7 +26,9 @@ export default function Financials() {
 
   useEffect(load, [days, rangeMode, from, to]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const label = rangeMode === 'custom' && from && to ? `${from} → ${to}` : `${days}d`;
+  const label = rangeMode === 'custom' && (from || to)
+    ? `${from || '…'} → ${to || 'today'}`
+    : `${days}d`;
 
   return (
     <div>
@@ -59,7 +63,10 @@ export default function Financials() {
       {loading ? (
         <div className="spinner" />
       ) : !data ? (
-        <div className="alert alert-warning">Failed to load financials data.</div>
+        <div className="alert alert-warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span>Failed to load financials data.</span>
+          <button type="button" className="btn btn-outline btn-sm" onClick={load}>Retry</button>
+        </div>
       ) : (
         <>
           {data.pending_refunds > 0 && (

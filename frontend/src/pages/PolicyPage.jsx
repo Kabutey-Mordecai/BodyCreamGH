@@ -1,21 +1,25 @@
 import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
+import { toFiniteNumber } from '../utils/number';
 import './PolicyPage.css';
 
 export default function PolicyPage({ type = 'privacy' }) {
   const settings = useSettings() || {};
-  const storeName = settings.store_name || 'BodyCream GH';
-  const email = settings.store_email || settings.contact_email || 'hello@bodycreamgh.com';
+  const storeName = settings.store_name || 'GlowHaus Beauty';
+  const email = settings.store_email || settings.contact_email || 'hello@glowhausbeauty.com';
   const phone = settings.store_phone || settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
   const address = settings.pickup_location || settings.store_address || 'East Legon, Accra, Ghana';
   const pickupHours = settings.pickup_hours || 'Mon–Sat, 9:00 AM – 6:00 PM';
-  const returnDays = Number(settings.return_window_days) || 3;
-  const freeThreshold = Number(settings.free_delivery_threshold || settings.free_delivery_over) || 200;
-  const accraFee = Number(settings.delivery_fee_accra) || 10;
-  const nationFee = Number(settings.delivery_fee_flat) || 15;
+  const returnDays = toFiniteNumber(settings.return_window_days, 3);
+  const freeThreshold = toFiniteNumber(settings.free_delivery_threshold ?? settings.free_delivery_over, 200);
+  const accraFee = toFiniteNumber(settings.delivery_fee_accra, 10);
+  const nationFee = toFiniteNumber(settings.delivery_fee_flat, 15);
   const accraEta = settings.delivery_estimate_accra || '1–2 business days';
   const nationEta = settings.delivery_estimate_nationwide || '3–5 business days';
+  const freeDeliveryCopy = freeThreshold > 0
+    ? `Orders over GHS ${freeThreshold.toFixed(2)} qualify for FREE nationwide delivery.`
+    : 'All orders qualify for FREE nationwide delivery.';
 
   const configs = {
     privacy: {
@@ -86,7 +90,7 @@ export default function PolicyPage({ type = 'privacy' }) {
       sections: [
         {
           heading: '1. Delivery Fees & Free Delivery',
-          body: `Greater Accra delivery is GHS ${accraFee.toFixed(2)} and Nationwide delivery is GHS ${nationFee.toFixed(2)}. Orders over GHS ${freeThreshold.toFixed(2)} qualify for FREE standard Accra delivery.`,
+          body: `Greater Accra delivery is GHS ${accraFee.toFixed(2)} and Nationwide delivery is GHS ${nationFee.toFixed(2)}. ${freeDeliveryCopy}`,
         },
         {
           heading: '2. Estimated Delivery Windows',

@@ -48,6 +48,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final Map<String, bool> _expandedReviews = {};
 
   bool _loading = true;
+  String? _loadError;
   int _quantity = 1;
   int _activeImageIdx = 0;
 
@@ -68,7 +69,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
     try {
       final isAuthed = context.read<AuthProvider>().isLoggedIn;
       final results = await Future.wait([
@@ -137,11 +141,19 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           _settings = settings;
           _canReviewData = canReview.isNotEmpty ? canReview : null;
           _loading = false;
+          _loadError = null;
         });
         _initPromoCountdown(product);
       }
-    } catch (_) {
-      if (mounted) setState(() => _loading = false);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _loading = false;
+          if (_product == null) {
+            _loadError = e.toString().replaceFirst(RegExp(r'ApiException\(\d+\): '), '');
+          }
+        });
+      }
     }
   }
 
@@ -174,18 +186,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
 
   List<Map<String, String>> get _effectivePdpTrustRow {
-    final rawThresh = _settings['free_delivery_threshold'];
+    final rawThresh = _settings['free_delivery_over'] ??
+        _settings['free_delivery_threshold'];
     final thresh = num.tryParse((rawThresh ?? '').toString());
-    final deliverySub = (thresh != null && thresh > 0)
-        ? 'Over GHS ${thresh % 1 == 0 ? thresh.toInt() : thresh}'
-        : 'Over GHS 200';
+    final isFreeDisabled = thresh != null && thresh <= 0;
+    final effectiveThresh = thresh ?? 200;
+    final deliveryLabel = isFreeDisabled ? 'Fast delivery' : 'Free delivery';
+    final deliverySub = isFreeDisabled
+        ? 'Across Ghana'
+        : 'Over GHS ${effectiveThresh % 1 == 0 ? effectiveThresh.toInt() : effectiveThresh}';
     final rawDays = _settings['return_window_days'];
     final days = int.tryParse((rawDays ?? '').toString());
     final returnLabel = (days != null && days > 0)
         ? '$days-day returns'
         : '3-day returns';
     return [
-      {'icon': '🚚', 'label': 'Free delivery', 'sub': deliverySub},
+      {'icon': '🚚', 'label': deliveryLabel, 'sub': deliverySub},
       {'icon': '✦', 'label': 'Handcrafted', 'sub': 'In small batches'},
       {'icon': '↩', 'label': returnLabel, 'sub': 'No questions asked'},
     ];
@@ -663,7 +679,35 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _product == null
-              ? const Center(child: Text('Product not found'))
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          _loadError != null
+                              ? Icons.wifi_off_outlined
+                              : Icons.inventory_2_outlined,
+                          size: 48,
+                          color: AppColors.muted,
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          _loadError ?? 'Product not found',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: AppColors.muted),
+                        ),
+                        const SizedBox(height: 16),
+                        OutlinedButton.icon(
+                          onPressed: _load,
+                          icon: const Icon(Icons.refresh, size: 18),
+                          label: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
               : SingleChildScrollView(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

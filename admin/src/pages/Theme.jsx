@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { settingsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import UnsavedChangesBar from '../components/UnsavedChangesBar';
 
 /*
  Theme Customizer — lets the owner rebrand the entire customer-facing site
@@ -64,6 +65,7 @@ const LOCAL_KEY = 'admin_theme_draft';
 export default function Theme() {
   const toast = useToast();
   const [theme, setTheme] = useState(DEFAULTS);
+  const [initialTheme, setInitialTheme] = useState(DEFAULTS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -73,19 +75,31 @@ export default function Theme() {
       try {
         const { data } = await settingsAPI.getAll();
         const filtered = Object.fromEntries(
-          Object.entries(data || {}).filter(([k]) => k.startsWith('theme_'))
+          Object.entries(data || {}).filter(([k]) => Object.prototype.hasOwnProperty.call(DEFAULTS, k))
         );
-        setTheme({ ...DEFAULTS, ...filtered });
+        const merged = { ...DEFAULTS, ...filtered };
+        setTheme(merged);
+        setInitialTheme(merged);
       } catch {
+        toast.warning('Could not load theme settings from server; showing locally cached values.');
         const cached = localStorage.getItem(LOCAL_KEY);
         if (cached) {
-          try { setTheme({ ...DEFAULTS, ...JSON.parse(cached) }); } catch { /* ignore */ }
+          try {
+            const merged = { ...DEFAULTS, ...JSON.parse(cached) };
+            setTheme(merged);
+            setInitialTheme(merged);
+          } catch { /* ignore */ }
         }
       } finally {
         setLoading(false);
       }
     })();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const discard = () => {
+    setTheme(initialTheme);
+    setDirty(false);
+  };
 
   const update = (key, value) => {
     setTheme(prev => ({ ...prev, [key]: value }));
@@ -116,9 +130,12 @@ export default function Theme() {
   const save = async () => {
     setSaving(true);
     try {
-      const entries = Object.entries(theme).map(([key, value]) => ({ key, value }));
+      const entries = Object.entries(theme)
+        .filter(([key]) => Object.prototype.hasOwnProperty.call(DEFAULTS, key))
+        .map(([key, value]) => ({ key, value }));
       await settingsAPI.updateMany(entries);
       localStorage.setItem(LOCAL_KEY, JSON.stringify(theme));
+      setInitialTheme(theme);
       toast.success('Theme published');
       setDirty(false);
     } catch {
@@ -300,6 +317,13 @@ export default function Theme() {
           line-height: 1;
         }
       `}</style>
+      <UnsavedChangesBar
+        dirty={dirty}
+        saving={saving}
+        onSave={save}
+        onDiscard={discard}
+        saveLabel="Publish theme"
+      />
     </div>
   );
 }

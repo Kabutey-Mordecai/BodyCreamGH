@@ -1,5 +1,6 @@
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, useLocation, Link } from 'react-router-dom';
 import { Suspense, useEffect } from 'react';
+import { useSettings } from './context/SettingsContext';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import WhatsAppFloat from './components/WhatsAppFloat';
@@ -68,25 +69,27 @@ const PrivacyNotice   = lazyWithRetry(() =>
   })
 );
 
-const ROUTE_TITLES = {
-  '/cart': 'Shopping Cart — GlowHaus Beauty',
-  '/checkout': 'Checkout — GlowHaus Beauty',
-  '/login': 'Sign In — GlowHaus Beauty',
-  '/register': 'Create Account — GlowHaus Beauty',
-  '/orders': 'My Orders — GlowHaus Beauty',
-  '/track': 'Track Order — GlowHaus Beauty',
-  '/track-order': 'Track Order — GlowHaus Beauty',
-  '/account': 'My Account — GlowHaus Beauty',
-  '/wishlist': 'Wishlist — GlowHaus Beauty',
+const ROUTE_TITLE_PREFIXES = {
+  '/cart': 'Shopping Cart',
+  '/checkout': 'Checkout',
+  '/login': 'Sign In',
+  '/register': 'Create Account',
+  '/orders': 'My Orders',
+  '/track': 'Track Order',
+  '/track-order': 'Track Order',
+  '/account': 'My Account',
+  '/wishlist': 'Wishlist',
 };
 
 function RouteFade({ children }) {
   const { pathname } = useLocation();
+  const settings = useSettings();
+  const storeName = settings?.store_name || 'GlowHaus Beauty';
   useEffect(() => {
-    if (ROUTE_TITLES[pathname]) {
-      document.title = ROUTE_TITLES[pathname];
+    if (ROUTE_TITLE_PREFIXES[pathname]) {
+      document.title = `${ROUTE_TITLE_PREFIXES[pathname]} — ${storeName}`;
     }
-  }, [pathname]);
+  }, [pathname, storeName]);
   return (
     <ErrorBoundary resetKey={pathname}>
       <div key={pathname} className="page-transition">{children}</div>
@@ -95,15 +98,34 @@ function RouteFade({ children }) {
 }
 
 function AdminRedirect() {
+  const adminUrl = import.meta.env.VITE_ADMIN_URL || (import.meta.env.DEV ? 'http://localhost:5174' : '');
+
   useEffect(() => {
-    window.location.href = 'http://localhost:5174';
-  }, []);
+    if (adminUrl) {
+      window.location.href = adminUrl;
+    }
+  }, [adminUrl]);
+
+  if (!adminUrl) {
+    return (
+      <div style={{ textAlign: 'center', padding: '80px 20px' }}>
+        <h2>Admin Console Unavailable</h2>
+        <p style={{ marginTop: 12, color: 'var(--color-muted)' }}>
+          The admin console URL is not configured for this environment. Please contact your site administrator.
+        </p>
+        <Link to="/" className="btn btn-outline" style={{ marginTop: 20, display: 'inline-block' }}>
+          Return to Storefront
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <div style={{ textAlign: 'center', padding: '80px 20px' }}>
       <h2>Opening Admin Console…</h2>
       <p style={{ marginTop: 12, color: 'var(--color-muted)' }}>
-        Redirecting to port 5174. If not redirected automatically,{' '}
-        <a href="http://localhost:5174" style={{ color: 'var(--color-accent-dark)', fontWeight: 600 }}>click here to enter Admin</a>.
+        Redirecting to the admin console. If not redirected automatically,{' '}
+        <a href={adminUrl} style={{ color: 'var(--color-accent-dark)', fontWeight: 600 }}>click here to enter Admin</a>.
       </p>
     </div>
   );

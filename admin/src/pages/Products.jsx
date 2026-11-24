@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { productsAPI } from '../services/api';
+import { productsAPI, settingsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import DataTable from '../components/DataTable';
 import SearchInput from '../components/SearchInput';
@@ -12,9 +12,9 @@ import { resolveImageUrl } from '../utils/resolveImageUrl';
 const PAGE_SIZE = 20;
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
 
-const stockStatus = (qty) => {
-  if (qty === 0) return 'out_of_stock';
-  if (qty <= 5) return 'low_stock';
+const stockStatus = (qty, threshold = 5) => {
+  if (qty == null || qty === 0) return 'out_of_stock';
+  if (qty <= threshold) return 'low_stock';
   return 'in_stock';
 };
 
@@ -64,9 +64,16 @@ export default function Products() {
   const [importOpen, setImportOpen] = useState(false);
   const [csvText, setCsvText]   = useState('');
   const [importing, setImporting] = useState(false);
+  const [lowStockThreshold, setLowStockThreshold] = useState(5);
   const debounceRef = useRef(null);
 
   useEffect(() => {
+    settingsAPI.getAll()
+      .then(({ data }) => {
+        const t = parseInt(data?.low_stock_threshold, 10);
+        if (t > 0) setLowStockThreshold(t);
+      })
+      .catch(() => {});
     productsAPI.getBrands()
       .then(({ data }) => {
         if (Array.isArray(data?.brands)) setBrandList(data.brands);
@@ -213,7 +220,7 @@ export default function Products() {
               render: p => (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span>{p.stock_quantity ?? 0}</span>
-                  <StatusBadge status={stockStatus(p.stock_quantity)} />
+                  <StatusBadge status={stockStatus(p.stock_quantity, lowStockThreshold)} />
                 </div>
               )
             },

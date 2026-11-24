@@ -1,5 +1,6 @@
 const express = require('express');
-const { verifyToken, requireAdmin } = require('../middleware/auth');
+const { verifyToken, requireAdmin, requireRoles } = require('../middleware/auth');
+const requireFulfillmentOrAdmin = requireRoles('super_admin', 'admin', 'fulfillment');
 const { validateCreateDelivery, validateUpdateDelivery } = require('../middleware/validation');
 const { uploadSingleMediaMiddleware } = require('../middleware/uploadFilter');
 const { uploadGenericMedia } = require('../controllers/admin.controller');
@@ -34,17 +35,17 @@ router.post('/rider/photo',      requireRiderToken, uploadSingleMediaMiddleware,
 router.post('/rider/confirm',    confirmRiderDelivery);
 
 // ── Authenticated ─────────────────────────────────────────────────────────────
-router.get('/partners',                         verifyToken, requireAdmin, getDeliveryPartners);
-router.post('/bulk-dispatch',                   verifyToken, requireAdmin, bulkDispatch);
-router.post('/',                                verifyToken, requireAdmin, validateCreateDelivery, createDelivery);
-router.post('/manifest/link',                   verifyToken, requireAdmin, createRiderManifestLink);
+router.get('/partners',                         verifyToken, requireAdmin, requireFulfillmentOrAdmin, getDeliveryPartners);
+router.post('/bulk-dispatch',                   verifyToken, requireAdmin, requireFulfillmentOrAdmin, bulkDispatch);
+router.post('/',                                verifyToken, requireAdmin, requireFulfillmentOrAdmin, validateCreateDelivery, createDelivery);
+router.post('/manifest/link',                   verifyToken, requireAdmin, requireFulfillmentOrAdmin, createRiderManifestLink);
 router.get('/order/:orderId',                   verifyToken, getDeliveryByOrder);
 router.post('/order/:orderId/confirm-receipt',  verifyToken, confirmCustomerReceipt);
-router.patch('/:deliveryId',                    verifyToken, requireAdmin, validateUpdateDelivery, updateDelivery);
-router.post('/:deliveryId/pod/send-otp',        verifyToken, requireAdmin, sendPodOtp);
+router.patch('/:deliveryId',                    verifyToken, requireAdmin, requireFulfillmentOrAdmin, validateUpdateDelivery, updateDelivery);
+router.post('/:deliveryId/pod/send-otp',        verifyToken, requireAdmin, requireFulfillmentOrAdmin, sendPodOtp);
 
 // ── Admin: courier stage progression endpoints ────────────────────────────────
-router.post('/simulate/advance/:tracking_number', verifyToken, requireAdmin, async (req, res) => {
+router.post('/simulate/advance/:tracking_number', verifyToken, requireAdmin, requireFulfillmentOrAdmin, async (req, res) => {
   try {
     const result = await advanceShipment(req.params.tracking_number);
     res.json(result);
@@ -53,7 +54,7 @@ router.post('/simulate/advance/:tracking_number', verifyToken, requireAdmin, asy
   }
 });
 
-router.post('/simulate/full/:tracking_number', verifyToken, requireAdmin, async (req, res) => {
+router.post('/simulate/full/:tracking_number', verifyToken, requireAdmin, requireFulfillmentOrAdmin, async (req, res) => {
   const delayMs = Math.max(1000, parseInt(req.query.delay) || 2000);
   res.json({ message: `Full simulation started for ${req.params.tracking_number}`, delayMs });
   simulateFullJourney(req.params.tracking_number, delayMs);

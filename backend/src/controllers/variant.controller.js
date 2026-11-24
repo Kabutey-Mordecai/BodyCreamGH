@@ -2,13 +2,14 @@
 
 const VariantModel = require('../models/variant.model');
 const { bustCache } = require('./product.controller');
+const { isAdminRole } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
 // GET /api/products/:id/variants
 // Public — no auth needed. Admin gets all variants; customers get is_active=TRUE only.
 const getVariants = async (req, res) => {
   try {
-    const isAdmin = req.user?.role === 'admin';
+    const isAdmin = isAdminRole(req.user?.role);
     const data = await VariantModel.findByProduct(req.params.id, { activeOnly: !isAdmin });
     res.json(data);
   } catch (err) {

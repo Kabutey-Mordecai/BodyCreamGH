@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 import PasswordStrength, { getPasswordStrength } from '../components/PasswordStrength';
 
 function formatCountdown(secs) {
@@ -11,6 +12,8 @@ function formatCountdown(secs) {
 
 export default function Register() {
   const { register } = useAuth();
+  const settings     = useSettings();
+  const storeName    = settings?.store_name || 'GlowHaus Beauty';
   const navigate     = useNavigate();
   const location     = useLocation();
 
@@ -121,12 +124,12 @@ export default function Register() {
             </p>
           </div>
         )}
-        <span className="auth-eyebrow">GlowHaus Beauty</span>
+        <span className="auth-eyebrow">{storeName}</span>
         <h1>{isCheckoutRedirect ? 'Create Account & Checkout' : 'Create account'}</h1>
         <p className="auth-subtitle">
           {isCheckoutRedirect
             ? 'Quick signup to save your address, track your shipment, and order.'
-            : 'Join GlowHaus Beauty to discover curated skincare, makeup, and fragrance.'}
+            : `Join ${storeName} to discover curated skincare, makeup, and fragrance.`}
         </p>
 
         {error && (

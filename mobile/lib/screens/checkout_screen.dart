@@ -59,6 +59,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   String _paymentMethod = 'paystack'; // 'paystack' | 'pay_on_delivery'
 
   bool _loadingSettings = true;
+  bool _settingsError = false;
   bool _allowGuestCheckout = false;
   bool _reminderConsent = false;
   final String _checkoutSessionToken =
@@ -220,6 +221,12 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   }
 
   Future<void> _loadStoreSettings() async {
+    if (mounted) {
+      setState(() {
+        _loadingSettings = true;
+        _settingsError = false;
+      });
+    }
     try {
       final settings = await ApiService.instance.getSettings();
       if (!mounted) return;
@@ -261,10 +268,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       }
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loadingSettings = false);
-      if (!context.read<AuthProvider>().isLoggedIn && !_allowGuestCheckout) {
-        context.go('/login?from=checkout');
-      }
+      setState(() {
+        _loadingSettings = false;
+        _settingsError = true;
+      });
     }
   }
 
@@ -653,6 +660,56 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
       return Scaffold(
         appBar: AppBar(title: const Text('Checkout')),
         body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+    if (isGuest && _settingsError) {
+      return Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () =>
+                context.canPop() ? context.pop() : context.go('/cart'),
+          ),
+          title: const Text('Checkout'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.wifi_off_outlined,
+                    size: 48, color: AppColors.muted),
+                const SizedBox(height: 16),
+                Text('Could not load checkout settings',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                const Text(
+                  'Please check your connection and try again, or sign in to continue.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.muted),
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _loadStoreSettings,
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Retry'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => context.go('/login?from=checkout'),
+                    child: const Text('Sign In'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
       );
     }
     if (isGuest && !_allowGuestCheckout) {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useSettings } from '../context/SettingsContext';
 
 function formatCountdown(secs) {
   const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -10,6 +11,8 @@ function formatCountdown(secs) {
 
 export default function Login() {
   const { login }    = useAuth();
+  const settings     = useSettings();
+  const storeName    = settings?.store_name || 'GlowHaus Beauty';
   const navigate     = useNavigate();
   const location     = useLocation();
 
@@ -79,7 +82,7 @@ export default function Login() {
             </p>
           </div>
         )}
-        <span className="auth-eyebrow">GlowHaus Beauty</span>
+        <span className="auth-eyebrow">{storeName}</span>
         <h1>{isCheckoutRedirect ? 'Sign in to Checkout' : 'Welcome back'}</h1>
         <p className="auth-subtitle">{isCheckoutRedirect ? 'Sign in to access your saved addresses, track your order, and complete payment.' : 'Sign in to your account to continue shopping.'}</p>
 

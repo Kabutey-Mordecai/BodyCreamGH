@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -6,6 +6,7 @@ import { useSettings } from '../context/SettingsContext';
 import { ordersAPI, paymentsAPI, couponsAPI, cartAPI, newsletterAPI } from '../services/api';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { isSafePaystackCheckoutUrl } from '../utils/safePaystackUrl';
+import { toFiniteNumber } from '../utils/number';
 import './Checkout.css';
 
 // Ghana's 16 administrative regions — shown in a select rather than a free text input
@@ -122,12 +123,13 @@ export default function Checkout() {
     const delay = isGuest && typedGuestEmail ? 450 : 0;
 
     const timer = setTimeout(() => {
+      const freeThreshold = toFiniteNumber(free_delivery_over, 0);
       const baseTotal = cartTotal + (
         fulfillmentMethod === 'pickup'
           ? 0
-          : ((Number(free_delivery_over) || 0) > 0 && cartTotal >= (Number(free_delivery_over) || 0))
+          : (freeThreshold > 0 && cartTotal >= freeThreshold)
             ? 0
-            : (form.region === 'Greater Accra' ? (Number(delivery_fee_accra) || 10) : (Number(delivery_fee_flat) || 15))
+            : (form.region === 'Greater Accra' ? toFiniteNumber(delivery_fee_accra, 10) : toFiniteNumber(delivery_fee_flat, 15))
       );
 
       newsletterAPI.status(emailToCheck)
@@ -164,8 +166,7 @@ export default function Checkout() {
     return () => clearTimeout(timer);
   }, [cart.length, isGuest, user?.email, form.email]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Pre-flight: validate guest cart against backend on mount (only when guest checkout is allowed)
-  useEffect(() => {
+  const runGuestValidation = useCallback(() => {
     if (!isGuest || !allowGuestCheckout || cart.length === 0) return;
     setValidating(true);
     setValidationFetchError('');
@@ -175,6 +176,11 @@ export default function Checkout() {
       .then(({ data }) => setValidation(data))
       .catch(() => setValidationFetchError('Could not check item availability. Please try again.'))
       .finally(() => setValidating(false));
+  }, [isGuest, allowGuestCheckout, cart]);
+
+  // Pre-flight: validate guest cart against backend on mount (only when guest checkout is allowed)
+  useEffect(() => {
+    runGuestValidation();
   }, [allowGuestCheckout]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pickupEnabled = pickup_enabled !== false && pickup_enabled !== 'false';
@@ -205,6 +211,9 @@ export default function Checkout() {
     if (cart.length === 0) return setError('Your cart is empty.');
 
     // Guest-only submit guards — keep authenticated path untouched
+    if (isGuest && validationFetchError) {
+      return setError(validationFetchError);
+    }
     if (isGuest && !validation) {
       return setError('Cart validation is still in progress. Please wait a moment.');
     }
@@ -323,9 +332,9 @@ export default function Checkout() {
     }
   };
 
-  const feeFlat   = Number(delivery_fee_flat)  || 15;
-  const feeAccra  = Number(delivery_fee_accra) || 10;
-  const freeOver  = Number(free_delivery_over) || 0;
+  const feeFlat   = toFiniteNumber(delivery_fee_flat, 15);
+  const feeAccra  = toFiniteNumber(delivery_fee_accra, 10);
+  const freeOver  = toFiniteNumber(free_delivery_over, 0);
   const deliveryFee = fulfillmentMethod === 'pickup'
     ? 0
     : (freeOver > 0 && cartTotal >= freeOver)
@@ -338,7 +347,7 @@ export default function Checkout() {
           subtotalPlusDelivery,
           Math.round((subtotalPlusDelivery * Number(coupon.value) / 100) * 100) / 100
         )
-      : (Number(coupon.discountAmount) || 0))
+      : toFiniteNumber(coupon.discountAmount, 0))
     : 0;
   const orderTotal = Math.max(0, subtotalPlusDelivery - discountAmount);
 
@@ -822,7 +831,16 @@ export default function Checkout() {
             )}
             {isGuest && validationFetchError && (
               <div className="alert alert-error" style={{ marginBottom: '12px' }}>
-                {validationFetchError}
+                <p style={{ margin: '0 0 8px' }}>{validationFetchError}</p>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                  onClick={runGuestValidation}
+                  disabled={validating}
+                >
+                  Retry availability check
+                </button>
               </div>
             )}
             {isGuest && !validating && validation && !validation.valid && (

@@ -101,6 +101,7 @@ export default function TrackOrder() {
       setResult(data);
     } catch (err) {
       setError(
+        err.response?.data?.error ||
         err.response?.data?.message ||
         'We couldn\'t find that order. Please check your order number and email address and try again.'
       );
@@ -235,7 +236,7 @@ export default function TrackOrder() {
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, marginBottom: 10, fontSize: '0.9rem' }}>Items</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {result.items.map((item, i) => (
+                  {(result.items || []).map((item, i) => (
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                       {item.image_url && (
                         <img

@@ -5,6 +5,34 @@ const logger = require('../utils/logger');
 const settingsCache = new NodeCache({ stdTTL: 120, checkperiod: 60, maxKeys: 10 });
 const SETTINGS_CACHE_KEY = 'site_settings:all';
 
+function parsePartialReturnsFlag(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const lower = value.trim().toLowerCase();
+    if (lower === 'true') return true;
+    if (lower === 'false') return false;
+  }
+  return process.env.PARTIAL_RETURNS_ENABLED === 'true';
+}
+
+async function isPartialReturnsEnabled() {
+  const cached = settingsCache.get(SETTINGS_CACHE_KEY);
+  if (cached) {
+    return parsePartialReturnsFlag(cached.partial_returns_enabled);
+  }
+  try {
+    const { rows } = await pool.query(
+      "SELECT value FROM site_settings WHERE key = 'partial_returns_enabled'"
+    );
+    if (rows.length > 0) {
+      return parsePartialReturnsFlag(rows[0].value);
+    }
+  } catch (err) {
+    logger.warn('Failed to read partial_returns_enabled from site_settings', { err: err.message });
+  }
+  return process.env.PARTIAL_RETURNS_ENABLED === 'true';
+}
+
 // Public read — the storefront fetches all settings on page load so it can
 // render hero text, theme colors, etc. without round-trips per key.
 const getAllSettings = async (req, res) => {
@@ -14,7 +42,7 @@ const getAllSettings = async (req, res) => {
     if (cached) {
       return res.json({
         ...cached,
-        partial_returns_enabled: process.env.PARTIAL_RETURNS_ENABLED === 'true',
+        partial_returns_enabled: parsePartialReturnsFlag(cached.partial_returns_enabled),
       });
     }
 
@@ -25,7 +53,7 @@ const getAllSettings = async (req, res) => {
     settingsCache.set(SETTINGS_CACHE_KEY, out);
     res.json({
       ...out,
-      partial_returns_enabled: process.env.PARTIAL_RETURNS_ENABLED === 'true',
+      partial_returns_enabled: parsePartialReturnsFlag(out.partial_returns_enabled),
     });
   } catch (err) {
     logger.error('Settings read error', { err: err.message });
@@ -123,4 +151,4 @@ const upsertManySettings = async (req, res) => {
   }
 };
 
-module.exports = { getAllSettings, upsertSetting, upsertManySettings };
+module.exports = { getAllSettings, upsertSetting, upsertManySettings, isPartialReturnsEnabled };

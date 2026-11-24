@@ -1,13 +1,16 @@
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useSettings } from '../context/SettingsContext';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { toFiniteNumber } from '../utils/number';
 import './Cart.css';
 
 export default function Cart() {
   const { cart, loading, cartTotal, updateItem, removeItem } = useCart();
   const settings = useSettings() || {};
   const navigate = useNavigate();
+  const [actionError, setActionError] = useState('');
 
   if (loading) return <div className="spinner" style={{ marginTop: '80px' }} />;
 
@@ -26,10 +29,10 @@ export default function Cart() {
     );
   }
 
-  const returnDays = Number(settings.return_window_days) || 3;
+  const returnDays = toFiniteNumber(settings.return_window_days, 3);
   // Count the total number of items, used in the header
   const itemCount = cart.reduce((n, item) => n + item.quantity, 0);
-  const freeThreshold = Number(settings.free_delivery_over ?? settings.free_delivery_threshold) || 200;
+  const freeThreshold = toFiniteNumber(settings.free_delivery_over ?? settings.free_delivery_threshold, 200);
   const remainingForFree = Math.max(0, freeThreshold - cartTotal);
   const freeProgress = freeThreshold > 0 ? Math.min(100, (cartTotal / freeThreshold) * 100) : 100;
 
@@ -44,12 +47,18 @@ export default function Cart() {
           </p>
         </div>
 
+        {actionError && (
+          <div className="alert alert-error" role="alert" style={{ marginBottom: '16px' }}>
+            {actionError}
+          </div>
+        )}
+
         {freeThreshold > 0 && (
           <div className="cart-free-ship-banner" role="status" aria-live="polite">
             <p className="cart-free-ship-text">
               {remainingForFree > 0
-                ? <>Add <strong>GHS {remainingForFree.toFixed(2)}</strong> more for <strong>FREE Accra Delivery</strong></>
-                : <>🎉 You unlocked <strong>FREE Accra Delivery</strong>!</>}
+                ? <>Add <strong>GHS {remainingForFree.toFixed(2)}</strong> more for <strong>FREE Delivery</strong></>
+                : <>🎉 You unlocked <strong>FREE Delivery</strong>!</>}
             </p>
             <div className="cart-free-ship-track" aria-hidden="true">
               <div className="cart-free-ship-fill" style={{ width: `${freeProgress}%` }} />
@@ -66,6 +75,7 @@ export default function Cart() {
                 item={item}
                 onUpdate={updateItem}
                 onRemove={removeItem}
+                onError={setActionError}
               />
             ))}
           </div>
@@ -123,10 +133,24 @@ export default function Cart() {
 }
 
 // Split into its own component so the parent JSX stays readable
-function CartItem({ item, onUpdate, onRemove }) {
+function CartItem({ item, onUpdate, onRemove, onError }) {
   const handleQtyChange = async (newQty) => {
     if (newQty < 1) return;
-    await onUpdate(item.id, newQty);
+    try {
+      onError('');
+      await onUpdate(item.id, newQty);
+    } catch (err) {
+      onError(err?.response?.data?.error || 'Could not update item quantity. Please try again.');
+    }
+  };
+
+  const handleRemove = async () => {
+    try {
+      onError('');
+      await onRemove(item.id);
+    } catch (err) {
+      onError(err?.response?.data?.error || 'Could not remove item. Please try again.');
+    }
   };
 
   // TO CUSTOMIZE: Placeholder image for cart items without an image_url
@@ -168,7 +192,7 @@ function CartItem({ item, onUpdate, onRemove }) {
 
           <button
             className="cart-item-remove"
-            onClick={() => onRemove(item.id)}
+            onClick={handleRemove}
           >
             Remove
           </button>

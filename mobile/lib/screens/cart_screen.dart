@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../config.dart';
 import '../providers/cart_provider.dart';
+import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 
 class CartScreen extends StatefulWidget {
@@ -19,8 +20,32 @@ class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) context.read<CartProvider>().loadFromServer();
+      if (mounted) {
+        context.read<CartProvider>().loadFromServer();
+        _syncDeliverySettings();
+      }
     });
+  }
+
+  static double? _parseSettingNum(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    return double.tryParse(v.toString());
+  }
+
+  Future<void> _syncDeliverySettings() async {
+    try {
+      final settings = await ApiService.instance.getSettings();
+      if (!mounted) return;
+      context.read<CartProvider>().updateDeliverySettings(
+            feeFlat: _parseSettingNum(settings['delivery_fee_flat']),
+            feeAccra: _parseSettingNum(settings['delivery_fee_accra']),
+            freeOver: _parseSettingNum(
+              settings['free_delivery_over'] ??
+                  settings['free_delivery_threshold'],
+            ),
+          );
+    } catch (_) {}
   }
 
   @override
@@ -33,6 +58,7 @@ class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
       context.read<CartProvider>().loadFromServer();
+      _syncDeliverySettings();
     }
   }
 
@@ -48,7 +74,10 @@ class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
           IconButton(
             tooltip: 'Sync bag',
             icon: const Icon(Icons.refresh, size: 20),
-            onPressed: () => cart.loadFromServer(),
+            onPressed: () {
+              cart.loadFromServer();
+              _syncDeliverySettings();
+            },
           ),
           if (cart.items.isNotEmpty)
             TextButton(
