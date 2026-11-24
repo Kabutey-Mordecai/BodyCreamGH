@@ -73,6 +73,13 @@ export default function Orders() {
   const timerRef = useRef(null);
   const debounceRef = useRef(null);
 
+  useEffect(() => {
+    if (!manifestOpen) return;
+    const onKey = (e) => { if (e.key === 'Escape') setManifestOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [manifestOpen]);
+
   // Debounce search input
   useEffect(() => {
     clearTimeout(debounceRef.current);
@@ -809,18 +816,31 @@ export default function Orders() {
         >
           <div
             className="card"
-            style={{ width: '100%', maxWidth: 540, padding: 22, margin: 0, boxShadow: '0 20px 50px rgba(0,0,0,0.45)' }}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Rider and Courier Manifest"
+            style={{
+              width: '100%',
+              maxWidth: 620,
+              maxHeight: '88vh',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              padding: 0,
+              margin: 0,
+              boxShadow: '0 20px 50px rgba(0,0,0,0.45)',
+            }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Header */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+            {/* Pinned Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', padding: '14px 18px', borderBottom: '1px solid var(--ac-border)', flexShrink: 0 }}>
               <div>
-                <div style={{ fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ac-accent)' }}>
+                <div style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--ac-accent)' }}>
                   Dispatch Route Sharing
                 </div>
-                <h3 style={{ margin: '2px 0 4px', fontSize: '1.15rem' }}>🏍️ Rider & Courier Manifest</h3>
+                <h3 style={{ margin: '2px 0 2px', fontSize: '1.1rem' }}>🏍️ Rider &amp; Courier Manifest</h3>
                 <p className="muted text-xs" style={{ margin: 0 }}>
-                  One link for all assigned stops — works for in-house riders &amp; 3rd-party couriers (no login needed).
+                  One link for assigned stops — no rider login needed.
                 </p>
               </div>
               <button
@@ -828,17 +848,20 @@ export default function Orders() {
                 className="btn btn-outline btn-sm"
                 onClick={() => setManifestOpen(false)}
                 aria-label="Close modal"
+                style={{ flexShrink: 0 }}
               >
                 ✕
               </button>
             </div>
 
-            {/* 1. Rider / Courier Quick-Select Cards */}
-            <div style={{ marginBottom: 14 }}>
+            {/* Scrollable Body */}
+            <div style={{ padding: '14px 18px', overflowY: 'auto', flex: 1 }}>
+            {/* 1. Rider / Courier Quick-Select Chips */}
+            <div style={{ marginBottom: 12 }}>
               <div className="text-xs" style={{ fontWeight: 700, marginBottom: 6, color: 'var(--ac-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 1. Choose Rider or Courier
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 8, marginBottom: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(165px, 1fr))', gap: 6, maxHeight: 164, overflowY: 'auto', paddingRight: 2, marginBottom: 8 }}>
                 {(() => {
                   const totalActive = knownPartners.reduce((sum, p) => sum + (p.active_count || 0), 0);
                   const isAll = !manifestPartner.trim();
@@ -1026,6 +1049,7 @@ export default function Orders() {
                   💬 Send WhatsApp
                 </a>
               </div>
+            </div>
             </div>
           </div>
         </div>
