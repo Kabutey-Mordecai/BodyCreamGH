@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config.dart';
 import '../models/product.dart';
 import '../providers/auth_provider.dart';
+import '../providers/cart_provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/wishlist_provider.dart';
 import '../services/api_service.dart';
@@ -539,6 +540,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final wishlist = context.watch<WishlistProvider>();
+    final cart = context.watch<CartProvider>();
     final storeName = _str('store_name', AppConfig.appName);
     final announcementEnabled = _settings['announcement_enabled'] != false;
     final announcementText = _str(
@@ -1030,6 +1032,75 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       ),
+      bottomNavigationBar: cart.itemCount > 0
+          ? SafeArea(
+              top: false,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.16),
+                      blurRadius: 12,
+                      offset: const Offset(0, -3),
+                    ),
+                  ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${cart.itemCount} ${cart.itemCount == 1 ? 'item' : 'items'} in bag',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                          Text(
+                            'Subtotal: ${AppConfig.currency} ${cart.subtotal.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => context.go('/cart'),
+                      child: const Text(
+                        'View Bag',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    ElevatedButton(
+                      onPressed: () => context.push('/checkout'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.accent,
+                        foregroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                      ),
+                      child: const Text(
+                        'Checkout →',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : null,
     );
   }
 }

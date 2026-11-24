@@ -6,7 +6,7 @@
 */
 .hero {
   position: relative;
-  min-height: 92dvh;
+  min-height: clamp(440px, 58dvh, 560px);
   background-color: var(--color-primary);
   display: flex;
   align-items: center;
@@ -39,7 +39,7 @@
   position: relative; /* sit above the overlay */
   color: #fff;
   max-width: 620px;
-  padding: 80px 24px;
+  padding: 48px 24px;
 }
 
 /* Small uppercase label above the headline */
@@ -556,8 +556,8 @@ input.hero-search-input:focus {
 }
 
 @media (max-width: 768px) {
-  .hero { min-height: 75vh; }
-  .hero-content h1 { font-size: 2.4rem; }
+  .hero { min-height: 400px; }
+  .hero-content h1 { font-size: 2.2rem; }
   .hero-search { max-width: 100%; }
   .hero-search-btn { padding: 14px 18px; }
   .brand-story-inner { grid-template-columns: 1fr; gap: 32px; }
@@ -571,4 +571,83 @@ input.hero-search-input:focus {
   .countdown-value { font-size: 1.25rem; }
   .categories-grid { grid-template-columns: repeat(2, 1fr); }
   .categories-section { padding: 56px 0; }
+}
+
+/* ══ COMPACT CATEGORY STRIP ═════════════════════════════════ */
+.home-cat-strip-section {
+  padding: 36px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+.home-cat-strip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.home-cat-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.home-cat-strip::-webkit-scrollbar { display: none; }
+.home-cat-pill {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface, #fff);
+  color: var(--color-primary);
+  font-size: 0.86rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+.home-cat-pill:hover {
+  border-color: var(--color-accent-dark);
+  color: var(--color-accent-dark);
+}
+
+/* ══ STICKY CLIENT-TO-BUY CART BAR ══════════════════════════ */
+.sticky-cart-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 90;
+  width: min(560px, calc(100vw - 24px));
+  background: var(--color-primary, #1c1410);
+  color: #fff;
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.24);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sticky-cart-summary {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.sticky-cart-summary strong {
+  font-size: 0.88rem;
+  line-height: 1.25;
+}
+.sticky-cart-summary span {
+  font-size: 0.76rem;
+  opacity: 0.8;
+}
+.sticky-cart-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }

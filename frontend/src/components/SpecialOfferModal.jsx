@@ -18,19 +18,18 @@ export default function SpecialOfferModal() {
   const isEnabled = settings.promo_popup_enabled === true || settings.promo_popup_enabled === 'true';
 
   useEffect(() => {
-    // Clear any previous dismissal flag so refreshing or revisiting always displays the promo
+    if (!isEnabled) return;
+
     try {
-      sessionStorage.removeItem(SESSION_KEY);
+      if (sessionStorage.getItem(SESSION_KEY) === '1') return;
     } catch {
       // Ignore
     }
 
-    if (!isEnabled) return;
-
-    const delaySec = Number(settings.promo_popup_delay_sec) || 2;
+    const delaySec = Number(settings.promo_popup_delay_sec) || 25;
     const timer = setTimeout(() => {
       setIsOpen(true);
-    }, Math.max(300, delaySec * 1000));
+    }, Math.max(3000, delaySec * 1000));
 
     return () => clearTimeout(timer);
   }, [isEnabled, settings.promo_popup_delay_sec]);
@@ -41,6 +40,11 @@ export default function SpecialOfferModal() {
       e.stopPropagation();
     }
     if (isClosing) return;
+    try {
+      sessionStorage.setItem(SESSION_KEY, '1');
+    } catch {
+      // Ignore
+    }
     setIsClosing(true);
     setTimeout(() => {
       setIsOpen(false);

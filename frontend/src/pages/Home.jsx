@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { productsAPI, newsletterAPI, reviewsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductShelf from '../components/ProductShelf';
@@ -10,9 +11,6 @@ import SearchBar from '../components/SearchBar';
 import StarRating from '../components/StarRating';
 import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
 import Reveal from '../components/Reveal';
-import CampaignTiles from '../components/CampaignTiles';
-import FeaturedSpotlight from '../components/FeaturedSpotlight';
-import HomeSeoBlock from '../components/HomeSeoBlock';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './Home.css';
 
@@ -83,57 +81,9 @@ function FlashSaleTimer({ endTime = DEFAULT_SALE_END_TIME }) {
 
 const DEFAULT_HERO_IMG = 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1600&q=85';
 
-const GALLERY = [
-  'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=400&h=400&q=80',
-  'https://images.unsplash.com/photo-1570172619644-dfd03ed5d881?auto=format&fit=crop&w=400&h=400&q=80',
-  'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=400&h=400&q=80',
-  'https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?auto=format&fit=crop&w=400&h=400&q=80',
-  'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=400&h=400&q=80',
-];
-
-function CategoryCardItem({ cat }) {
-  const [loaded, setLoaded] = useState(false);
-  return (
-    <Link
-      to={`/shop?category=${encodeURIComponent(cat.label)}`}
-      className={`cat-card ${!loaded ? 'img-placeholder-shimmer' : ''}`}
-    >
-      <img
-        src={resolveImageUrl(cat.image)}
-        alt={cat.label}
-        width="300"
-        height="400"
-        loading="lazy"
-        decoding="async"
-        className={`img-fade-in ${loaded ? 'is-loaded' : ''}`}
-        onLoad={() => setLoaded(true)}
-      />
-      <div className="cat-card-overlay" />
-      <span className="cat-card-label">{cat.label}</span>
-    </Link>
-  );
-}
-
-function LifestyleGalleryItem({ src, index }) {
-  const [loaded, setLoaded] = useState(false);
-  return (
-    <div className={`gallery-item ${!loaded ? 'img-placeholder-shimmer' : ''}`}>
-      <img
-        src={src}
-        alt={`Luxury skincare lifestyle ${index + 1}`}
-        width="400"
-        height="400"
-        loading="lazy"
-        decoding="async"
-        className={`img-fade-in ${loaded ? 'is-loaded' : ''}`}
-        onLoad={() => setLoaded(true)}
-      />
-    </div>
-  );
-}
-
 export default function Home() {
   const { user } = useAuth();
+  const { cartCount, cartTotal } = useCart();
   const settings = useSettings();
   const {
     store_name, hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image,
@@ -363,9 +313,6 @@ export default function Home() {
             <Link to={hero_cta_link || '/shop'} className="btn btn-accent hero-cta">
               {hero_cta_text}
             </Link>
-            <Link to="/shop" className="btn hero-ghost">
-              Explore All
-            </Link>
           </div>
         </div>
       </section>
@@ -397,108 +344,7 @@ export default function Home() {
       )}
 
       {/* ══════════════════════════════════════════
-          DUAL CAMPAIGN SPLIT TILES (Jumia Style)
-          ══════════════════════════════════════════ */}
-      <CampaignTiles />
-
-      {/* ══════════════════════════════════════════
-          CATEGORIES — quick navigation grid
-          ══════════════════════════════════════════ */}
-      <section className="categories-section">
-        <div className="container">
-          <Reveal className="section-header">
-            <span className="section-label">Browse by category</span>
-            <h2 className="page-title">Shop the range</h2>
-            <div className="gold-divider" style={{ margin: '0 0 40px' }} />
-          </Reveal>
-          <div className="categories-grid">
-            {(categories || []).map((cat, idx) => (
-              <Reveal key={cat.label} delay={idx * 70}>
-                <CategoryCardItem cat={cat} />
-              </Reveal>
-            ))}
-          </div>
-
-          {brands.length > 0 && (
-            <div style={{ marginTop: 40, paddingTop: 32, borderTop: '1px solid var(--color-border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexWrap: 'wrap', gap: 10 }}>
-                <div>
-                  <span className="section-label" style={{ marginBottom: 4 }}>Featured Brands</span>
-                  <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.35rem', margin: 0 }}>Shop by brand</h3>
-                </div>
-                <Link to="/shop" style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--color-accent-dark)', textDecoration: 'none' }}>
-                  View all {brands.length} brands →
-                </Link>
-              </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                {brands.slice(0, 18).map(b => (
-                  <Link
-                    key={b.brand}
-                    to={`/shop?brand=${encodeURIComponent(b.brand)}`}
-                    className="btn btn-outline btn-sm"
-                    style={{
-                      borderRadius: 9999,
-                      padding: '8px 18px',
-                      fontSize: '0.84rem',
-                      fontWeight: 500,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 8,
-                    }}
-                  >
-                    <span>{b.brand}</span>
-                    <span style={{ fontSize: '0.72rem', opacity: 0.65 }}>({b.count})</span>
-                  </Link>
-                ))}
-                {brands.length > 18 && (
-                  <Link
-                    to="/shop"
-                    className="btn btn-outline-gold btn-sm"
-                    style={{
-                      borderRadius: 9999,
-                      padding: '8px 18px',
-                      fontSize: '0.84rem',
-                      fontWeight: 600,
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                    }}
-                  >
-                    +{brands.length - 18} more brands →
-                  </Link>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* ══════════════════════════════════════════
-          RECENTLY VIEWED — personalized localStorage shelf
-          ══════════════════════════════════════════ */}
-      {settings.recently_viewed_enabled !== false && settings.recently_viewed_enabled !== 'false' && recentlyViewed.length > 0 && (
-        <section className="page-section recently-viewed-section">
-          <Reveal className="container">
-            <div className="shelf-section-head">
-              <div>
-                <span className="section-label">Picked up where you left off</span>
-                <h2 className="page-title" style={{ marginBottom: 0 }}>Recently viewed</h2>
-              </div>
-              <button
-                type="button"
-                className="shelf-clear-btn"
-                onClick={clearRecentlyViewed}
-              >
-                Clear history
-              </button>
-            </div>
-            <div className="gold-divider" style={{ margin: '12px 0 28px' }} />
-            <ProductShelf products={recentlyViewed} ariaLabel="Recently viewed products" />
-          </Reveal>
-        </section>
-      )}
-
-      {/* ══════════════════════════════════════════
-          FEATURED PRODUCTS
+          FEATURED PRODUCTS — buyable right below Hero/Deals
           ══════════════════════════════════════════ */}
       <section className="page-section featured-section">
         <Reveal className="container">
@@ -510,7 +356,7 @@ export default function Home() {
               Our most-reordered creams — made for melanin-rich skin and Ghana's climate.
             </p>
 
-            {/* Jumia-inspired Category Filter Tabs */}
+            {/* Category Filter Tabs */}
             <div className="home-category-tabs" role="tablist" aria-label="Filter products by category">
               <button
                 type="button"
@@ -570,9 +416,54 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════
-          FEATURED CAMPAIGN SPOTLIGHT
+          COMPACT CATEGORY & BRAND STRIP
           ══════════════════════════════════════════ */}
-      <FeaturedSpotlight />
+      <section className="home-cat-strip-section">
+        <div className="container">
+          <div className="home-cat-strip-head">
+            <span className="section-label" style={{ marginBottom: 0 }}>Browse by category</span>
+            <Link to="/shop" style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--color-accent-dark)', textDecoration: 'none' }}>
+              {brands.length > 0 ? `Shop all ${brands.length} brands →` : 'Explore full catalog →'}
+            </Link>
+          </div>
+          <div className="home-cat-strip">
+            {(categories || []).map(cat => (
+              <Link
+                key={cat.label}
+                to={`/shop?category=${encodeURIComponent(cat.label)}`}
+                className="home-cat-pill"
+              >
+                {cat.label}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ══════════════════════════════════════════
+          RECENTLY VIEWED — personalized localStorage shelf
+          ══════════════════════════════════════════ */}
+      {settings.recently_viewed_enabled !== false && settings.recently_viewed_enabled !== 'false' && recentlyViewed.length > 0 && (
+        <section className="page-section recently-viewed-section">
+          <Reveal className="container">
+            <div className="shelf-section-head">
+              <div>
+                <span className="section-label">Picked up where you left off</span>
+                <h2 className="page-title" style={{ marginBottom: 0 }}>Recently viewed</h2>
+              </div>
+              <button
+                type="button"
+                className="shelf-clear-btn"
+                onClick={clearRecentlyViewed}
+              >
+                Clear history
+              </button>
+            </div>
+            <div className="gold-divider" style={{ margin: '12px 0 28px' }} />
+            <ProductShelf products={recentlyViewed} ariaLabel="Recently viewed products" />
+          </Reveal>
+        </section>
+      )}
 
       {/* ══════════════════════════════════════════
           BRAND STORY — split image + text
@@ -625,7 +516,7 @@ export default function Home() {
           </Reveal>
           <div className="testimonials-grid">
             {customerReviews.length > 0 ? (
-              customerReviews.map((r, i) => (
+              customerReviews.slice(0, 3).map((r, i) => (
                 <Reveal key={r.id || i} delay={i * 80} className="testimonial-card card">
                   <div className="testimonial-rating-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                     <StarRating value={r.rating} size="sm" />
@@ -673,24 +564,9 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════
-          PHOTO GALLERY STRIP — lifestyle imagery
-          TO CUSTOMIZE: Replace with real Instagram or product photos
-          ══════════════════════════════════════════ */}
-      <section className="gallery-strip">
-        {GALLERY.map((src, i) => (
-          <LifestyleGalleryItem key={i} src={src} index={i} />
-        ))}
-      </section>
-
-      {/* ══════════════════════════════════════════
           FREQUENTLY ASKED QUESTIONS (with FAQPage JSON-LD)
           ══════════════════════════════════════════ */}
       <HomeFaq />
-
-      {/* ══════════════════════════════════════════
-          SEO & REGIONAL EDITORIAL GUIDE (Jumia Style)
-          ══════════════════════════════════════════ */}
-      <HomeSeoBlock />
 
       {/* ══════════════════════════════════════════
           NEWSLETTER CTA (hidden automatically once subscribed or after first purchase)
@@ -731,6 +607,26 @@ export default function Home() {
             )}
           </div>
         </section>
+      )}
+
+      {/* ══════════════════════════════════════════
+          STICKY CLIENT-TO-BUY BAR
+          ══════════════════════════════════════════ */}
+      {cartCount > 0 && (
+        <div className="sticky-cart-bar" role="region" aria-label="Cart quick checkout">
+          <div className="sticky-cart-summary">
+            <strong>{cartCount} {cartCount === 1 ? 'item' : 'items'} in bag</strong>
+            <span>Subtotal: GHS {cartTotal.toFixed(2)}</span>
+          </div>
+          <div className="sticky-cart-actions">
+            <Link to="/cart" className="btn btn-outline btn-sm" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.35)' }}>
+              View Bag
+            </Link>
+            <Link to="/checkout" className="btn btn-accent btn-sm">
+              Checkout →
+            </Link>
+          </div>
+        </div>
       )}
 
     </div>
