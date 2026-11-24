@@ -274,3 +274,41 @@
   .footer-nl-form input  { border-radius: 0; }
   .footer-nl-form .btn   { border-radius: 0; width: 100%; }
 }
+
+/* ══ SLIM COMPACT FOOTER ════════════════════════════════════ */
+.footer-body {
+  padding: 22px 0 18px;
+}
+.footer-grid {
+  gap: 24px;
+}
+.footer-logo {
+  font-size: 1.35rem;
+  margin-bottom: 6px;
+}
+.footer-tagline {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  margin-bottom: 12px;
+}
+.footer-col-head {
+  font-size: 0.68rem;
+  margin-bottom: 8px;
+}
+.footer-col ul {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.footer-col li {
+  margin-bottom: 0;
+}
+.footer-col a,
+.footer-link-btn {
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.72);
+}
+.footer-bottom {
+  padding: 12px 0;
+}

@@ -173,7 +173,7 @@ export default function Footer() {
               {(Array.isArray(settings.categories) ? settings.categories : [])
                 .map(c => (typeof c === 'string' ? c : c?.label))
                 .filter(Boolean)
-                .slice(0, 6)
+                .slice(0, 3)
                 .map(label => (
                   <li key={label}>
                     <Link to={`/shop?category=${encodeURIComponent(label)}`}>{label}</Link>
@@ -186,7 +186,7 @@ export default function Footer() {
           <div className="footer-col">
             <h4 className="footer-col-head">Account</h4>
             <ul>
-              {ACCOUNT_LINKS.map(l => (
+              {ACCOUNT_LINKS.slice(0, 4).map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>
@@ -198,37 +198,14 @@ export default function Footer() {
           <div id="contact-footer" className="footer-col">
             <h4 className="footer-col-head">Help &amp; Support</h4>
             <ul>
-              {INFO_LINKS.map(l => (
+              {INFO_LINKS.slice(0, 4).map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>
               ))}
-              <li>
-                <button
-                  type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('open-cookie-banner'))}
-                  className="footer-link-btn"
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    font: 'inherit',
-                    color: 'inherit',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
-                >
-                  Cookie Preferences
-                </button>
-              </li>
               {cleanPhone && (
                 <li>
-                  <a href={`tel:${cleanPhone.replace(/\s+/g, '')}`}>Call: {cleanPhone}</a>
-                </li>
-              )}
-              {cleanEmail && (
-                <li>
-                  <a href={`mailto:${cleanEmail}`}>{cleanEmail}</a>
+                  <a href={`tel:${cleanPhone.replace(/\s+/g, '')}`}>{cleanPhone}</a>
                 </li>
               )}
             </ul>
