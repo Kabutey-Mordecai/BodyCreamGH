@@ -319,7 +319,7 @@ module.exports = {
         err.status = 409;
         throw err;
       }
-      await client.query('DELETE FROM inventory_logs WHERE product_id = $1', [id]);
+      await client.query('DELETE FROM inventory_history WHERE product_id = $1', [id]);
       await client.query('DELETE FROM products WHERE id = $1', [id]);
       await client.query('COMMIT');
     } catch (e) {
