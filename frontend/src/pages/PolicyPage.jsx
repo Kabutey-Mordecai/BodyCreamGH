@@ -9,6 +9,9 @@ export default function PolicyPage({ type = 'privacy' }) {
   const storeName = settings.store_name || 'GlowHaus Beauty';
   const email = settings.store_email || settings.contact_email || 'hello@glowhausbeauty.com';
   const phone = settings.store_phone || settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
+  const rawWa = String(settings.whatsapp_number || phone || '').replace(/\D/g, '');
+  const waDigits = rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa;
+  const waDisplay = settings.whatsapp_number || phone;
   const address = settings.pickup_location || settings.store_address || 'East Legon, Accra, Ghana';
   const pickupHours = settings.pickup_hours || 'Mon–Sat, 9:00 AM – 6:00 PM';
   const returnDays = toFiniteNumber(settings.return_window_days, 3);
@@ -108,7 +111,7 @@ export default function PolicyPage({ type = 'privacy' }) {
       sections: [
         {
           heading: 'Customer Care',
-          body: `Phone / WhatsApp: ${phone}\nEmail: ${email}`,
+          body: `Phone: ${phone}\nWhatsApp: ${waDisplay}\nEmail: ${email}`,
         },
         {
           heading: 'Pickup Location & Hours',
@@ -171,9 +174,9 @@ export default function PolicyPage({ type = 'privacy' }) {
                 📞 Call {phone}
               </a>
             )}
-            {phone && (
+            {waDigits && (
               <a
-                href={`https://wa.me/${phone.replace(/\D/g, '')}?text=Hello%20${encodeURIComponent(storeName)},%20I%20have%20an%20inquiry.`}
+                href={`https://wa.me/${waDigits}?text=Hello%20${encodeURIComponent(storeName)},%20I%20have%20an%20inquiry.`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="btn btn-outline"
