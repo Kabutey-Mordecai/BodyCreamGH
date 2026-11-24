@@ -165,7 +165,7 @@ export default function Shop() {
     return list.filter(b => b.label.toLowerCase().includes(q));
   }, [apiBrands, selectedBrands, brandQuery, brandCountMap]);
 
-  const LIMIT     = 12;
+  const LIMIT     = 40;
 
   const [searchInput, setSearchInput] = useState(search);
 
