@@ -376,7 +376,7 @@ input.nav-search-input:focus {
     padding-right: 16px;
   }
   .nav-hamburger {
-    margin-right: 6px;
-    padding: 6px;
+    margin-right: 12px;
+    padding: 0;
   }
 }
