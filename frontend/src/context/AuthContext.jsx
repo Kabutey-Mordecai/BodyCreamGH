@@ -30,8 +30,8 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  const login = async (email, password) => {
-    const { data } = await authAPI.login({ email, password });
+  const login = async (email, password, extra = {}) => {
+    const { data } = await authAPI.login({ email, password, ...extra });
     localStorage.setItem('token', data.token);
     if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
     localStorage.setItem('user', JSON.stringify(data.user));

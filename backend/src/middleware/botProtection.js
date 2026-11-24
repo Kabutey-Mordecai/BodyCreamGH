@@ -72,9 +72,17 @@ const verifyTurnstile = makeTurnstileMiddleware();
 const verifyTurnstileOptionalForMobile = makeTurnstileMiddleware({
   optionalUnlessEnv: 'TURNSTILE_ENFORCE_REGISTER',
 });
+const verifyTurnstileOptionalForLogin = makeTurnstileMiddleware({
+  optionalUnlessEnv: 'TURNSTILE_ENFORCE_LOGIN',
+});
+const verifyTurnstileOptionalForAuthOrders = makeTurnstileMiddleware({
+  optionalUnlessEnv: 'TURNSTILE_ENFORCE_AUTH_ORDERS',
+});
 
 module.exports = {
   rejectHoneypot,
   verifyTurnstile,
   verifyTurnstileOptionalForMobile,
+  verifyTurnstileOptionalForLogin,
+  verifyTurnstileOptionalForAuthOrders,
 };

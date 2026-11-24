@@ -280,6 +280,7 @@ export default function Checkout() {
           delivery_fee: deliveryFee,
           coupon_code:  coupon?.code || undefined,
           ...(website ? { website } : {}),
+          ...(turnstileToken ? { cf_turnstile_response: turnstileToken } : {}),
         });
         order = res.data;
       }
@@ -808,13 +809,11 @@ export default function Checkout() {
               style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
             />
 
-            {isGuest && (
-              <TurnstileWidget
-                resetKey={turnstileReset}
-                onToken={setTurnstileToken}
-                onExpire={() => { setTurnstileToken(''); setTurnstileReset(k => k + 1); }}
-              />
-            )}
+            <TurnstileWidget
+              resetKey={turnstileReset}
+              onToken={setTurnstileToken}
+              onExpire={() => { setTurnstileToken(''); setTurnstileReset(k => k + 1); }}
+            />
 
             <button
               type="submit"
