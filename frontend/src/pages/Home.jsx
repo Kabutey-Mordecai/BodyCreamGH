@@ -6,7 +6,6 @@ import { useCart } from '../context/CartContext';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductShelf from '../components/ProductShelf';
-import TrustStrip from '../components/TrustStrip';
 import StarRating from '../components/StarRating';
 import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
 import Reveal from '../components/Reveal';
@@ -331,11 +330,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* ══════════════════════════════════════════
-          TRUST STRIP — 4 brand promises
-          ══════════════════════════════════════════ */}
-      <TrustStrip />
 
       {/* ══════════════════════════════════════════
           FLASH SALE — countdown timer + deals shelf

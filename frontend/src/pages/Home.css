@@ -1095,3 +1095,13 @@ input.hero-search-input:focus {
 .hero-grid--minimal .hero-content p {
   margin-bottom: 24px;
 }
+
+/* ══ TALLER SPACIOUS HERO ══════════════════════════════════ */
+.hero {
+  min-height: clamp(500px, 68dvh, 640px);
+}
+@media (max-width: 900px) {
+  .hero {
+    min-height: 440px;
+  }
+}
