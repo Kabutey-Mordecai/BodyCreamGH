@@ -43,14 +43,14 @@ export default function Inventory() {
     if (filter === 'low') return items.filter(p => p.stock_quantity > 0 && p.stock_quantity <= LOW);
     if (filter === 'out') return items.filter(p => p.stock_quantity === 0);
     return items;
-  }, [items, filter]);
+  }, [items, filter, LOW]);
 
   const stats = useMemo(() => {
     const outOfStock = items.filter(p => p.stock_quantity === 0).length;
     const lowStock   = items.filter(p => p.stock_quantity > 0 && p.stock_quantity <= LOW).length;
     const value      = items.reduce((s, p) => s + Number(p.price || 0) * Number(p.stock_quantity || 0), 0);
     return { outOfStock, lowStock, value };
-  }, [items]);
+  }, [items, LOW]);
 
   const openAdjust = (p) => {
     setAdjusting(p);

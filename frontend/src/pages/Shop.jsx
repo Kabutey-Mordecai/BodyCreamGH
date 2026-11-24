@@ -54,7 +54,7 @@ export default function Shop() {
   const sort      = searchParams.get('sort')       || 'newest';
   const category  = searchParams.get('category')   || '';
   const brand     = searchParams.get('brand')      || '';
-  const page      = parseInt(searchParams.get('page') || '1');
+  const page      = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1);
   const minPrice  = searchParams.get('min_price')  || '';
   const maxPrice  = searchParams.get('max_price')  || '';
   const inStock   = searchParams.get('in_stock')   || '';

@@ -853,6 +853,11 @@ export default function Checkout() {
                     </div>
                     <div className="checkout-item-meta">
                       <span className="checkout-item-name">{item.name}</span>
+                      {item.variant_label && (
+                        <span style={{ fontSize: '0.76rem', color: 'var(--color-muted)', display: 'block' }}>
+                          {item.variant_label}
+                        </span>
+                      )}
                       <span className="checkout-item-price">
                         GHS {(displayPrice * item.quantity).toFixed(2)}
                       </span>

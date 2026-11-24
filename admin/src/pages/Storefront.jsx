@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import ImageInput from '../components/ImageInput';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 
-const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'http://localhost:5173';
+const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'https://bodycreamgh-shop.vercel.app';
 
 /*
  The Storefront Editor is the "non-developer magic" — it lets the store owner
@@ -362,8 +362,7 @@ export default function Storefront() {
     } catch {
       // Backend endpoint may not exist yet — persist locally so the editor still demos.
       localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
-      toast.info('Saved locally (backend /api/settings endpoint pending)');
-      setDirty(false);
+      toast.error('Failed to save storefront settings to server. Changes kept locally.');
     } finally {
       setSaving(false);
     }

@@ -27,7 +27,7 @@ const QUICK_ACTIONS = [
   { label: 'Create New Product', path: '/products/new', category: 'Actions', icon: '➕' },
   { label: 'Compose Newsletter', path: '/newsletter/compose', category: 'Actions', icon: '✍️' },
   { label: 'Create Promo Coupon', path: '/coupons', category: 'Actions', icon: '🏷️' },
-  { label: 'Visit Storefront (New Tab)', url: 'http://localhost:5173', external: true, category: 'Actions', icon: '↗️' },
+  { label: 'Visit Storefront (New Tab)', url: import.meta.env.VITE_STOREFRONT_URL || 'https://bodycreamgh-shop.vercel.app', external: true, category: 'Actions', icon: '↗️' },
 ];
 
 export default function CommandPalette({ isOpen, onClose }) {

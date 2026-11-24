@@ -28,7 +28,7 @@ export default function Cart() {
 
   // Count the total number of items, used in the header
   const itemCount = cart.reduce((n, item) => n + item.quantity, 0);
-  const freeThreshold = Number(settings.free_delivery_threshold) || 200;
+  const freeThreshold = Number(settings.free_delivery_over ?? settings.free_delivery_threshold) || 200;
   const remainingForFree = Math.max(0, freeThreshold - cartTotal);
   const freeProgress = freeThreshold > 0 ? Math.min(100, (cartTotal / freeThreshold) * 100) : 100;
 
@@ -141,6 +141,11 @@ function CartItem({ item, onUpdate, onRemove }) {
         <Link to={`/products/${item.product_id}`} className="cart-item-name">
           {item.name}
         </Link>
+        {item.variant_label && (
+          <p style={{ fontSize: '0.78rem', color: 'var(--color-muted)', margin: '2px 0' }}>
+            {item.variant_label}
+          </p>
+        )}
         <p className="cart-item-unit-price">
           GHS {parseFloat(item.price).toFixed(2)} each
         </p>
@@ -155,6 +160,7 @@ function CartItem({ item, onUpdate, onRemove }) {
             <span>{item.quantity}</span>
             <button
               onClick={() => handleQtyChange(item.quantity + 1)}
+              disabled={item.stock_quantity > 0 && item.quantity >= item.stock_quantity}
               aria-label="Increase quantity"
             >+</button>
           </div>

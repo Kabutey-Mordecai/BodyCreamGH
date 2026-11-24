@@ -92,8 +92,7 @@ export default function Settings() {
       setDirty(false);
     } catch {
       localStorage.setItem(LOCAL_KEY, JSON.stringify(data));
-      toast.error('Failed to save settings to server. Changes saved locally.');
-      setDirty(false);
+      toast.error('Failed to save settings to server. Changes kept locally.');
     } finally {
       setSaving(false);
     }

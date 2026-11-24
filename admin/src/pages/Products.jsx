@@ -58,6 +58,7 @@ export default function Products() {
   const [category, setCategory] = useState('');
   const [brand, setBrand]       = useState('');
   const [brandList, setBrandList] = useState([]);
+  const [categoryList, setCategoryList] = useState([]);
   const [page, setPage]         = useState(1);
   const [confirm, setConfirm]   = useState(null);
   const [importOpen, setImportOpen] = useState(false);
@@ -69,6 +70,12 @@ export default function Products() {
     productsAPI.getBrands()
       .then(({ data }) => {
         if (Array.isArray(data?.brands)) setBrandList(data.brands);
+      })
+      .catch(() => {});
+    productsAPI.getCategories()
+      .then(({ data }) => {
+        const cats = data?.categories || data || [];
+        if (Array.isArray(cats)) setCategoryList(cats.map(c => (typeof c === 'string' ? c : c?.category || c?.label)).filter(Boolean));
       })
       .catch(() => {});
   }, []);
@@ -164,7 +171,7 @@ export default function Products() {
           <SearchInput value={search} onChange={setSearch} placeholder="Search by name, SKU, brand…" />
           <select value={category} onChange={e => setCategory(e.target.value)} style={{ width: 170 }}>
             <option value="">All categories</option>
-            {[...new Set(products.map(p => p.category).filter(Boolean))].sort().map(c => (
+            {(categoryList.length > 0 ? categoryList : [...new Set(products.map(p => p.category).filter(Boolean))].sort()).map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
           </select>

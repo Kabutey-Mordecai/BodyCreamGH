@@ -12,7 +12,7 @@ import { useToast } from '../context/ToastContext';
  localStorage if the /api/settings endpoint isn't wired up yet.
 */
 
-const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'http://localhost:5173';
+const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'https://bodycreamgh-shop.vercel.app';
 
 const THEME_PRESETS = [
   {
@@ -123,8 +123,7 @@ export default function Theme() {
       setDirty(false);
     } catch {
       localStorage.setItem(LOCAL_KEY, JSON.stringify(theme));
-      toast.info('Saved locally (backend /api/settings endpoint pending)');
-      setDirty(false);
+      toast.error('Failed to save theme to server. Changes kept locally.');
     } finally {
       setSaving(false);
     }

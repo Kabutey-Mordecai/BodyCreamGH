@@ -7,7 +7,7 @@ import CommandPalette from '../components/CommandPalette';
 import './AdminLayout.css';
 
 const STORE_NAME = import.meta.env.VITE_STORE_NAME || 'BodyCream GH';
-const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'http://localhost:5173';
+const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'https://bodycreamgh-shop.vercel.app';
 
 // Sidebar navigation groups (static — badge counts are injected at render).
 const NAV_GROUPS_DEF = [

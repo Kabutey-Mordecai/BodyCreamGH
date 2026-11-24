@@ -170,7 +170,7 @@ export default function Home() {
   });
 
   const fetchDealsAndProducts = () => {
-    productsAPI.getAll({ limit: 8, sort: 'top_rated' })
+    productsAPI.getAll({ limit: 24, sort: 'top_rated' })
       .then(({ data }) => setFeatured(data.products || data))
       .catch(console.error)
       .finally(() => setLoading(false));

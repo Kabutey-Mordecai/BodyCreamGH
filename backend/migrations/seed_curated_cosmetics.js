@@ -362,7 +362,7 @@ const CURATED_PRODUCTS = [
     name: 'Oil Control Dry Touch Sun Gel-Cream SPF 50+ 50ml',
     description: 'Matte, zero-white-cast sunscreen formulated for oily and acne-prone skin in humid climates.',
     price: 275.00, cost: 175.00, stock_quantity: 22,
-    image_url: 'https://images.unsplash.com/photo-1556228841-a3d3a7191677?auto=format&fit=crop&w=600&q=80',
+    image_url: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=600&q=80',
     ingredients: 'Licochalcone A, L-Carnitine, Lipid-Absorbing Micro-Particles',
     usage_instructions: 'Apply liberally 15 minutes before sun exposure.',
   },

@@ -105,7 +105,7 @@ export function CartProvider({ children }) {
           variant_id:     variantId || null,
           variant_label:  variantLabel || null,
           name:           product.name,
-          price:          product.variant_price ?? product.price,
+          price:          product.active_promotion?.discounted_price ?? product.variant_price ?? product.price,
           image_url:      product.image_url,
           stock_quantity: effectiveStock,
           quantity,
@@ -120,7 +120,9 @@ export function CartProvider({ children }) {
     setGuestCart(prev => {
       const next = quantity <= 0
         ? prev.filter(i => i.id !== cartItemId && i.product_id !== cartItemId)
-        : prev.map(i => (i.id === cartItemId || i.product_id === cartItemId) ? { ...i, quantity } : i);
+        : prev.map(i => (i.id === cartItemId || i.product_id === cartItemId)
+            ? { ...i, quantity: i.stock_quantity > 0 ? Math.min(i.stock_quantity, quantity) : quantity }
+            : i);
       writeGuestCart(next);
       return next;
     });
