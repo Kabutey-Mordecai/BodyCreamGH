@@ -50,6 +50,7 @@
 }
 
 .whatsapp-float {
+  position: relative;
   width: 54px;
   height: 54px;
   flex-shrink: 0;
