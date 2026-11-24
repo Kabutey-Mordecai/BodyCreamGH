@@ -119,6 +119,12 @@ export default function PolicyPage({ type = 'privacy' }) {
   };
 
   const page = configs[type] || configs.privacy;
+  const customPolicyRaw = typeof settings[`policy_${type}`] === 'string'
+    ? settings[`policy_${type}`].trim()
+    : '';
+  const customParagraphs = customPolicyRaw
+    ? customPolicyRaw.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+    : [];
 
   useEffect(() => {
     document.title = `${page.title} — ${storeName}`;
@@ -139,12 +145,20 @@ export default function PolicyPage({ type = 'privacy' }) {
       </header>
 
       <div className="policy-card">
-        {page.sections.map((sec) => (
-          <section key={sec.heading} className="policy-section">
-            <h2>{sec.heading}</h2>
-            <p>{sec.body}</p>
-          </section>
-        ))}
+        {customParagraphs.length > 0 ? (
+          customParagraphs.map((para, idx) => (
+            <section key={idx} className="policy-section">
+              <p style={{ whiteSpace: 'pre-line' }}>{para}</p>
+            </section>
+          ))
+        ) : (
+          page.sections.map((sec) => (
+            <section key={sec.heading} className="policy-section">
+              <h2>{sec.heading}</h2>
+              <p>{sec.body}</p>
+            </section>
+          ))
+        )}
 
         {type === 'contact' && (
           <div style={{ marginTop: 20, display: 'flex', flexWrap: 'wrap', gap: 10 }}>

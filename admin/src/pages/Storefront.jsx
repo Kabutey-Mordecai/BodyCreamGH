@@ -48,7 +48,7 @@ const DEFAULT_FAQS = [
   },
   {
     q: 'What is your return & refund policy?',
-    a: 'We offer hassle-free 7-day returns on unopened items and prompt replacements for any damaged delivery.',
+    a: 'We offer hassle-free 3-day returns on unopened items and prompt replacements for any damaged delivery.',
   },
   {
     q: 'Are your skincare products authentic and safe for melanin-rich skin?',
@@ -191,7 +191,7 @@ const DEFAULTS = {
   trust_items: [
     { icon: '🚚', label: 'Free delivery', sub: 'Over GHS 200' },
     { icon: '✦',  label: 'Handcrafted',   sub: 'In small batches' },
-    { icon: '↩',  label: '7-day returns', sub: 'No questions asked' },
+    { icon: '↩',  label: '3-day returns', sub: 'No questions asked' },
     { icon: '🔒', label: 'Secure checkout', sub: 'Paystack' },
   ],
 

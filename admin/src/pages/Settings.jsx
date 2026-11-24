@@ -35,6 +35,10 @@ const DEFAULTS = {
   low_stock_threshold: 5,
   return_window_days:  3,
   partial_returns_enabled: false,
+  policy_refund:   '',
+  policy_shipping: '',
+  policy_privacy:  '',
+  policy_terms:    '',
 
   paystack_public_key:          '',
   pay_on_delivery_enabled:      false,
@@ -352,6 +356,51 @@ export default function Settings() {
                 <span>Enable item-level partial returns</span>
               </label>
               <div className="hint">Allow customers to select specific items and quantities to return instead of the entire order.</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header"><h2 className="card-title">Store policies</h2></div>
+          <div className="card-body">
+            <div className="hint" style={{ marginBottom: 14 }}>
+              Leave any policy blank to use the automatic dynamic policy generated from your store settings (including your {data.return_window_days || 3}-day return window and delivery fees). Separate paragraphs with a blank line.
+            </div>
+            <div className="field">
+              <label>Refund &amp; Return Policy</label>
+              <textarea
+                rows={4}
+                value={data.policy_refund}
+                onChange={e => update('policy_refund', e.target.value)}
+                placeholder={`Optional custom Refund & Return Policy (defaults to ${data.return_window_days || 3}-day return window policy)…`}
+              />
+            </div>
+            <div className="field">
+              <label>Shipping &amp; Delivery Policy</label>
+              <textarea
+                rows={4}
+                value={data.policy_shipping}
+                onChange={e => update('policy_shipping', e.target.value)}
+                placeholder="Optional custom Shipping & Delivery Policy…"
+              />
+            </div>
+            <div className="field">
+              <label>Privacy Policy</label>
+              <textarea
+                rows={4}
+                value={data.policy_privacy}
+                onChange={e => update('policy_privacy', e.target.value)}
+                placeholder="Optional custom Privacy Policy…"
+              />
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label>Terms &amp; Conditions</label>
+              <textarea
+                rows={4}
+                value={data.policy_terms}
+                onChange={e => update('policy_terms', e.target.value)}
+                placeholder="Optional custom Terms & Conditions…"
+              />
             </div>
           </div>
         </div>
