@@ -1098,3 +1098,32 @@ input.shop-search-input:focus-visible {
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* ── Balanced Breathing Room & Layout Spacing ────── */
+.shop-page .container {
+  max-width: 1280px;
+  padding: 0 32px;
+}
+
+.shop-layout {
+  grid-template-columns: 220px 1fr;
+  gap: 32px;
+}
+
+.shop-sidebar {
+  padding: 18px 16px;
+}
+
+.shop-page .products-grid {
+  gap: 24px;
+}
+
+@media (max-width: 900px) {
+  .shop-page .container {
+    padding: 0 18px;
+  }
+  .shop-layout {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+}

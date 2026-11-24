@@ -80,7 +80,7 @@ export default function Navigation() {
           </Link>
 
           {/* Search bar — desktop (hidden on mobile via CSS) */}
-          <SearchBar variant="nav" placeholder="Search brands, skincare, makeup…" onNavigate={closeMenu} />
+          <SearchBar variant="nav" placeholder="Search products…" onNavigate={closeMenu} />
 
           {/* Hamburger — mobile only */}
           <button
