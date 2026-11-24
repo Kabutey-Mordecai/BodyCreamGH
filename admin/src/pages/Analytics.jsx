@@ -23,6 +23,14 @@ const PRESET_RANGES = [
 export default function Analytics() {
   const [points, setPoints]           = useState([]);
   const [topProducts, setTopProducts] = useState([]);
+  const [traffic, setTraffic]         = useState({
+    unique_visitors: 0,
+    page_views: 0,
+    today_visitors: 0,
+    today_page_views: 0,
+    daily: [],
+    top_pages: [],
+  });
   const [loading, setLoading]         = useState(true);
   const [rangeMode, setRangeMode]     = useState('preset'); // 'preset' | 'custom'
   const [days, setDays]               = useState(30);
@@ -39,10 +47,12 @@ export default function Analytics() {
     Promise.all([
       adminAPI.getAnalytics(params).then(r => r.data).catch(() => []),
       adminAPI.getTopProducts().then(r => r.data).catch(() => []),
+      adminAPI.getTraffic(params).then(r => r.data).catch(() => null),
     ])
-      .then(([a, t]) => {
+      .then(([a, t, tr]) => {
         setPoints(Array.isArray(a) ? a : []);
         setTopProducts(Array.isArray(t) ? t : []);
+        if (tr && typeof tr === 'object') setTraffic(tr);
       })
       .finally(() => setLoading(false));
   };
@@ -233,6 +243,36 @@ export default function Analytics() {
             </svg>
           }
         />
+        <StatCard
+          label={`Site Visitors · ${rangeMode === 'custom' ? 'Range' : `${days}d`}`}
+          value={fmtInt(traffic.unique_visitors)}
+          sparkline={(traffic.daily || []).slice(-14).map(d => Number(d.visitors || 0))}
+          sub={`${fmtInt(traffic.today_visitors)} today`}
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 00-3-3.87" />
+              <path d="M16 3.13a4 4 0 010 7.75" />
+            </svg>
+          }
+        />
+        <StatCard
+          label={`Page Views · ${rangeMode === 'custom' ? 'Range' : `${days}d`}`}
+          value={fmtInt(traffic.page_views)}
+          sparkline={(traffic.daily || []).slice(-14).map(d => Number(d.page_views || 0))}
+          sub={
+            traffic.unique_visitors > 0
+              ? `${((stats.orders / traffic.unique_visitors) * 100).toFixed(1)}% order conversion`
+              : `${fmtInt(traffic.today_page_views)} views today`
+          }
+          icon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          }
+        />
       </div>
 
       {/* Interactive Trend Chart Card */}
@@ -359,6 +399,42 @@ export default function Analytics() {
               sortable: true,
               className: 'cell-right',
               render: p => fmtInt(p.times_sold),
+            },
+          ]}
+        />
+      </div>
+
+      {/* Top Visited Pages Card */}
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-header">
+          <h2 className="card-title">Top Visited Pages</h2>
+          <span className="muted" style={{ fontSize: '0.82rem' }}>
+            {fmtInt(traffic.today_page_views)} views · {fmtInt(traffic.today_visitors)} visitors today
+          </span>
+        </div>
+        <DataTable
+          rows={traffic.top_pages || []}
+          rowKey={(r) => r.path}
+          loading={loading}
+          emptyTitle="No visits recorded yet"
+          emptySubtitle="Storefront page views will appear here automatically as shoppers browse."
+          columns={[
+            {
+              key: 'path',
+              label: 'Page Path',
+              render: (r) => <code style={{ fontSize: '0.85rem' }}>{r.path}</code>,
+            },
+            {
+              key: 'visitors',
+              label: 'Unique Visitors',
+              className: 'cell-right',
+              render: (r) => fmtInt(r.visitors),
+            },
+            {
+              key: 'views',
+              label: 'Page Views',
+              className: 'cell-right',
+              render: (r) => fmtInt(r.views),
             },
           ]}
         />

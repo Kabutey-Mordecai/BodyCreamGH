@@ -81,6 +81,21 @@ const ROUTE_TITLE_PREFIXES = {
   '/wishlist': 'Wishlist',
 };
 
+function getVisitorId() {
+  try {
+    let vid = localStorage.getItem('bc_vid');
+    if (!vid) {
+      vid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+      localStorage.setItem('bc_vid', vid);
+    }
+    return vid;
+  } catch {
+    return '';
+  }
+}
+
 function RouteFade({ children }) {
   const { pathname } = useLocation();
   const settings = useSettings();
@@ -90,6 +105,19 @@ function RouteFade({ children }) {
       document.title = `${ROUTE_TITLE_PREFIXES[pathname]} — ${storeName}`;
     }
   }, [pathname, storeName]);
+  useEffect(() => {
+    const apiBase = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
+    fetch(`${apiBase}/traffic/visit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: pathname,
+        visitor_id: getVisitorId(),
+        referrer: typeof document !== 'undefined' ? document.referrer || '' : '',
+      }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [pathname]);
   return (
     <ErrorBoundary resetKey={pathname}>
       <div key={pathname} className="page-transition">{children}</div>

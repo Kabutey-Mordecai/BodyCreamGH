@@ -82,6 +82,7 @@ export const adminAPI = {
   omnisearch:             (q)      => api.get('/admin/omnisearch', { params: { q } }),
   getDashboard:           ()       => api.get('/admin/dashboard'),
   getAnalytics:           (params) => api.get('/admin/analytics', { params }),
+  getTraffic:             (params) => api.get('/admin/traffic', { params }),
   getFinancials:          (params) => api.get('/admin/financials', { params }),
   getTopProducts:         ()       => api.get('/admin/top-products'),
   getInventoryOverview:   ()       => api.get('/admin/inventory'),

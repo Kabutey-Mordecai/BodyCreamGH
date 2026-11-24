@@ -141,6 +141,7 @@ app.use('/api/newsletter',  newsletterRoutes);
 app.use('/api/promotions',    promotionRoutes);
 app.use('/api/reviews',       reviewRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/traffic',       require('./routes/traffic'));
 
 function escapeXml(str) {
   if (!str) return '';

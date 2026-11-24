@@ -7,6 +7,7 @@ const {
   uploadProductImages, uploadGenericMedia, deleteProductImage, reorderProductImages, setPrimaryProductImage,
   omnisearch,
 } = require('../controllers/admin.controller');
+const { getTrafficAnalytics } = require('../controllers/traffic.controller');
 const {
   getAllReviews, getReviewCounts, approveReview, rejectReview, replyToReview, deleteReview,
 } = require('../controllers/review.controller');
@@ -31,6 +32,7 @@ const requireFulfillmentOrAdmin = requireRoles('admin', 'super_admin', 'fulfillm
 router.get('/omnisearch',    verifyToken, requireAdmin, omnisearch);
 router.get('/dashboard',     verifyToken, requireAdmin, getDashboard);
 router.get('/analytics',     verifyToken, requireAdmin, getAnalytics);
+router.get('/traffic',       verifyToken, requireAdmin, getTrafficAnalytics);
 router.get('/financials',    verifyToken, requireAdmin, requireSuperOrAdmin, getFinancials);
 router.get('/top-products',  verifyToken, requireAdmin, getTopProducts);
 router.get('/inventory',     verifyToken, requireAdmin, requireFulfillmentOrAdmin, getInventoryOverview);
