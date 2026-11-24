@@ -4,7 +4,7 @@
 
 .product-shelf-track {
   display: flex;
-  gap: 20px;
+  gap: 16px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   padding: 6px 2px 12px;
@@ -16,8 +16,8 @@
 }
 
 .product-shelf-item {
-  flex: 0 0 calc((100% - 60px) / 4);
-  min-width: 240px;
+  flex: 0 0 calc((100% - 64px) / 5);
+  min-width: 195px;
   scroll-snap-align: start;
 }
 
