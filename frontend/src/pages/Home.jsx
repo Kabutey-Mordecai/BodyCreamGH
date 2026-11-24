@@ -86,9 +86,10 @@ export default function Home() {
   const { cartCount, cartTotal } = useCart();
   const settings = useSettings();
   const {
-    store_name, hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image,
+    store_name, hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image, hero_video,
     categories, testimonials,
   } = settings;
+  const [videoFailed, setVideoFailed]       = useState(false);
   const [featured, setFeatured]             = useState([]);
   const [brands, setBrands]                 = useState([]);
   const [customerReviews, setCustomerReviews] = useState([]);
@@ -288,17 +289,33 @@ export default function Home() {
           HERO — full-viewport, high-priority LCP img
           ══════════════════════════════════════════ */}
       <section className="hero">
-        <img
-          src={resolveImageUrl(hero_image || DEFAULT_HERO_IMG)}
-          srcSet={heroSrcSet}
-          sizes="100vw"
-          alt=""
-          aria-hidden="true"
-          className="hero-bg-img"
-          fetchpriority="high"
-          decoding="sync"
-        />
+        {hero_video && !videoFailed ? (
+          <video
+            src={resolveImageUrl(hero_video)}
+            poster={resolveImageUrl(hero_image || DEFAULT_HERO_IMG)}
+            autoPlay
+            muted
+            loop
+            playsInline
+            aria-hidden="true"
+            className="hero-bg-video"
+            onError={() => setVideoFailed(true)}
+          />
+        ) : (
+          <img
+            src={resolveImageUrl(hero_image || DEFAULT_HERO_IMG)}
+            srcSet={heroSrcSet}
+            sizes="100vw"
+            alt=""
+            aria-hidden="true"
+            className="hero-bg-img hero-ken-burns"
+            fetchpriority="high"
+            decoding="sync"
+          />
+        )}
         <div className="hero-overlay" />
+        <div className="hero-orb hero-orb--one" aria-hidden="true" />
+        <div className="hero-orb hero-orb--two" aria-hidden="true" />
         <div className="container hero-content">
           <span className="hero-label">{hero_label}</span>
           <h1>{hero_headline}</h1>
@@ -321,6 +338,24 @@ export default function Home() {
           TRUST STRIP — 4 brand promises
           ══════════════════════════════════════════ */}
       <TrustStrip />
+
+      {/* ══════════════════════════════════════════
+          MOVING PROMISE MARQUEE
+          ══════════════════════════════════════════ */}
+      <div className="home-marquee" aria-hidden="true">
+        <div className="home-marquee-track">
+          <span>✨ 100% Authentic Beauty</span>
+          <span>🚚 Same-Day Accra &amp; Tema Delivery</span>
+          <span>💳 Paystack, MoMo &amp; Pay on Delivery</span>
+          <span>🌿 Curated for Melanin-Rich Skin</span>
+          <span>🔒 Verified Buyer Reviews</span>
+          <span>✨ 100% Authentic Beauty</span>
+          <span>🚚 Same-Day Accra &amp; Tema Delivery</span>
+          <span>💳 Paystack, MoMo &amp; Pay on Delivery</span>
+          <span>🌿 Curated for Melanin-Rich Skin</span>
+          <span>🔒 Verified Buyer Reviews</span>
+        </div>
+      </div>
 
       {/* ══════════════════════════════════════════
           FLASH SALE — countdown timer + deals shelf
