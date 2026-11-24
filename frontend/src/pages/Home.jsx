@@ -7,7 +7,6 @@ import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductShelf from '../components/ProductShelf';
 import TrustStrip from '../components/TrustStrip';
-import SearchBar from '../components/SearchBar';
 import StarRating from '../components/StarRating';
 import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
 import Reveal from '../components/Reveal';
@@ -316,7 +315,7 @@ export default function Home() {
         <div className="hero-overlay" />
         <div className="hero-orb hero-orb--one" aria-hidden="true" />
         <div className="hero-orb hero-orb--two" aria-hidden="true" />
-        <div className="container hero-grid">
+        <div className="container hero-grid hero-grid--minimal">
           <div className="hero-content">
             <span className="hero-label">
               <span className="hero-live-dot" aria-hidden="true" />
@@ -324,56 +323,12 @@ export default function Home() {
             </span>
             <h1>{hero_headline}</h1>
             <p>{hero_subtitle}</p>
-
-            <SearchBar
-              variant="hero"
-              placeholder="Search for body creams, oils, scrubs…"
-            />
-
-            <div className="hero-quick-chips" aria-label="Popular categories">
-              {['Body Care', 'Skincare', 'Serums', 'Fragrances'].map(tag => (
-                <Link
-                  key={tag}
-                  to={`/shop?search=${encodeURIComponent(tag)}`}
-                  className="hero-chip"
-                >
-                  {tag}
-                </Link>
-              ))}
-            </div>
-
             <div className="hero-actions">
               <Link to={hero_cta_link || '/shop'} className="btn btn-accent hero-cta">
                 {hero_cta_text} →
               </Link>
-              <span className="hero-proof">★ 4.9/5 Verified Ghana Buyers · Fast Dispatch</span>
             </div>
           </div>
-
-          {(saleProducts[0] || featured[0]) && (() => {
-            const spot = saleProducts[0] || featured[0];
-            const spotImg = spot.image_url || spot.images?.[0]?.url || spot.images?.[0];
-            return (
-              <Link to={`/products/${spot.id}`} className="hero-spotlight-card" aria-label={`Featured product: ${spot.name}`}>
-                <div className="hero-spotlight-badge">
-                  {saleProducts[0] ? '🔥 Today’s Deal' : '✨ #1 Bestseller'}
-                </div>
-                {spotImg && (
-                  <div className="hero-spotlight-img-wrap">
-                    <img src={resolveImageUrl(spotImg)} alt={spot.name} loading="eager" />
-                  </div>
-                )}
-                <div className="hero-spotlight-info">
-                  <span className="hero-spotlight-cat">{spot.brand || spot.category || 'GlowHaus Pick'}</span>
-                  <strong>{spot.name}</strong>
-                  <div className="hero-spotlight-price-row">
-                    <span className="hero-spotlight-price">GHS {Number(spot.price || 0).toFixed(2)}</span>
-                    <span className="hero-spotlight-cta">Buy Now →</span>
-                  </div>
-                </div>
-              </Link>
-            );
-          })()}
         </div>
       </section>
 
@@ -381,24 +336,6 @@ export default function Home() {
           TRUST STRIP — 4 brand promises
           ══════════════════════════════════════════ */}
       <TrustStrip />
-
-      {/* ══════════════════════════════════════════
-          MOVING PROMISE MARQUEE
-          ══════════════════════════════════════════ */}
-      <div className="home-marquee" aria-hidden="true">
-        <div className="home-marquee-track">
-          <span>✨ 100% Authentic Beauty</span>
-          <span>🚚 Same-Day Accra &amp; Tema Delivery</span>
-          <span>💳 Paystack, MoMo &amp; Pay on Delivery</span>
-          <span>🌿 Curated for Melanin-Rich Skin</span>
-          <span>🔒 Verified Buyer Reviews</span>
-          <span>✨ 100% Authentic Beauty</span>
-          <span>🚚 Same-Day Accra &amp; Tema Delivery</span>
-          <span>💳 Paystack, MoMo &amp; Pay on Delivery</span>
-          <span>🌿 Curated for Melanin-Rich Skin</span>
-          <span>🔒 Verified Buyer Reviews</span>
-        </div>
-      </div>
 
       {/* ══════════════════════════════════════════
           FLASH SALE — countdown timer + deals shelf

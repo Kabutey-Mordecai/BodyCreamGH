@@ -1083,3 +1083,15 @@ input.hero-search-input:focus {
     padding: 24px 18px;
   }
 }
+
+/* ══ SPACIOUS MINIMAL HERO ═════════════════════════════════ */
+.hero-grid--minimal {
+  grid-template-columns: 1fr;
+  padding: 52px 24px;
+}
+.hero-grid--minimal .hero-content {
+  max-width: 520px;
+}
+.hero-grid--minimal .hero-content p {
+  margin-bottom: 24px;
+}
