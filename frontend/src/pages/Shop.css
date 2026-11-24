@@ -1148,3 +1148,38 @@ input.shop-search-input:focus-visible {
     gap: 18px;
   }
 }
+
+/* ── Enhanced Mobile Shop Search Bar ─────────────── */
+@media (max-width: 768px) {
+  .shop-search-form {
+    height: 44px;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+  .shop-search-icon {
+    width: 17px;
+    height: 17px;
+    margin-left: 12px;
+    margin-right: 2px;
+  }
+  .shop-search-input,
+  input.shop-search-input,
+  input.shop-search-input:focus,
+  input.shop-search-input:focus-visible {
+    min-width: 0;
+    padding: 0 10px !important;
+    font-size: 0.92rem;
+  }
+  .shop-search-input::placeholder {
+    font-size: 0.85rem;
+  }
+  .shop-search-clear-btn {
+    padding: 6px 8px;
+    font-size: 0.85rem;
+  }
+  .shop-search-submit-btn {
+    padding: 0 16px;
+    font-size: 0.76rem;
+    letter-spacing: 0.05em;
+  }
+}
