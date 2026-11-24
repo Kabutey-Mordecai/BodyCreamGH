@@ -1093,7 +1093,7 @@ export default function OrderDetail() {
 
                 {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {order.status === 'pending' ? (
+                    {order.status === 'pending' && (
                       <button
                         type="button"
                         className="btn btn-accent btn-sm"
@@ -1103,30 +1103,27 @@ export default function OrderDetail() {
                       >
                         {saving ? 'Updating…' : '✓ Confirm Pickup Order'}
                       </button>
-                    ) : (
-                      <>
-                        {order.status !== 'shipped' && (
-                          <button
-                            type="button"
-                            className="btn btn-accent btn-sm"
-                            style={{ width: '100%' }}
-                            onClick={() => changeStatus('shipped', 'Order marked ready for pickup by admin')}
-                            disabled={saving}
-                          >
-                            {saving ? 'Updating…' : '📦 Mark Ready for Pickup'}
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="btn btn-success btn-sm"
-                          style={{ width: '100%' }}
-                          onClick={() => changeStatus('delivered', 'Order picked up by customer')}
-                          disabled={saving}
-                        >
-                          {saving ? 'Updating…' : '✓ Confirm Customer Picked Up'}
-                        </button>
-                      </>
                     )}
+                    {order.status !== 'pending' && order.status !== 'shipped' && (
+                      <button
+                        type="button"
+                        className="btn btn-accent btn-sm"
+                        style={{ width: '100%' }}
+                        onClick={() => changeStatus('shipped', 'Order marked ready for pickup by admin')}
+                        disabled={saving}
+                      >
+                        {saving ? 'Updating…' : '📦 Mark Ready for Pickup'}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-success btn-sm"
+                      style={{ width: '100%' }}
+                      onClick={() => changeStatus('delivered', 'Order picked up by customer')}
+                      disabled={saving}
+                    >
+                      {saving ? 'Updating…' : '✓ Confirm Customer Picked Up'}
+                    </button>
                   </div>
                 )}
                 {order.status === 'delivered' && (
