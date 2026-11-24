@@ -172,6 +172,12 @@ export function SettingsProvider({ children }) {
     settingsAPI.getAll()
       .then(({ data }) => {
         const merged = { ...DEFAULTS, ...data };
+        if (!Array.isArray(data?.trust_items)) {
+          const returnDays = Number(merged.return_window_days) || 3;
+          merged.trust_items = DEFAULTS.trust_items.map(t =>
+            t.icon === '↩' ? { ...t, label: `${returnDays}-day returns` } : t
+          );
+        }
         setSettings(merged);
         applyTheme(merged);
       })

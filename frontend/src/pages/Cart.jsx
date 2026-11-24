@@ -26,6 +26,7 @@ export default function Cart() {
     );
   }
 
+  const returnDays = Number(settings.return_window_days) || 3;
   // Count the total number of items, used in the header
   const itemCount = cart.reduce((n, item) => n + item.quantity, 0);
   const freeThreshold = Number(settings.free_delivery_over ?? settings.free_delivery_threshold) || 200;
@@ -111,7 +112,7 @@ export default function Cart() {
               </div>
               <div className="cart-trust-item">
                 <span>↩</span>
-                <span>3-day returns</span>
+                <span>{returnDays}-day returns</span>
               </div>
             </div>
           </div>

@@ -271,6 +271,8 @@ class _StoreSupportAndPaymentsCardState
 
   @override
   Widget build(BuildContext context) {
+    final returnDays =
+        int.tryParse(_settings['return_window_days']?.toString() ?? '') ?? 3;
     final address =
         _setting(const ['store_address', 'pickup_location'], 'Accra, Ghana');
     final phone = _setting(
@@ -412,7 +414,7 @@ class _StoreSupportAndPaymentsCardState
                 _policyButton(
                   context,
                   'Refund Policy',
-                  'Returns are accepted within 3 days of delivery for wrong, damaged, or unopened sealed items. Opened skincare products cannot be returned for hygiene reasons unless defective.',
+                  'Returns are accepted within $returnDays days of delivery for wrong, damaged, or unopened sealed items. Opened skincare products cannot be returned for hygiene reasons unless defective.',
                 ),
                 _policyButton(
                   context,

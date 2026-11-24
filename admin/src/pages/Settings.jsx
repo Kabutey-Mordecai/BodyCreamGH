@@ -33,6 +33,8 @@ const DEFAULTS = {
   pickup_hours:                 'Mon–Sat, 9:00 AM – 6:00 PM',
 
   low_stock_threshold: 5,
+  return_window_days:  3,
+  partial_returns_enabled: false,
 
   paystack_public_key:          '',
   pay_on_delivery_enabled:      false,
@@ -319,6 +321,37 @@ export default function Settings() {
                 placeholder="orders@yourstore.com"
               />
               <div className="hint">Where new-order alerts are sent. Can be the same as contact email.</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-header"><h2 className="card-title">Returns &amp; refunds</h2></div>
+          <div className="card-body">
+            <div className="field">
+              <label>Return window (days after delivery)</label>
+              <input
+                type="number"
+                min="1"
+                max="365"
+                step="1"
+                value={data.return_window_days}
+                onChange={e => update('return_window_days', e.target.value)}
+              />
+              <div className="hint">Customers can only request a return within this many days after delivery. Once expired, the return option is automatically removed from the order.</div>
+            </div>
+            <div className="field" style={{ marginBottom: 0 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 500 }}>
+                <input
+                  type="checkbox"
+                  id="partial_returns_enabled"
+                  style={{ width: 'auto' }}
+                  checked={data.partial_returns_enabled === true || data.partial_returns_enabled === 'true'}
+                  onChange={e => update('partial_returns_enabled', e.target.checked)}
+                />
+                <span>Enable item-level partial returns</span>
+              </label>
+              <div className="hint">Allow customers to select specific items and quantities to return instead of the entire order.</div>
             </div>
           </div>
         </div>

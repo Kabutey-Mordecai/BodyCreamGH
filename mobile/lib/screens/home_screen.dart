@@ -213,6 +213,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ? ' Pay on Delivery is also available for Greater Accra deliveries and Store Pickup.'
             : ' Pay on Delivery (Cash or Mobile Money on arrival) is also available.')
         : '';
+    final returnDays =
+        int.tryParse(_settings['return_window_days']?.toString() ?? '') ?? 3;
 
     return [
       {
@@ -233,7 +235,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       {
         'q': 'What is your return and refund policy?',
-        'a': 'If an item arrives damaged or differs from what you ordered, you can request a return or refund within 3 days of delivery directly from your Order Detail page.',
+        'a': 'If an item arrives damaged or differs from what you ordered, you can request a return or refund within $returnDays days of delivery directly from your Order Detail page.',
       },
     ];
   }
@@ -762,7 +764,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
 
               // 3. Dynamic Trust Strip (reads settings.trust_items)
-              _TrustStrip(trustItems: _settings['trust_items']),
+              _TrustStrip(
+                trustItems: _settings['trust_items'],
+                returnWindowDays: int.tryParse(
+                        _settings['return_window_days']?.toString() ?? '') ??
+                    3,
+              ),
 
               const SizedBox(height: 22),
 
@@ -1258,7 +1265,8 @@ class _EditorialHero extends StatelessWidget {
 
 class _TrustStrip extends StatelessWidget {
   final dynamic trustItems;
-  const _TrustStrip({this.trustItems});
+  final int returnWindowDays;
+  const _TrustStrip({this.trustItems, this.returnWindowDays = 3});
 
   static const List<Map<String, String>> _defaults = [
     {'icon': '🚚', 'label': 'Free delivery', 'sub': 'Over GHS 200'},
@@ -1281,7 +1289,12 @@ class _TrustStrip extends StatelessWidget {
         }
       }
     }
-    final list = items.isNotEmpty ? items : _defaults;
+    final defaults = _defaults
+        .map((e) => e['icon'] == '↩'
+            ? {...e, 'label': '$returnWindowDays-day returns'}
+            : e)
+        .toList();
+    final list = items.isNotEmpty ? items : defaults;
 
     return Container(
       width: double.infinity,

@@ -865,10 +865,10 @@ export default function ProductPage() {
             {/* Trust row under the CTA */}
             <div className="product-trust-row">
               {TRUST_ROW.map(t => (
-                <div key={t.label} className="product-trust-item">
+                <div key={t.icon} className="product-trust-item">
                   <span className="product-trust-icon">{t.icon}</span>
                   <div>
-                    <strong>{t.label}</strong>
+                    <strong>{t.icon === '↩' ? `${returnDays}-day returns` : t.label}</strong>
                     <span>{t.sub}</span>
                   </div>
                 </div>

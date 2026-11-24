@@ -19,6 +19,7 @@ export function buildFaqItems(settings = {}) {
   const pickupHours = settings.pickup_hours || 'Mon–Sat, 9:00 AM – 6:00 PM';
   const podEnabled = settings.pay_on_delivery_enabled === true || settings.pay_on_delivery_enabled === 'true';
   const podAccraOnly = settings.pay_on_delivery_accra_only !== false && settings.pay_on_delivery_accra_only !== 'false';
+  const returnDays = Number(settings.return_window_days) || 3;
 
   const paymentAnswer = podEnabled
     ? `We accept MTN Mobile Money, Telecel Cash, Visa, Mastercard, and bank transfers securely via Paystack. Pay on Delivery (Cash or Mobile Money on arrival) is also available${podAccraOnly ? ' for Greater Accra deliveries and Store Pickup' : ''}.`
@@ -45,7 +46,7 @@ export function buildFaqItems(settings = {}) {
     },
     {
       q: 'What is your return & refund policy?',
-      a: 'We offer hassle-free 3-day returns on unopened items and prompt replacements for any damaged delivery. Track your order status anytime on our Track Order page.',
+      a: `We offer hassle-free ${returnDays}-day returns on unopened items and prompt replacements for any damaged delivery. Track your order status anytime on our Track Order page.`,
     },
     {
       q: 'Are all cosmetics and beauty products 100% authentic?',
