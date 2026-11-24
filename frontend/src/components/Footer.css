@@ -368,3 +368,40 @@
     align-items: flex-start;
   }
 }
+
+/* ══ 3-COLUMN UNIFORM FONT FOOTER ═══════════════════════════ */
+.footer,
+.footer-col-head,
+.footer-col a,
+.footer-tagline {
+  font-family: var(--font-body);
+}
+.footer-grid {
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 20px;
+}
+.footer-brand {
+  display: block;
+}
+.footer-tagline {
+  font-size: 0.8rem;
+  margin-bottom: 12px;
+  max-width: 300px;
+}
+.footer-col-head {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.footer-col a {
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+@media (max-width: 768px) {
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+}

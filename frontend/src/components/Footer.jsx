@@ -165,6 +165,35 @@ export default function Footer() {
             </div>
           </div>
 
+          {/* Account links */}
+          <div className="footer-col">
+            <h4 className="footer-col-head">Account</h4>
+            <ul>
+              {ACCOUNT_LINKS.slice(0, 3).map(l => (
+                <li key={l.label}>
+                  <Link to={l.to}>{l.label}</Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Help & Support links */}
+          <div id="contact-footer" className="footer-col">
+            <h4 className="footer-col-head">Help &amp; Support</h4>
+            <ul>
+              {INFO_LINKS.slice(0, 3).map(l => (
+                <li key={l.label}>
+                  <Link to={l.to}>{l.label}</Link>
+                </li>
+              ))}
+              {cleanPhone && (
+                <li>
+                  <a href={`tel:${cleanPhone.replace(/\s+/g, '')}`}>{cleanPhone}</a>
+                </li>
+              )}
+            </ul>
+          </div>
+
         </div>
       </div>
 
