@@ -103,8 +103,11 @@ export default function Navigation() {
 
             {/* Cart — always visible so guests can reach their localStorage cart */}
             <li>
-              <NavLink to="/cart" className="nav-cart" onClick={closeMenu}>
-                Cart
+              <NavLink to="/cart" className="nav-cart" onClick={closeMenu} aria-label="Cart" title="Cart">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+                  <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                  <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+                </svg>
                 {cartCount > 0 && (
                   <span
                     className={`cart-badge${badgePop ? ' cart-badge--pop' : ''}`}
@@ -131,7 +134,13 @@ export default function Navigation() {
                   </NavLink>
                 </li>
                 <li><NavLink to="/orders"  onClick={closeMenu}>Orders</NavLink></li>
-                <li><NavLink to="/account" onClick={closeMenu}>Account</NavLink></li>
+                <li>
+                  <NavLink to="/account" onClick={closeMenu} aria-label="Account" title="Account">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'block' }}>
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                    </svg>
+                  </NavLink>
+                </li>
                 <li>
                   <button className="nav-logout-btn" onClick={handleLogout}>
                     Logout
