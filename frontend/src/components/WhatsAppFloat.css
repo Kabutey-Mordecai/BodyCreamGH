@@ -34,3 +34,18 @@
     font-size: 0.78rem;
   }
 }
+
+@media (max-width: 768px) {
+  .whatsapp-float span {
+    display: none;
+  }
+  .whatsapp-float {
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+    right: 12px;
+    bottom: 14px;
+  }
+}

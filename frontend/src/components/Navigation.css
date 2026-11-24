@@ -314,3 +314,58 @@ input.nav-search-input:focus {
     width: 100%;
   }
 }
+
+/* ── Mobile Quick Actions & Clean Responsive Fit ── */
+.nav-mobile-quick {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  margin-right: 12px;
+}
+.nav-mobile-shop-pill {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 13px;
+  border-radius: 9999px;
+  background: var(--color-primary);
+  color: #fff !important;
+  text-decoration: none;
+}
+.nav-mobile-cart-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary);
+  padding: 4px;
+}
+.nav-mobile-label {
+  display: none;
+}
+
+@media (max-width: 960px) {
+  .nav-mobile-quick {
+    display: flex;
+  }
+  .nav-mobile-label {
+    display: inline;
+    margin-left: 8px;
+  }
+  .nav-links a,
+  .nav-links .nav-cart,
+  .nav-links .nav-wishlist {
+    display: flex;
+    align-items: center;
+  }
+  .announcement-bar {
+    padding-right: 38px;
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+  .announcement-close {
+    right: 8px;
+  }
+}

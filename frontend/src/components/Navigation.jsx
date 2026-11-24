@@ -82,6 +82,20 @@ export default function Navigation() {
           {/* Search bar — desktop (hidden on mobile via CSS) */}
           <SearchBar variant="nav" placeholder="Search products…" onNavigate={closeMenu} />
 
+          {/* Mobile quick actions — always visible in top bar on phones/tablets */}
+          <div className="nav-mobile-quick">
+            <Link to="/shop" className="nav-mobile-shop-pill" onClick={closeMenu}>
+              Shop
+            </Link>
+            <Link to="/cart" className="nav-mobile-cart-icon" onClick={closeMenu} aria-label="Cart">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
+                <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
+              </svg>
+              {cartCount > 0 && <span className="cart-badge">{cartCount}</span>}
+            </Link>
+          </div>
+
           {/* Hamburger — mobile only */}
           <button
             className={`nav-hamburger ${menuOpen ? 'open' : ''}`}
@@ -100,6 +114,7 @@ export default function Navigation() {
 
             <li><NavLink to="/" end onClick={closeMenu}>Home</NavLink></li>
             <li><NavLink to="/shop" onClick={closeMenu}>Shop</NavLink></li>
+            <li><NavLink to="/track" onClick={closeMenu}>Track Order</NavLink></li>
 
             {/* Cart — always visible so guests can reach their localStorage cart */}
             <li>
@@ -108,6 +123,7 @@ export default function Navigation() {
                   <circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/>
                   <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/>
                 </svg>
+                <span className="nav-mobile-label">Cart</span>
                 {cartCount > 0 && (
                   <span
                     className={`cart-badge${badgePop ? ' cart-badge--pop' : ''}`}
@@ -126,6 +142,7 @@ export default function Navigation() {
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'block' }}>
                       <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
                     </svg>
+                    <span className="nav-mobile-label">Wishlist</span>
                     {savedIds.size > 0 && (
                       <span className="cart-badge" aria-label={`${savedIds.size} saved`}>
                         {savedIds.size}
@@ -139,6 +156,7 @@ export default function Navigation() {
                     <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'block' }}>
                       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
                     </svg>
+                    <span className="nav-mobile-label">Account</span>
                   </NavLink>
                 </li>
                 <li>

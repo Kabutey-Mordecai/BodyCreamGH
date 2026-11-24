@@ -1105,3 +1105,24 @@ input.hero-search-input:focus {
     min-height: 440px;
   }
 }
+
+/* ══ MOBILE RESPONSIVE HERO & SECTION FIT ══════════════════ */
+@media (max-width: 768px) {
+  .hero {
+    min-height: 360px;
+  }
+  .hero-grid--minimal {
+    padding: 28px 16px;
+  }
+  .hero-content h1 {
+    font-size: 1.9rem;
+    max-width: 14ch;
+  }
+  .page-section,
+  .flash-sale-section,
+  .brand-story,
+  .testimonials-section,
+  .newsletter-section {
+    padding: 30px 0;
+  }
+}
