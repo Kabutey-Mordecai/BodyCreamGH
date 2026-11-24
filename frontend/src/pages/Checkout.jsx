@@ -7,6 +7,7 @@ import { ordersAPI, paymentsAPI, couponsAPI, cartAPI, newsletterAPI } from '../s
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { isSafePaystackCheckoutUrl } from '../utils/safePaystackUrl';
 import { toFiniteNumber } from '../utils/number';
+import TurnstileWidget from '../components/TurnstileWidget';
 import './Checkout.css';
 
 // Ghana's 16 administrative regions — shown in a select rather than a free text input
@@ -55,6 +56,9 @@ export default function Checkout() {
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [website, setWebsite] = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileReset, setTurnstileReset] = useState(0);
   const [reminderConsent, setReminderConsent] = useState(false);
   const submittingRef         = useRef(false);
   const checkoutSessionTokenRef = useRef(
@@ -252,6 +256,8 @@ export default function Checkout() {
           notes:              form.notes,
           delivery_fee:       deliveryFee,
           coupon_code:        coupon?.code || undefined,
+          ...(website ? { website } : {}),
+          ...(turnstileToken ? { cf_turnstile_response: turnstileToken } : {}),
           items: cart.map(i => ({
             product_id: i.product_id,
             quantity:   i.quantity,
@@ -273,6 +279,7 @@ export default function Checkout() {
             : form.notes,
           delivery_fee: deliveryFee,
           coupon_code:  coupon?.code || undefined,
+          ...(website ? { website } : {}),
         });
         order = res.data;
       }
@@ -787,6 +794,25 @@ export default function Checkout() {
               )}
               {couponError && <p className="coupon-error" role="alert">{couponError}</p>}
             </div>
+
+            <input
+              type="text"
+              name="website"
+              value={website}
+              onChange={(e) => setWebsite(e.target.value)}
+              tabIndex={-1}
+              autoComplete="off"
+              aria-hidden="true"
+              style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
+            />
+
+            {isGuest && (
+              <TurnstileWidget
+                resetKey={turnstileReset}
+                onToken={setTurnstileToken}
+                onExpire={() => { setTurnstileToken(''); setTurnstileReset(k => k + 1); }}
+              />
+            )}
 
             <button
               type="submit"

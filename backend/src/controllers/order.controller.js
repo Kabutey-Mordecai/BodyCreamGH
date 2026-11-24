@@ -102,6 +102,24 @@ const createOrder = async (req, res) => {
     await client.query('BEGIN');
     transactionStarted = true;
 
+    // Prevent unpaid order hoarding / inventory lockup bots
+    const maxQtyPerItem = Math.max(1, parseInt(process.env.MAX_ORDER_ITEM_QTY, 10) || 10);
+    const { rows: pendingRows } = await client.query(
+      `SELECT COUNT(*)::int AS cnt
+         FROM orders
+        WHERE customer_id = $1
+          AND payment_status = 'unpaid'
+          AND status = 'pending'`,
+      [req.user.id]
+    );
+    if ((pendingRows[0]?.cnt || 0) >= 3) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(429).json({
+        error: 'You have 3 unpaid pending orders. Please complete or cancel an existing order before placing a new one.',
+      });
+    }
+
     const checkoutCfg = await getCheckoutSettings(client);
     const optionError = validateFulfillmentAndPayment(
       checkoutCfg, fulfillment_method, payment_method, shipping_region
@@ -137,6 +155,13 @@ const createOrder = async (req, res) => {
       await client.query('ROLLBACK');
       transactionStarted = false;
       return res.status(400).json({ error: 'Cart is empty' });
+    }
+
+    const overCapItem = cartResult.rows.find(r => Number(r.quantity) > maxQtyPerItem);
+    if (overCapItem) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({ error: `Maximum ${maxQtyPerItem} units per item allowed per order` });
     }
 
     // PostgreSQL does not allow FOR UPDATE OF pv on the nullable side of a LEFT JOIN,
@@ -1545,6 +1570,24 @@ const createGuestOrder = async (req, res) => {
       shipping_region  = shipping_region?.trim()  || 'Greater Accra';
     }
 
+    // Prevent unpaid guest order hoarding / inventory lockup bots
+    const maxQtyPerItem = Math.max(1, parseInt(process.env.MAX_ORDER_ITEM_QTY, 10) || 10);
+    const { rows: guestPendingRows } = await client.query(
+      `SELECT COUNT(*)::int AS cnt
+         FROM orders
+        WHERE (LOWER(guest_email) = LOWER($1) OR guest_phone = $2)
+          AND payment_status = 'unpaid'
+          AND status = 'pending'`,
+      [String(email).trim(), String(phone).trim()]
+    );
+    if ((guestPendingRows[0]?.cnt || 0) >= 2) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(429).json({
+        error: 'Too many unpaid pending orders for this email or phone number. Please complete payment on your existing order first.',
+      });
+    }
+
     // Fetch and lock products
     const productIds = [...new Set(items.map(i => i.product_id))];
     const { rows: products } = await client.query(
@@ -1555,6 +1598,12 @@ const createGuestOrder = async (req, res) => {
 
     // Fetch and lock variants when present
     const variantIds = [...new Set(items.map(i => i.variant_id).filter(Boolean))];
+    const overCapGuest = items.find(i => Number(i.quantity) > maxQtyPerItem);
+    if (overCapGuest) {
+      await client.query('ROLLBACK');
+      transactionStarted = false;
+      return res.status(400).json({ error: `Maximum ${maxQtyPerItem} units per item allowed per order` });
+    }
     let variantMap = {};
     if (variantIds.length > 0) {
       const { rows: variants } = await client.query(

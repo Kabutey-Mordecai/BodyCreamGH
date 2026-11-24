@@ -5,6 +5,7 @@ const requireFulfillmentOrAdmin = requireRoles('admin', 'super_admin', 'fulfillm
 const requireSupportOrAdmin = requireRoles('admin', 'super_admin', 'support');
 const requireOrderOps = requireRoles('admin', 'super_admin', 'fulfillment', 'support');
 const { makeRateLimiter } = require('../middleware/rateLimit');
+const { rejectHoneypot, verifyTurnstile } = require('../middleware/botProtection');
 const { isPartialReturnsEnabled } = require('../controllers/settings.controller');
 const {
   validateCreateOrder, validateCreateGuest, validateOrderStatus,
@@ -80,8 +81,8 @@ router.delete('/checkout-session', trackLimiter, optionalToken, deleteCheckoutSe
 router.get('/checkout-session/opt-out', trackLimiter, optOutCsp, showCheckoutSessionOptOut);
 router.post('/checkout-session/opt-out', trackLimiter, optOutCsp, confirmCheckoutSessionOptOut);
 
-router.post('/guest', guestOrderLimiter, validateCreateGuest, createGuestOrder);  // no auth — guest checkout
-router.post('/', verifyToken, validateCreateOrder, createOrder);
+router.post('/guest', guestOrderLimiter, rejectHoneypot, verifyTurnstile, validateCreateGuest, createGuestOrder);  // no auth — guest checkout
+router.post('/', verifyToken, rejectHoneypot, validateCreateOrder, createOrder);
 router.get('/', verifyToken, getOrders);
 router.get('/admin/all',              verifyToken, requireAdmin, requireOrderOps, getAllOrders);
 router.get('/admin/abandoned',        verifyToken, requireAdmin, requireSupportOrAdmin, getAbandonedCheckouts);

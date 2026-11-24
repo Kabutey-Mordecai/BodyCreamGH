@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import PasswordStrength, { getPasswordStrength } from '../components/PasswordStrength';
+import TurnstileWidget from '../components/TurnstileWidget';
 
 function formatCountdown(secs) {
   const m = Math.floor(secs / 60).toString().padStart(2, '0');
@@ -33,6 +34,9 @@ export default function Register() {
   const [lockout, setLockout]           = useState(0);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm]   = useState(false);
+  const [website, setWebsite]           = useState('');
+  const [turnstileToken, setTurnstileToken] = useState('');
+  const [turnstileReset, setTurnstileReset] = useState(0);
   const timerRef = useRef(null);
 
   useEffect(() => {
@@ -74,6 +78,8 @@ export default function Register() {
         email:      form.email,
         password:   form.password,
         phone:      form.phone,
+        ...(website ? { website } : {}),
+        ...(turnstileToken ? { cf_turnstile_response: turnstileToken } : {}),
       });
       navigate(from, { replace: true });
     } catch (err) {
@@ -261,6 +267,23 @@ export default function Register() {
               <span className="auth-field-hint" role="alert">Passwords do not match</span>
             )}
           </div>
+
+          <input
+            type="text"
+            name="website"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden="true"
+            style={{ position: 'absolute', left: '-9999px', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }}
+          />
+
+          <TurnstileWidget
+            resetKey={turnstileReset}
+            onToken={setTurnstileToken}
+            onExpire={() => { setTurnstileToken(''); setTurnstileReset(k => k + 1); }}
+          />
 
           <button
             type="submit"
