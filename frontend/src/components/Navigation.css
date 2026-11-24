@@ -369,3 +369,14 @@ input.nav-search-input:focus {
     right: 8px;
   }
 }
+
+@media (max-width: 960px) {
+  .nav-inner {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .nav-hamburger {
+    margin-right: 6px;
+    padding: 6px;
+  }
+}
