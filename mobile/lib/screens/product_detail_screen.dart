@@ -183,7 +183,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     final days = int.tryParse((rawDays ?? '').toString());
     final returnLabel = (days != null && days > 0)
         ? '$days-day returns'
-        : '7-day returns';
+        : '3-day returns';
     return [
       {'icon': '🚚', 'label': 'Free delivery', 'sub': deliverySub},
       {'icon': '✦', 'label': 'Handcrafted', 'sub': 'In small batches'},

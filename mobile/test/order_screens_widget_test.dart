@@ -103,13 +103,14 @@ void main() {
   });
 
   group('OrderDetailScreen partial returns widget tests (Item 6)', () {
-    Map<String, dynamic> deliveredOrderJson() => {
+    Map<String, dynamic> deliveredOrderJson({DateTime? deliveredAt}) => {
           'id': 'ord-111',
           'order_number': 'ORD-GCB7IRGJ',
           'status': 'delivered',
           'payment_status': 'paid',
           'fulfillment_method': 'delivery',
           'total_amount': '150.00',
+          'delivered_at': (deliveredAt ?? DateTime.now().toUtc()).toIso8601String(),
           'items': [
             {
               'id': 'oi-1',
@@ -373,6 +374,46 @@ void main() {
           find.textContaining('46.67'),
           findsOneWidget,
         );
+      },
+    );
+
+    testWidgets(
+      '(e) expired 3-day return window removes Request return button from order',
+      (tester) async {
+        final fourDaysAgo =
+            DateTime.now().toUtc().subtract(const Duration(days: 4));
+        ApiService.instance.configureForTesting(
+          accessToken: 'test-token',
+          client: MockClient((req) async {
+            if (req.url.path.endsWith('/orders/ord-111')) {
+              return _jsonRes(deliveredOrderJson(deliveredAt: fourDaysAgo));
+            }
+            if (req.url.path.endsWith('/deliveries/order/ord-111')) {
+              return _jsonRes({'status': 'delivered'});
+            }
+            if (req.url.path.endsWith('/orders/ord-111/log')) {
+              return _jsonRes([]);
+            }
+            if (req.url.path.endsWith('/orders/ord-111/review-status')) {
+              return _jsonRes({'reviewed': []});
+            }
+            if (req.url.path.endsWith('/settings')) {
+              return _jsonRes({
+                'partial_returns_enabled': false,
+                'return_window_days': '3',
+              });
+            }
+            return _jsonRes({}, 200);
+          }),
+        );
+
+        await tester.pumpWidget(
+          const MaterialApp(home: OrderDetailScreen(orderId: 'ord-111')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Request return'), findsNothing);
+        expect(find.text('Need a return or refund?'), findsNothing);
       },
     );
   });

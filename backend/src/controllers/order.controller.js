@@ -1748,7 +1748,7 @@ const requestReturn = async (req, res) => {
 
   try {
     const { rows } = await pool.query(
-      `SELECT id, status, payment_status, customer_id, return_requested, return_request_rejected
+      `SELECT id, status, payment_status, customer_id, return_requested, return_request_rejected, delivered_at
          FROM orders WHERE id = $1`,
       [orderId]
     );
@@ -1762,6 +1762,20 @@ const requestReturn = async (req, res) => {
     if (order.payment_status !== 'paid') {
       return res.status(400).json({ error: 'Only paid orders are eligible for return' });
     }
+
+    const { getReturnWindowDays } = require('./return.controller');
+    const windowDays = await getReturnWindowDays();
+    if (!order.delivered_at) {
+      return res.status(400).json({
+        error: 'Delivery date could not be verified for this order. Please contact support so an admin can process your return manually.',
+      });
+    }
+    if ((Date.now() - new Date(order.delivered_at).getTime()) > windowDays * 24 * 60 * 60 * 1000) {
+      return res.status(400).json({
+        error: `Return window of ${windowDays} days after delivery has expired`,
+      });
+    }
+
     if (order.return_requested && !order.return_request_rejected) {
       return res.status(409).json({ error: 'Return already requested' });
     }

@@ -233,7 +233,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       {
         'q': 'What is your return and refund policy?',
-        'a': 'If an item arrives damaged or differs from what you ordered, you can request a return or refund within 7 days of delivery directly from your Order Detail page.',
+        'a': 'If an item arrives damaged or differs from what you ordered, you can request a return or refund within 3 days of delivery directly from your Order Detail page.',
       },
     ];
   }
@@ -1263,7 +1263,7 @@ class _TrustStrip extends StatelessWidget {
   static const List<Map<String, String>> _defaults = [
     {'icon': '🚚', 'label': 'Free delivery', 'sub': 'Over GHS 200'},
     {'icon': '✦', 'label': 'Handcrafted', 'sub': 'In small batches'},
-    {'icon': '↩', 'label': '7-day returns', 'sub': 'No questions asked'},
+    {'icon': '↩', 'label': '3-day returns', 'sub': 'No questions asked'},
     {'icon': '🔒', 'label': 'Secure checkout', 'sub': 'Paystack'},
   ];
 

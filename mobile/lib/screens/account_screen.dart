@@ -412,7 +412,7 @@ class _StoreSupportAndPaymentsCardState
                 _policyButton(
                   context,
                   'Refund Policy',
-                  'Returns are accepted within 7 days of delivery for wrong, damaged, or unopened sealed items. Opened skincare products cannot be returned for hygiene reasons unless defective.',
+                  'Returns are accepted within 3 days of delivery for wrong, damaged, or unopened sealed items. Opened skincare products cannot be returned for hygiene reasons unless defective.',
                 ),
                 _policyButton(
                   context,

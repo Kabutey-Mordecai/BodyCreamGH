@@ -17,9 +17,9 @@ async function getReturnWindowDays(db = pool) {
       "SELECT value FROM site_settings WHERE key = 'return_window_days'"
     );
     const parsed = parseInt(rows[0]?.value, 10);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
   } catch {
-    return 14;
+    return 3;
   }
 }
 
@@ -1065,6 +1065,7 @@ const rejectReturnRequestById = async (req, res) => {
 };
 
 module.exports = {
+  getReturnWindowDays,
   getOrderReturns,
   createReturnRequest,
   adminCreateReturnRequest,

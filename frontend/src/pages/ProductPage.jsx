@@ -19,7 +19,7 @@ const PLACEHOLDER_IMG = 'https://placehold.co/700x700?text=No+Image';
 const TRUST_ROW = [
   { icon: '🚚', label: 'Free delivery',  sub: 'Over GHS 200' },
   { icon: '✦',  label: '100% Authentic', sub: 'Verified brands' },
-  { icon: '↩',  label: '7-day returns',  sub: 'No questions asked' },
+  { icon: '↩',  label: '3-day returns',  sub: 'No questions asked' },
 ];
 
 // TO CUSTOMIZE: Static sell points shown on every product page
@@ -329,7 +329,7 @@ export default function ProductPage() {
     const reviewCount = parseInt(product.review_count || reviewMeta.summary?.review_count || 0, 10);
     const avgRating = parseFloat(product.avg_rating || reviewMeta.summary?.avg_rating || 0);
 
-    const returnDays = Number(settings.return_window_days) || 7;
+    const returnDays = Number(settings.return_window_days) || 3;
     const accraFee = Number(settings.delivery_fee_accra) || 25;
     const origin = window.location.origin;
 

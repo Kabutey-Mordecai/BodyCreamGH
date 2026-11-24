@@ -83,7 +83,7 @@ export default function OrderDetail() {
   const [returnReason, setReturnReason]     = useState('');
   const [returnSaving, setReturnSaving]     = useState(false);
   const [returnError, setReturnError]       = useState('');
-  const [returnData, setReturnData]         = useState({ returns: [], returnable_items: [], within_window: true, return_window_days: 14 });
+  const [returnData, setReturnData]         = useState({ returns: [], returnable_items: [], within_window: true, return_window_days: 3 });
   const [selectedReturnQty, setSelectedReturnQty] = useState({});
   const partialReturnsEnabled = settings?.partial_returns_enabled === true || settings?.partial_returns_enabled === 'true';
 
@@ -528,16 +528,30 @@ export default function OrderDetail() {
         )}
 
         {/* ── Return request banner/form ────────────────── */}
-        {user && order.status === 'delivered' &&
-          ['paid', 'partially_refunded'].includes(order.payment_status) &&
-          (!order.refund_status || order.refund_status === 'not_requested') && (
+        {(() => {
+          if (!user || order.status !== 'delivered') return null;
+          if (!['paid', 'partially_refunded'].includes(order.payment_status)) return null;
+          if (order.refund_status && order.refund_status !== 'not_requested') return null;
+
+          const returnWindowDays = Number(returnData?.return_window_days || settings?.return_window_days) || 3;
+          const deliveredRef = order.delivered_at || returnData?.delivered_at || null;
+          const isWithinReturnWindow = deliveredRef
+            ? (Date.now() - new Date(deliveredRef).getTime()) <= returnWindowDays * 24 * 60 * 60 * 1000
+            : false;
+          const hasActiveOrPastReturn =
+            (order.return_requested && !order.return_request_rejected) ||
+            (partialReturnsEnabled && returnData.returns.length > 0);
+
+          if (!isWithinReturnWindow && !hasActiveOrPastReturn) return null;
+
+          return (
           <section className="order-state-banner order-state-banner--info">
             {order.return_requested && !order.return_request_rejected ? (
               <div>
                 <h2>Return requested</h2>
                 <p>Your return request is pending admin review. We will notify you once processed.</p>
               </div>
-            ) : order.return_request_rejected ? (
+            ) : order.return_request_rejected && isWithinReturnWindow ? (
               <div>
                 <h2>Return request rejected</h2>
                 <p>Your return request was not approved. Contact support for assistance.</p>
@@ -551,10 +565,10 @@ export default function OrderDetail() {
                   </button>
                 )}
               </div>
-            ) : (
+            ) : isWithinReturnWindow ? (
               <div>
                 <h2>Need a return or refund?</h2>
-                <p>Not satisfied with your order? Request a return and our team will review it.</p>
+                <p>Not satisfied with your order? Request a return within {returnWindowDays} days of delivery and our team will review it.</p>
                 {!returnFormOpen && (
                   <button
                     className="btn btn-outline"
@@ -565,7 +579,7 @@ export default function OrderDetail() {
                   </button>
                 )}
               </div>
-            )}
+            ) : null}
             {partialReturnsEnabled && returnData.returns.length > 0 && (
               <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {returnData.returns.map((rr) => (
@@ -662,7 +676,8 @@ export default function OrderDetail() {
               </div>
             )}
           </section>
-        )}
+          );
+        })()}
 
         {/* ── Order status timeline ──────────────────── */}
         {(() => {

@@ -337,7 +337,7 @@ class _CartScreenState extends State<CartScreen> with WidgetsBindingObserver {
                                 icon: '🔒', label: 'Secure Paystack'),
                             _CartTrustItem(
                                 icon: '🚚', label: 'Nationwide delivery'),
-                            _CartTrustItem(icon: '↩', label: '7-day returns'),
+                            _CartTrustItem(icon: '↩', label: '3-day returns'),
                           ],
                         ),
                       ],

@@ -45,6 +45,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
   Map<String, dynamic>? _delivery;
   List<Map<String, dynamic>> _statusLog = [];
   bool _partialReturnsEnabled = false;
+  int _returnWindowDays = 3;
   List<Map<String, dynamic>> _returnRequests = [];
   Set<String> _reviewedProductIds = {};
   final Map<String, int> _reviewRatings = {};
@@ -117,6 +118,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       final order = Order.fromJson(data);
       Set<String> reviewed = _reviewedProductIds;
       bool partialEnabled = _partialReturnsEnabled;
+      int returnWindowDays = _returnWindowDays;
       List<Map<String, dynamic>> returnRequests = _returnRequests;
       Map<String, dynamic>? settings;
       if (order.isPickup) {
@@ -136,9 +138,19 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             settings ??= await ApiService.instance.getSettings();
             partialEnabled = settings['partial_returns_enabled'] == true ||
                 settings['partial_returns_enabled'] == 'true';
+            final parsedWindow =
+                int.tryParse(settings['return_window_days']?.toString() ?? '');
+            if (parsedWindow != null && parsedWindow > 0) {
+              returnWindowDays = parsedWindow;
+            }
             if (partialEnabled) {
               final retData =
                   await ApiService.instance.getOrderReturns(widget.orderId);
+              final retWindow = int.tryParse(
+                  retData['return_window_days']?.toString() ?? '');
+              if (retWindow != null && retWindow > 0) {
+                returnWindowDays = retWindow;
+              }
               returnRequests = (retData['returns'] as List<dynamic>? ?? [])
                   .whereType<Map<String, dynamic>>()
                   .toList();
@@ -158,6 +170,7 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
           _statusLog = rawLog.whereType<Map<String, dynamic>>().toList();
           _reviewedProductIds = reviewed;
           _partialReturnsEnabled = partialEnabled;
+          _returnWindowDays = returnWindowDays;
           _returnRequests = returnRequests;
           _pickupLocation = rawLoc.isEmpty ? null : rawLoc;
           _pickupHours = rawHrs.isEmpty ? null : rawHrs;
@@ -217,13 +230,23 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
       _order != null &&
       (_order!.status == 'pending' || _order!.status == 'confirmed');
 
+  bool get _isWithinReturnWindow {
+    final deliveredAt = _order?.deliveredAt;
+    if (deliveredAt == null) return false;
+    return DateTime.now().difference(deliveredAt).inMilliseconds <=
+        _returnWindowDays * 24 * 60 * 60 * 1000;
+  }
+
   bool get _showReturnSection =>
       _order != null &&
       _order!.status == 'delivered' &&
       (_order!.paymentStatus == 'paid' ||
           _order!.paymentStatus == 'partially_refunded') &&
       (_order!.refundStatus == null ||
-          _order!.refundStatus == 'not_requested');
+          _order!.refundStatus == 'not_requested') &&
+      (_isWithinReturnWindow ||
+          (_order!.returnRequested && !_order!.returnRequestRejected) ||
+          (_partialReturnsEnabled && _returnRequests.isNotEmpty));
 
   Future<void> _confirmReceipt() async {
     if (_order == null || _confirmingReceipt) return;
@@ -845,12 +868,13 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         ? 'Your return request is pending admin review. We will notify you once processed.'
                         : order.returnRequestRejected
                             ? 'Your return request was not approved. Contact support for assistance.'
-                            : 'Not satisfied with your order? Request a return and our team will review it.',
+                            : 'Not satisfied with your order? Request a return within $_returnWindowDays days of delivery and our team will review it.',
                     style: const TextStyle(fontSize: 13),
                   ),
-                  if (!order.returnRequested ||
-                      order.returnRequestRejected ||
-                      _partialReturnsEnabled) ...[
+                  if (_isWithinReturnWindow &&
+                      (!order.returnRequested ||
+                          order.returnRequestRejected ||
+                          _partialReturnsEnabled)) ...[
                     const SizedBox(height: 10),
                     OutlinedButton(
                       onPressed: () => _promptAction(isReturn: true),

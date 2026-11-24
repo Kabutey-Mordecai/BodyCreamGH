@@ -111,7 +111,7 @@ export default function Cart() {
               </div>
               <div className="cart-trust-item">
                 <span>↩</span>
-                <span>7-day returns</span>
+                <span>3-day returns</span>
               </div>
             </div>
           </div>

@@ -144,7 +144,7 @@ const DEFAULTS = {
   trust_items: [
     { icon: '🚚', label: 'Fast delivery',   sub: 'Free over GHS 200' },
     { icon: '✓',  label: '100% Authentic',  sub: 'Verified brands' },
-    { icon: '↩',  label: '7-day returns',   sub: 'Easy exchanges' },
+    { icon: '↩',  label: '3-day returns',   sub: 'Easy exchanges' },
     { icon: '🔒', label: 'Secure checkout', sub: 'Paystack & MoMo' },
   ],
 

@@ -45,7 +45,7 @@ export function buildFaqItems(settings = {}) {
     },
     {
       q: 'What is your return & refund policy?',
-      a: 'We offer hassle-free 7-day returns on unopened items and prompt replacements for any damaged delivery. Track your order status anytime on our Track Order page.',
+      a: 'We offer hassle-free 3-day returns on unopened items and prompt replacements for any damaged delivery. Track your order status anytime on our Track Order page.',
     },
     {
       q: 'Are all cosmetics and beauty products 100% authentic?',
