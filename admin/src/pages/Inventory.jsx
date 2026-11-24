@@ -5,6 +5,7 @@ import DataTable from '../components/DataTable';
 import StatusBadge from '../components/StatusBadge';
 import Modal from '../components/Modal';
 import StatCard from '../components/StatCard';
+import SearchInput from '../components/SearchInput';
 
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
 
@@ -13,6 +14,7 @@ export default function Inventory() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all'); // all | low | out
+  const [search, setSearch] = useState('');
   const [adjusting, setAdjusting] = useState(null);
   const [adjustForm, setAdjustForm] = useState({ quantity_change: '', reason: 'restock', notes: '' });
   const [saving, setSaving] = useState(false);
@@ -40,10 +42,19 @@ export default function Inventory() {
 
 
   const filtered = useMemo(() => {
-    if (filter === 'low') return items.filter(p => p.stock_quantity > 0 && p.stock_quantity <= LOW);
-    if (filter === 'out') return items.filter(p => p.stock_quantity === 0);
-    return items;
-  }, [items, filter, LOW]);
+    let list = items;
+    if (filter === 'low') list = list.filter(p => p.stock_quantity > 0 && p.stock_quantity <= LOW);
+    if (filter === 'out') list = list.filter(p => p.stock_quantity === 0);
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(p =>
+        (p.name || '').toLowerCase().includes(q) ||
+        (p.sku || '').toLowerCase().includes(q) ||
+        (p.brand || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [items, filter, search, LOW]);
 
   const stats = useMemo(() => {
     const outOfStock = items.filter(p => p.stock_quantity === 0).length;
@@ -120,6 +131,7 @@ export default function Inventory() {
 
       <div className="toolbar">
         <div className="toolbar-left">
+          <SearchInput value={search} onChange={setSearch} placeholder="Search product, SKU, brand…" />
           <button className={`btn btn-sm ${filter === 'all' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter('all')}>All ({items.length})</button>
           <button className={`btn btn-sm ${filter === 'low' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter('low')}>Low ({stats.lowStock})</button>
           <button className={`btn btn-sm ${filter === 'out' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter('out')}>Out ({stats.outOfStock})</button>

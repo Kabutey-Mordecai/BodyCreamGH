@@ -3,6 +3,7 @@ import { Suspense, useEffect } from 'react';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import WhatsAppFloat from './components/WhatsAppFloat';
+import StickyCartBar from './components/StickyCartBar';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import { lazyWithRetry } from './utils/lazyWithRetry';
@@ -67,8 +68,25 @@ const PrivacyNotice   = lazyWithRetry(() =>
   })
 );
 
+const ROUTE_TITLES = {
+  '/cart': 'Shopping Cart — GlowHaus Beauty',
+  '/checkout': 'Checkout — GlowHaus Beauty',
+  '/login': 'Sign In — GlowHaus Beauty',
+  '/register': 'Create Account — GlowHaus Beauty',
+  '/orders': 'My Orders — GlowHaus Beauty',
+  '/track': 'Track Order — GlowHaus Beauty',
+  '/track-order': 'Track Order — GlowHaus Beauty',
+  '/account': 'My Account — GlowHaus Beauty',
+  '/wishlist': 'Wishlist — GlowHaus Beauty',
+};
+
 function RouteFade({ children }) {
   const { pathname } = useLocation();
+  useEffect(() => {
+    if (ROUTE_TITLES[pathname]) {
+      document.title = ROUTE_TITLES[pathname];
+    }
+  }, [pathname]);
   return (
     <ErrorBoundary resetKey={pathname}>
       <div key={pathname} className="page-transition">{children}</div>
@@ -145,6 +163,7 @@ export default function App() {
         </main>
 
         <Footer />
+        <StickyCartBar />
         {!isRiderRoute && <WhatsAppFloat />}
         {!isRiderRoute && (
           <Suspense fallback={null}>

@@ -136,6 +136,7 @@ export default function AdminAccounts() {
               <tr>
                 <th>Admin</th>
                 <th>Email</th>
+                <th>Role</th>
                 <th>Last login</th>
                 <th>Status</th>
                 <th style={{ width: 120 }}></th>
@@ -156,6 +157,7 @@ export default function AdminAccounts() {
                     </div>
                   </td>
                   <td className="cell-muted">{a.email}</td>
+                  <td><span className="badge badge-neutral" style={{ textTransform: 'capitalize' }}>{(a.role || 'admin').replace('_', ' ')}</span></td>
                   <td className="cell-muted" style={{ fontSize: '0.83rem' }}>
                     {a.last_login_at
                       ? new Date(a.last_login_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })

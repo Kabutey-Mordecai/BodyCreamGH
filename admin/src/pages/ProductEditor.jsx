@@ -47,6 +47,7 @@ export default function ProductEditor() {
   const [error,         setError]         = useState('');
   const [catOptions,    setCatOptions]    = useState([]);
   const [brandOptions,  setBrandOptions]  = useState(GHANA_COSMETICS_BRANDS);
+  const [skuTouched,    setSkuTouched]    = useState(false);
 
   const dirty = useMemo(
     () => JSON.stringify(form) !== JSON.stringify(initialForm),
@@ -175,8 +176,8 @@ export default function ProductEditor() {
                   value={form.name}
                   onChange={e => {
                     update('name', e.target.value);
-                    // Only auto-suggest SKU while creating and if blank
-                    if (isNew && !form.sku) update('sku', suggestSku(e.target.value));
+                    // Auto-suggest SKU while creating until admin manually edits SKU
+                    if (isNew && !skuTouched) update('sku', suggestSku(e.target.value));
                   }}
                   placeholder="e.g. Shea Butter Body Cream 200g"
                   required

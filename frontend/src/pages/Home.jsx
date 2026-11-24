@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { productsAPI, newsletterAPI, reviewsAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { useCart } from '../context/CartContext';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductShelf from '../components/ProductShelf';
@@ -81,7 +80,6 @@ const DEFAULT_HERO_IMG = 'https://images.unsplash.com/photo-1596462502278-27bfdc
 
 export default function Home() {
   const { user } = useAuth();
-  const { cartCount, cartTotal } = useCart();
   const settings = useSettings();
   const {
     store_name, hero_label, hero_headline, hero_subtitle, hero_cta_text, hero_cta_link, hero_image, hero_video,
@@ -618,26 +616,6 @@ export default function Home() {
             )}
           </Reveal>
         </section>
-      )}
-
-      {/* ══════════════════════════════════════════
-          STICKY CLIENT-TO-BUY BAR
-          ══════════════════════════════════════════ */}
-      {cartCount > 0 && (
-        <div className="sticky-cart-bar" role="region" aria-label="Cart quick checkout">
-          <div className="sticky-cart-summary">
-            <strong>{cartCount} {cartCount === 1 ? 'item' : 'items'} in bag</strong>
-            <span>Subtotal: GHS {cartTotal.toFixed(2)}</span>
-          </div>
-          <div className="sticky-cart-actions">
-            <Link to="/cart" className="btn btn-outline btn-sm" style={{ color: '#fff', borderColor: 'rgba(255,255,255,0.35)' }}>
-              View Bag
-            </Link>
-            <Link to="/checkout" className="btn btn-accent btn-sm">
-              Checkout →
-            </Link>
-          </div>
-        </div>
       )}
 
     </div>

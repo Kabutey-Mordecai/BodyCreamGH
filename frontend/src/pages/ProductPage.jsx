@@ -18,13 +18,13 @@ const PLACEHOLDER_IMG = 'https://placehold.co/700x700?text=No+Image';
 // TO CUSTOMIZE: Trust row under the Add to Cart button
 const TRUST_ROW = [
   { icon: '🚚', label: 'Free delivery',  sub: 'Over GHS 200' },
-  { icon: '✦',  label: 'Handcrafted',    sub: 'In small batches' },
+  { icon: '✦',  label: '100% Authentic', sub: 'Verified brands' },
   { icon: '↩',  label: '7-day returns',  sub: 'No questions asked' },
 ];
 
 // TO CUSTOMIZE: Static sell points shown on every product page
 const HIGHLIGHTS = [
-  'Made with 100% raw Ghanaian shea butter',
+  'Sourced from verified beauty distributors',
   'Formulated for melanin-rich skin',
   'Free from parabens, sulfates & artificial dyes',
   'Cruelty-free & dermatologist tested',
@@ -904,7 +904,7 @@ export default function ProductPage() {
                 <div className="pdp-accordion-body">
                   <p>
                     {product.ingredients_inci ||
-                      'Crafted with unrefined Northern Ghanaian Shea Butter, cold-pressed botanical oils, and skin-nourishing emollients. Paraben-free and hydroquinone-free.'}
+                      'Formulated with quality cosmetic ingredients and sourced directly from verified brand distributors.'}
                   </p>
                 </div>
               </details>

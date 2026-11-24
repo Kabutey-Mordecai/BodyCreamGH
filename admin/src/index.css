@@ -973,3 +973,14 @@ input[type="range"] {
   from { opacity: 0; transform: translate(-50%, 16px); }
   to   { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* ── Modal Height & Overflow Safeguards ─────────── */
+dialog.ac-modal .modal-inner {
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.admin-main,
+.admin-content {
+  max-width: 100%;
+  overflow-x: hidden;
+}
