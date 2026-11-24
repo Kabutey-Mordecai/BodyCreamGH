@@ -789,3 +789,31 @@ input.hero-search-input:focus {
     animation: none !important;
   }
 }
+
+/* ══ SMOOTH CARD & PILL MOTION ═════════════════════════════ */
+.home-cat-pill {
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+.home-cat-pill:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(28, 20, 16, 0.08);
+}
+
+.testimonial-card,
+.product-card {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.25s ease;
+}
+.testimonial-card:hover,
+.product-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 28px rgba(28, 20, 16, 0.1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-cat-pill,
+  .testimonial-card,
+  .product-card {
+    transition: none !important;
+    transform: none !important;
+  }
+}

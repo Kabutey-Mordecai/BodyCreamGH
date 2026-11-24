@@ -454,7 +454,7 @@ export default function Home() {
           COMPACT CATEGORY & BRAND STRIP
           ══════════════════════════════════════════ */}
       <section className="home-cat-strip-section">
-        <div className="container">
+        <Reveal className="container">
           <div className="home-cat-strip-head">
             <span className="section-label" style={{ marginBottom: 0 }}>Browse by category</span>
             <Link to="/shop" style={{ fontSize: '0.84rem', fontWeight: 600, color: 'var(--color-accent-dark)', textDecoration: 'none' }}>
@@ -472,7 +472,7 @@ export default function Home() {
               </Link>
             ))}
           </div>
-        </div>
+        </Reveal>
       </section>
 
       {/* ══════════════════════════════════════════
@@ -601,14 +601,16 @@ export default function Home() {
       {/* ══════════════════════════════════════════
           FREQUENTLY ASKED QUESTIONS (with FAQPage JSON-LD)
           ══════════════════════════════════════════ */}
-      <HomeFaq />
+      <Reveal>
+        <HomeFaq />
+      </Reveal>
 
       {/* ══════════════════════════════════════════
           NEWSLETTER CTA (hidden automatically once subscribed or after first purchase)
           ══════════════════════════════════════════ */}
       {!hideNewsletterBar && settings.newsletter_enabled !== false && settings.newsletter_enabled !== 'false' && (
         <section className="newsletter-section">
-          <div className="container newsletter-inner">
+          <Reveal className="container newsletter-inner">
             <h2>{settings.newsletter_headline || 'Get 10% off your first order'}</h2>
             <p>{settings.newsletter_subtitle || 'Join our newsletter for exclusive offers, skincare tips, and new arrivals.'}</p>
 
@@ -640,7 +642,7 @@ export default function Home() {
             {nlState === 'error' && (
               <p style={{ marginTop: '8px', color: '#ef4444', fontSize: '0.85rem' }}>{nlError}</p>
             )}
-          </div>
+          </Reveal>
         </section>
       )}
 

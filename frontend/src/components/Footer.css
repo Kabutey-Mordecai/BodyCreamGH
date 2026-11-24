@@ -5,7 +5,7 @@
   border: none;
   background: #221b17;
   color: rgba(255, 255, 255, 0.8);
-  padding: 13px 16px;
+  padding: 9px 16px;
   font-size: 0.74rem;
   font-weight: 600;
   letter-spacing: 0.14em;
@@ -101,13 +101,13 @@
 /* ══ MAIN BODY ═══════════════════════════════════════════════════════════════ */
 .footer-body {
   background: var(--color-dark);
-  padding: 72px 0 56px;
+  padding: 36px 0 28px;
 }
 
 .footer-grid {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr 1fr;
-  gap: 48px;
+  gap: 28px;
   align-items: start;
 }
 
@@ -117,7 +117,7 @@
 .footer-logo {
   display: block;
   font-family: var(--font-display);
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 500;
   font-style: italic;
   color: var(--color-accent);
@@ -254,11 +254,11 @@
   }
   .footer-nl-form { width: 100%; }
 
-  .footer-body { padding: 48px 0 40px; }
+  .footer-body { padding: 28px 0 24px; }
 
   .footer-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 32px;
+    gap: 20px;
   }
   .footer-brand {
     grid-column: 1 / -1;
