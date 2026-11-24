@@ -340,3 +340,31 @@
     gap: 14px;
   }
 }
+
+/* ══ ULTRA-COMPACT BRAND-ONLY FOOTER ════════════════════════ */
+.footer-grid {
+  grid-template-columns: 1fr;
+}
+.footer-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px 24px;
+}
+.footer-tagline {
+  margin-bottom: 0;
+  max-width: 460px;
+}
+.footer-bottom-inner {
+  justify-content: center;
+}
+@media (max-width: 768px) {
+  .footer-grid {
+    grid-template-columns: 1fr;
+  }
+  .footer-brand {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

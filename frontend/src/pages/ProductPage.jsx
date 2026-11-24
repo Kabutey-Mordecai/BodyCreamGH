@@ -862,28 +862,6 @@ export default function ProductPage() {
             </button>
 
             {/* WhatsApp-to-Order CTA — shown when store whatsapp_number is configured */}
-            {(() => {
-              const rawDigits = String(settings.whatsapp_number || '').replace(/\D/g, '');
-              const waNumber = rawDigits.length === 10 && rawDigits.startsWith('0')
-                ? `233${rawDigits.slice(1)}`
-                : rawDigits;
-              if (!waNumber) return null;
-              const variantText = selectedVariant
-                ? ` (${selectedVariant.option_values.map(ov => ov.value).join(' / ')})`
-                : '';
-              const waMsg = `Hi ${settings.store_name || 'BodyCream GH'}, I'd like to order ${qty}x ${product.name}${variantText} (GHS ${effectivePrice.toFixed(2)}). ${window.location.href}`;
-              return (
-                <a
-                  href={`https://wa.me/${waNumber}?text=${encodeURIComponent(waMsg)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="btn btn-full pdp-whatsapp-btn"
-                >
-                  Order via WhatsApp
-                </a>
-              );
-            })()}
-
             {/* Trust row under the CTA */}
             <div className="product-trust-row">
               {TRUST_ROW.map(t => (

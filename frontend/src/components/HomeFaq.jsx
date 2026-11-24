@@ -33,7 +33,7 @@ export function buildFaqItems(settings = {}) {
   return [
     {
       q: `How do I place an order on ${storeName}?`,
-      a: `Add your favourite products to cart, sign in or create an account in seconds, and check out online in under 2 minutes. You can also tap "Order via WhatsApp" on any product page for assisted ordering.`,
+      a: `Add your favourite products to cart, sign in or create an account in seconds, and check out online in under 2 minutes with Paystack MoMo, Card, or Pay on Delivery.`,
     },
     {
       q: 'What payment methods do you accept?',

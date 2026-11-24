@@ -165,35 +165,6 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Account links */}
-          <div className="footer-col">
-            <h4 className="footer-col-head">Account</h4>
-            <ul>
-              {ACCOUNT_LINKS.slice(0, 3).map(l => (
-                <li key={l.label}>
-                  <Link to={l.to}>{l.label}</Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Info links */}
-          <div id="contact-footer" className="footer-col">
-            <h4 className="footer-col-head">Help &amp; Support</h4>
-            <ul>
-              {INFO_LINKS.slice(0, 3).map(l => (
-                <li key={l.label}>
-                  <Link to={l.to}>{l.label}</Link>
-                </li>
-              ))}
-              {cleanPhone && (
-                <li>
-                  <a href={`tel:${cleanPhone.replace(/\s+/g, '')}`}>{cleanPhone}</a>
-                </li>
-              )}
-            </ul>
-          </div>
-
         </div>
       </div>
 
@@ -201,15 +172,6 @@ export default function Footer() {
       <div className="footer-bottom">
         <div className="container footer-bottom-inner">
           <p>© {YEAR} {store_name}. All rights reserved.</p>
-          {showPaymentBadges && (
-            <div className="footer-payment-badges" aria-label="Accepted payment and delivery methods">
-              <span className="footer-pay-pill">🔒 Paystack</span>
-              <span className="footer-pay-pill">MTN MoMo</span>
-              <span className="footer-pay-pill">Visa / Mastercard</span>
-              {pickupEnabled && <span className="footer-pay-pill">Pickup Station</span>}
-              {podEnabled && <span className="footer-pay-pill">Pay on Delivery</span>}
-            </div>
-          )}
         </div>
       </div>
 

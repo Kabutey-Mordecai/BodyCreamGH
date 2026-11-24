@@ -49,3 +49,15 @@
     bottom: 14px;
   }
 }
+
+/* Lift WhatsApp button comfortably above the bottom edge */
+.whatsapp-float {
+  bottom: 76px;
+  right: 22px;
+}
+@media (max-width: 768px) {
+  .whatsapp-float {
+    bottom: 72px;
+    right: 14px;
+  }
+}
