@@ -165,28 +165,11 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Shop links */}
-          <div className="footer-col">
-            <h4 className="footer-col-head">Shop</h4>
-            <ul>
-              <li><Link to="/shop">All Products</Link></li>
-              {(Array.isArray(settings.categories) ? settings.categories : [])
-                .map(c => (typeof c === 'string' ? c : c?.label))
-                .filter(Boolean)
-                .slice(0, 3)
-                .map(label => (
-                  <li key={label}>
-                    <Link to={`/shop?category=${encodeURIComponent(label)}`}>{label}</Link>
-                  </li>
-                ))}
-            </ul>
-          </div>
-
           {/* Account links */}
           <div className="footer-col">
             <h4 className="footer-col-head">Account</h4>
             <ul>
-              {ACCOUNT_LINKS.slice(0, 4).map(l => (
+              {ACCOUNT_LINKS.slice(0, 3).map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>
@@ -198,7 +181,7 @@ export default function Footer() {
           <div id="contact-footer" className="footer-col">
             <h4 className="footer-col-head">Help &amp; Support</h4>
             <ul>
-              {INFO_LINKS.slice(0, 4).map(l => (
+              {INFO_LINKS.slice(0, 3).map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>

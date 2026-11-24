@@ -312,3 +312,31 @@
 .footer-bottom {
   padding: 12px 0;
 }
+
+/* ══ MINI 3-COLUMN FOOTER ═══════════════════════════════════ */
+.footer-back-to-top {
+  padding: 6px 12px;
+  font-size: 0.68rem;
+}
+.footer-body {
+  padding: 16px 0 14px;
+}
+.footer-grid {
+  grid-template-columns: 1.6fr 1fr 1fr;
+  gap: 20px;
+}
+.footer-tagline {
+  font-size: 0.78rem;
+  margin-bottom: 10px;
+  max-width: 280px;
+}
+.footer-bottom {
+  padding: 8px 0;
+  font-size: 0.74rem;
+}
+@media (max-width: 768px) {
+  .footer-grid {
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+}

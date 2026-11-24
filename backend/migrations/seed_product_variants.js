@@ -65,6 +65,75 @@ const VARIANT_SETS = [
       { value: '370 Deep Bronze', sku: 'MAY-FIT-370',   price: 165.00, stock: 9  },
     ],
   },
+  {
+    sku: 'CRV-SA-236',
+    optionName: 'Size',
+    variants: [
+      { value: '236ml', sku: 'CRV-SA-236-V', price: 210.00, stock: 26 },
+      { value: '473ml', sku: 'CRV-SA-473',   price: 340.00, stock: 14 },
+    ],
+  },
+  {
+    sku: 'ORD-GLY-240',
+    optionName: 'Size',
+    variants: [
+      { value: '100ml', sku: 'ORD-GLY-100',   price: 115.00, stock: 20 },
+      { value: '240ml', sku: 'ORD-GLY-240-V', price: 195.00, stock: 32 },
+    ],
+  },
+  {
+    sku: 'VAS-COC-400',
+    optionName: 'Size',
+    variants: [
+      { value: '200ml', sku: 'VAS-COC-200',   price: 62.00,  stock: 25 },
+      { value: '400ml', sku: 'VAS-COC-400-V', price: 98.00,  stock: 50 },
+      { value: '725ml', sku: 'VAS-COC-725',   price: 155.00, stock: 18 },
+    ],
+  },
+  {
+    sku: 'TRH-SHS-510',
+    optionName: 'Scent',
+    variants: [
+      { value: 'Moroccan Rose',   sku: 'TRH-SHS-510-R', price: 190.00, stock: 24 },
+      { value: 'Vitamin C',       sku: 'TRH-SHS-510-V', price: 190.00, stock: 18 },
+      { value: 'Vanilla Bean',    sku: 'TRH-SHS-510-B', price: 190.00, stock: 16 },
+    ],
+  },
+  {
+    sku: 'FNT-GLS-009',
+    optionName: 'Shade',
+    variants: [
+      { value: 'Fenty Glow',   sku: 'FNT-GLS-FG', price: 320.00, stock: 20 },
+      { value: 'Fu$$y',        sku: 'FNT-GLS-FS', price: 320.00, stock: 15 },
+      { value: 'Hot Chocolit', sku: 'FNT-GLS-HC', price: 320.00, stock: 18 },
+    ],
+  },
+  {
+    sku: 'LAG-PRO-008',
+    optionName: 'Shade',
+    variants: [
+      { value: 'Fawn',          sku: 'LAG-PRO-FWN', price: 65.00, stock: 30 },
+      { value: 'Warm Honey',    sku: 'LAG-PRO-WHN', price: 65.00, stock: 28 },
+      { value: 'Espresso',      sku: 'LAG-PRO-ESP', price: 65.00, stock: 24 },
+      { value: 'Chestnut',      sku: 'LAG-PRO-CHS', price: 65.00, stock: 22 },
+    ],
+  },
+  {
+    sku: 'LTF-YAR-100',
+    optionName: 'Size',
+    variants: [
+      { value: '50ml',  sku: 'LTF-YAR-050',   price: 220.00, stock: 14 },
+      { value: '100ml', sku: 'LTF-YAR-100-V', price: 390.00, stock: 24 },
+    ],
+  },
+  {
+    sku: 'LTF-ASD-100',
+    optionName: 'Size',
+    variants: [
+      { value: '30ml Decant', sku: 'LTF-ASD-030',   price: 150.00, stock: 12 },
+      { value: '100ml',       sku: 'LTF-ASD-100-V', price: 410.00, stock: 20 },
+    ],
+  },
 ];
 
 async function run() {
