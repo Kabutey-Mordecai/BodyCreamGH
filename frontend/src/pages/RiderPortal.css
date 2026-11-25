@@ -46,6 +46,22 @@
   align-items: center;
   gap: 11px;
   min-width: 0;
+  flex: 1;
+}
+
+.rp-brand-group > div {
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 460px) {
+  .rp-rider-title {
+    font-size: 0.9rem;
+  }
+  .rp-sync-btn {
+    padding: 6px 10px;
+    font-size: 0.74rem;
+  }
 }
 
 .rp-brand-badge {

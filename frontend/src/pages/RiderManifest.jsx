@@ -433,7 +433,7 @@ export default function RiderManifest() {
               <span className="rp-how-step">Step 01</span>
               <div className="rp-how-title">Open Signed Route</div>
               <p className="rp-how-desc">
-                Tap your WhatsApp link from Dispatch to view all stops sorted by zone (`ACC`, `KSI`, `TAK`) with zero password login.
+                Tap your WhatsApp link from Dispatch to view all stops sorted by zone (<strong>ACC</strong>, <strong>KSI</strong>, <strong>TAK</strong>) with zero password login.
               </p>
             </div>
             <div className="rp-how-card">

@@ -489,7 +489,7 @@ export default function RiderHandoff() {
             </div>
             <h2>Select a Stop From Your Route Console</h2>
             <p>
-              Each customer delivery uses a unique signed Proof-of-Delivery token. Open your **Rider Route Manifest** to tap into any active stop, or paste a signed handoff link below.
+              Each customer delivery uses a unique signed Proof-of-Delivery token. Open your <strong>Rider Route Manifest</strong> to tap into any active stop, or paste a signed handoff link below.
             </p>
           </section>
 
