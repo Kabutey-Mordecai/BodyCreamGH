@@ -1,6 +1,7 @@
 'use strict';
 
 const ReviewModel = require('../models/review.model');
+const { bustCache } = require('./product.controller');
 const { logAdminAction } = require('../utils/audit');
 
 // GET /api/products/:productId/reviews
@@ -102,6 +103,8 @@ const createReview = async (req, res) => {
       autoApprove,
     });
 
+    await bustCache().catch(() => {});
+
     res.status(201).json({
       success: true,
       auto_approved: true,
@@ -131,12 +134,13 @@ const markHelpful = async (req, res) => {
 const getAllReviews = async (req, res) => {
   try {
     const status = req.query.status || 'all';
+    const rating = req.query.rating ? parseInt(req.query.rating, 10) : null;
     const page   = Math.max(1, parseInt(req.query.page)  || 1);
     const limit  = Math.min(100, parseInt(req.query.limit) || 20);
     const search = req.query.search || '';
 
     const [{ rows: reviews, total }, counts] = await Promise.all([
-      ReviewModel.findAll({ status, page, limit, search }),
+      ReviewModel.findAll({ status, rating, page, limit, search }),
       ReviewModel.getStatusCounts(),
     ]);
 
@@ -214,6 +218,8 @@ const deleteReview = async (req, res) => {
     }
     const deleted = await ReviewModel.delete(req.params.id);
     if (!deleted) return res.status(404).json({ error: 'Review not found' });
+
+    await bustCache().catch(() => {});
 
     logAdminAction({
       actorId: req.user?.id,

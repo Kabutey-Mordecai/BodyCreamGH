@@ -1651,6 +1651,56 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                             ),
                                           ),
                                         ],
+                                        if ((r['admin_reply'] ?? '')
+                                            .toString()
+                                            .trim()
+                                            .isNotEmpty) ...[
+                                          const SizedBox(height: 10),
+                                          Container(
+                                            width: double.infinity,
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 10,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.accent
+                                                  .withValues(alpha: 0.09),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: const Border(
+                                                left: BorderSide(
+                                                  color: AppColors.accent,
+                                                  width: 3,
+                                                ),
+                                              ),
+                                            ),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'RESPONSE FROM BODYCREAM GH${r['admin_reply_at'] != null ? ' · ${_relativeDate(r['admin_reply_at'])}' : ''}',
+                                                  style: const TextStyle(
+                                                    fontSize: 10.5,
+                                                    fontWeight: FontWeight.w800,
+                                                    letterSpacing: 0.5,
+                                                    color: AppColors.accentDark,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  r['admin_reply']
+                                                      .toString()
+                                                      .trim(),
+                                                  style: const TextStyle(
+                                                    fontSize: 12.8,
+                                                    height: 1.45,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
                                         if (rid.isNotEmpty) ...[
                                           const SizedBox(height: 8),
                                           InkWell(

@@ -1,13 +1,19 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { adminAPI } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import './Reviews.css';
+
+const STOREFRONT_URL = (import.meta.env.VITE_STOREFRONT_URL || 'https://bodycreamgh-shop.vercel.app').replace(/\/$/, '');
 
 const TABS = [
-  { key: 'all',         label: 'All Live Reviews' },
-  { key: 'needs_reply', label: 'Needs Reply' },
-  { key: 'low_rating',  label: '1★–3★ Needs Care' },
-  { key: 'replied',     label: 'Replied' },
+  { key: 'all',         label: 'All Live Reviews', countKey: 'total' },
+  { key: 'needs_reply', label: 'Needs Reply',      countKey: 'needs_reply' },
+  { key: 'low_rating',  label: '1★–3★ Needs Care', countKey: 'low_rating' },
+  { key: 'with_photos', label: '📸 With Photos',   countKey: 'with_photos' },
+  { key: 'replied',     label: 'Replied',          countKey: 'replied' },
 ];
 
 const POLICY_REASONS = [
@@ -18,46 +24,66 @@ const POLICY_REASONS = [
   'Off-topic / unrelated content',
 ];
 
-const Stars = ({ rating }) => (
-  <span style={{ letterSpacing: 1 }}>
-    {[1, 2, 3, 4, 5].map(i => (
-      <span key={i} style={{ color: i <= rating ? '#c9a55a' : '#d4c5a0', fontSize: '0.88rem' }}>★</span>
-    ))}
-  </span>
-);
+const QUICK_REPLY_TEMPLATES = [
+  {
+    label: '✨ Thank 5★ Buyer',
+    build: (r) => `Thank you so much for your kind review, ${r.first_name || 'dear'}! We're thrilled you're loving your ${r.product_name}. Thank you for shopping authentic skincare with BodyCream GH!`,
+  },
+  {
+    label: '💛 Care & Support Follow-up',
+    build: (r) => `Thank you for your honest feedback, ${r.first_name || 'valued customer'}. Your experience matters deeply to us — our support team has noted your order${r.order_number ? ` (#${r.order_number})` : ''} and is reaching out directly to make this right.`,
+  },
+  {
+    label: '🧴 Skincare Usage Tip',
+    build: (r) => `Thank you for sharing your experience with ${r.product_name}! For best absorption and glow, apply on slightly damp skin right after cleansing and pair with daily SPF during the day.`,
+  },
+];
 
-const PLACEHOLDER = 'https://placehold.co/40x40?text=?';
+function Stars({ rating }) {
+  return (
+    <span className="rv-stars" aria-label={`${rating} out of 5 stars`}>
+      {[1, 2, 3, 4, 5].map(i => (
+        <span key={i} className={i <= rating ? 'rv-star-filled' : 'rv-star-empty'}>★</span>
+      ))}
+    </span>
+  );
+}
 
 export default function Reviews() {
+  const { user } = useAuth();
   const toast = useToast();
-  const [tab,     setTab]     = useState('all');
-  const [search,  setSearch]  = useState('');
+  const canDeletePolicy = ['super_admin', 'admin', 'support'].includes(user?.role);
+
+  const [tab, setTab] = useState('all');
+  const [starFilter, setStarFilter] = useState(null); // null | 1..5
+  const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [page,    setPage]    = useState(1);
-  const [data,    setData]    = useState({
+  const [page, setPage] = useState(1);
+
+  const [data, setData] = useState({
     reviews: [],
     total: 0,
     totalPages: 1,
-    counts: { total: 0, needs_reply: 0, low_rating: 0, replied: 0 },
+    counts: { total: 0, needs_reply: 0, low_rating: 0, replied: 0, with_photos: 0, avg_rating: 0 },
   });
   const [loading, setLoading] = useState(true);
 
-  const [replyModal, setReplyModal] = useState(null); // review object | null
-  const [replyText,  setReplyText]  = useState('');
-  const [removeModal, setRemoveModal] = useState(null); // review object | null
+  const [replyModal, setReplyModal] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const [removeModal, setRemoveModal] = useState(null);
   const [removeReason, setRemoveReason] = useState(POLICY_REASONS[0]);
   const [removeNote, setRemoveNote] = useState('');
+  const [photoLightbox, setPhotoLightbox] = useState(null);
   const [acting, setActing] = useState(null);
 
-  const searchRef = useRef(null);
   const debounceRef = useRef(null);
 
   useEffect(() => {
     clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
-      setDebouncedSearch(search);
+      setDebouncedSearch(search.trim());
       setPage(1);
-    }, 350);
+    }, 300);
     return () => clearTimeout(debounceRef.current);
   }, [search]);
 
@@ -65,38 +91,44 @@ export default function Reviews() {
     if (!silent) setLoading(true);
     try {
       const { data: res } = await adminAPI.getReviews({
-        status: tab, page, limit: 20, search: debouncedSearch,
+        status: tab,
+        rating: starFilter || undefined,
+        page,
+        limit: 20,
+        search: debouncedSearch || undefined,
       });
       setData(res);
-    } catch {
-      if (!silent) toast.error('Failed to load reviews');
+    } catch (err) {
+      if (!silent) toast.error(err.response?.data?.error || 'Failed to load reviews');
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [tab, page, debouncedSearch]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    setPage(1);
-  }, [tab]);
+  }, [tab, starFilter, page, debouncedSearch, toast]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const notifyBadgeSync = () => {
+    window.dispatchEvent(new Event('bc:counts-changed'));
+  };
 
   const openReply = (review) => {
     setReplyModal(review);
     setReplyText(review.admin_reply || '');
   };
 
-  const handleSaveReply = async () => {
+  const handleSaveReply = async (customText = undefined) => {
     if (!replyModal) return;
+    const finalReply = customText !== undefined ? customText : replyText;
     setActing(replyModal.id);
     try {
-      await adminAPI.replyToReview(replyModal.id, replyText);
-      toast.success(replyText.trim() ? 'Public store reply published' : 'Store reply cleared');
+      await adminAPI.replyToReview(replyModal.id, finalReply);
+      toast.success(finalReply.trim() ? 'Public store reply published across Storefront & Mobile App' : 'Public store reply cleared');
       setReplyModal(null);
       setReplyText('');
       load(true);
+      notifyBadgeSync();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to save public reply');
     } finally {
@@ -112,10 +144,11 @@ export default function Reviews() {
     setActing(removeModal.id);
     try {
       await adminAPI.deleteReview(removeModal.id, fullReason);
-      toast.success('Review removed & logged in audit trail');
+      toast.success('Review removed, product rating recalculated & audit-logged');
       setRemoveModal(null);
       setRemoveNote('');
       load(true);
+      notifyBadgeSync();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to remove review');
     } finally {
@@ -124,263 +157,504 @@ export default function Reviews() {
   };
 
   const counts = data.counts || {};
+  const totalLive = Number(counts.total || 0);
+  const repliedCount = Number(counts.replied || 0);
+  const replyRate = totalLive > 0 ? Math.round((repliedCount / totalLive) * 100) : 100;
+  const avgRating = Number(counts.avg_rating || 0);
 
   return (
-    <div>
+    <div className="page">
+      {/* ── Header ───────────────────────────────────────────────────── */}
       <div className="page-header">
         <div>
-          <h1>Verified Reviews</h1>
-          <p className="muted">
-            All verified buyer reviews publish automatically — no silent hiding of negative feedback.
-            Respond publicly to build customer trust.
+          <h1 className="page-title">Verified Customer Reviews</h1>
+          <p className="muted text-sm" style={{ marginTop: 4 }}>
+            Verified buyer reviews publish automatically across Storefront &amp; Mobile App. Reply publicly to build shopper confidence.
           </p>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="button" className="btn btn-outline" onClick={() => load()}>
+            ↻ Refresh
+          </button>
         </div>
       </div>
 
-      {/* ── Stats bar ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: 'Total Live',       value: counts.total       || 0, color: '#1a7a34', bg: 'rgba(26,122,52,0.1)' },
-          { label: 'Needs Reply',      value: counts.needs_reply || 0, color: '#b5700a', bg: 'rgba(181,112,10,0.1)' },
-          { label: '1★–3★ Needs Care', value: counts.low_rating  || 0, color: '#b71c1c', bg: 'rgba(183,28,28,0.1)' },
-          { label: 'Replied',          value: counts.replied     || 0, color: '#2563eb', bg: 'rgba(37,99,235,0.1)' },
-        ].map(s => (
-          <div key={s.label} className="card" style={{ background: s.bg, borderColor: s.color + '33' }}>
-            <div className="card-body" style={{ padding: '12px 16px' }}>
-              <div style={{ fontSize: '1.6rem', fontWeight: 700, color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: '0.8rem', color: s.color, opacity: 0.9 }}>{s.label}</div>
-            </div>
+      {/* ── 4-Card Reputation KPI Strip ──────────────────────────────── */}
+      <div className="rv-kpi-grid">
+        <div className="rv-kpi-card">
+          <div className="rv-kpi-top">
+            <span className="rv-kpi-label">Store Rating</span>
+            <span className="rv-kpi-icon">★</span>
           </div>
-        ))}
+          <div className="rv-kpi-value">
+            {totalLive > 0 ? avgRating.toFixed(2) : '—'}
+            <span className="muted" style={{ fontSize: '0.92rem', fontWeight: 500 }}> / 5.0</span>
+          </div>
+          <div className="rv-kpi-sub">{totalLive} live verified review{totalLive === 1 ? '' : 's'}</div>
+        </div>
+
+        <div className="rv-kpi-card">
+          <div className="rv-kpi-top">
+            <span className="rv-kpi-label">Needs Public Reply</span>
+            <span className="rv-kpi-icon">💬</span>
+          </div>
+          <div className="rv-kpi-value">{counts.needs_reply || 0}</div>
+          <div className="rv-kpi-sub">Synced with sidebar badge</div>
+        </div>
+
+        <div className="rv-kpi-card">
+          <div className="rv-kpi-top">
+            <span className="rv-kpi-label">1★–3★ Priority Care</span>
+            <span className="rv-kpi-icon">⚠️</span>
+          </div>
+          <div className="rv-kpi-value">{counts.low_rating || 0}</div>
+          <div className="rv-kpi-sub">Critical feedback to address</div>
+        </div>
+
+        <div className="rv-kpi-card">
+          <div className="rv-kpi-top">
+            <span className="rv-kpi-label">Reply Rate &amp; Photos</span>
+            <span className="rv-kpi-icon">📸</span>
+          </div>
+          <div className="rv-kpi-value">{replyRate}%</div>
+          <div className="rv-kpi-sub">{repliedCount} replied · {counts.with_photos || 0} with buyer photos</div>
+        </div>
       </div>
 
-      {/* ── Filters ── */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-body" style={{ padding: '12px 16px', display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 4, background: 'var(--ac-bg)', borderRadius: 8, padding: 3, flexWrap: 'wrap' }}>
+      {/* ── Filter Tabs, Star Chips & Search ─────────────────────────── */}
+      <div className="rv-filter-card">
+        <div className="rv-tabs-row">
+          <div className="rv-tabs" role="tablist">
             {TABS.map(t => (
               <button
                 key={t.key}
                 type="button"
-                onClick={() => setTab(t.key)}
-                style={{
-                  border: 'none', cursor: 'pointer', borderRadius: 6, padding: '5px 14px',
-                  fontSize: '0.82rem', fontWeight: 600, transition: 'all 0.15s',
-                  background: tab === t.key ? 'var(--ac-surface)' : 'transparent',
-                  color:      tab === t.key ? 'var(--ac-accent)' : 'var(--ac-text-muted)',
-                  boxShadow:  tab === t.key ? 'var(--ac-shadow-sm)' : 'none',
-                }}
+                role="tab"
+                aria-selected={tab === t.key}
+                className={`rv-tab${tab === t.key ? ' is-active' : ''}`}
+                onClick={() => { setTab(t.key); setPage(1); }}
               >
-                {t.label}
+                <span>{t.label}</span>
+                <span className="rv-tab-pill">{counts[t.countKey] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="rv-controls-row">
+          <div className="rv-star-chips" role="group" aria-label="Filter by star rating">
+            <button
+              type="button"
+              className={`rv-star-chip${starFilter === null ? ' is-active' : ''}`}
+              onClick={() => { setStarFilter(null); setPage(1); }}
+            >
+              All Stars
+            </button>
+            {[5, 4, 3, 2, 1].map(star => (
+              <button
+                key={star}
+                type="button"
+                className={`rv-star-chip${starFilter === star ? ' is-active' : ''}`}
+                onClick={() => { setStarFilter(prev => (prev === star ? null : star)); setPage(1); }}
+              >
+                {star}★
               </button>
             ))}
           </div>
 
-          <input
-            ref={searchRef}
-            type="search"
-            placeholder="Search product, customer email, or review text…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{
-              flex: 1, minWidth: 200, padding: '6px 10px',
-              border: '1px solid var(--ac-border)', borderRadius: 6,
-              fontSize: '0.85rem', background: 'var(--ac-bg)', color: 'var(--ac-text)',
-            }}
-          />
+          <div className="rv-search-wrap">
+            <span className="rv-search-icon">🔍</span>
+            <input
+              type="search"
+              placeholder="Search product, customer name/email, headline, review…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+          </div>
         </div>
       </div>
 
-      {/* ── Table ── */}
+      {/* ── Reviews Stream ───────────────────────────────────────────── */}
       {loading ? (
-        <div className="spinner" />
+        <div className="card" style={{ padding: '48px 24px', textAlign: 'center' }}>
+          <span className="muted">Loading verified customer reviews…</span>
+        </div>
       ) : data.reviews.length === 0 ? (
-        <div className="card">
-          <div className="card-body" style={{ textAlign: 'center', padding: 48, color: 'var(--ac-text-muted)' }}>
-            No reviews found{search ? ` matching "${search}"` : ''}.
-          </div>
+        <div className="card" style={{ padding: '52px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: '2.1rem', marginBottom: 10 }}>⭐</div>
+          <h3 style={{ margin: '0 0 6px' }}>No Reviews Match This View</h3>
+          <p className="muted text-sm" style={{ maxWidth: 440, margin: '0 auto 14px' }}>
+            {search || starFilter || tab !== 'all'
+              ? 'Try clearing your star filter, search text, or switching queue tabs.'
+              : 'Once customers receive delivered orders and submit ratings or photos, they will appear here automatically.'}
+          </p>
+          {(search || starFilter || tab !== 'all') && (
+            <button
+              type="button"
+              className="btn btn-outline btn-sm"
+              onClick={() => { setTab('all'); setStarFilter(null); setSearch(''); setPage(1); }}
+            >
+              Reset Filters
+            </button>
+          )}
         </div>
       ) : (
         <>
-          <div className="card" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--ac-border)', background: 'var(--ac-bg)' }}>
-                  {['Product', 'Customer', 'Rating', 'Review & Public Reply', 'Date', 'Actions'].map(h => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--ac-text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.reviews.map(r => (
-                  <tr key={r.id} style={{ borderBottom: '1px solid var(--ac-border)' }}>
-                    <td style={{ padding: '12px 14px', maxWidth: 170 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="rv-list">
+            {data.reviews.map(r => {
+              const photos = Array.isArray(r.images) ? r.images.filter(Boolean) : [];
+              const isLowUnreplied = r.rating <= 3 && !r.admin_reply;
+
+              return (
+                <article key={r.id} className={`rv-item-card${isLowUnreplied ? ' is-low-unreplied' : ''}`}>
+                  {/* Col 1: Product & Verified Buyer Context */}
+                  <div className="rv-product-col">
+                    <div className="rv-product-box">
+                      {r.image_url ? (
                         <img
-                          src={resolveImageUrl(r.image_url) || PLACEHOLDER}
-                          alt=""
-                          style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, flexShrink: 0 }}
-                          onError={e => { e.currentTarget.src = PLACEHOLDER; }}
+                          src={resolveImageUrl(r.image_url)}
+                          alt={r.product_name}
+                          className="rv-product-thumb"
+                          onError={e => { e.currentTarget.style.display = 'none'; }}
                         />
-                        <span style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.product_name}</span>
-                      </div>
-                    </td>
-
-                    <td style={{ padding: '12px 14px' }}>
-                      <div style={{ fontWeight: 500 }}>{r.first_name} {r.last_name}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--ac-text-muted)' }}>{r.email}</div>
-                      {r.verified_purchase && (
-                        <span style={{ fontSize: '0.7rem', color: '#1a7a34', fontWeight: 600 }}>✓ Verified Purchase</span>
-                      )}
-                    </td>
-
-                    <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                      <Stars rating={r.rating} />
-                      <span style={{ marginLeft: 4, color: 'var(--ac-text-muted)', fontSize: '0.78rem' }}>{r.rating}/5</span>
-                    </td>
-
-                    <td style={{ padding: '12px 14px', maxWidth: 320 }}>
-                      {r.title && <div style={{ fontWeight: 600, marginBottom: 2 }}>{r.title}</div>}
-                      {r.body ? (
-                        <div style={{ color: 'var(--ac-text-muted)', fontSize: '0.82rem' }}>{r.body}</div>
                       ) : (
-                        !r.title && <span style={{ color: 'var(--ac-text-muted)', fontStyle: 'italic' }}>Rating only</span>
-                      )}
-                      {r.admin_reply && (
-                        <div style={{ marginTop: 8, padding: '6px 10px', borderRadius: 6, background: 'var(--ac-bg)', borderLeft: '3px solid var(--ac-accent)', fontSize: '0.78rem' }}>
-                          <strong>Your Public Reply:</strong> {r.admin_reply}
+                        <div className="rv-product-thumb" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
+                          🧴
                         </div>
                       )}
-                    </td>
-
-                    <td style={{ padding: '12px 14px', whiteSpace: 'nowrap', color: 'var(--ac-text-muted)', fontSize: '0.8rem' }}>
-                      {new Date(r.created_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </td>
-
-                    <td style={{ padding: '12px 14px', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button
-                          type="button"
-                          className="btn btn-primary btn-sm"
-                          disabled={acting === r.id}
-                          onClick={() => openReply(r)}
+                      <div style={{ minWidth: 0 }}>
+                        <Link to={`/products/${r.product_id}`} className="rv-product-name" title={r.product_name}>
+                          {r.product_name}
+                        </Link>
+                        <a
+                          href={`${STOREFRONT_URL}/products/${r.product_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="muted text-xs"
+                          style={{ textDecoration: 'none', display: 'inline-block', marginTop: 3 }}
                         >
-                          {r.admin_reply ? '✎ Edit Reply' : '💬 Reply Publicly'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline btn-sm"
-                          style={{ color: 'var(--ac-danger)', borderColor: 'var(--ac-danger)' }}
-                          disabled={acting === r.id}
-                          onClick={() => {
-                            setRemoveModal(r);
-                            setRemoveReason(POLICY_REASONS[0]);
-                            setRemoveNote('');
-                          }}
-                          title="Remove only for policy violations (audit-logged)"
-                        >
-                          ⚑ Policy Remove
-                        </button>
+                          ↗ View on Storefront
+                        </a>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </div>
+
+                    <div className="rv-customer-box">
+                      <div style={{ fontWeight: 700, fontSize: '0.83rem' }}>
+                        {r.user_id ? (
+                          <Link to={`/customers/${r.user_id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                            {r.first_name} {r.last_name}
+                          </Link>
+                        ) : (
+                          <span>{r.first_name} {r.last_name}</span>
+                        )}
+                      </div>
+                      <div className="muted text-xs" style={{ wordBreak: 'break-all' }}>{r.email}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {r.verified_purchase && (
+                          <span className="rv-verified-pill">✓ Verified Buyer</span>
+                        )}
+                        {r.order_id && (
+                          <Link
+                            to={`/orders/${r.order_id}`}
+                            className="text-xs"
+                            style={{ color: 'var(--ac-accent)', fontWeight: 700, textDecoration: 'none', marginTop: 3 }}
+                          >
+                            {r.order_number ? `#${r.order_number}` : 'View Order →'}
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Col 2: Rating, Content, Buyer Photos, Store Reply */}
+                  <div className="rv-main-col">
+                    <div className="rv-rating-row">
+                      <Stars rating={r.rating} />
+                      <span style={{ fontWeight: 800, fontSize: '0.82rem' }}>{r.rating}.0</span>
+                      <span className="muted text-xs">
+                        · {new Date(r.created_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      {Number(r.helpful_count) > 0 && (
+                        <span className="badge badge-neutral" style={{ fontSize: '0.68rem' }}>
+                          👍 {r.helpful_count} found helpful
+                        </span>
+                      )}
+                      {isLowUnreplied && (
+                        <span className="badge badge-warning" style={{ fontSize: '0.68rem' }}>
+                          Needs Care
+                        </span>
+                      )}
+                    </div>
+
+                    {r.title && <h3 className="rv-headline">{r.title}</h3>}
+                    {r.body ? (
+                      <p className="rv-body">{r.body}</p>
+                    ) : (
+                      !r.title && <p className="muted text-xs" style={{ fontStyle: 'italic', margin: 0 }}>Star rating submitted without written comment.</p>
+                    )}
+
+                    {photos.length > 0 && (
+                      <div className="rv-photos-row" aria-label="Customer uploaded review photos">
+                        {photos.map((imgUrl, idx) => {
+                          const fullUrl = resolveImageUrl(imgUrl);
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              className="rv-photo-btn"
+                              onClick={() => setPhotoLightbox({ url: fullUrl, product: r.product_name, author: r.first_name })}
+                              title="Click to inspect full-resolution photo"
+                            >
+                              <img src={fullUrl} alt={`Customer photo ${idx + 1}`} loading="lazy" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {r.admin_reply && (
+                      <div className="rv-reply-box">
+                        <div className="rv-reply-head">
+                          <span>✦ Public Store Reply · BodyCream GH</span>
+                          {r.admin_reply_at && (
+                            <span style={{ fontWeight: 500, textTransform: 'none' }}>
+                              {new Date(r.admin_reply_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          )}
+                        </div>
+                        <div className="rv-reply-text">{r.admin_reply}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Col 3: Moderation & Response Actions */}
+                  <div className="rv-actions-col">
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${r.admin_reply ? 'btn-outline' : 'btn-accent'}`}
+                      disabled={acting === r.id}
+                      onClick={() => openReply(r)}
+                    >
+                      {r.admin_reply ? '✎ Edit Reply' : '💬 Reply Publicly'}
+                    </button>
+
+                    {canDeletePolicy && (
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ color: '#f87171', borderColor: 'rgba(239, 68, 68, 0.35)' }}
+                        disabled={acting === r.id}
+                        onClick={() => {
+                          setRemoveModal(r);
+                          setRemoveReason(POLICY_REASONS[0]);
+                          setRemoveNote('');
+                        }}
+                        title="Remove only for documented policy violations (audit-logged)"
+                      >
+                        ⚑ Policy Remove
+                      </button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
 
           {data.totalPages > 1 && (
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 16 }}>
-              <button className="btn btn-outline btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Prev</button>
-              <span style={{ alignSelf: 'center', fontSize: '0.82rem', color: 'var(--ac-text-muted)' }}>
-                Page {page} of {data.totalPages}
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 10, marginTop: 18 }}>
+              <button className="btn btn-outline btn-sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>
+                ← Prev
+              </button>
+              <span className="muted text-xs">
+                Page {page} of {data.totalPages} ({data.total} total)
               </span>
-              <button className="btn btn-outline btn-sm" disabled={page >= data.totalPages} onClick={() => setPage(p => p + 1)}>Next →</button>
+              <button className="btn btn-outline btn-sm" disabled={page >= data.totalPages} onClick={() => setPage(p => p + 1)}>
+                Next →
+              </button>
             </div>
           )}
         </>
       )}
 
-      {/* ── Public Reply Modal ── */}
+      {/* ── Public Reply Modal (with Quick Templates) ────────────────── */}
       {replyModal && (
         <div
+          className="rv-modal-backdrop"
           role="dialog"
           aria-modal="true"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16,
-          }}
+          aria-label="Publish Public Store Reply"
           onClick={() => setReplyModal(null)}
         >
-          <div className="card" style={{ width: '100%', maxWidth: 480, padding: 20, margin: 0 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0, marginBottom: 6 }}>💬 Public Store Reply</h3>
-            <p className="muted text-xs" style={{ marginTop: 0, marginBottom: 12 }}>
-              This response appears publicly beneath <strong>{replyModal.first_name}&apos;s</strong> {replyModal.rating}★ review on <strong>{replyModal.product_name}</strong>.
-            </p>
-            <textarea
-              rows={4}
-              maxLength={1000}
-              className="input"
-              style={{ width: '100%', marginBottom: 12 }}
-              placeholder="e.g. Thank you for your honest feedback! We've reached out to send a fresh replacement jar…"
-              value={replyText}
-              onChange={e => setReplyText(e.target.value)}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setReplyModal(null)}>Cancel</button>
-              <button type="button" className="btn btn-primary btn-sm" disabled={acting === replyModal.id} onClick={handleSaveReply}>
-                {acting === replyModal.id ? 'Saving…' : 'Publish Reply'}
+          <div className="rv-modal" onClick={e => e.stopPropagation()}>
+            <div className="rv-modal-head">
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.08rem' }}>💬 Public Store Reply</h3>
+                <p className="muted text-xs" style={{ marginTop: 3 }}>
+                  Visible immediately under <strong>{replyModal.first_name}&apos;s</strong> {replyModal.rating}★ review on <strong>{replyModal.product_name}</strong> (Web &amp; Mobile App).
+                </p>
+              </div>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setReplyModal(null)}>✕</button>
+            </div>
+
+            <div className="rv-modal-body">
+              <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--ac-surface-2, rgba(255,255,255,0.04))', border: '1px solid var(--ac-border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Stars rating={replyModal.rating} />
+                  <strong className="text-xs">{replyModal.title || 'Customer Review'}</strong>
+                </div>
+                <div className="muted text-xs" style={{ lineHeight: 1.45 }}>
+                  {replyModal.body || 'Star rating only.'}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs" style={{ fontWeight: 700, marginBottom: 6, display: 'block' }}>
+                  Quick Response Templates
+                </label>
+                <div className="rv-template-chips">
+                  {QUICK_REPLY_TEMPLATES.map(tpl => (
+                    <button
+                      key={tpl.label}
+                      type="button"
+                      className="rv-template-chip"
+                      onClick={() => setReplyText(tpl.build(replyModal))}
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="rv-reply-textarea">Your Public Response</label>
+                <textarea
+                  id="rv-reply-textarea"
+                  rows={4}
+                  maxLength={1000}
+                  placeholder="Write a warm, helpful response from BodyCream GH…"
+                  value={replyText}
+                  onChange={e => setReplyText(e.target.value)}
+                  autoFocus
+                />
+                <div className="muted text-xs" style={{ textAlign: 'right', marginTop: 4 }}>
+                  {replyText.length} / 1000
+                </div>
+              </div>
+            </div>
+
+            <div className="rv-modal-foot">
+              {replyModal.admin_reply && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ marginRight: 'auto', color: '#f87171' }}
+                  disabled={acting === replyModal.id}
+                  onClick={() => handleSaveReply('')}
+                >
+                  Clear Existing Reply
+                </button>
+              )}
+              <button type="button" className="btn btn-outline" onClick={() => setReplyModal(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-accent"
+                disabled={acting === replyModal.id || !replyText.trim()}
+                onClick={() => handleSaveReply()}
+              >
+                {acting === replyModal.id ? 'Publishing…' : 'Publish Public Reply'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Audit-Logged Policy Removal Modal ── */}
+      {/* ── Audit-Logged Policy Violation Removal Modal ──────────────── */}
       {removeModal && (
         <div
+          className="rv-modal-backdrop"
           role="dialog"
           aria-modal="true"
-          style={{
-            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16,
-          }}
+          aria-label="Remove Policy-Violating Review"
           onClick={() => setRemoveModal(null)}
         >
-          <div className="card" style={{ width: '100%', maxWidth: 480, padding: 20, margin: 0 }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0, marginBottom: 6, color: 'var(--ac-danger)' }}>⚑ Remove Review (Policy Violation Only)</h3>
-            <p className="muted text-xs" style={{ marginTop: 0, marginBottom: 12 }}>
-              Honest negative reviews should be answered with a <strong>Public Reply</strong>, not deleted.
-              Removals require a policy violation reason and are <strong>permanently recorded in the Admin Audit Log</strong>.
-            </p>
-            <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>Violation Type *</label>
-            <select
-              className="input"
-              style={{ width: '100%', marginBottom: 10 }}
-              value={removeReason}
-              onChange={e => setRemoveReason(e.target.value)}
-            >
-              {POLICY_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-            </select>
-            <label className="text-xs" style={{ display: 'block', fontWeight: 600, marginBottom: 4 }}>Additional Audit Note (optional)</label>
-            <input
-              type="text"
-              className="input"
-              style={{ width: '100%', marginBottom: 14 }}
-              placeholder="Explain what violated policy…"
-              value={removeNote}
-              onChange={e => setRemoveNote(e.target.value)}
-            />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setRemoveModal(null)}>Cancel</button>
+          <div className="rv-modal" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+            <div className="rv-modal-head">
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#f87171' }}>
+                  ⚑ Remove Review (Policy Violation Only)
+                </h3>
+                <p className="muted text-xs" style={{ marginTop: 3 }}>
+                  Honest critical feedback should receive a <strong>Public Reply</strong>. Policy removals recalculate product ratings and are permanently recorded in the Audit Log.
+                </p>
+              </div>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setRemoveModal(null)}>✕</button>
+            </div>
+
+            <div className="rv-modal-body">
+              <div>
+                <label htmlFor="rv-violation-type">Policy Violation Category *</label>
+                <select
+                  id="rv-violation-type"
+                  value={removeReason}
+                  onChange={e => setRemoveReason(e.target.value)}
+                >
+                  {POLICY_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="rv-violation-note">Audit Note (Optional)</label>
+                <input
+                  id="rv-violation-note"
+                  type="text"
+                  placeholder="Specific detail recorded in admin_audit_logs…"
+                  value={removeNote}
+                  onChange={e => setRemoveNote(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="rv-modal-foot">
+              <button type="button" className="btn btn-outline" onClick={() => setRemoveModal(null)}>
+                Cancel
+              </button>
               <button
                 type="button"
-                className="btn btn-sm"
-                style={{ background: 'var(--ac-danger)', color: '#fff', border: 'none' }}
+                className="btn btn-primary"
+                style={{ background: '#dc2626', borderColor: '#dc2626', color: '#fff' }}
                 disabled={acting === removeModal.id}
                 onClick={handlePolicyRemove}
               >
                 {acting === removeModal.id ? 'Removing…' : 'Confirm Audit-Logged Removal'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Customer Review Photo Lightbox ───────────────────────────── */}
+      {photoLightbox && (
+        <div
+          className="rv-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Customer Review Photo Preview"
+          onClick={() => setPhotoLightbox(null)}
+        >
+          <div style={{ maxWidth: '90vw', maxHeight: '88vh', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+            <img
+              src={photoLightbox.url}
+              alt={`${photoLightbox.product} review`}
+              style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 12, boxShadow: '0 20px 50px rgba(0,0,0,0.6)' }}
+            />
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+              <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: 600 }}>
+                {photoLightbox.product} · Photo by {photoLightbox.author}
+              </span>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setPhotoLightbox(null)}>
+                Close ✕
               </button>
             </div>
           </div>

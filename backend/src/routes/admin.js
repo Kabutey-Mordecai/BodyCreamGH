@@ -26,6 +26,7 @@ const requireSuperOrAdmin = requireRoles('admin', 'super_admin');
 const requireSuperAdminOnly = requireRoles('super_admin');
 const requireSupportOrAdmin = requireRoles('admin', 'super_admin', 'support');
 const requireMarketingOrAdmin = requireRoles('admin', 'super_admin', 'marketing');
+const requireReviewStaff = requireRoles('admin', 'super_admin', 'support', 'marketing');
 const requireFulfillmentOrAdmin = requireRoles('admin', 'super_admin', 'fulfillment');
 
 // ── Existing routes ───────────────────────────────────────────────────────────
@@ -36,13 +37,13 @@ router.get('/traffic',       verifyToken, requireAdmin, getTrafficAnalytics);
 router.get('/financials',    verifyToken, requireAdmin, requireSuperOrAdmin, getFinancials);
 router.get('/top-products',  verifyToken, requireAdmin, getTopProducts);
 router.get('/inventory',     verifyToken, requireAdmin, requireFulfillmentOrAdmin, getInventoryOverview);
-router.get('/customers',     verifyToken, requireAdmin, requireSuperOrAdmin, getAllCustomers);
+router.get('/customers',     verifyToken, requireAdmin, requireSupportOrAdmin, getAllCustomers);
 // Review management — /counts must be before /:id to avoid being swallowed
-router.get('/reviews/counts',        verifyToken, requireAdmin, requireSupportOrAdmin, getReviewCounts);
-router.get('/reviews',               verifyToken, requireAdmin, requireSupportOrAdmin, getAllReviews);
+router.get('/reviews/counts',        verifyToken, requireAdmin, requireReviewStaff, getReviewCounts);
+router.get('/reviews',               verifyToken, requireAdmin, requireReviewStaff, getAllReviews);
 router.patch('/reviews/:id/approve', verifyToken, requireAdmin, requireSupportOrAdmin, approveReview);
 router.patch('/reviews/:id/reject',  verifyToken, requireAdmin, requireSupportOrAdmin, rejectReview);
-router.patch('/reviews/:id/reply',   verifyToken, requireAdmin, requireSupportOrAdmin, replyToReview);
+router.patch('/reviews/:id/reply',   verifyToken, requireAdmin, requireReviewStaff, replyToReview);
 router.delete('/reviews/:id',        verifyToken, requireAdmin, requireSupportOrAdmin, deleteReview);
 
 // ── Admin account management & audit logs ─────────────────────────────────────

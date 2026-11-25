@@ -45,6 +45,7 @@ const ReviewModel = {
     if (productId) {
       const { rows } = await pool.query(
         `SELECT r.id, r.rating, r.title, r.body,
+                r.admin_reply, r.admin_reply_at,
                 COALESCE(r.images, '[]'::jsonb) AS images,
                 r.is_approved, r.is_rejected, r.created_at,
                 p.name AS product_name, p.id AS product_id, p.image_url
@@ -59,6 +60,7 @@ const ReviewModel = {
     }
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body,
+              r.admin_reply, r.admin_reply_at,
               COALESCE(r.images, '[]'::jsonb) AS images,
               r.is_approved, r.is_rejected, r.created_at,
               p.name AS product_name, p.id AS product_id, p.image_url
@@ -141,10 +143,11 @@ const ReviewModel = {
     return rows;
   },
 
-  // Public approved reviews for the storefront & homepage testimonials
+  // Public approved 4★–5★ reviews for homepage testimonials
   getFeaturedReviews: async (limit = 8) => {
     const { rows } = await pool.query(
       `SELECT r.id, r.rating, r.title, r.body, r.created_at,
+              r.admin_reply, r.admin_reply_at,
               COALESCE(r.images, '[]'::jsonb) AS images,
               u.first_name,
               LEFT(u.last_name, 1) AS last_initial,
@@ -157,7 +160,7 @@ const ReviewModel = {
        JOIN users u ON r.user_id = u.id
        JOIN products p ON r.product_id = p.id
        LEFT JOIN orders o ON r.order_id = o.id
-       WHERE r.is_approved = TRUE
+       WHERE r.is_approved = TRUE AND r.rating >= 4
        ORDER BY r.rating DESC, r.created_at DESC
        LIMIT $1`,
       [limit]
@@ -279,56 +282,68 @@ const ReviewModel = {
   },
 
   // Admin: paginated list with filters
-  findAll: async ({ status = 'all', page = 1, limit = 20, search = '' } = {}) => {
+  findAll: async ({ status = 'all', rating = null, page = 1, limit = 20, search = '' } = {}) => {
     const offset = (page - 1) * limit;
 
     let statusClause;
-    if (status === 'needs_reply')     statusClause = `r.is_approved = TRUE AND (r.admin_reply IS NULL OR TRIM(r.admin_reply) = '')`;
-    else if (status === 'replied')    statusClause = `r.admin_reply IS NOT NULL AND TRIM(r.admin_reply) <> ''`;
-    else if (status === 'low_rating') statusClause = `r.is_approved = TRUE AND r.rating <= 3`;
-    else if (status === 'pending')    statusClause = 'r.is_approved = FALSE AND r.is_rejected = FALSE';
-    else if (status === 'approved')   statusClause = 'r.is_approved = TRUE';
-    else if (status === 'rejected')   statusClause = 'r.is_rejected = TRUE';
+    if (status === 'needs_reply')      statusClause = `r.is_approved = TRUE AND (r.admin_reply IS NULL OR TRIM(r.admin_reply) = '')`;
+    else if (status === 'replied')     statusClause = `r.admin_reply IS NOT NULL AND TRIM(r.admin_reply) <> ''`;
+    else if (status === 'low_rating')  statusClause = `r.is_approved = TRUE AND r.rating <= 3`;
+    else if (status === 'with_photos') statusClause = `r.is_approved = TRUE AND jsonb_array_length(COALESCE(r.images, '[]'::jsonb)) > 0`;
+    else if (status === 'pending')     statusClause = 'r.is_approved = FALSE AND r.is_rejected = FALSE';
+    else if (status === 'approved')    statusClause = 'r.is_approved = TRUE';
+    else if (status === 'rejected')    statusClause = 'r.is_rejected = TRUE';
     else statusClause = 'r.is_approved = TRUE';
 
-    const params = [];
-    let searchClause = '';
+    const filterParams = [];
+    const extraClauses = [];
+
     if (search) {
-      params.push(`%${search}%`);
-      searchClause = `AND (p.name ILIKE $${params.length} OR u.email ILIKE $${params.length} OR COALESCE(r.body, '') ILIKE $${params.length})`;
+      filterParams.push(`%${search}%`);
+      const idx = filterParams.length;
+      extraClauses.push(
+        `(p.name ILIKE $${idx} OR u.email ILIKE $${idx} OR u.first_name ILIKE $${idx} OR u.last_name ILIKE $${idx} OR COALESCE(r.title, '') ILIKE $${idx} OR COALESCE(r.body, '') ILIKE $${idx} OR COALESCE(r.admin_reply, '') ILIKE $${idx})`
+      );
     }
 
-    params.push(limit, offset);
-    const limitIdx  = params.length - 1;
-    const offsetIdx = params.length;
+    const parsedRating = Number.isInteger(rating) ? rating : parseInt(rating, 10);
+    if (parsedRating >= 1 && parsedRating <= 5) {
+      filterParams.push(parsedRating);
+      extraClauses.push(`r.rating = $${filterParams.length}`);
+    }
+
+    const extraWhere = extraClauses.length ? `AND ${extraClauses.join(' AND ')}` : '';
+    const listParams = [...filterParams, limit, offset];
+    const limitIdx  = listParams.length - 1;
+    const offsetIdx = listParams.length;
 
     const { rows } = await pool.query(
-      `SELECT r.id, r.rating, r.title, r.body,
+      `SELECT r.id, r.user_id, r.order_id, r.rating, r.title, r.body,
               r.admin_reply, r.admin_reply_at,
               COALESCE(r.images, '[]'::jsonb) AS images,
               r.is_approved, r.is_rejected, r.rejection_reason,
               (r.order_id IS NOT NULL) AS verified_purchase,
               r.helpful_count, r.created_at,
               u.first_name, u.last_name, u.email,
-              p.name AS product_name, p.id AS product_id, p.image_url
+              p.name AS product_name, p.id AS product_id, p.image_url,
+              o.order_number
        FROM product_reviews r
        JOIN users u ON r.user_id = u.id
        JOIN products p ON r.product_id = p.id
-       WHERE ${statusClause} ${searchClause}
+       LEFT JOIN orders o ON r.order_id = o.id
+       WHERE ${statusClause} ${extraWhere}
        ORDER BY r.created_at DESC
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
-      params
+      listParams
     );
 
-    const countParams = search ? [`%${search}%`] : [];
-    const countSearch = search ? `AND (p.name ILIKE $1 OR u.email ILIKE $1 OR COALESCE(r.body, '') ILIKE $1)` : '';
     const countResult = await pool.query(
       `SELECT COUNT(*)::int AS total
        FROM product_reviews r
        JOIN users u ON r.user_id = u.id
        JOIN products p ON r.product_id = p.id
-       WHERE ${statusClause} ${countSearch}`,
-      countParams
+       WHERE ${statusClause} ${extraWhere}`,
+      filterParams
     );
 
     return { rows, total: countResult.rows[0].total };
@@ -341,6 +356,8 @@ const ReviewModel = {
         COUNT(*) FILTER (WHERE is_approved = TRUE AND (admin_reply IS NULL OR TRIM(admin_reply) = ''))::int AS needs_reply,
         COUNT(*) FILTER (WHERE is_approved = TRUE AND admin_reply IS NOT NULL AND TRIM(admin_reply) <> '')::int AS replied,
         COUNT(*) FILTER (WHERE is_approved = TRUE AND rating <= 3)::int AS low_rating,
+        COUNT(*) FILTER (WHERE is_approved = TRUE AND jsonb_array_length(COALESCE(images, '[]'::jsonb)) > 0)::int AS with_photos,
+        COALESCE(ROUND(AVG(rating) FILTER (WHERE is_approved = TRUE)::numeric, 2), 0)::float AS avg_rating,
         COUNT(*) FILTER (WHERE is_approved = FALSE AND is_rejected = FALSE)::int AS pending,
         COUNT(*) FILTER (WHERE is_approved = TRUE)::int AS approved,
         COUNT(*) FILTER (WHERE is_rejected = TRUE)::int AS rejected

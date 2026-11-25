@@ -149,13 +149,17 @@ export default function AdminLayout() {
           cancel:         o.cancel         ?? prev.cancel,
           return:         o.return         ?? prev.return,
           pendingOrders:  o.pendingOrders  ?? prev.pendingOrders,
-          pendingReviews: r.pending        ?? prev.pendingReviews,
+          pendingReviews: r.needs_reply    ?? r.pending ?? prev.pendingReviews,
         }));
       });
     };
     fetchCounts();
     const timer = setInterval(fetchCounts, 60000);
-    return () => clearInterval(timer);
+    window.addEventListener('bc:counts-changed', fetchCounts);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('bc:counts-changed', fetchCounts);
+    };
   }, []);
 
   const toggleSidebarCollapse = useCallback(() => {
