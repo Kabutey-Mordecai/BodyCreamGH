@@ -20,6 +20,7 @@ const Products        = lazyWithRetry(() => import('./pages/Products'));
 const ProductEditor   = lazyWithRetry(() => import('./pages/ProductEditor'));
 const Orders          = lazyWithRetry(() => import('./pages/Orders'));
 const OrderDetail     = lazyWithRetry(() => import('./pages/OrderDetail'));
+const Riders          = lazyWithRetry(() => import('./pages/Riders'));
 const Customers       = lazyWithRetry(() => import('./pages/Customers'));
 const CustomerDetail  = lazyWithRetry(() => import('./pages/CustomerDetail'));
 const Inventory       = lazyWithRetry(() => import('./pages/Inventory'));
@@ -62,6 +63,7 @@ export default function App() {
             <Route path="/products/:id"           element={<ProductEditor />} />
             <Route path="/orders"                 element={<Orders />} />
             <Route path="/orders/:id"             element={<OrderDetail />} />
+            <Route path="/riders"                 element={<Riders />} />
             <Route path="/customers"              element={<Customers />} />
             <Route path="/customers/:id"          element={<CustomerDetail />} />
             <Route path="/inventory"              element={<Inventory />} />

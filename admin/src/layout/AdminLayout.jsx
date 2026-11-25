@@ -22,8 +22,9 @@ const NAV_GROUPS_DEF = [
   {
     label: 'Sell',
     items: [
-      { to: '/orders',      label: 'Orders',     icon: IconBag,   badgeKey: 'pendingOrders' },
-      { to: '/requests',    label: 'Requests',   icon: IconInbox, badgeKey: 'requests' },
+      { to: '/orders',      label: 'Orders',          icon: IconBag,   badgeKey: 'pendingOrders' },
+      { to: '/riders',      label: 'Riders & Fleet',  icon: IconTruck },
+      { to: '/requests',    label: 'Requests',        icon: IconInbox, badgeKey: 'requests' },
       { to: '/products',    label: 'Products',   icon: IconBox },
       { to: '/inventory',   label: 'Inventory',  icon: IconStack },
       { to: '/customers',   label: 'Customers',  icon: IconUsers },
@@ -54,6 +55,7 @@ const NAV_GROUPS_DEF = [
 const ROUTE_LABELS = {
   '': 'Dashboard',
   'orders': 'Orders',
+  'riders': 'Riders & Fleet',
   'requests': 'Requests',
   'products': 'Products',
   'inventory': 'Inventory',
@@ -406,6 +408,7 @@ export default function AdminLayout() {
 function IconGrid()    { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>; }
 function IconChart()   { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 3v18h18"/><path d="M7 14l4-4 4 4 5-6"/></svg>; }
 function IconBag()     { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M6 8h12l-1 11a2 2 0 01-2 2H9a2 2 0 01-2-2L6 8z"/><path d="M9 8V6a3 3 0 116 0v2"/></svg>; }
+function IconTruck()   { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="1" y="4" width="14" height="12" rx="1.5"/><path d="M15 8h4l4 4v4h-8V8z"/><circle cx="5.5" cy="18.5" r="2.2"/><circle cx="18.5" cy="18.5" r="2.2"/></svg>; }
 function IconBox()     { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/></svg>; }
 function IconStack()   { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M12 3L2 8l10 5 10-5-10-5z"/><path d="M2 14l10 5 10-5"/></svg>; }
 function IconUsers()   { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>; }

@@ -16,6 +16,11 @@ const {
   confirmCustomerReceipt,
   requireRiderToken,
   getDeliveryPartners,
+  listRiders,
+  createRider,
+  updateRider,
+  deleteRider,
+  removeLegacyPartner,
   createRiderManifestLink,
   getRiderManifest,
   riderResendPodOtp,
@@ -36,6 +41,11 @@ router.post('/rider/confirm',    confirmRiderDelivery);
 
 // ── Authenticated ─────────────────────────────────────────────────────────────
 router.get('/partners',                         verifyToken, requireAdmin, requireFulfillmentOrAdmin, getDeliveryPartners);
+router.get('/riders',                           verifyToken, requireAdmin, requireFulfillmentOrAdmin, listRiders);
+router.post('/riders',                          verifyToken, requireAdmin, requireFulfillmentOrAdmin, createRider);
+router.delete('/riders/legacy',                 verifyToken, requireAdmin, requireFulfillmentOrAdmin, removeLegacyPartner);
+router.put('/riders/:riderId',                  verifyToken, requireAdmin, requireFulfillmentOrAdmin, updateRider);
+router.delete('/riders/:riderId',               verifyToken, requireAdmin, requireFulfillmentOrAdmin, deleteRider);
 router.post('/bulk-dispatch',                   verifyToken, requireAdmin, requireFulfillmentOrAdmin, bulkDispatch);
 router.post('/',                                verifyToken, requireAdmin, requireFulfillmentOrAdmin, validateCreateDelivery, createDelivery);
 router.post('/manifest/link',                   verifyToken, requireAdmin, requireFulfillmentOrAdmin, createRiderManifestLink);

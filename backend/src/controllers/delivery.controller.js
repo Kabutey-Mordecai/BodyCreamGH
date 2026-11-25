@@ -14,7 +14,59 @@ const { notificationQueue } = require('../queues');
 const logger        = require('../utils/logger');
 
 const VALID_DELIVERY_STATUSES = ['pending', 'in_transit', 'out_for_delivery', 'delivered'];
+const VALID_VEHICLE_TYPES = ['motorbike', 'van', 'bicycle', 'car', 'courier'];
 const MAX_POD_OTP_ATTEMPTS = 5;
+
+let ridersTablePromise = null;
+async function ensureRidersTable() {
+  if (!ridersTablePromise) {
+    ridersTablePromise = pool
+      .query(`
+        CREATE TABLE IF NOT EXISTS dispatch_riders (
+          id            UUID PRIMARY KEY,
+          name          VARCHAR(120) NOT NULL,
+          phone         VARCHAR(40),
+          phone_norm    VARCHAR(32),
+          vehicle_type  VARCHAR(40)  NOT NULL DEFAULT 'motorbike',
+          vehicle_plate VARCHAR(40),
+          zone_coverage VARCHAR(160),
+          notes         TEXT,
+          is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+          created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+          updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_riders_name_lower
+          ON dispatch_riders (LOWER(TRIM(name)));
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_riders_phone_norm
+          ON dispatch_riders (phone_norm)
+          WHERE phone_norm IS NOT NULL AND phone_norm <> '';
+      `)
+      .catch(err => {
+        ridersTablePromise = null;
+        throw err;
+      });
+  }
+  return ridersTablePromise;
+}
+
+/**
+ * Normalizes Ghanaian & international mobile numbers to a canonical digit key
+ * so duplicate phone numbers (e.g. "024 123 4567" vs "+233241234567") are caught.
+ */
+function normalizeRiderPhone(raw) {
+  if (typeof raw !== 'string') return { clean: null, norm: null };
+  const trimmed = raw.trim();
+  if (!trimmed) return { clean: null, norm: null };
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) return { clean: null, norm: null };
+  let norm = digits;
+  if (digits.length === 10 && digits.startsWith('0')) {
+    norm = `233${digits.slice(1)}`;
+  } else if (digits.length === 9) {
+    norm = `233${digits}`;
+  }
+  return { clean: trimmed.slice(0, 40), norm: norm.slice(0, 32) };
+}
 
 /**
  * Maps Ghanaian region/city to a short Jumia-style routing zone code
@@ -148,12 +200,31 @@ async function dispatchOrderWithOtp({
     ? deliveryPartner.trim()
     : 'In-house Dispatch Bike';
 
+  let resolvedDriverPhone = typeof driverPhone === 'string' && driverPhone.trim()
+    ? driverPhone.trim()
+    : null;
+
+  if (!resolvedDriverPhone) {
+    try {
+      await ensureRidersTable();
+      const { rows: riderMatch } = await pool.query(
+        `SELECT phone FROM dispatch_riders WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1`,
+        [finalPartner]
+      );
+      if (riderMatch[0]?.phone) {
+        resolvedDriverPhone = riderMatch[0].phone;
+      }
+    } catch {
+      // Non-fatal fallback if lookup fails
+    }
+  }
+
   const deliveryId = await DeliveryModel.create({
     orderId:           order.id,
     deliveryPartner:   finalPartner,
     trackingNumber:    finalTracking,
     estimatedDelivery: estimatedDelivery,
-    driverPhone:       driverPhone,
+    driverPhone:       resolvedDriverPhone,
     zoneCode,
   });
 
@@ -884,12 +955,44 @@ const confirmCustomerReceipt = async (req, res) => {
   }
 };
 
-// ── Admin: list distinct riders / courier partners from deliveries table ──────
+// ── Admin: list active dispatch riders & active in-flight partners ───────────
 const getDeliveryPartners = async (_req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT TRIM(d.delivery_partner) AS delivery_partner,
+    await ensureRidersTable();
+
+    // 1. Registered active riders from dispatch_riders with live workload counts
+    const { rows: fleetRows } = await pool.query(
+      `SELECT r.id,
+              r.name AS delivery_partner,
+              r.phone AS driver_phone,
+              r.vehicle_type,
+              r.vehicle_plate,
+              r.zone_coverage,
+              TRUE AS is_registered,
+              COUNT(d.id) FILTER (
+                WHERE d.status IN ('pending', 'in_transit', 'out_for_delivery')
+                  AND d.pod_verified_at IS NULL
+                  AND o.status NOT IN ('delivered', 'cancelled', 'refunded')
+              )::int AS active_count,
+              COUNT(d.id)::int AS total_count
+         FROM dispatch_riders r
+         LEFT JOIN deliveries d ON LOWER(TRIM(d.delivery_partner)) = LOWER(TRIM(r.name))
+         LEFT JOIN orders o ON o.id = d.order_id
+        WHERE r.is_active = TRUE
+        GROUP BY r.id
+        ORDER BY active_count DESC, r.name ASC`
+    );
+
+    // 2. Include unregistered partners ONLY if they currently have active unverified stops
+    //    (prevents historical test names with 0 active stops from cluttering dispatch chips)
+    const { rows: activeLegacyRows } = await pool.query(
+      `SELECT NULL::uuid AS id,
+              TRIM(d.delivery_partner) AS delivery_partner,
               MAX(NULLIF(TRIM(d.driver_phone), '')) AS driver_phone,
+              'motorbike'::text AS vehicle_type,
+              NULL::text AS vehicle_plate,
+              NULL::text AS zone_coverage,
+              FALSE AS is_registered,
               COUNT(*) FILTER (
                 WHERE d.status IN ('pending', 'in_transit', 'out_for_delivery')
                   AND d.pod_verified_at IS NULL
@@ -900,13 +1003,465 @@ const getDeliveryPartners = async (_req, res) => {
          JOIN orders o ON o.id = d.order_id
         WHERE d.delivery_partner IS NOT NULL
           AND TRIM(d.delivery_partner) <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM dispatch_riders r
+             WHERE LOWER(TRIM(r.name)) = LOWER(TRIM(d.delivery_partner))
+          )
         GROUP BY TRIM(d.delivery_partner)
+       HAVING COUNT(*) FILTER (
+                WHERE d.status IN ('pending', 'in_transit', 'out_for_delivery')
+                  AND d.pod_verified_at IS NULL
+                  AND o.status NOT IN ('delivered', 'cancelled', 'refunded')
+              ) > 0
         ORDER BY active_count DESC, TRIM(d.delivery_partner) ASC`
     );
-    res.json({ partners: rows });
+
+    res.json({ partners: [...fleetRows, ...activeLegacyRows] });
   } catch (err) {
     logger.error('getDeliveryPartners error', { err: err.message });
     res.status(500).json({ error: 'Failed to load delivery partners' });
+  }
+};
+
+// ── Admin: Full Fleet & Riders Management CRUD ───────────────────────────────
+const listRiders = async (_req, res) => {
+  try {
+    await ensureRidersTable();
+
+    const { rows: riders } = await pool.query(
+      `SELECT r.id,
+              r.name,
+              r.phone,
+              r.vehicle_type,
+              r.vehicle_plate,
+              r.zone_coverage,
+              r.notes,
+              r.is_active,
+              r.created_at,
+              r.updated_at,
+              COUNT(d.id) FILTER (
+                WHERE d.status IN ('pending', 'in_transit', 'out_for_delivery')
+                  AND d.pod_verified_at IS NULL
+                  AND o.status NOT IN ('delivered', 'cancelled', 'refunded')
+              )::int AS active_stops,
+              COUNT(d.id) FILTER (
+                WHERE (d.pod_verified_at IS NOT NULL OR d.status = 'delivered')
+                  AND COALESCE(d.pod_verified_at, d.updated_at) >= CURRENT_DATE
+              )::int AS completed_today,
+              COUNT(d.id) FILTER (
+                WHERE d.pod_verified_at IS NOT NULL OR d.status = 'delivered'
+              )::int AS total_completed,
+              COUNT(d.id)::int AS total_assigned,
+              COALESCE(SUM(o.total_amount) FILTER (
+                WHERE d.status IN ('pending', 'in_transit', 'out_for_delivery')
+                  AND d.pod_verified_at IS NULL
+                  AND o.status NOT IN ('delivered', 'cancelled', 'refunded')
+                  AND o.payment_method = 'cod'
+                  AND COALESCE(o.payment_status, 'pending') <> 'completed'
+              ), 0)::numeric(12,2) AS cod_pending_ghs,
+              MAX(d.created_at) AS last_dispatched_at
+         FROM dispatch_riders r
+         LEFT JOIN deliveries d ON LOWER(TRIM(d.delivery_partner)) = LOWER(TRIM(r.name))
+         LEFT JOIN orders o ON o.id = d.order_id
+        GROUP BY r.id
+        ORDER BY r.is_active DESC, active_stops DESC, r.name ASC`
+    );
+
+    const { rows: legacyPartners } = await pool.query(
+      `SELECT TRIM(d.delivery_partner) AS delivery_partner,
+              MAX(NULLIF(TRIM(d.driver_phone), '')) AS driver_phone,
+              COUNT(*) FILTER (
+                WHERE d.status IN ('pending', 'in_transit', 'out_for_delivery')
+                  AND d.pod_verified_at IS NULL
+                  AND o.status NOT IN ('delivered', 'cancelled', 'refunded')
+              )::int AS active_stops,
+              COUNT(*) FILTER (
+                WHERE d.pod_verified_at IS NOT NULL OR d.status = 'delivered'
+              )::int AS completed_stops,
+              COUNT(*)::int AS total_count
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+        WHERE d.delivery_partner IS NOT NULL
+          AND TRIM(d.delivery_partner) <> ''
+          AND NOT EXISTS (
+            SELECT 1 FROM dispatch_riders r
+             WHERE LOWER(TRIM(r.name)) = LOWER(TRIM(d.delivery_partner))
+          )
+        GROUP BY TRIM(d.delivery_partner)
+        ORDER BY active_stops DESC, TRIM(d.delivery_partner) ASC`
+    );
+
+    res.json({ riders, legacy_partners: legacyPartners });
+  } catch (err) {
+    logger.error('listRiders error', { err: err.message });
+    res.status(500).json({ error: 'Failed to load dispatch riders' });
+  }
+};
+
+const createRider = async (req, res) => {
+  try {
+    await ensureRidersTable();
+
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
+    if (name.length < 2 || name.length > 120) {
+      return res.status(400).json({ error: 'Rider name is required (2–120 characters).' });
+    }
+
+    const { clean: phoneClean, norm: phoneNorm } = normalizeRiderPhone(req.body?.phone);
+    if (!phoneClean || !phoneNorm || phoneNorm.length < 9) {
+      return res.status(400).json({ error: 'A valid unique phone number is required for each rider.' });
+    }
+
+    const rawVehicle = typeof req.body?.vehicle_type === 'string' ? req.body.vehicle_type.trim().toLowerCase() : 'motorbike';
+    const vehicleType = VALID_VEHICLE_TYPES.includes(rawVehicle) ? rawVehicle : 'motorbike';
+    const vehiclePlate = typeof req.body?.vehicle_plate === 'string' && req.body.vehicle_plate.trim()
+      ? req.body.vehicle_plate.trim().slice(0, 40)
+      : null;
+    const zoneCoverage = typeof req.body?.zone_coverage === 'string' && req.body.zone_coverage.trim()
+      ? req.body.zone_coverage.trim().slice(0, 160)
+      : null;
+    const notes = typeof req.body?.notes === 'string' && req.body.notes.trim()
+      ? req.body.notes.trim().slice(0, 1000)
+      : null;
+    const isActive = req.body?.is_active !== false;
+
+    const { rows: dupName } = await pool.query(
+      `SELECT id, name FROM dispatch_riders WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1`,
+      [name]
+    );
+    if (dupName.length > 0) {
+      return res.status(409).json({ error: `A rider named "${dupName[0].name}" already exists.` });
+    }
+
+    const { rows: dupPhone } = await pool.query(
+      `SELECT id, name, phone FROM dispatch_riders WHERE phone_norm = $1 LIMIT 1`,
+      [phoneNorm]
+    );
+    if (dupPhone.length > 0) {
+      return res.status(409).json({
+        error: `Phone number is already registered to "${dupPhone[0].name}" (${dupPhone[0].phone}). Each rider must have a unique phone number.`,
+      });
+    }
+
+    const riderId = crypto.randomUUID();
+    const { rows } = await pool.query(
+      `INSERT INTO dispatch_riders (
+         id, name, phone, phone_norm, vehicle_type, vehicle_plate, zone_coverage, notes, is_active
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING *`,
+      [riderId, name, phoneClean, phoneNorm, vehicleType, vehiclePlate, zoneCoverage, notes, isActive]
+    );
+
+    // Sync any open unverified deliveries matching this rider name to their clean phone
+    await pool.query(
+      `UPDATE deliveries
+          SET delivery_partner = $1,
+              driver_phone = $2,
+              updated_at = NOW()
+        WHERE LOWER(TRIM(delivery_partner)) = LOWER(TRIM($1))
+          AND status IN ('pending', 'in_transit', 'out_for_delivery')
+          AND pod_verified_at IS NULL`,
+      [name, phoneClean]
+    ).catch(() => {});
+
+    await logAdminAction({
+      adminId: req.user?.id,
+      adminEmail: req.user?.email,
+      action: 'rider.create',
+      targetType: 'dispatch_rider',
+      targetId: riderId,
+      details: { name, phone: phoneClean, vehicle_type: vehicleType },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    res.status(201).json({ rider: rows[0], message: `Rider "${name}" added to fleet.` });
+  } catch (err) {
+    logger.error('createRider error', { err: err.message });
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'A rider with that name or phone number already exists.' });
+    }
+    res.status(500).json({ error: 'Failed to create rider' });
+  }
+};
+
+const updateRider = async (req, res) => {
+  try {
+    await ensureRidersTable();
+    const { riderId } = req.params;
+
+    const { rows: existingRows } = await pool.query(
+      `SELECT * FROM dispatch_riders WHERE id = $1 LIMIT 1`,
+      [riderId]
+    );
+    if (existingRows.length === 0) {
+      return res.status(404).json({ error: 'Rider not found' });
+    }
+    const existing = existingRows[0];
+
+    const name = typeof req.body?.name === 'string' ? req.body.name.trim() : existing.name;
+    if (name.length < 2 || name.length > 120) {
+      return res.status(400).json({ error: 'Rider name must be 2–120 characters.' });
+    }
+
+    let phoneClean = existing.phone;
+    let phoneNorm = existing.phone_norm;
+    if (req.body?.phone !== undefined) {
+      const parsed = normalizeRiderPhone(req.body.phone);
+      if (!parsed.clean || !parsed.norm || parsed.norm.length < 9) {
+        return res.status(400).json({ error: 'A valid unique phone number is required for each rider.' });
+      }
+      phoneClean = parsed.clean;
+      phoneNorm = parsed.norm;
+    }
+
+    const { rows: dupName } = await pool.query(
+      `SELECT id, name FROM dispatch_riders WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) AND id <> $2 LIMIT 1`,
+      [name, riderId]
+    );
+    if (dupName.length > 0) {
+      return res.status(409).json({ error: `Another rider is already named "${dupName[0].name}".` });
+    }
+
+    if (phoneNorm) {
+      const { rows: dupPhone } = await pool.query(
+        `SELECT id, name, phone FROM dispatch_riders WHERE phone_norm = $1 AND id <> $2 LIMIT 1`,
+        [phoneNorm, riderId]
+      );
+      if (dupPhone.length > 0) {
+        return res.status(409).json({
+          error: `Phone number is already registered to "${dupPhone[0].name}" (${dupPhone[0].phone}). Each rider must have a unique phone number.`,
+        });
+      }
+    }
+
+    const rawVehicle = typeof req.body?.vehicle_type === 'string'
+      ? req.body.vehicle_type.trim().toLowerCase()
+      : existing.vehicle_type;
+    const vehicleType = VALID_VEHICLE_TYPES.includes(rawVehicle) ? rawVehicle : existing.vehicle_type;
+
+    const vehiclePlate = req.body?.vehicle_plate !== undefined
+      ? (typeof req.body.vehicle_plate === 'string' && req.body.vehicle_plate.trim() ? req.body.vehicle_plate.trim().slice(0, 40) : null)
+      : existing.vehicle_plate;
+
+    const zoneCoverage = req.body?.zone_coverage !== undefined
+      ? (typeof req.body.zone_coverage === 'string' && req.body.zone_coverage.trim() ? req.body.zone_coverage.trim().slice(0, 160) : null)
+      : existing.zone_coverage;
+
+    const notes = req.body?.notes !== undefined
+      ? (typeof req.body.notes === 'string' && req.body.notes.trim() ? req.body.notes.trim().slice(0, 1000) : null)
+      : existing.notes;
+
+    const isActive = typeof req.body?.is_active === 'boolean' ? req.body.is_active : existing.is_active;
+
+    const { rows: updatedRows } = await pool.query(
+      `UPDATE dispatch_riders
+          SET name = $1,
+              phone = $2,
+              phone_norm = $3,
+              vehicle_type = $4,
+              vehicle_plate = $5,
+              zone_coverage = $6,
+              notes = $7,
+              is_active = $8,
+              updated_at = NOW()
+        WHERE id = $9
+        RETURNING *`,
+      [name, phoneClean, phoneNorm, vehicleType, vehiclePlate, zoneCoverage, notes, isActive, riderId]
+    );
+
+    // Keep open deliveries synced if rider name or phone changed
+    if (existing.name !== name || existing.phone !== phoneClean) {
+      await pool.query(
+        `UPDATE deliveries
+            SET delivery_partner = $1,
+                driver_phone = $2,
+                updated_at = NOW()
+          WHERE LOWER(TRIM(delivery_partner)) = LOWER(TRIM($3))
+            AND status IN ('pending', 'in_transit', 'out_for_delivery')
+            AND pod_verified_at IS NULL`,
+        [name, phoneClean, existing.name]
+      ).catch(() => {});
+    }
+
+    await logAdminAction({
+      adminId: req.user?.id,
+      adminEmail: req.user?.email,
+      action: 'rider.update',
+      targetType: 'dispatch_rider',
+      targetId: riderId,
+      details: { name, phone: phoneClean, is_active: isActive },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    res.json({ rider: updatedRows[0], message: `Rider "${name}" updated.` });
+  } catch (err) {
+    logger.error('updateRider error', { err: err.message });
+    if (err.code === '23505') {
+      return res.status(409).json({ error: 'Another rider already uses that name or phone number.' });
+    }
+    res.status(500).json({ error: 'Failed to update rider' });
+  }
+};
+
+const deleteRider = async (req, res) => {
+  try {
+    await ensureRidersTable();
+    const { riderId } = req.params;
+    const force = req.query.force === 'true' || req.body?.force === true;
+
+    const { rows: existingRows } = await pool.query(
+      `SELECT * FROM dispatch_riders WHERE id = $1 LIMIT 1`,
+      [riderId]
+    );
+    if (existingRows.length === 0) {
+      return res.status(404).json({ error: 'Rider not found' });
+    }
+    const existing = existingRows[0];
+
+    const { rows: activeCheck } = await pool.query(
+      `SELECT COUNT(*)::int AS active_count
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+        WHERE LOWER(TRIM(d.delivery_partner)) = LOWER(TRIM($1))
+          AND d.status IN ('pending', 'in_transit', 'out_for_delivery')
+          AND d.pod_verified_at IS NULL
+          AND o.status NOT IN ('delivered', 'cancelled', 'refunded')`,
+      [existing.name]
+    );
+    const activeCount = activeCheck[0]?.active_count || 0;
+
+    if (activeCount > 0 && !force) {
+      return res.status(409).json({
+        error: `"${existing.name}" currently has ${activeCount} active in-transit stop${activeCount === 1 ? '' : 's'}. Reassign them first or confirm force-delete to unassign them.`,
+        active_stops: activeCount,
+        requires_force: true,
+      });
+    }
+
+    await pool.query(`DELETE FROM dispatch_riders WHERE id = $1`, [riderId]);
+
+    // Clear partner tag from deliveries so deleted rider never re-appears as a legacy entry
+    await pool.query(
+      `UPDATE deliveries
+          SET delivery_partner = CASE
+                WHEN status IN ('pending', 'in_transit', 'out_for_delivery') AND pod_verified_at IS NULL
+                  THEN 'In-house Dispatch Bike'
+                ELSE NULL
+              END,
+              driver_phone = NULL,
+              updated_at = NOW()
+        WHERE LOWER(TRIM(delivery_partner)) = LOWER(TRIM($1))`,
+      [existing.name]
+    );
+
+    await logAdminAction({
+      adminId: req.user?.id,
+      adminEmail: req.user?.email,
+      action: 'rider.delete',
+      targetType: 'dispatch_rider',
+      targetId: riderId,
+      details: { name: existing.name, force, active_stops_reassigned: activeCount },
+      ipAddress: req.ip,
+    }).catch(() => {});
+
+    res.json({
+      message: activeCount > 0
+        ? `Deleted "${existing.name}" and reassigned ${activeCount} open delivery stop${activeCount === 1 ? '' : 's'} to In-house Dispatch Bike.`
+        : `Deleted rider "${existing.name}".`,
+    });
+  } catch (err) {
+    logger.error('deleteRider error', { err: err.message });
+    res.status(500).json({ error: 'Failed to delete rider' });
+  }
+};
+
+// ── Admin: Delete / clean up unregistered legacy or test rider names ──────────
+const removeLegacyPartner = async (req, res) => {
+  try {
+    await ensureRidersTable();
+    const partnerName = typeof (req.body?.delivery_partner ?? req.query?.name) === 'string'
+      ? (req.body?.delivery_partner ?? req.query?.name).trim()
+      : '';
+    const clearAll = req.body?.clear_all === true || req.query?.clear_all === 'true';
+    const forceActive = req.body?.force === true || req.query?.force === 'true';
+
+    if (!clearAll && !partnerName) {
+      return res.status(400).json({ error: 'Specify delivery_partner name or clear_all=true' });
+    }
+
+    if (clearAll) {
+      const { rowCount } = await pool.query(
+        `UPDATE deliveries d
+            SET delivery_partner = CASE
+                  WHEN d.status IN ('pending', 'in_transit', 'out_for_delivery') AND d.pod_verified_at IS NULL
+                    THEN ${forceActive ? `'In-house Dispatch Bike'` : `d.delivery_partner`}
+                  ELSE NULL
+                END,
+                driver_phone = CASE
+                  WHEN d.status IN ('pending', 'in_transit', 'out_for_delivery') AND d.pod_verified_at IS NULL
+                    THEN ${forceActive ? `NULL` : `d.driver_phone`}
+                  ELSE NULL
+                END,
+                updated_at = NOW()
+          WHERE d.delivery_partner IS NOT NULL
+            AND TRIM(d.delivery_partner) <> ''
+            AND LOWER(TRIM(d.delivery_partner)) <> 'in-house dispatch bike'
+            AND NOT EXISTS (
+              SELECT 1 FROM dispatch_riders r
+               WHERE LOWER(TRIM(r.name)) = LOWER(TRIM(d.delivery_partner))
+            )
+            ${forceActive ? '' : `AND (d.pod_verified_at IS NOT NULL OR d.status = 'delivered')`}`
+      );
+
+      return res.json({
+        cleared_rows: rowCount,
+        message: `Cleaned up ${rowCount} historical/test rider assignment${rowCount === 1 ? '' : 's'}.`,
+      });
+    }
+
+    // Single unregistered rider cleanup
+    const { rows: activeCheck } = await pool.query(
+      `SELECT COUNT(*)::int AS active_count
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+        WHERE LOWER(TRIM(d.delivery_partner)) = LOWER(TRIM($1))
+          AND d.status IN ('pending', 'in_transit', 'out_for_delivery')
+          AND d.pod_verified_at IS NULL
+          AND o.status NOT IN ('delivered', 'cancelled', 'refunded')`,
+      [partnerName]
+    );
+    const activeCount = activeCheck[0]?.active_count || 0;
+
+    if (activeCount > 0 && !forceActive) {
+      return res.status(409).json({
+        error: `"${partnerName}" is currently assigned to ${activeCount} open order${activeCount === 1 ? '' : 's'}. Confirm to reassign open orders to In-house Dispatch Bike and remove "${partnerName}".`,
+        active_stops: activeCount,
+        requires_force: true,
+      });
+    }
+
+    const { rowCount } = await pool.query(
+      `UPDATE deliveries
+          SET delivery_partner = CASE
+                WHEN status IN ('pending', 'in_transit', 'out_for_delivery') AND pod_verified_at IS NULL
+                  THEN 'In-house Dispatch Bike'
+                ELSE NULL
+              END,
+              driver_phone = NULL,
+              updated_at = NOW()
+        WHERE LOWER(TRIM(delivery_partner)) = LOWER(TRIM($1))`,
+      [partnerName]
+    );
+
+    res.json({
+      cleared_rows: rowCount,
+      message: activeCount > 0
+        ? `Removed "${partnerName}" and moved ${activeCount} active stop${activeCount === 1 ? '' : 's'} to In-house Dispatch Bike.`
+        : `Removed "${partnerName}".`,
+    });
+  } catch (err) {
+    logger.error('removeLegacyPartner error', { err: err.message });
+    res.status(500).json({ error: 'Failed to remove legacy rider' });
   }
 };
 
@@ -1183,6 +1738,7 @@ const riderResendPodOtp = async (req, res) => {
 };
 
 module.exports = {
+  ensureRidersTable,
   createDelivery,
   bulkDispatch,
   trackShipment,
@@ -1194,6 +1750,11 @@ module.exports = {
   confirmCustomerReceipt,
   requireRiderToken,
   getDeliveryPartners,
+  listRiders,
+  createRider,
+  updateRider,
+  deleteRider,
+  removeLegacyPartner,
   createRiderManifestLink,
   getRiderManifest,
   riderResendPodOtp,

@@ -7,6 +7,7 @@ import './CommandPalette.css';
 const DEFAULT_PAGES = [
   { label: 'Dashboard', path: '/', category: 'Navigation', icon: '✦' },
   { label: 'Orders', path: '/orders', category: 'Navigation', icon: '🛍️' },
+  { label: 'Riders & Dispatch Fleet', path: '/riders', category: 'Navigation', icon: '🏍️' },
   { label: 'Requests (Cancellations & Returns)', path: '/requests', category: 'Navigation', icon: '📥' },
   { label: 'Products', path: '/products', category: 'Navigation', icon: '📦' },
   { label: 'Inventory & Stock Logs', path: '/inventory', category: 'Navigation', icon: '📊' },
@@ -25,6 +26,7 @@ const DEFAULT_PAGES = [
 
 const QUICK_ACTIONS = [
   { label: 'Create New Product', path: '/products/new', category: 'Actions', icon: '➕' },
+  { label: 'Manage Dispatch Riders', path: '/riders', category: 'Actions', icon: '🏍️' },
   { label: 'Compose Newsletter', path: '/newsletter/compose', category: 'Actions', icon: '✍️' },
   { label: 'Create Promo Coupon', path: '/coupons', category: 'Actions', icon: '🏷️' },
   { label: 'Visit Storefront (New Tab)', url: import.meta.env.VITE_STOREFRONT_URL || 'https://bodycreamgh-shop.vercel.app', external: true, category: 'Actions', icon: '↗️' },

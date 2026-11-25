@@ -260,6 +260,9 @@ async function start() {
 
   await bootstrapAdmin(db).catch(err => logger.error('Admin bootstrap error', { err: err.message }));
 
+  const { ensureRidersTable } = require('./controllers/delivery.controller');
+  await ensureRidersTable().catch(err => logger.error('Riders table init error', { err: err.message }));
+
   const { verifyTransporter } = require('./services/email.service');
   await verifyTransporter().catch(() => {}); // errors already logged inside verifyTransporter
 

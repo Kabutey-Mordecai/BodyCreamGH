@@ -8,6 +8,7 @@ export const ROUTE_PERMISSIONS = {
   '/financials':          ['super_admin', 'admin'],
   '/orders':              ['super_admin', 'admin', 'fulfillment', 'support'],
   '/orders/:id':          ['super_admin', 'admin', 'fulfillment', 'support'],
+  '/riders':              ['super_admin', 'admin', 'fulfillment'],
   '/requests':            ['super_admin', 'admin', 'fulfillment', 'support'],
   '/products':            ['super_admin', 'admin', 'marketing'],
   '/products/new':        ['super_admin', 'admin', 'marketing'],

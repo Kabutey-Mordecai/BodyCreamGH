@@ -980,18 +980,23 @@ export default function OrderDetail() {
                   </form>
                 ) : (
                   <form onSubmit={handleCreateDelivery}>
-                    <div className="rm-step-label">Quick-Assign Dispatch Rider</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                      <div className="rm-step-label" style={{ marginBottom: 0 }}>Quick-Assign Dispatch Rider</div>
+                      <Link to="/riders" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--ac-accent)', textDecoration: 'none' }}>
+                        Manage Riders &amp; Phones →
+                      </Link>
+                    </div>
                     <div className="od-rider-chips">
                       <button
                         type="button"
                         className={`od-rider-chip${deliveryForm.delivery_partner === 'In-house Dispatch Bike' ? ' is-selected' : ''}`}
-                        onClick={() => setDeliveryForm(prev => ({ ...prev, delivery_partner: 'In-house Dispatch Bike' }))}
+                        onClick={() => setDeliveryForm(prev => ({ ...prev, delivery_partner: 'In-house Dispatch Bike', driver_phone: '' }))}
                       >
                         🏍️ In-house Bike Rider
                       </button>
                       {knownPartners
                         .filter(p => p.delivery_partner.toLowerCase() !== 'in-house dispatch bike')
-                        .slice(0, 8)
+                        .slice(0, 10)
                         .map(p => {
                           const isSel = deliveryForm.delivery_partner.toLowerCase() === p.delivery_partner.toLowerCase();
                           return (
@@ -1002,7 +1007,7 @@ export default function OrderDetail() {
                               onClick={() => setDeliveryForm(prev => ({
                                 ...prev,
                                 delivery_partner: p.delivery_partner,
-                                driver_phone: p.driver_phone || prev.driver_phone,
+                                driver_phone: p.driver_phone || '',
                               }))}
                             >
                               <span>{p.delivery_partner}</span>
@@ -1015,7 +1020,7 @@ export default function OrderDetail() {
                       <button
                         type="button"
                         className={`od-rider-chip${deliveryForm.delivery_partner === 'DHL / External Courier' ? ' is-selected' : ''}`}
-                        onClick={() => setDeliveryForm(prev => ({ ...prev, delivery_partner: 'DHL / External Courier' }))}
+                        onClick={() => setDeliveryForm(prev => ({ ...prev, delivery_partner: 'DHL / External Courier', driver_phone: '' }))}
                       >
                         📦 External Courier
                       </button>

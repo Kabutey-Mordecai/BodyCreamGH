@@ -780,7 +780,16 @@ export default function Orders() {
             <div className="rm-modal-body">
               {/* Step 1: Select Rider */}
               <div>
-                <div className="rm-step-label">1. Select Dispatch Rider or Fleet</div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
+                  <div className="rm-step-label" style={{ marginBottom: 0 }}>1. Select Dispatch Rider or Fleet</div>
+                  <Link
+                    to="/riders"
+                    onClick={() => setManifestOpen(false)}
+                    style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--ac-accent)', textDecoration: 'none' }}
+                  >
+                    Manage Riders &amp; Fleet →
+                  </Link>
+                </div>
                 <div className="rm-rider-grid">
                   {(() => {
                     const totalActive = knownPartners.reduce((sum, p) => sum + (p.active_count || 0), 0);
@@ -954,6 +963,31 @@ export default function Orders() {
 
               {!bulkResult ? (
                 <>
+                  {knownPartners.length > 0 && (
+                    <div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <span className="muted text-xs" style={{ fontWeight: 700 }}>Select Registered Rider</span>
+                        <Link to="/riders" onClick={() => setBulkOpen(false)} style={{ fontSize: '0.73rem', fontWeight: 700, color: 'var(--ac-accent)', textDecoration: 'none' }}>
+                          + Add / Edit Riders →
+                        </Link>
+                      </div>
+                      <div className="od-rider-chips" style={{ marginBottom: 4 }}>
+                        {knownPartners.slice(0, 8).map(p => (
+                          <button
+                            key={p.delivery_partner}
+                            type="button"
+                            className={`od-rider-chip${bulkPartner.toLowerCase() === p.delivery_partner.toLowerCase() ? ' is-selected' : ''}`}
+                            onClick={() => {
+                              setBulkPartner(p.delivery_partner);
+                              setBulkPhone(p.driver_phone || '');
+                            }}
+                          >
+                            {p.delivery_partner}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <div className="field" style={{ marginBottom: 0 }}>
                     <label>Rider / Courier Name *</label>
                     <input

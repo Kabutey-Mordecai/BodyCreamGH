@@ -184,17 +184,22 @@ export const couponsAPI = {
   remove:     (id)        => api.delete(`/coupons/${id}`),
 };
 
-// ── Deliveries ────────────────────────────────────────────────────────
+// ── Deliveries & Dispatch Fleet ───────────────────────────────────────
 export const deliveriesAPI = {
-  getByOrder:         (orderId)              => api.get(`/deliveries/order/${orderId}`),
-  getPartners:        ()                     => api.get('/deliveries/partners'),
-  create:             (data)                 => api.post('/deliveries', data),
-  bulkDispatch:       (data)                 => api.post('/deliveries/bulk-dispatch', data),
-  update:             (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
-  simulateAdvance:    (trackingNumber)       => api.post(`/deliveries/simulate/advance/${encodeURIComponent(trackingNumber)}`),
-  simulateFull:       (trackingNumber, delay) => api.post(`/deliveries/simulate/full/${encodeURIComponent(trackingNumber)}${delay ? `?delay=${delay}` : ''}`),
-  sendPodOtp:         (deliveryId)           => api.post(`/deliveries/${deliveryId}/pod/send-otp`),
-  createManifestLink: (data = {})            => api.post('/deliveries/manifest/link', data),
+  getByOrder:          (orderId)              => api.get(`/deliveries/order/${orderId}`),
+  getPartners:         ()                     => api.get('/deliveries/partners'),
+  getRiders:           ()                     => api.get('/deliveries/riders'),
+  createRider:         (data)                 => api.post('/deliveries/riders', data),
+  updateRider:         (riderId, data)        => api.put(`/deliveries/riders/${riderId}`, data),
+  deleteRider:         (riderId, force = false) => api.delete(`/deliveries/riders/${riderId}${force ? '?force=true' : ''}`),
+  removeLegacyPartner: (data)                 => api.delete('/deliveries/riders/legacy', { data }),
+  create:              (data)                 => api.post('/deliveries', data),
+  bulkDispatch:        (data)                 => api.post('/deliveries/bulk-dispatch', data),
+  update:              (deliveryId, data)     => api.patch(`/deliveries/${deliveryId}`, data),
+  simulateAdvance:     (trackingNumber)       => api.post(`/deliveries/simulate/advance/${encodeURIComponent(trackingNumber)}`),
+  simulateFull:        (trackingNumber, delay) => api.post(`/deliveries/simulate/full/${encodeURIComponent(trackingNumber)}${delay ? `?delay=${delay}` : ''}`),
+  sendPodOtp:          (deliveryId)           => api.post(`/deliveries/${deliveryId}/pod/send-otp`),
+  createManifestLink:  (data = {})            => api.post('/deliveries/manifest/link', data),
 };
 
 // ── Product variants ──────────────────────────────────────────────────────────
