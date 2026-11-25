@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 import { toFiniteNumber } from '../utils/number';
+import { useSeo } from '../utils/seo';
 import './PolicyPage.css';
 
 export default function PolicyPage({ type = 'privacy' }) {
@@ -133,9 +133,10 @@ export default function PolicyPage({ type = 'privacy' }) {
     ? customPolicyRaw.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
     : [];
 
-  useEffect(() => {
-    document.title = `${page.title} — ${storeName}`;
-  }, [page.title, storeName]);
+  useSeo({
+    title: `${page.title} — ${storeName}`,
+    description: page.subtitle,
+  });
 
   return (
     <div className="policy-page container">

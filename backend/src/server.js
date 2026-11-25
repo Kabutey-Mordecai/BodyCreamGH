@@ -160,7 +160,7 @@ function escapeXml(str) {
 // ── Dynamic XML Sitemap (SEO) ────────────────────────────────────────────────
 app.get(['/api/sitemap.xml', '/sitemap.xml'], async (_req, res) => {
   try {
-    const siteUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const siteUrl = (process.env.FRONTEND_URL || 'https://bodycreamgh-shop.vercel.app').replace(/\/$/, '');
     const [productsRes, categoriesRes] = await Promise.all([
       pool.query(`SELECT id, updated_at FROM products WHERE is_active = TRUE ORDER BY updated_at DESC LIMIT 5000`),
       pool.query(`SELECT DISTINCT category FROM products WHERE is_active = TRUE AND category IS NOT NULL`),
@@ -169,6 +169,11 @@ app.get(['/api/sitemap.xml', '/sitemap.xml'], async (_req, res) => {
     const urls = [
       `  <url><loc>${escapeXml(siteUrl)}/</loc><changefreq>daily</changefreq><priority>1.0</priority></url>`,
       `  <url><loc>${escapeXml(siteUrl)}/shop</loc><changefreq>daily</changefreq><priority>0.9</priority></url>`,
+      `  <url><loc>${escapeXml(siteUrl)}/shipping-policy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>`,
+      `  <url><loc>${escapeXml(siteUrl)}/refund-policy</loc><changefreq>monthly</changefreq><priority>0.5</priority></url>`,
+      `  <url><loc>${escapeXml(siteUrl)}/privacy-policy</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>`,
+      `  <url><loc>${escapeXml(siteUrl)}/terms</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>`,
+      `  <url><loc>${escapeXml(siteUrl)}/contact</loc><changefreq>monthly</changefreq><priority>0.6</priority></url>`,
       ...categoriesRes.rows.map(c =>
         `  <url><loc>${escapeXml(siteUrl)}/shop?category=${escapeXml(encodeURIComponent(c.category))}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
       ),

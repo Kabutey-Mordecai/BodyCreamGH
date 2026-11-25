@@ -103,6 +103,13 @@ function RouteFade({ children }) {
   useEffect(() => {
     if (ROUTE_TITLE_PREFIXES[pathname]) {
       document.title = `${ROUTE_TITLE_PREFIXES[pathname]} — ${storeName}`;
+      let robotsEl = document.head.querySelector('meta[name="robots"]');
+      if (!robotsEl) {
+        robotsEl = document.createElement('meta');
+        robotsEl.setAttribute('name', 'robots');
+        document.head.appendChild(robotsEl);
+      }
+      robotsEl.setAttribute('content', 'noindex, nofollow');
     }
   }, [pathname, storeName]);
   useEffect(() => {

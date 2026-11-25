@@ -13,4 +13,4 @@ Disallow: /wishlist
 Disallow: /track
 Disallow: /unsubscribe
 
-Sitemap: https://bodycreamgh.com/sitemap.xml
+Sitemap: https://bodycreamgh-shop.vercel.app/sitemap.xml
