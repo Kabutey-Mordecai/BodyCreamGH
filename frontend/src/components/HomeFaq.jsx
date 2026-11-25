@@ -10,7 +10,7 @@ export function buildFaqItems(settings = {}) {
     if (valid.length > 0) return valid;
   }
 
-  const storeName = settings.store_name || 'GlowHaus Beauty';
+  const storeName = settings.store_name || 'BodyCream GH';
   const accraEst = settings.delivery_estimate_accra || '1–2 business days';
   const nationEst = settings.delivery_estimate_nationwide || '3–5 business days';
   const freeOver = Number(settings.free_delivery_over);

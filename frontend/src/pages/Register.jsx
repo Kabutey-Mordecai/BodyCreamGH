@@ -14,7 +14,7 @@ function formatCountdown(secs) {
 export default function Register() {
   const { register } = useAuth();
   const settings     = useSettings();
-  const storeName    = settings?.store_name || 'GlowHaus Beauty';
+  const storeName    = settings?.store_name || 'BodyCream GH';
   const navigate     = useNavigate();
   const location     = useLocation();
 

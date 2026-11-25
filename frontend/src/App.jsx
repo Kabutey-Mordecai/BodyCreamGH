@@ -99,7 +99,7 @@ function getVisitorId() {
 function RouteFade({ children }) {
   const { pathname } = useLocation();
   const settings = useSettings();
-  const storeName = settings?.store_name || 'GlowHaus Beauty';
+  const storeName = settings?.store_name || 'BodyCream GH';
   useEffect(() => {
     if (ROUTE_TITLE_PREFIXES[pathname]) {
       document.title = `${ROUTE_TITLE_PREFIXES[pathname]} — ${storeName}`;

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import { settingsAPI } from '../services/api';
 
 const DEFAULTS = {
-  store_name: 'GlowHaus Beauty',
+  store_name: 'BodyCream GH',
   low_stock_threshold: 5,
   delivery_estimate_accra: '1–2 business days',
   delivery_estimate_nationwide: '3–5 business days',
@@ -118,7 +118,7 @@ const DEFAULTS = {
   // Jumia-inspired bottom SEO & regional editorial guide
   seo_editorial_enabled: true,
   seo_editorial_title: 'Authentic Cosmetics, Skincare, Makeup & Fragrances Online',
-  seo_editorial_text: "Welcome to GlowHaus Beauty, your trusted destination for authentic skincare, makeup, haircare, body care, and fragrances. Every product in our catalog is sourced from verified brand distributors and sealed for freshness. Whether you are shopping from Accra, Tema, Kumasi, Takoradi, or anywhere nationwide, enjoy fast dispatch, secure Paystack checkout (Mobile Money, Visa, Mastercard), Pay on Delivery options, and easy store pickup.",
+  seo_editorial_text: "Welcome to BodyCream GH, your trusted destination for authentic skincare, makeup, haircare, body care, and fragrances. Every product in our catalog is sourced from verified brand distributors and sealed for freshness. Whether you are shopping from Accra, Tema, Kumasi, Takoradi, or anywhere nationwide, enjoy fast dispatch, secure Paystack checkout (Mobile Money, Visa, Mastercard), Pay on Delivery options, and easy store pickup.",
 
   hero_label: 'Curated Beauty & Cosmetics',
   hero_headline: 'Every brand you love, in one place.',

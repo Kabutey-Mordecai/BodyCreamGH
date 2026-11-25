@@ -84,12 +84,12 @@ export default function Footer() {
   } = settings;
 
   const cleanPhone = store_phone || settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
-  const cleanEmail = store_email || settings.contact_email || 'hello@glowhausbeauty.com';
+  const cleanEmail = store_email || settings.contact_email || 'hello@bodycreamgh.com';
 
   const rawWa = String(whatsapp_number || cleanPhone || '').replace(/\D/g, '');
   const waDigits = rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa;
   const waHref = waDigits
-    ? `https://wa.me/${waDigits}?text=Hello%20${encodeURIComponent(store_name || 'GlowHaus Beauty')},%20I%20have%20an%20inquiry.`
+    ? `https://wa.me/${waDigits}?text=Hello%20${encodeURIComponent(store_name || 'BodyCream GH')},%20I%20have%20an%20inquiry.`
     : (footer_whatsapp || 'https://wa.me/233245852804');
 
   const pickupEnabled = pickup_enabled !== false && pickup_enabled !== 'false';
@@ -97,7 +97,7 @@ export default function Footer() {
   const showBackToTop = back_to_top_enabled !== false && back_to_top_enabled !== 'false';
   const showPaymentBadges = footer_payment_badges_enabled !== false && footer_payment_badges_enabled !== 'false';
 
-  const defaultHandle = 'glowhausbeauty';
+  const defaultHandle = 'bodycreamgh';
   const getSocialHref = (label, customHref) => {
     if (customHref && !customHref.endsWith('.com') && !customHref.endsWith('.com/')) {
       return customHref;

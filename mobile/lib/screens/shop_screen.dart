@@ -44,7 +44,7 @@ class _ShopScreenState extends State<ShopScreen> {
   List<Map<String, dynamic>> _facetBrands = const [];
   double _priceBoundMin = 0;
   double _priceBoundMax = 600;
-  String _storeName = 'GLOWHAUS BEAUTY';
+  String _storeName = 'BODYCREAM GH';
 
   List<String> get _categories {
     final set = <String>{'All'};

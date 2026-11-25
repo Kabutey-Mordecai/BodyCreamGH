@@ -132,12 +132,12 @@ export default function Home() {
       '@graph': [
         {
           '@type': 'Organization',
-          name: store_name || 'GlowHaus Beauty',
+          name: store_name || 'BodyCream GH',
           url: window.location.origin,
         },
         {
           '@type': 'WebSite',
-          name: store_name || 'GlowHaus Beauty',
+          name: store_name || 'BodyCream GH',
           url: window.location.origin,
           potentialAction: {
             '@type': 'SearchAction',
@@ -161,7 +161,7 @@ export default function Home() {
   }, [settings, store_name]);
 
   useSeo({
-    title: `${store_name || 'GlowHaus Beauty'} — Authentic Cosmetics, Skincare & Makeup`,
+    title: `${store_name || 'BodyCream GH'} — Authentic Cosmetics, Skincare & Makeup`,
     description: hero_subtitle || 'Shop 100% authentic skincare, makeup, haircare, body care, and fragrances.',
     image: hero_image || DEFAULT_HERO_IMG,
     jsonLd: homeJsonLd,

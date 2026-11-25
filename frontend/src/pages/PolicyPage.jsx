@@ -6,8 +6,8 @@ import './PolicyPage.css';
 
 export default function PolicyPage({ type = 'privacy' }) {
   const settings = useSettings() || {};
-  const storeName = settings.store_name || 'GlowHaus Beauty';
-  const email = settings.store_email || settings.contact_email || 'hello@glowhausbeauty.com';
+  const storeName = settings.store_name || 'BodyCream GH';
+  const email = settings.store_email || settings.contact_email || 'hello@bodycreamgh.com';
   const phone = settings.store_phone || settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
   const rawWa = String(settings.whatsapp_number || phone || '').replace(/\D/g, '');
   const waDigits = rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa;

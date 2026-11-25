@@ -193,7 +193,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (custom.isNotEmpty) return custom;
     }
 
-    final storeName = _str('store_name', 'GlowHaus Beauty');
+    final storeName = _str('store_name', 'BodyCream GH');
     final accraEta = _str('delivery_estimate_accra', '1–2 business days');
     final nationEta = _str('delivery_estimate_nationwide', '3–5 business days');
     final freeOver = double.tryParse((_settings['free_delivery_over'] ?? 200).toString()) ?? 200;
@@ -598,7 +598,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
     final seoText = _str(
       'seo_editorial_text',
-      'Welcome to GlowHaus Beauty, your trusted destination for authentic skincare, makeup, haircare, body care, and fragrances. Every product in our catalog is sourced from verified brand distributors and sealed for freshness. Whether you are shopping from Accra, Tema, Kumasi, Takoradi, or anywhere nationwide, enjoy fast dispatch, secure Paystack checkout, and easy store pickup.',
+      'Welcome to BodyCream GH, your trusted destination for authentic skincare, makeup, haircare, body care, and fragrances. Every product in our catalog is sourced from verified brand distributors and sealed for freshness. Whether you are shopping from Accra, Tema, Kumasi, Takoradi, or anywhere nationwide, enjoy fast dispatch, secure Paystack checkout, and easy store pickup.',
     );
 
     return Scaffold(

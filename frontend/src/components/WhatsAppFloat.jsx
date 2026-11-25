@@ -31,7 +31,7 @@ export default function WhatsAppFloat() {
   const waNumber = digits.length === 10 && digits.startsWith('0')
     ? `233${digits.slice(1)}`
     : digits;
-  const brandName = store_name || 'GlowHaus Beauty';
+  const brandName = store_name || 'BodyCream GH';
   const greeting = `Hi ${brandName}, I have a question about your cosmetics.`;
   const waHref = `https://wa.me/${waNumber}?text=${encodeURIComponent(greeting)}`;
   const bubbleText =
