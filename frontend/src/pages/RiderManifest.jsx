@@ -521,16 +521,16 @@ export default function RiderManifest() {
 
             <div className="rp-kpi-box">
               <div className="rp-kpi-label">COD To Collect</div>
-              <div className={`rp-kpi-val ${summary.cod_pending_ghs > 0 ? 'rp-kpi-val--amber' : ''}`}>
-                GHS {summary.cod_pending_ghs.toFixed(2)}
+              <div className={`rp-kpi-val ${summary.cod_pending_ghs > 0 ? 'rp-kpi-val--amber' : ''}`} style={{ whiteSpace: 'nowrap' }}>
+                GHS {Number(summary.cod_pending_ghs || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div className="rp-kpi-sub">Cash or Mobile Money</div>
             </div>
 
             <div className="rp-kpi-box rp-kpi-box--wide">
               <div className="rp-kpi-label">COD Collected Today</div>
-              <div className="rp-kpi-val rp-kpi-val--emerald">
-                GHS {summary.cod_collected_ghs.toFixed(2)}
+              <div className="rp-kpi-val rp-kpi-val--emerald" style={{ whiteSpace: 'nowrap' }}>
+                GHS {Number(summary.cod_collected_ghs || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </div>
               <div className="rp-kpi-sub">
                 {lastSyncedAt
@@ -688,14 +688,10 @@ export default function RiderManifest() {
 
                   <div className="rp-customer-name">{stop.customer_name}</div>
                   <div className="rp-order-meta">
-                    <span>Order #{stop.order_number}</span>
-                    <span>·</span>
-                    <span>{stop.tracking_number}</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>#{stop.order_number}</span>
+                    <span style={{ whiteSpace: 'nowrap' }}>{stop.tracking_number}</span>
                     {stop.customer_phone && (
-                      <>
-                        <span>·</span>
-                        <span>{stop.customer_phone}</span>
-                      </>
+                      <span style={{ whiteSpace: 'nowrap' }}>{stop.customer_phone}</span>
                     )}
                   </div>
 
@@ -737,11 +733,11 @@ export default function RiderManifest() {
                   <div className={`rp-pay-banner ${stop.cod_amount_due > 0 ? 'rp-pay-banner--cod' : 'rp-pay-banner--prepaid'}`}>
                     <span>
                       {stop.cod_amount_due > 0
-                        ? `💵 COLLECT COD: GHS ${stop.cod_amount_due.toFixed(2)}`
-                        : '✓ PAID ONLINE — No Cash Collection'}
+                        ? `Collect COD: GHS ${Number(stop.cod_amount_due).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '✓ Paid Online — No Cash'}
                     </span>
-                    <span style={{ fontSize: '0.72rem', opacity: 0.85 }}>
-                      {stop.cod_amount_due > 0 ? 'Cash or MoMo' : 'Prepaid'}
+                    <span style={{ fontSize: '0.72rem', opacity: 0.85, whiteSpace: 'nowrap' }}>
+                      {stop.cod_amount_due > 0 ? 'Cash / MoMo' : 'Prepaid'}
                     </span>
                   </div>
 
@@ -751,10 +747,10 @@ export default function RiderManifest() {
                       <div className="rp-quick-actions">
                         {stop.customer_phone ? (
                           <a href={`tel:${stop.customer_phone}`} className="rp-act-btn">
-                            📞 Call
+                            Call
                           </a>
                         ) : (
-                          <button type="button" className="rp-act-btn" disabled>📞 No Phone</button>
+                          <button type="button" className="rp-act-btn" disabled>No Phone</button>
                         )}
 
                         {waNumber ? (
@@ -764,10 +760,10 @@ export default function RiderManifest() {
                             rel="noopener noreferrer"
                             className="rp-act-btn rp-act-btn--wa"
                           >
-                            💬 WhatsApp
+                            WhatsApp
                           </a>
                         ) : (
-                          <button type="button" className="rp-act-btn" disabled>💬 WhatsApp</button>
+                          <button type="button" className="rp-act-btn" disabled>WhatsApp</button>
                         )}
 
                         <button
@@ -778,7 +774,7 @@ export default function RiderManifest() {
                         >
                           {resendingId === stop.delivery_id
                             ? 'Sending…'
-                            : stop.has_otp ? '🔑 Resend OTP' : '🔑 Send OTP'}
+                            : stop.has_otp ? 'Resend Code' : 'Send Code'}
                         </button>
                       </div>
 
@@ -787,7 +783,7 @@ export default function RiderManifest() {
                           to={`/rider-handoff?token=${encodeURIComponent(stop.handoff_token)}&manifest=${encodeURIComponent(token)}`}
                           className="rp-primary-cta rp-primary-cta--gold"
                         >
-                          <span>Verify 6-Digit Code &amp; Complete Stop →</span>
+                          Verify &amp; Complete Stop →
                         </Link>
                       )}
                     </>

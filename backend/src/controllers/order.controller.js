@@ -448,6 +448,11 @@ const getAllOrders = async (req, res) => {
         OR o.guest_last_name ILIKE $${params.length}
         OR u.first_name ILIKE $${params.length}
         OR u.last_name ILIKE $${params.length}
+        OR EXISTS (
+          SELECT 1 FROM deliveries dl
+           WHERE dl.order_id = o.id
+             AND (dl.delivery_partner ILIKE $${params.length} OR dl.tracking_number ILIKE $${params.length})
+        )
       )`);
     }
 
@@ -474,9 +479,19 @@ const getAllOrders = async (req, res) => {
                COALESCE(u.email, o.guest_email) AS customer_email,
                COALESCE(u.phone, o.guest_phone) AS customer_phone,
                (o.customer_id IS NULL) AS is_guest,
-               (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id) AS item_count
+               (SELECT COUNT(*)::int FROM order_items WHERE order_id = o.id) AS item_count,
+               d.delivery_partner,
+               d.tracking_number,
+               d.pod_verified_at
           FROM orders o
           LEFT JOIN users u ON o.customer_id = u.id
+          LEFT JOIN LATERAL (
+            SELECT delivery_partner, tracking_number, pod_verified_at
+              FROM deliveries
+             WHERE order_id = o.id
+             ORDER BY created_at DESC
+             LIMIT 1
+          ) d ON TRUE
           ${where}
          ORDER BY ${orderBy}
          LIMIT $${params.length - 1} OFFSET $${params.length}

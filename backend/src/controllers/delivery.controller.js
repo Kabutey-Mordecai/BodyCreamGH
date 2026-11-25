@@ -348,6 +348,7 @@ const bulkDispatch = async (req, res) => {
     const safeExpiry = MANIFEST_EXPIRY_PRESETS[expires_in] || '7d';
 
     let dispatched = 0;
+    let reassigned = 0;
     let skipped = 0;
     const dispatchedOrders = [];
 
@@ -359,7 +360,20 @@ const bulkDispatch = async (req, res) => {
       }
       const existing = await DeliveryModel.findByOrderId(orderId);
       if (existing) {
-        skipped += 1;
+        if (existing.pod_verified_at || existing.status === 'delivered') {
+          skipped += 1;
+          continue;
+        }
+        await DeliveryModel.update(existing.id, {
+          deliveryPartner: cleanPartner,
+          driverPhone: cleanPhone || null,
+        });
+        reassigned += 1;
+        dispatchedOrders.push({
+          order_number: order.order_number,
+          tracking_number: existing.tracking_number,
+          reassigned: true,
+        });
         continue;
       }
       const r = await dispatchOrderWithOtp({
@@ -385,12 +399,14 @@ const bulkDispatch = async (req, res) => {
       action: 'delivery.bulk_dispatch',
       resourceType: 'delivery',
       resourceId: null,
-      details: { delivery_partner: cleanPartner, dispatched, skipped },
+      details: { delivery_partner: cleanPartner, dispatched, reassigned, skipped },
       ip: req.ip,
     }).catch(() => {});
 
     res.status(201).json({
-      dispatched_count: dispatched,
+      dispatched_count: dispatched + reassigned,
+      newly_shipped_count: dispatched,
+      reassigned_count: reassigned,
       skipped_count: skipped,
       delivery_partner: cleanPartner,
       driver_phone: cleanPhone || null,
@@ -1131,6 +1147,12 @@ const listRiders = async (_req, res) => {
          JOIN orders o ON o.id = d.order_id
         WHERE d.delivery_partner IS NOT NULL
           AND TRIM(d.delivery_partner) <> ''
+          AND LOWER(TRIM(d.delivery_partner)) NOT IN (
+            'in-house dispatch bike',
+            'in-house dispatch',
+            'dhl / external courier',
+            'external courier'
+          )
           AND NOT EXISTS (
             SELECT 1 FROM dispatch_riders r
              WHERE LOWER(TRIM(r.name)) = LOWER(TRIM(d.delivery_partner))
@@ -1139,7 +1161,23 @@ const listRiders = async (_req, res) => {
         ORDER BY active_stops DESC, TRIM(d.delivery_partner) ASC`
     );
 
-    res.json({ riders, legacy_partners: legacyPartners });
+    const { rows: poolRows } = await pool.query(
+      `SELECT COUNT(*)::int AS unassigned_pool_stops
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+        WHERE LOWER(TRIM(COALESCE(d.delivery_partner, 'in-house dispatch bike'))) IN (
+                'in-house dispatch bike', 'in-house dispatch', ''
+              )
+          AND d.status IN ('pending', 'in_transit', 'out_for_delivery')
+          AND d.pod_verified_at IS NULL
+          AND o.status NOT IN ('delivered', 'cancelled', 'refunded')`
+    );
+
+    res.json({
+      riders,
+      legacy_partners: legacyPartners,
+      unassigned_pool_stops: poolRows[0]?.unassigned_pool_stops || 0,
+    });
   } catch (err) {
     logger.error('listRiders error', { err: err.message });
     res.status(500).json({ error: 'Failed to load dispatch riders' });

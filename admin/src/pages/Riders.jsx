@@ -67,6 +67,7 @@ export default function Riders() {
 
   const [riders, setRiders] = useState([]);
   const [legacyPartners, setLegacyPartners] = useState([]);
+  const [unassignedPoolStops, setUnassignedPoolStops] = useState(0);
   const [legacyExpanded, setLegacyExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('all');
@@ -95,6 +96,7 @@ export default function Riders() {
       const { data } = await deliveriesAPI.getRiders();
       setRiders(Array.isArray(data?.riders) ? data.riders : []);
       setLegacyPartners(Array.isArray(data?.legacy_partners) ? data.legacy_partners : []);
+      setUnassignedPoolStops(Number(data?.unassigned_pool_stops || 0));
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to load dispatch riders');
     } finally {
@@ -334,6 +336,23 @@ export default function Riders() {
           }
         />
       </div>
+
+      {/* ── Unassigned In-House Pool Callout ─────────────────────────── */}
+      {unassignedPoolStops > 0 && (
+        <div className="rf-legacy-strip" style={{ borderLeftColor: 'var(--ac-accent)' }}>
+          <div className="rf-legacy-bar">
+            <div className="rf-legacy-summary">
+              <span className="rf-legacy-dot" style={{ background: 'var(--ac-accent)' }} aria-hidden="true" />
+              <span>
+                <strong>{unassignedPoolStops} shipped order{unassignedPoolStops === 1 ? '' : 's'}</strong> currently in the general In-house Bike pool (not yet assigned to a named rider)
+              </span>
+            </div>
+            <Link to="/orders" className="btn btn-outline btn-sm">
+              Assign in Orders →
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* ── Compact Collapsible Unregistered Names Cleanup Bar ───────── */}
       {legacyPartners.length > 0 && (

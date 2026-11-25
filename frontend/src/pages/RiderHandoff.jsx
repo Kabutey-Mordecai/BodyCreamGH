@@ -696,7 +696,7 @@ export default function RiderHandoff() {
           </Link>
 
           <div style={{ textAlign: 'center', minWidth: 0 }}>
-            <div className="rp-eyebrow">BodyCream GH · Doorstep POD</div>
+            <div className="rp-eyebrow">Doorstep Verification</div>
             <h1 className="rp-rider-title">Order #{info.order_number}</h1>
           </div>
 
@@ -767,8 +767,8 @@ export default function RiderHandoff() {
           <div className={`rp-pay-banner ${info.cod_amount_due > 0 ? 'rp-pay-banner--cod' : 'rp-pay-banner--prepaid'}`} style={{ marginBottom: 0 }}>
             <span>
               {info.cod_amount_due > 0
-                ? `💵 COLLECT GHS ${info.cod_amount_due.toFixed(2)} BEFORE HANDOFF`
-                : '✓ PREPAID ONLINE — DO NOT COLLECT CASH'}
+                ? `Collect GHS ${Number(info.cod_amount_due).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Before Handoff`
+                : '✓ Paid Online — Do Not Collect Cash'}
             </span>
           </div>
         </section>
@@ -818,9 +818,9 @@ export default function RiderHandoff() {
                 type="button"
                 disabled={resendingOtp}
                 onClick={handleResendOtp}
-                style={{ background: 'none', border: 'none', padding: 0, color: '#b45309', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
+                style={{ background: 'none', border: 'none', minHeight: 40, padding: '8px 4px', color: '#b45309', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
               >
-                {resendingOtp ? 'Sending code…' : '🔑 Resend 6-digit code to customer'}
+                {resendingOtp ? 'Sending code…' : 'Resend 6-digit code to customer'}
               </button>
             </div>
 

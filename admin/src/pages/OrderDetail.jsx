@@ -873,6 +873,52 @@ export default function OrderDetail() {
                       </div>
                     ) : (
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {/* 1-Click Rider Assignment / Switch (visible whenever registered riders exist) */}
+                        {knownPartners.length > 0 && delivery.status !== 'delivered' && (
+                          <div style={{ padding: '10px 12px', borderRadius: 'var(--ac-radius)', background: 'var(--ac-surface-2)', border: '1px solid var(--ac-border)' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                              <span className="text-xs" style={{ fontWeight: 600, color: 'var(--ac-text-muted)' }}>
+                                Assign or switch rider
+                              </span>
+                              <Link to="/riders" className="text-xs" style={{ fontWeight: 600, color: 'var(--ac-accent)' }}>
+                                Manage riders →
+                              </Link>
+                            </div>
+                            <div className="od-rider-chips" style={{ marginBottom: 0 }}>
+                              {knownPartners.slice(0, 10).map(p => {
+                                const isCurrent = String(delivery.delivery_partner || '').toLowerCase() === p.delivery_partner.toLowerCase();
+                                return (
+                                  <button
+                                    key={p.delivery_partner}
+                                    type="button"
+                                    disabled={deliverySaving || isCurrent}
+                                    className={`od-rider-chip${isCurrent ? ' is-selected' : ''}`}
+                                    onClick={async () => {
+                                      setDeliverySaving(true);
+                                      try {
+                                        await deliveriesAPI.update(delivery.id, {
+                                          delivery_partner: p.delivery_partner,
+                                          driver_phone: p.driver_phone || '',
+                                        });
+                                        setManifestInfo(null);
+                                        toast.success(`Assigned to ${p.delivery_partner}`);
+                                        load();
+                                      } catch (err) {
+                                        toast.error(err.response?.data?.error || 'Failed to reassign rider');
+                                      } finally {
+                                        setDeliverySaving(false);
+                                      }
+                                    }}
+                                  >
+                                    <span>{p.delivery_partner}</span>
+                                    {isCurrent && <span style={{ fontSize: '0.68rem' }}>✓</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <button
                             type="button"
@@ -1083,7 +1129,7 @@ export default function OrderDetail() {
                         <input
                           id="od-dp"
                           type="text"
-                          placeholder="e.g. In-house Dispatch Bike, Kwame Bike"
+                          placeholder="Select above or type rider name"
                           value={deliveryForm.delivery_partner}
                           onChange={e => setDeliveryForm(prev => ({ ...prev, delivery_partner: e.target.value }))}
                           required
@@ -1094,38 +1140,46 @@ export default function OrderDetail() {
                         <input
                           id="od-ph"
                           type="text"
-                          placeholder="e.g. 024 123 4567"
+                          placeholder="Auto-filled for saved riders"
                           value={deliveryForm.driver_phone}
                           onChange={e => setDeliveryForm(prev => ({ ...prev, driver_phone: e.target.value }))}
                         />
                       </div>
-                      <div>
-                        <label htmlFor="od-trk">Tracking # (auto-generated if blank)</label>
-                        <input
-                          id="od-trk"
-                          type="text"
-                          placeholder="Auto-assigned e.g. BC-ACC-..."
-                          value={deliveryForm.tracking_number}
-                          onChange={e => setDeliveryForm(prev => ({ ...prev, tracking_number: e.target.value }))}
-                        />
-                      </div>
-                      <div>
-                        <label htmlFor="od-eta">Estimated Delivery Date</label>
-                        <input
-                          id="od-eta"
-                          type="date"
-                          value={deliveryForm.estimated_delivery}
-                          onChange={e => setDeliveryForm(prev => ({ ...prev, estimated_delivery: e.target.value }))}
-                        />
-                      </div>
                     </div>
+
+                    <details style={{ marginBottom: 14 }}>
+                      <summary className="muted text-xs" style={{ cursor: 'pointer', fontWeight: 500 }}>
+                        Optional custom tracking # or estimated delivery date
+                      </summary>
+                      <div className="od-dispatch-grid" style={{ marginTop: 10, marginBottom: 0 }}>
+                        <div>
+                          <label htmlFor="od-trk">Tracking # (auto-generated if blank)</label>
+                          <input
+                            id="od-trk"
+                            type="text"
+                            placeholder="Auto-assigned e.g. BC-ACC-..."
+                            value={deliveryForm.tracking_number}
+                            onChange={e => setDeliveryForm(prev => ({ ...prev, tracking_number: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="od-eta">Estimated Delivery Date</label>
+                          <input
+                            id="od-eta"
+                            type="date"
+                            value={deliveryForm.estimated_delivery}
+                            onChange={e => setDeliveryForm(prev => ({ ...prev, estimated_delivery: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    </details>
 
                     <button
                       type="submit"
-                      className="btn btn-accent"
+                      className="btn btn-primary"
                       disabled={deliverySaving || order.status === 'cancelled'}
                     >
-                      {deliverySaving ? 'Dispatching…' : '🚚 Dispatch Rider & Send Customer 6-Digit Code'}
+                      {deliverySaving ? 'Dispatching…' : 'Dispatch order & send customer code'}
                     </button>
                   </form>
                 )}

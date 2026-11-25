@@ -588,13 +588,16 @@ export default function Orders() {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button
                   type="button"
-                  className="btn btn-accent btn-sm"
+                  className="btn btn-primary btn-sm"
                   onClick={() => {
                     setBulkResult(null);
                     setBulkOpen(true);
+                    deliveriesAPI.getPartners()
+                      .then(({ data }) => setKnownPartners(Array.isArray(data?.partners) ? data.partners : []))
+                      .catch(() => {});
                   }}
                 >
-                  🚚 Dispatch Selected ({selectedIds.length})
+                  Assign / Dispatch ({selectedIds.length})
                 </button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={handleExportSelectedCSV}>
                   ↓ Export Selected
@@ -706,16 +709,34 @@ export default function Orders() {
               },
               {
                 key: 'status',
-                label: 'Stage',
-                render: o => (
-                  <StatusBadge
-                    status={
-                      o.fulfillment_method === 'pickup' && o.status === 'shipped'
-                        ? 'ready_for_pickup'
-                        : o.status
-                    }
-                  />
-                ),
+                label: 'Stage & Rider',
+                render: o => {
+                  const rawPartner = o.delivery_partner ? String(o.delivery_partner).trim() : '';
+                  const isPool = rawPartner.toLowerCase() === 'in-house dispatch bike' || rawPartner.toLowerCase() === 'in-house dispatch';
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+                      <StatusBadge
+                        status={
+                          o.fulfillment_method === 'pickup' && o.status === 'shipped'
+                            ? 'ready_for_pickup'
+                            : o.status
+                        }
+                      />
+                      {rawPartner && o.fulfillment_method !== 'pickup' && (
+                        <span
+                          className="text-xs"
+                          style={{
+                            color: isPool ? 'var(--ac-text-muted)' : 'var(--ac-text)',
+                            fontWeight: isPool ? 400 : 600,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {isPool ? 'In-house pool' : rawPartner}
+                        </span>
+                      )}
+                    </div>
+                  );
+                },
               },
             ]}
           />
@@ -809,7 +830,7 @@ export default function Orders() {
                     );
                   })()}
 
-                  {knownPartners.filter(p => (p.active_count || 0) > 0).map(p => {
+                  {knownPartners.map(p => {
                     const selected = manifestPartner.toLowerCase() === p.delivery_partner.toLowerCase();
                     return (
                       <button
