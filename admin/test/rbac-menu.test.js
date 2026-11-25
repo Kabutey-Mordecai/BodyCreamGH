@@ -15,6 +15,7 @@ const SAMPLE_NAV_GROUPS = [
     label: 'Sell',
     items: [
       { to: '/orders',     label: 'Orders' },
+      { to: '/riders',     label: 'Riders & Fleet' },
       { to: '/requests',   label: 'Requests' },
       { to: '/products',   label: 'Products' },
       { to: '/inventory',  label: 'Inventory' },
@@ -67,6 +68,7 @@ test('fulfillment role sees only fulfillment-relevant navigation', () => {
   // Allowed
   assert.ok(paths.includes('/'));
   assert.ok(paths.includes('/orders'));
+  assert.ok(paths.includes('/riders'));
   assert.ok(paths.includes('/requests'));
   assert.ok(paths.includes('/inventory'));
 

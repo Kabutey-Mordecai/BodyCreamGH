@@ -160,7 +160,14 @@ export default function RiderManifest() {
             <div className="rp-brand-badge" aria-hidden="true">🏍️</div>
             <div style={{ minWidth: 0 }}>
               <div className="rp-eyebrow">BodyCream GH · Dispatch Console</div>
-              <div className="rp-rider-title">{data.rider_label}</div>
+              <div className="rp-rider-title" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>{data.rider_label}</span>
+                {data.vehicle_plate && (
+                  <span style={{ fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: 'rgba(251,191,36,0.2)', color: '#fbbf24', fontFamily: 'monospace' }}>
+                    {data.vehicle_plate}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

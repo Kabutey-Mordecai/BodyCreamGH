@@ -93,10 +93,10 @@ const createGuestOrderSchema = Joi.object({
 
 const createDeliverySchema = Joi.object({
   order_id:           Joi.string().uuid().required(),
-  delivery_partner:   Joi.string().trim().max(100).optional().allow('', null),
+  delivery_partner:   Joi.string().trim().max(120).optional().allow('', null),
   tracking_number:    Joi.string().trim().max(100).optional().allow('', null),
   estimated_delivery: Joi.string().isoDate().optional().allow('', null),
-  driver_phone:       Joi.string().trim().max(30).optional().allow('', null),
+  driver_phone:       Joi.string().trim().max(40).optional().allow('', null),
 });
 
 const updateDeliverySchema = Joi.object({
@@ -104,8 +104,8 @@ const updateDeliverySchema = Joi.object({
   tracking_number:       Joi.string().trim().max(100).optional().allow('', null),
   estimated_delivery:    Joi.string().isoDate().optional().allow('', null),
   actual_delivery_date:  Joi.string().isoDate().optional().allow('', null),
-  driver_phone:          Joi.string().trim().max(30).optional().allow('', null),
-  delivery_partner:      Joi.string().trim().max(100).optional().allow('', null),
+  driver_phone:          Joi.string().trim().max(40).optional().allow('', null),
+  delivery_partner:      Joi.string().trim().max(120).optional().allow('', null),
 });
 
 const updateOrderStatusSchema = Joi.object({

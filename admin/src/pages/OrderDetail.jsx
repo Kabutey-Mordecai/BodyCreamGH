@@ -91,6 +91,12 @@ export default function OrderDetail() {
       .then(({ data }) => {
         setDelivery(data);
         setDeliveryStatus(data.status || '');
+        setDeliveryForm({
+          delivery_partner: data.delivery_partner || '',
+          tracking_number: data.tracking_number || '',
+          estimated_delivery: data.estimated_delivery ? String(data.estimated_delivery).slice(0, 10) : '',
+          driver_phone: data.driver_phone || '',
+        });
       })
       .catch(() => setDelivery(null));
   };
@@ -251,9 +257,10 @@ export default function OrderDetail() {
     try {
       await deliveriesAPI.update(delivery.id, {
         status: deliveryStatus,
-        tracking_number: deliveryForm.tracking_number || undefined,
+        delivery_partner: deliveryForm.delivery_partner.trim() || undefined,
+        tracking_number: deliveryForm.tracking_number.trim() || undefined,
         estimated_delivery: deliveryForm.estimated_delivery || undefined,
-        driver_phone: deliveryForm.driver_phone || undefined,
+        driver_phone: deliveryForm.driver_phone.trim(),
       });
       toast.success('Delivery updated');
       load();
@@ -935,7 +942,7 @@ export default function OrderDetail() {
                                 ↗ Open Rider App
                               </a>
                               <a
-                                href={`https://wa.me/${String(delivery.driver_phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Dispatch Route (${manifestInfo.active_count} stops · ${manifestInfo.delivery_partner}):\n${manifestInfo.manifest_url}`)}`}
+                                href={`https://wa.me/${String(manifestInfo.driver_phone || delivery.driver_phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Dispatch Route (${manifestInfo.active_count} stops · ${manifestInfo.delivery_partner}):\n${manifestInfo.manifest_url}`)}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="btn btn-whatsapp btn-sm"
@@ -951,9 +958,53 @@ export default function OrderDetail() {
 
                     <details style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--ac-border)' }}>
                       <summary className="muted text-xs" style={{ cursor: 'pointer', fontWeight: 600 }}>
-                        Edit courier stage, phone, or tracking # manually
+                        Reassign rider, edit courier stage, phone, or tracking #
                       </summary>
+                      {knownPartners.length > 0 && (
+                        <div style={{ marginTop: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                            <span className="muted text-xs" style={{ fontWeight: 700 }}>Quick-Reassign Registered Rider</span>
+                            <Link to="/riders" style={{ fontSize: '0.73rem', fontWeight: 700, color: 'var(--ac-accent)', textDecoration: 'none' }}>
+                              Manage Riders →
+                            </Link>
+                          </div>
+                          <div className="od-rider-chips">
+                            {knownPartners.slice(0, 8).map(p => (
+                              <button
+                                key={p.delivery_partner}
+                                type="button"
+                                className={`od-rider-chip${deliveryForm.delivery_partner.toLowerCase() === p.delivery_partner.toLowerCase() ? ' is-selected' : ''}`}
+                                onClick={() => setDeliveryForm(f => ({
+                                  ...f,
+                                  delivery_partner: p.delivery_partner,
+                                  driver_phone: p.driver_phone || '',
+                                }))}
+                              >
+                                {p.delivery_partner}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       <div className="od-dispatch-grid" style={{ marginTop: 12 }}>
+                        <div>
+                          <label>Assigned Rider / Courier</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Kwame Mensah"
+                            value={deliveryForm.delivery_partner}
+                            onChange={e => setDeliveryForm(f => ({ ...f, delivery_partner: e.target.value }))}
+                          />
+                        </div>
+                        <div>
+                          <label>Rider WhatsApp Phone</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 024 812 3456"
+                            value={deliveryForm.driver_phone}
+                            onChange={e => setDeliveryForm(f => ({ ...f, driver_phone: e.target.value }))}
+                          />
+                        </div>
                         <div>
                           <label>Courier Stage</label>
                           <select value={deliveryStatus} onChange={e => setDeliveryStatus(e.target.value)}>
@@ -974,7 +1025,7 @@ export default function OrderDetail() {
                         </div>
                       </div>
                       <button type="submit" className="btn btn-outline btn-sm" disabled={deliverySaving}>
-                        {deliverySaving ? 'Saving…' : 'Save Delivery Details'}
+                        {deliverySaving ? 'Saving…' : 'Save Delivery & Rider Changes'}
                       </button>
                     </details>
                   </form>

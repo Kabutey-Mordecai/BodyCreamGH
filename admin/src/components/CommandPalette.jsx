@@ -36,7 +36,7 @@ export default function CommandPalette({ isOpen, onClose }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [liveResults, setLiveResults] = useState({ orders: [], products: [], customers: [] });
+  const [liveResults, setLiveResults] = useState({ orders: [], products: [], customers: [], riders: [] });
   const [loading, setLoading] = useState(false);
   const inputRef = useRef(null);
 
@@ -44,7 +44,7 @@ export default function CommandPalette({ isOpen, onClose }) {
     if (isOpen) {
       setQuery('');
       setSelectedIndex(0);
-      setLiveResults({ orders: [], products: [], customers: [] });
+      setLiveResults({ orders: [], products: [], customers: [], riders: [] });
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [isOpen]);
@@ -53,7 +53,7 @@ export default function CommandPalette({ isOpen, onClose }) {
   useEffect(() => {
     const q = query.trim();
     if (q.length < 2) {
-      setLiveResults({ orders: [], products: [], customers: [] });
+      setLiveResults({ orders: [], products: [], customers: [], riders: [] });
       setLoading(false);
       return;
     }
@@ -68,11 +68,12 @@ export default function CommandPalette({ isOpen, onClose }) {
               orders: Array.isArray(data.orders) ? data.orders : [],
               products: Array.isArray(data.products) ? data.products : [],
               customers: Array.isArray(data.customers) ? data.customers : [],
+              riders: Array.isArray(data.riders) ? data.riders : [],
             });
           }
         })
         .catch(() => {
-          if (active) setLiveResults({ orders: [], products: [], customers: [] });
+          if (active) setLiveResults({ orders: [], products: [], customers: [], riders: [] });
         })
         .finally(() => {
           if (active) setLoading(false);
@@ -126,6 +127,19 @@ export default function CommandPalette({ isOpen, onClose }) {
           sub: `${c.email} · ${c.phone || 'No phone'}`,
           icon: '👤',
           action: () => navigate(`/customers/${c.id}`),
+        });
+      });
+    }
+
+    if (liveResults.riders.length > 0) {
+      liveResults.riders.forEach(r => {
+        items.push({
+          id: `r-${r.id}`,
+          category: 'Dispatch Riders',
+          label: r.name,
+          sub: `${r.phone || 'No phone'}${r.vehicle_plate ? ` · ${r.vehicle_plate}` : ''} · ${r.is_active ? 'On Duty' : 'Off Duty'}`,
+          icon: '🏍️',
+          action: () => navigate(`/riders?q=${encodeURIComponent(r.name)}`),
         });
       });
     }

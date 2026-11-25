@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { deliveriesAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import './Riders.css';
@@ -60,12 +60,13 @@ const fmtGhs = (n) => `GHS ${Number(n || 0).toLocaleString('en-GH', { minimumFra
 
 export default function Riders() {
   const toast = useToast();
+  const [searchParams] = useSearchParams();
 
   const [riders, setRiders] = useState([]);
   const [legacyPartners, setLegacyPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('all');
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('q') || '');
 
   // Add / Edit Modal state
   const [modalOpen, setModalOpen] = useState(false);

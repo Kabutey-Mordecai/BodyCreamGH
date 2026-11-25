@@ -837,10 +837,10 @@ const omnisearch = async (req, res) => {
   try {
     const q = String(req.query.q || '').trim();
     if (!q || q.length < 2) {
-      return res.json({ orders: [], products: [], customers: [] });
+      return res.json({ orders: [], products: [], customers: [], riders: [] });
     }
     const term = `%${q}%`;
-    const [ordersRes, productsRes, customersRes] = await Promise.all([
+    const [ordersRes, productsRes, customersRes, ridersRes] = await Promise.all([
       pool.query(
         `SELECT o.id, o.order_number, o.total_amount, o.status, o.created_at,
                 COALESCE(NULLIF(TRIM(u.first_name || ' ' || u.last_name), ''), NULLIF(TRIM(o.guest_first_name || ' ' || o.guest_last_name), ''), 'Guest') AS customer_name,
@@ -875,12 +875,21 @@ const omnisearch = async (req, res) => {
           LIMIT 5`,
         [term]
       ),
+      pool.query(
+        `SELECT id, name, phone, vehicle_type, vehicle_plate, zone_coverage, is_active
+           FROM dispatch_riders
+          WHERE name ILIKE $1 OR phone ILIKE $1 OR vehicle_plate ILIKE $1 OR zone_coverage ILIKE $1
+          ORDER BY is_active DESC, name ASC
+          LIMIT 5`,
+        [term]
+      ).catch(() => ({ rows: [] })),
     ]);
 
     return res.json({
       orders: ordersRes.rows,
       products: productsRes.rows,
       customers: customersRes.rows,
+      riders: ridersRes.rows,
     });
   } catch (err) {
     logger.error('omnisearch error', { error: err.message });

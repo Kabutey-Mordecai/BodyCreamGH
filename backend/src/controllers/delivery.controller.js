@@ -68,6 +68,23 @@ function normalizeRiderPhone(raw) {
   return { clean: trimmed.slice(0, 40), norm: norm.slice(0, 32) };
 }
 
+async function findRegisteredRiderByName(name) {
+  if (typeof name !== 'string' || !name.trim()) return null;
+  try {
+    await ensureRidersTable();
+    const { rows } = await pool.query(
+      `SELECT id, name, phone, vehicle_type, vehicle_plate, zone_coverage, is_active
+         FROM dispatch_riders
+        WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
+        LIMIT 1`,
+      [name.trim()]
+    );
+    return rows[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Maps Ghanaian region/city to a short Jumia-style routing zone code
  * printed prominently on the shipping label and embedded in the barcode.
@@ -196,28 +213,16 @@ async function dispatchOrderWithOtp({
   const zoneCode = resolveGhanaZone(order.shipping_region, order.shipping_city);
   const providedTracking = typeof trackingNumber === 'string' ? trackingNumber.trim() : '';
   const finalTracking = providedTracking || generateTrackingNumber(zoneCode);
-  const finalPartner = (typeof deliveryPartner === 'string' && deliveryPartner.trim())
+  const rawPartner = (typeof deliveryPartner === 'string' && deliveryPartner.trim())
     ? deliveryPartner.trim()
     : 'In-house Dispatch Bike';
 
-  let resolvedDriverPhone = typeof driverPhone === 'string' && driverPhone.trim()
-    ? driverPhone.trim()
-    : null;
+  const matchedRider = await findRegisteredRiderByName(rawPartner);
+  const finalPartner = matchedRider?.name || rawPartner;
 
-  if (!resolvedDriverPhone) {
-    try {
-      await ensureRidersTable();
-      const { rows: riderMatch } = await pool.query(
-        `SELECT phone FROM dispatch_riders WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) LIMIT 1`,
-        [finalPartner]
-      );
-      if (riderMatch[0]?.phone) {
-        resolvedDriverPhone = riderMatch[0].phone;
-      }
-    } catch {
-      // Non-fatal fallback if lookup fails
-    }
-  }
+  const resolvedDriverPhone = (typeof driverPhone === 'string' && driverPhone.trim())
+    ? driverPhone.trim()
+    : (matchedRider?.phone || null);
 
   const deliveryId = await DeliveryModel.create({
     orderId:           order.id,
@@ -332,10 +337,14 @@ const bulkDispatch = async (req, res) => {
       return res.status(400).json({ error: 'Select at least 1 order to dispatch' });
     }
 
-    const cleanPartner = (typeof delivery_partner === 'string' && delivery_partner.trim())
+    const rawPartner = (typeof delivery_partner === 'string' && delivery_partner.trim())
       ? delivery_partner.trim()
       : 'In-house Dispatch Bike';
-    const cleanPhone = typeof driver_phone === 'string' ? driver_phone.trim() : '';
+    const matchedRider = await findRegisteredRiderByName(rawPartner);
+    const cleanPartner = matchedRider?.name || rawPartner;
+    const cleanPhone = (typeof driver_phone === 'string' && driver_phone.trim())
+      ? driver_phone.trim()
+      : (matchedRider?.phone || '');
     const safeExpiry = MANIFEST_EXPIRY_PRESETS[expires_in] || '7d';
 
     let dispatched = 0;
@@ -418,7 +427,7 @@ const trackShipment = async (req, res) => {
       tracking_number:    d.tracking_number,
       zone_code:          d.zone_code,
       status:             d.status,
-      delivery_partner:   d.delivery_partner,
+      delivery_partner:   d.delivery_partner || 'In-house Dispatch',
       estimated_delivery: d.estimated_delivery,
       actual_delivery:    d.actual_delivery_date,
       pod_verified_at:    d.pod_verified_at,
@@ -489,20 +498,47 @@ const updateDelivery = async (req, res) => {
     }
 
     const { rows: before } = await pool.query(
-      'SELECT status, order_id, tracking_number FROM deliveries WHERE id = $1',
+      'SELECT status, order_id, tracking_number, delivery_partner, driver_phone FROM deliveries WHERE id = $1',
       [deliveryId]
     );
     if (!before.length) return res.status(404).json({ error: 'Delivery not found' });
 
     const prev = before[0];
 
+    let resolvedPartner = undefined;
+    let resolvedPhone = undefined;
+
+    if (delivery_partner !== undefined) {
+      const candidatePartner = (typeof delivery_partner === 'string' && delivery_partner.trim())
+        ? delivery_partner.trim()
+        : 'In-house Dispatch Bike';
+      const matched = await findRegisteredRiderByName(candidatePartner);
+      resolvedPartner = matched?.name || candidatePartner;
+
+      const partnerChanged =
+        String(prev.delivery_partner || '').trim().toLowerCase() !== resolvedPartner.toLowerCase();
+
+      if (typeof driver_phone === 'string' && driver_phone.trim()) {
+        resolvedPhone = driver_phone.trim();
+      } else if (partnerChanged) {
+        // Sync to newly selected rider's registered phone (or clear old rider's phone if unregistered)
+        resolvedPhone = matched?.phone || null;
+      } else if (driver_phone !== undefined) {
+        resolvedPhone = null;
+      }
+    } else if (driver_phone !== undefined) {
+      resolvedPhone = (typeof driver_phone === 'string' && driver_phone.trim())
+        ? driver_phone.trim()
+        : null;
+    }
+
     await DeliveryModel.update(deliveryId, {
       status,
-      trackingNumber:      tracking_number,
-      estimatedDelivery:   estimated_delivery,
-      actualDeliveryDate:  actual_delivery_date,
-      driverPhone:         driver_phone,
-      deliveryPartner:     delivery_partner,
+      trackingNumber:      tracking_number || undefined,
+      estimatedDelivery:   estimated_delivery || undefined,
+      actualDeliveryDate:  actual_delivery_date || undefined,
+      driverPhone:         resolvedPhone,
+      deliveryPartner:     resolvedPartner,
     });
 
     if (status && status !== prev.status) {
@@ -1056,9 +1092,15 @@ const listRiders = async (_req, res) => {
                 WHERE d.status IN ('pending', 'in_transit', 'out_for_delivery')
                   AND d.pod_verified_at IS NULL
                   AND o.status NOT IN ('delivered', 'cancelled', 'refunded')
-                  AND o.payment_method = 'cod'
-                  AND COALESCE(o.payment_status, 'pending') <> 'completed'
+                  AND o.payment_method = 'pay_on_delivery'
+                  AND COALESCE(o.payment_status, 'pending') NOT IN ('paid', 'partially_refunded', 'refunded')
               ), 0)::numeric(12,2) AS cod_pending_ghs,
+              COALESCE(SUM(o.total_amount) FILTER (
+                WHERE (d.pod_verified_at IS NOT NULL OR d.status = 'delivered')
+                  AND COALESCE(d.pod_verified_at, d.updated_at) >= CURRENT_DATE
+                  AND o.payment_method = 'pay_on_delivery'
+                  AND o.payment_status IN ('paid', 'partially_refunded', 'refunded')
+              ), 0)::numeric(12,2) AS cod_collected_today_ghs,
               MAX(d.created_at) AS last_dispatched_at
          FROM dispatch_riders r
          LEFT JOIN deliveries d ON LOWER(TRIM(d.delivery_partner)) = LOWER(TRIM(r.name))
@@ -1165,13 +1207,13 @@ const createRider = async (req, res) => {
     ).catch(() => {});
 
     await logAdminAction({
-      adminId: req.user?.id,
-      adminEmail: req.user?.email,
+      actorId: req.user?.id,
+      actorEmail: req.userEmail || req.user?.email,
       action: 'rider.create',
-      targetType: 'dispatch_rider',
-      targetId: riderId,
+      resourceType: 'dispatch_rider',
+      resourceId: riderId,
       details: { name, phone: phoneClean, vehicle_type: vehicleType },
-      ipAddress: req.ip,
+      ip: req.ip,
     }).catch(() => {});
 
     res.status(201).json({ rider: rows[0], message: `Rider "${name}" added to fleet.` });
@@ -1284,13 +1326,13 @@ const updateRider = async (req, res) => {
     }
 
     await logAdminAction({
-      adminId: req.user?.id,
-      adminEmail: req.user?.email,
+      actorId: req.user?.id,
+      actorEmail: req.userEmail || req.user?.email,
       action: 'rider.update',
-      targetType: 'dispatch_rider',
-      targetId: riderId,
+      resourceType: 'dispatch_rider',
+      resourceId: riderId,
       details: { name, phone: phoneClean, is_active: isActive },
-      ipAddress: req.ip,
+      ip: req.ip,
     }).catch(() => {});
 
     res.json({ rider: updatedRows[0], message: `Rider "${name}" updated.` });
@@ -1355,13 +1397,13 @@ const deleteRider = async (req, res) => {
     );
 
     await logAdminAction({
-      adminId: req.user?.id,
-      adminEmail: req.user?.email,
+      actorId: req.user?.id,
+      actorEmail: req.userEmail || req.user?.email,
       action: 'rider.delete',
-      targetType: 'dispatch_rider',
-      targetId: riderId,
+      resourceType: 'dispatch_rider',
+      resourceId: riderId,
       details: { name: existing.name, force, active_stops_reassigned: activeCount },
-      ipAddress: req.ip,
+      ip: req.ip,
     }).catch(() => {});
 
     res.json({
@@ -1468,8 +1510,12 @@ const removeLegacyPartner = async (req, res) => {
 // ── Admin: generate 1 signed Multi-Stop Rider Manifest link (20+ orders) ─────
 const createRiderManifestLink = async (req, res) => {
   try {
-    const cleanPartner = typeof req.body?.delivery_partner === 'string' ? req.body.delivery_partner.trim() : '';
-    const cleanPhone = typeof req.body?.driver_phone === 'string' ? req.body.driver_phone.trim() : '';
+    const rawPartner = typeof req.body?.delivery_partner === 'string' ? req.body.delivery_partner.trim() : '';
+    const matchedRider = rawPartner ? await findRegisteredRiderByName(rawPartner) : null;
+    const cleanPartner = matchedRider?.name || rawPartner;
+    const cleanPhone = (typeof req.body?.driver_phone === 'string' && req.body.driver_phone.trim())
+      ? req.body.driver_phone.trim()
+      : (matchedRider?.phone || '');
     const expiresIn = MANIFEST_EXPIRY_PRESETS[req.body?.expires_in] || '7d';
 
     const conditions = [
@@ -1479,8 +1525,8 @@ const createRiderManifestLink = async (req, res) => {
     ];
     const params = [];
     if (cleanPartner) {
-      params.push(`%${cleanPartner}%`);
-      conditions.push(`d.delivery_partner ILIKE $${params.length}`);
+      params.push(cleanPartner);
+      conditions.push(`LOWER(TRIM(COALESCE(d.delivery_partner, ''))) = LOWER(TRIM($${params.length}))`);
     } else if (cleanPhone) {
       params.push(`%${cleanPhone.replace(/\s+/g, '')}%`);
       conditions.push(`REPLACE(COALESCE(d.driver_phone, ''), ' ', '') ILIKE $${params.length}`);
@@ -1534,14 +1580,15 @@ const createRiderManifestLink = async (req, res) => {
 const getRiderManifest = async (req, res) => {
   try {
     const payload = verifyRiderManifestToken(req.query.token || req.headers['x-rider-manifest']);
+    const matchedRider = payload.dp ? await findRegisteredRiderByName(payload.dp) : null;
 
     const conditions = [
       `(d.status IN ('pending', 'in_transit', 'out_for_delivery') OR (d.status = 'delivered' AND d.pod_verified_at >= CURRENT_DATE))`,
     ];
     const params = [];
     if (payload.dp) {
-      params.push(`%${payload.dp}%`);
-      conditions.push(`d.delivery_partner ILIKE $${params.length}`);
+      params.push(payload.dp);
+      conditions.push(`LOWER(TRIM(COALESCE(d.delivery_partner, ''))) = LOWER(TRIM($${params.length}))`);
     } else if (payload.ph) {
       params.push(`%${String(payload.ph).replace(/\s+/g, '')}%`);
       conditions.push(`REPLACE(COALESCE(d.driver_phone, ''), ' ', '') ILIKE $${params.length}`);
@@ -1613,8 +1660,10 @@ const getRiderManifest = async (req, res) => {
     });
 
     res.json({
-      rider_label: payload.dp || 'All Active Dispatches',
-      driver_phone: payload.ph || null,
+      rider_label: matchedRider?.name || payload.dp || 'All Active Dispatches',
+      driver_phone: matchedRider?.phone || payload.ph || null,
+      vehicle_type: matchedRider?.vehicle_type || null,
+      vehicle_plate: matchedRider?.vehicle_plate || null,
       summary: {
         total_stops: stops.length,
         completed_stops: completedStops,
@@ -1672,7 +1721,7 @@ const riderResendPodOtp = async (req, res) => {
 
     // If using a scoped manifest token, ensure this delivery belongs to that rider scope
     if (payload.purpose === 'rider_manifest') {
-      if (payload.dp && !String(d.delivery_partner || '').toLowerCase().includes(String(payload.dp).toLowerCase())) {
+      if (payload.dp && String(d.delivery_partner || '').trim().toLowerCase() !== String(payload.dp).trim().toLowerCase()) {
         return res.status(403).json({ error: 'Delivery is not assigned to this rider manifest' });
       }
       if (payload.ph) {
