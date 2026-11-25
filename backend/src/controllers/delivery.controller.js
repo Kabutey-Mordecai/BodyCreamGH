@@ -677,7 +677,9 @@ const getRiderHandoff = async (req, res) => {
               d.pod_verified_at, d.pod_verified_method, d.pod_photo_url, d.pod_otp_attempts,
               o.order_number, o.total_amount, o.payment_method, o.payment_status,
               o.shipping_address, o.shipping_city, o.shipping_region,
+              o.ghana_post_gps, o.delivery_landmark,
               COALESCE(u.first_name, o.guest_first_name, 'Customer') AS recipient_first_name,
+              COALESCE(u.phone, o.guest_phone) AS customer_phone,
               (SELECT COALESCE(SUM(quantity), 0)::int FROM order_items WHERE order_id = o.id) AS item_count
          FROM deliveries d
          JOIN orders o ON o.id = d.order_id
@@ -688,6 +690,7 @@ const getRiderHandoff = async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Delivery not found' });
 
     const r = rows[0];
+    const alreadyVerified = Boolean(r.pod_verified_at);
     const isCodUnpaid = r.payment_method === 'pay_on_delivery' &&
       !['paid', 'partially_refunded', 'refunded'].includes(r.payment_status);
 
@@ -699,12 +702,15 @@ const getRiderHandoff = async (req, res) => {
       delivery_partner: r.delivery_partner,
       status: r.status,
       recipient_first_name: r.recipient_first_name,
+      customer_phone: alreadyVerified ? null : (r.customer_phone || null),
       address: [r.shipping_address, r.shipping_city, r.shipping_region].filter(Boolean).join(', '),
+      ghana_post_gps: r.ghana_post_gps || null,
+      delivery_landmark: r.delivery_landmark || null,
       item_count: r.item_count,
       cod_amount_due: isCodUnpaid ? Number(r.total_amount) : 0,
       payment_method: r.payment_method,
       payment_status: r.payment_status,
-      already_verified: Boolean(r.pod_verified_at),
+      already_verified: alreadyVerified,
       pod_verified_at: r.pod_verified_at,
       pod_photo_url: r.pod_photo_url,
       attempts_remaining: Math.max(0, MAX_POD_OTP_ATTEMPTS - (r.pod_otp_attempts || 0)),
@@ -1600,6 +1606,7 @@ const getRiderManifest = async (req, res) => {
               d.pod_otp_hash IS NOT NULL AS has_otp,
               o.order_number, o.status AS order_status, o.total_amount, o.payment_method, o.payment_status,
               o.shipping_address, o.shipping_city, o.shipping_region,
+              o.ghana_post_gps, o.delivery_landmark,
               COALESCE(u.first_name, o.guest_first_name, 'Customer') AS customer_first_name,
               COALESCE(u.last_name, o.guest_last_name, '') AS customer_last_name,
               COALESCE(u.phone, o.guest_phone) AS customer_phone,
@@ -1645,8 +1652,10 @@ const getRiderManifest = async (req, res) => {
         delivery_partner: r.delivery_partner,
         status: r.status,
         customer_name: fullName,
-        customer_phone: r.customer_phone || null,
+        customer_phone: isVerified ? null : (r.customer_phone || null),
         address: [r.shipping_address, r.shipping_city, r.shipping_region].filter(Boolean).join(', '),
+        ghana_post_gps: r.ghana_post_gps || null,
+        delivery_landmark: r.delivery_landmark || null,
         item_count: r.item_count,
         total_amount: amount,
         payment_method: r.payment_method,

@@ -77,6 +77,8 @@ const ROUTE_TITLE_PREFIXES = {
   '/orders': 'My Orders',
   '/track': 'Track Order',
   '/track-order': 'Track Order',
+  '/rider-manifest': 'Rider Route Console',
+  '/rider-handoff': 'Doorstep Proof of Delivery',
   '/account': 'My Account',
   '/wishlist': 'Wishlist',
 };
@@ -113,6 +115,9 @@ function RouteFade({ children }) {
     }
   }, [pathname, storeName]);
   useEffect(() => {
+    if (pathname.startsWith('/rider-manifest') || pathname.startsWith('/rider-handoff')) {
+      return;
+    }
     const apiBase = (import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '');
     fetch(`${apiBase}/traffic/visit`, {
       method: 'POST',
