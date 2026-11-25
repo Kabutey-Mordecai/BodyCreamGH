@@ -194,13 +194,8 @@ export default function ProductCard({ product }) {
           </div>
         )}
 
-        {/* Hover / touch overlay — clicking empty area opens product details */}
-        <div
-          className="product-card-overlay"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) navigate(`/products/${product.id}`);
-          }}
-        >
+        {/* Hover / touch overlay — pointer-events: none so clicks pass to card link */}
+        <div className="product-card-overlay">
           {isOutOfStock ? (
             <span className="overlay-sold-out">Out of Stock</span>
           ) : product.has_variants ? (

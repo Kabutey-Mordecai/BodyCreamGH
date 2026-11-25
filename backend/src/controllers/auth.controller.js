@@ -126,7 +126,8 @@ const login = async (req, res) => {
     // Admin/staff accounts require a second factor (Email OTP) before JWT is issued.
     // Non-production buyer demos may explicitly opt in to DEMO_SKIP_ADMIN_MFA=true.
     const { ADMIN_ROLES } = require('../middleware/auth');
-    const skipDemoMfa = process.env.NODE_ENV !== 'production' && process.env.DEMO_SKIP_ADMIN_MFA === 'true';
+    const isProduction = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+    const skipDemoMfa = !isProduction && process.env.DEMO_SKIP_ADMIN_MFA === 'true';
     if (ADMIN_ROLES.has(user.role) && !skipDemoMfa) {
       const otp = crypto.randomInt(100000, 1000000).toString();
       const otpHash = hashOtp(otp);
@@ -255,28 +256,46 @@ const refresh = async (req, res) => {
 
     const tokenHash = hashRefreshToken(refresh_token);
 
-    const { rows } = await pool.query(
-      `SELECT rt.*, u.id AS uid, u.email, u.role, u.is_active
-         FROM refresh_tokens rt
-         JOIN users u ON u.id = rt.user_id
-        WHERE rt.token_hash = $1 AND rt.revoked = false AND rt.expires_at > NOW()`,
+    // Atomically revoke the presented refresh token so concurrent requests cannot
+    // rotate the same token twice.
+    const { rows: updatedRows } = await pool.query(
+      `UPDATE refresh_tokens
+          SET revoked = true
+        WHERE token_hash = $1 AND revoked = false AND expires_at > NOW()
+       RETURNING *`,
       [tokenHash]
     );
 
-    if (!rows.length) {
+    if (!updatedRows.length) {
+      // Reuse detection: if an already-revoked refresh token is replayed, revoke
+      // all active refresh tokens for that user to contain potential theft.
+      const { rows: reusedRows } = await pool.query(
+        `SELECT user_id FROM refresh_tokens WHERE token_hash = $1 AND revoked = true LIMIT 1`,
+        [tokenHash]
+      );
+      if (reusedRows.length) {
+        await pool.query(
+          `UPDATE refresh_tokens SET revoked = true WHERE user_id = $1 AND revoked = false`,
+          [reusedRows[0].user_id]
+        );
+        logger.warn('Refresh token reuse detected; revoked all active sessions', {
+          userId: reusedRows[0].user_id,
+        });
+      }
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
 
-    const record = rows[0];
+    const record = updatedRows[0];
+    const { rows: userRows } = await pool.query(
+      `SELECT id, email, role, is_active FROM users WHERE id = $1`,
+      [record.user_id]
+    );
 
-    // Rotate / revoke the old token immediately.
-    await pool.query('UPDATE refresh_tokens SET revoked = true WHERE id = $1', [record.id]);
-
-    if (record.is_active === false) {
+    if (!userRows.length || userRows[0].is_active === false) {
       return res.status(401).json({ error: 'This account has been deactivated.' });
     }
 
-    const user = { id: record.uid, email: record.email, role: record.role };
+    const user = { id: userRows[0].id, email: userRows[0].email, role: userRows[0].role };
     const { accessToken, refreshToken } = await issueTokenPair(user, req);
 
     res.json({ token: accessToken, refresh_token: refreshToken });
@@ -426,6 +445,9 @@ const verifyResetToken = async (req, res) => {
     const genericErr = { valid: false, error: 'This code is invalid or has expired.' };
 
     if (!token) return res.status(400).json(genericErr);
+    if (!email && /^\d{6}$/.test(token)) {
+      return res.status(400).json({ valid: false, error: 'Email is required to verify a 6-digit reset code' });
+    }
 
     if (email) {
       // Look up the latest active PIN for this email and compare in constant time
@@ -488,6 +510,9 @@ const resetPassword = async (req, res) => {
 
     if (!cleanToken || !new_password) {
       return res.status(400).json({ error: 'Reset code and new password are required' });
+    }
+    if (!cleanEmail && /^\d{6}$/.test(cleanToken)) {
+      return res.status(400).json({ error: 'Email is required to verify a 6-digit reset code' });
     }
     if (new_password.length < 8) {
       return res.status(400).json({ error: 'Password must be at least 8 characters' });

@@ -165,7 +165,7 @@ export default function Shop() {
     return list.filter(b => b.label.toLowerCase().includes(q));
   }, [apiBrands, selectedBrands, brandQuery, brandCountMap]);
 
-  const LIMIT     = 40;
+  const LIMIT     = 36;
 
   const [searchInput, setSearchInput] = useState(search);
 
@@ -774,7 +774,7 @@ export default function Shop() {
           )}
 
           {/* ── PRODUCTS MAIN CONTENT ── */}
-          <main className="shop-main">
+          <div className="shop-main">
 
             {/* Redesigned Toolbar: Luxury Search Bar + Standalone Sort Pill */}
             <div className="shop-toolbar-redesign">
@@ -963,7 +963,7 @@ export default function Shop() {
                 )}
               </>
             )}
-          </main>
+          </div>
         </div>
       </div>
 

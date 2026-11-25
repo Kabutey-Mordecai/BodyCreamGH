@@ -210,13 +210,17 @@
   transform: translateY(8px);
   transition: opacity 0.28s ease, transform 0.28s ease;
   pointer-events: none;
-  cursor: pointer;
   z-index: 3;
 }
 
 .product-card:hover .product-card-overlay {
   opacity: 1;
   transform: translateY(0);
+}
+
+.product-card:hover .product-card-overlay .overlay-atc-btn,
+.product-card:hover .product-card-overlay .overlay-qty-stepper,
+.product-card:hover .product-card-overlay .overlay-view-link {
   pointer-events: auto;
 }
 

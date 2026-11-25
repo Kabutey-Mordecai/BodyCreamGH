@@ -7,6 +7,7 @@ export default function ResetPassword() {
   // The reset token comes in the URL query string: /reset-password?token=abc123
   const [searchParams] = useSearchParams();
   const token          = searchParams.get('token');
+  const email          = searchParams.get('email');
   const navigate       = useNavigate();
 
   const [valid, setValid]     = useState(null); // null = checking, true/false = result
@@ -19,10 +20,10 @@ export default function ResetPassword() {
   // Saves the user from filling in the form only to find the link is expired.
   useEffect(() => {
     if (!token) { setValid(false); return; }
-    authAPI.verifyResetToken(token)
+    authAPI.verifyResetToken(token, email)
       .then(() => setValid(true))
       .catch(() => setValid(false));
-  }, [token]);
+  }, [token, email]);
 
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -40,7 +41,7 @@ export default function ResetPassword() {
 
     setLoading(true);
     try {
-      await authAPI.resetPassword({ token, new_password: form.password });
+      await authAPI.resetPassword({ token, ...(email ? { email } : {}), new_password: form.password });
       setSuccess(true);
       // Redirect to login after 3 seconds so the user sees the success message
       setTimeout(() => navigate('/login'), 3000);

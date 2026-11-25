@@ -32,6 +32,9 @@ export function AuthProvider({ children }) {
 
   const login = async (email, password, extra = {}) => {
     const { data } = await authAPI.login({ email, password, ...extra });
+    if (data?.mfa_required) {
+      throw new Error('Please sign in through the Admin Portal.');
+    }
     localStorage.setItem('token', data.token);
     if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
     localStorage.setItem('user', JSON.stringify(data.user));

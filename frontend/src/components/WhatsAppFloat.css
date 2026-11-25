@@ -2,7 +2,7 @@
   position: fixed;
   right: 22px;
   bottom: 76px;
-  z-index: 90;
+  z-index: 80;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -73,6 +73,12 @@
   background: #1ebe5d;
   color: #fff;
   transform: translateY(-2px);
+}
+
+@media (max-width: 767px) {
+  .whatsapp-bubble {
+    display: none;
+  }
 }
 
 @media (max-width: 768px) {

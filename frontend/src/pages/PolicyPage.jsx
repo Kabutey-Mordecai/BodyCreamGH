@@ -180,14 +180,13 @@ export default function PolicyPage({ type = 'privacy' }) {
                 href={`https://wa.me/${waDigits}?text=Hello%20${encodeURIComponent(storeName)},%20I%20have%20an%20inquiry.`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="btn btn-outline"
-                style={{ textDecoration: 'none', borderColor: '#25D366', color: '#128C7E' }}
+                className="btn btn-outline policy-btn-whatsapp"
               >
                 💬 Chat on WhatsApp
               </a>
             )}
             {email && (
-              <a href={`mailto:${email}`} className="btn btn-outline" style={{ textDecoration: 'none' }}>
+              <a href={`mailto:${email}`} className="btn btn-outline policy-btn-email">
                 ✉️ Email Us
               </a>
             )}

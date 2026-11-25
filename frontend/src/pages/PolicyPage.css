@@ -66,3 +66,31 @@
   flex-wrap: wrap;
   gap: 12px;
 }
+
+.policy-btn-whatsapp {
+  text-decoration: none;
+  border-color: #0e6655;
+  color: #0b5345;
+  background-color: #f4fbf8;
+  font-weight: 600;
+}
+
+.policy-btn-whatsapp:hover {
+  background-color: #0e6655;
+  border-color: #0e6655;
+  color: #ffffff;
+}
+
+.policy-btn-email {
+  text-decoration: none;
+  border-color: #1c1410;
+  color: #1c1410;
+  background-color: #faf7f4;
+  font-weight: 600;
+}
+
+.policy-btn-email:hover {
+  background-color: #1c1410;
+  border-color: #1c1410;
+  color: #ffffff;
+}

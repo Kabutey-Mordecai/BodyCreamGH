@@ -1150,6 +1150,15 @@ input.shop-search-input:focus-visible {
 }
 
 /* ── Enhanced Mobile Shop Search Bar ─────────────── */
+@media (min-width: 769px) {
+  .shop-search-form {
+    display: none;
+  }
+  .shop-toolbar-redesign {
+    justify-content: flex-end;
+  }
+}
+
 @media (max-width: 768px) {
   .shop-search-form {
     flex: none;

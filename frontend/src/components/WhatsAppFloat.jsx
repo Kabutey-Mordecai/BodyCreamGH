@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 import './WhatsAppFloat.css';
@@ -7,12 +7,21 @@ export default function WhatsAppFloat() {
   const { whatsapp_number, whatsapp_float_enabled, store_name, whatsapp_welcome_text } = useSettings();
   const { pathname } = useLocation();
   const [bubbleDismissed, setBubbleDismissed] = useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      return true;
+    }
     try {
       return sessionStorage.getItem('wa_bubble_dismissed') === '1';
     } catch {
       return false;
     }
   });
+
+  useEffect(() => {
+    if (bubbleDismissed) return;
+    const timer = setTimeout(() => setBubbleDismissed(true), 8000);
+    return () => clearTimeout(timer);
+  }, [bubbleDismissed]);
 
   if (whatsapp_float_enabled === false || whatsapp_float_enabled === 'false') return null;
   if (
