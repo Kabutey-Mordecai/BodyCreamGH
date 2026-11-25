@@ -389,7 +389,7 @@
 .rp-search-input {
   width: 100%;
   min-height: 46px;
-  padding: 0 38px 0 40px;
+  padding: 0 38px 0 40px !important;
   border-radius: 10px;
   border: 1.5px solid #cbd5e1;
   background: #f8fafc;
