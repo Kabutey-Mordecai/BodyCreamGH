@@ -102,8 +102,13 @@ router.post('/simulate/advance/:tracking_number', verifyToken, requireAdmin, req
 });
 
 router.post('/simulate/full/:tracking_number', verifyToken, requireAdmin, requireFulfillmentOrAdmin, async (req, res) => {
-  if (process.env.NODE_ENV === 'production') {
-    return res.status(403).json({ error: 'Automated demo shipment simulation is disabled in production.' });
+  // Deny by default; only allow when explicitly enabled outside production-like hosts.
+  const simulationAllowed =
+    process.env.ALLOW_COURIER_SIMULATION === 'true' &&
+    process.env.NODE_ENV !== 'production' &&
+    !process.env.RAILWAY_ENVIRONMENT;
+  if (!simulationAllowed) {
+    return res.status(403).json({ error: 'Automated demo shipment simulation is disabled.' });
   }
   const delayMs = Math.max(1000, parseInt(req.query.delay) || 2000);
   res.json({ message: `Full simulation started for ${req.params.tracking_number}`, delayMs });
