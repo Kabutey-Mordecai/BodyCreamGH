@@ -881,22 +881,22 @@ export default function OrderDetail() {
                             onClick={handleGetRiderManifest}
                           >
                             {manifestLoading
-                              ? 'Generating Route Link…'
-                              : `🏍️ Get Rider Route Link (${delivery.delivery_partner || 'All Stops'})`}
+                              ? 'Generating link…'
+                              : `Route link (${delivery.delivery_partner || 'All stops'})`}
                           </button>
 
                           {delivery.tracking_number && delivery.status !== 'delivered' && (
                             <button
                               type="button"
-                              className="btn btn-accent btn-sm"
+                              className="btn btn-outline btn-sm"
                               disabled={deliverySaving}
                               onClick={handleAdvanceSimulation}
                             >
                               {delivery.status === 'pending'
-                                ? '→ Advance to In Transit'
+                                ? 'Advance to In Transit'
                                 : delivery.status === 'in_transit'
-                                  ? '→ Advance to Out for Delivery'
-                                  : '✓ Mark Delivered'}
+                                  ? 'Advance to Out for Delivery'
+                                  : 'Mark Delivered'}
                             </button>
                           )}
 
@@ -906,7 +906,7 @@ export default function OrderDetail() {
                             disabled={podSending}
                             onClick={handleSendPodOtp}
                           >
-                            {podSending ? 'Sending…' : '🔑 Resend 6-Digit Customer OTP'}
+                            {podSending ? 'Sending…' : 'Resend customer OTP'}
                           </button>
                         </div>
 
@@ -914,7 +914,7 @@ export default function OrderDetail() {
                           <div className="rm-share-card">
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                               <strong style={{ fontSize: '0.84rem' }}>
-                                {manifestInfo.delivery_partner} · {manifestInfo.active_count} Active Stop{manifestInfo.active_count === 1 ? '' : 's'}
+                                {manifestInfo.delivery_partner} · {manifestInfo.active_count} active stop{manifestInfo.active_count === 1 ? '' : 's'}
                               </strong>
                               <span className="badge badge-success">Valid {manifestInfo.expires_in}</span>
                             </div>
@@ -930,7 +930,7 @@ export default function OrderDetail() {
                                   toast.success('Rider manifest link copied');
                                 }}
                               >
-                                📋 Copy Link
+                                Copy link
                               </button>
                               <a
                                 href={manifestInfo.manifest_url}
@@ -939,16 +939,16 @@ export default function OrderDetail() {
                                 className="btn btn-outline btn-sm"
                                 style={{ textDecoration: 'none' }}
                               >
-                                ↗ Open Rider App
+                                Open console ↗
                               </a>
                               <a
                                 href={`https://wa.me/${String(manifestInfo.driver_phone || delivery.driver_phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Dispatch Route (${manifestInfo.active_count} stops · ${manifestInfo.delivery_partner}):\n${manifestInfo.manifest_url}`)}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="btn btn-whatsapp btn-sm"
+                                className="btn btn-primary btn-sm"
                                 style={{ textDecoration: 'none' }}
                               >
-                                💬 Send on WhatsApp
+                                Send WhatsApp
                               </a>
                             </div>
                           </div>
@@ -1032,9 +1032,9 @@ export default function OrderDetail() {
                 ) : (
                   <form onSubmit={handleCreateDelivery}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                      <div className="rm-step-label" style={{ marginBottom: 0 }}>Quick-Assign Dispatch Rider</div>
-                      <Link to="/riders" style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--ac-accent)', textDecoration: 'none' }}>
-                        Manage Riders &amp; Phones →
+                      <div className="rm-step-label" style={{ marginBottom: 0 }}>Assign Dispatch Rider</div>
+                      <Link to="/riders" style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--ac-accent)', textDecoration: 'none' }}>
+                        Manage riders →
                       </Link>
                     </div>
                     <div className="od-rider-chips">
@@ -1043,7 +1043,7 @@ export default function OrderDetail() {
                         className={`od-rider-chip${deliveryForm.delivery_partner === 'In-house Dispatch Bike' ? ' is-selected' : ''}`}
                         onClick={() => setDeliveryForm(prev => ({ ...prev, delivery_partner: 'In-house Dispatch Bike', driver_phone: '' }))}
                       >
-                        🏍️ In-house Bike Rider
+                        In-house Bike
                       </button>
                       {knownPartners
                         .filter(p => p.delivery_partner.toLowerCase() !== 'in-house dispatch bike')
@@ -1073,7 +1073,7 @@ export default function OrderDetail() {
                         className={`od-rider-chip${deliveryForm.delivery_partner === 'DHL / External Courier' ? ' is-selected' : ''}`}
                         onClick={() => setDeliveryForm(prev => ({ ...prev, delivery_partner: 'DHL / External Courier', driver_phone: '' }))}
                       >
-                        📦 External Courier
+                        External Courier
                       </button>
                     </div>
 

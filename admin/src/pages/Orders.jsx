@@ -308,7 +308,7 @@ export default function Orders() {
             <>
               <button
                 type="button"
-                className="btn btn-accent btn-sm"
+                className="btn btn-primary btn-sm"
                 onClick={() => {
                   setManifestResult(null);
                   setManifestOpen(true);
@@ -317,7 +317,7 @@ export default function Orders() {
                     .catch(() => {});
                 }}
               >
-                🏍️ Rider Manifest Hub
+                Rider Manifest
               </button>
               <button
                 type="button"
@@ -766,10 +766,10 @@ export default function Orders() {
           <div className="rm-modal-shell" onClick={e => e.stopPropagation()}>
             <div className="rm-modal-head">
               <div>
-                <div className="rm-modal-eyebrow">Live Dispatch Operations</div>
-                <h3 style={{ fontSize: '1.18rem', margin: 0 }}>🏍️ Rider Route Manifest Hub</h3>
+                <div className="rm-modal-eyebrow">Dispatch Operations</div>
+                <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Rider Route Manifest</h3>
                 <p className="muted text-xs" style={{ marginTop: 3 }}>
-                  Generate a signed mobile route link per rider — includes addresses, Google Maps pins, COD cash tally, and 6-digit OTP verification.
+                  Generate a signed mobile route link per rider with addresses, Google Maps pins, COD cash tally, and 6-digit OTP verification.
                 </p>
               </div>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setManifestOpen(false)} aria-label="Close modal">
@@ -906,7 +906,7 @@ export default function Orders() {
                       toast.success('Manifest link copied to clipboard');
                     }}
                   >
-                    📋 Copy Route Link
+                    Copy route link
                   </button>
                   <a
                     href={manifestResult?.manifest_url || '#'}
@@ -915,21 +915,21 @@ export default function Orders() {
                     className="btn btn-outline btn-sm"
                     style={{ textDecoration: 'none', pointerEvents: manifestResult?.manifest_url ? 'auto' : 'none' }}
                   >
-                    ↗ Preview Rider App
+                    Open console ↗
                   </a>
                   <a
                     href={`https://wa.me/${(() => {
                       const d = (manifestResult?.driver_phone || manifestPhone || '').replace(/\D/g, '');
                       return d.length === 10 && d.startsWith('0') ? `233${d.slice(1)}` : d;
                     })()}?text=${encodeURIComponent(
-                      `🏍️ *BodyCream GH Dispatch Manifest*\nRider: ${manifestResult?.delivery_partner || 'All Active Stops'}\nActive Stops: ${manifestResult?.active_count || 0}\n\nOpen your live route console:\n${manifestResult?.manifest_url || ''}\n\nUse this link to navigate to customers, collect COD cash/MoMo, enter the customer's 6-digit delivery code, and snap parcel photos.`
+                      `BodyCream GH Dispatch Manifest\nRider: ${manifestResult?.delivery_partner || 'All Active Stops'}\nActive Stops: ${manifestResult?.active_count || 0}\n\nOpen live route console:\n${manifestResult?.manifest_url || ''}`
                     )}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="btn btn-whatsapp btn-sm"
+                    className="btn btn-primary btn-sm"
                     style={{ textDecoration: 'none', pointerEvents: manifestResult?.manifest_url ? 'auto' : 'none' }}
                   >
-                    💬 Dispatch via WhatsApp
+                    Send WhatsApp
                   </a>
                 </div>
               </div>
@@ -951,7 +951,7 @@ export default function Orders() {
             <div className="rm-modal-head">
               <div>
                 <div className="rm-modal-eyebrow">Batch Fulfilment</div>
-                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>🚚 Dispatch {selectedIds.length} Selected Order{selectedIds.length === 1 ? '' : 's'}</h3>
+                <h3 style={{ margin: 0, fontSize: '1.08rem' }}>Dispatch {selectedIds.length} selected order{selectedIds.length === 1 ? '' : 's'}</h3>
               </div>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setBulkOpen(false)}>✕</button>
             </div>
@@ -1043,13 +1043,13 @@ export default function Orders() {
                       }
                     }}
                   >
-                    {bulkBusy ? 'Dispatching…' : '🚚 Dispatch Batch & Generate Rider Link'}
+                    {bulkBusy ? 'Dispatching…' : 'Dispatch batch & generate link'}
                   </button>
                 </>
               ) : (
                 <div className="rm-share-card">
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--ac-success)', marginBottom: 6 }}>
-                    ✓ Dispatched {bulkResult.dispatched_count} order{bulkResult.dispatched_count === 1 ? '' : 's'} to {bulkResult.delivery_partner}
+                  <div style={{ fontWeight: 600, fontSize: '0.88rem', color: 'var(--ac-success)', marginBottom: 6 }}>
+                    Dispatched {bulkResult.dispatched_count} order{bulkResult.dispatched_count === 1 ? '' : 's'} to {bulkResult.delivery_partner}
                     {bulkResult.skipped_count > 0 ? ` (${bulkResult.skipped_count} skipped)` : ''}
                   </div>
                   <div className="rm-url-box">
@@ -1064,24 +1064,24 @@ export default function Orders() {
                         toast.success('Rider link copied');
                       }}
                     >
-                      📋 Copy
+                      Copy link
                     </button>
                     <a href={bulkResult.manifest_url} target="_blank" rel="noopener noreferrer" className="btn btn-outline btn-sm" style={{ textDecoration: 'none' }}>
-                      ↗ Open App
+                      Open console ↗
                     </a>
                     <a
                       href={`https://wa.me/${(() => {
                         const d = (bulkResult.driver_phone || bulkPhone || '').replace(/\D/g, '');
                         return d.length === 10 && d.startsWith('0') ? `233${d.slice(1)}` : d;
                       })()}?text=${encodeURIComponent(
-                        `🏍️ *BodyCream GH Dispatch Manifest* (${bulkResult.dispatched_count} stops · ${bulkResult.delivery_partner}):\n${bulkResult.manifest_url}`
+                        `BodyCream GH Dispatch Manifest (${bulkResult.dispatched_count} stops · ${bulkResult.delivery_partner}):\n${bulkResult.manifest_url}`
                       )}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="btn btn-whatsapp btn-sm"
+                      className="btn btn-primary btn-sm"
                       style={{ textDecoration: 'none' }}
                     >
-                      💬 WhatsApp Rider
+                      Send WhatsApp
                     </a>
                   </div>
                 </div>
