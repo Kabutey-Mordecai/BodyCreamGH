@@ -26,7 +26,7 @@ export default function TurnstileWidget({ onToken, onExpire, resetKey = 0 }) {
         callback: (token) => onToken?.(token),
         'expired-callback': () => onExpire?.(),
         'error-callback': () => onExpire?.(),
-        theme: 'auto',
+        theme: 'light',
       });
     };
 

@@ -122,7 +122,6 @@ function RouteFade({ children }) {
         visitor_id: getVisitorId(),
         referrer: typeof document !== 'undefined' ? document.referrer || '' : '',
       }),
-      keepalive: true,
     }).catch(() => {});
   }, [pathname]);
   return (

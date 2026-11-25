@@ -870,7 +870,7 @@ export default function ProductPage() {
                 <div key={t.icon} className="product-trust-item">
                   <span className="product-trust-icon">{t.icon}</span>
                   <div>
-                    <strong>{t.icon === '↩' ? `${returnDays}-day returns` : t.label}</strong>
+                    <strong>{t.icon === '↩' ? `${Number(settings.return_window_days) || 3}-day returns` : t.label}</strong>
                     <span>
                       {t.icon === '🚚'
                         ? (freeDeliveryOver > 0 ? `Free over GHS ${freeDeliveryOver}` : 'Free delivery')
