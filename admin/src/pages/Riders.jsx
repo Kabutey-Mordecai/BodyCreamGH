@@ -612,6 +612,8 @@ export default function Riders() {
                           <button
                             type="button"
                             className="btn btn-outline btn-sm"
+                            disabled={!rider.is_active}
+                            title={!rider.is_active ? 'Set rider On duty before generating a route link' : 'Generate signed WhatsApp route link'}
                             onClick={() => {
                               setManifestData(null);
                               setManifestTarget(rider);
@@ -907,6 +909,35 @@ export default function Riders() {
               >
                 Send WhatsApp
               </a>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, paddingTop: 10, borderTop: '1px solid var(--ac-border)', fontSize: '0.76rem' }}>
+              <span className="muted">Lost phone or shift ended?</span>
+              <button
+                type="button"
+                className="btn btn-outline btn-sm"
+                disabled={manifestBusy}
+                onClick={async () => {
+                  try {
+                    setManifestBusy(true);
+                    const { data: revRes } = await deliveriesAPI.revokeRiderLinks(manifestTarget.id);
+                    toast.success(revRes?.message || 'Previous route links revoked');
+                    const { data: fresh } = await deliveriesAPI.createManifestLink({
+                      delivery_partner: manifestTarget.name,
+                      driver_phone: manifestTarget.phone || undefined,
+                      expires_in: manifestExpiry,
+                    });
+                    setManifestData(fresh);
+                    loadRiders(true);
+                  } catch (err) {
+                    toast.error(err.response?.data?.error || 'Failed to revoke previous links');
+                  } finally {
+                    setManifestBusy(false);
+                  }
+                }}
+              >
+                Revoke old links &amp; rotate
+              </button>
             </div>
           </div>
         )}

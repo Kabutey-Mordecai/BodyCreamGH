@@ -3,8 +3,18 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { deliveriesAPI } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
-import { parseRiderDispatchInput } from './RiderManifest';
+import { parseRiderDispatchInput, HANDOFF_SESSION_SS_KEY } from './RiderManifest';
 import './RiderPortal.css';
+
+function readStoredHandoffSession() {
+  try {
+    const raw = sessionStorage.getItem(HANDOFF_SESSION_SS_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
 
 function formatPhoneForWa(phone) {
   if (!phone) return '';
@@ -56,15 +66,18 @@ async function compressPhotoFile(file) {
 }
 
 export default function RiderHandoff() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const settings = useSettings();
 
-  const token = searchParams.get('token') || '';
-  const manifestToken = searchParams.get('manifest') || '';
+  const urlToken = searchParams.get('token') || '';
+  const urlManifest = searchParams.get('manifest') || '';
+
+  const [token, setToken] = useState(() => urlToken || readStoredHandoffSession()?.token || '');
+  const [manifestToken, setManifestToken] = useState(() => urlManifest || readStoredHandoffSession()?.manifestToken || '');
 
   const [info, setInfo]               = useState(null);
-  const [loading, setLoading]         = useState(Boolean(token));
+  const [loading, setLoading]         = useState(() => Boolean(urlToken || readStoredHandoffSession()?.token));
   const [error, setError]             = useState('');
   const [loadFailed, setLoadFailed]   = useState(false);
   const [isOnline, setIsOnline]       = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
@@ -100,10 +113,41 @@ export default function RiderHandoff() {
 
   const otp = otpDigits.join('');
   const otpComplete = /^\d{6}$/.test(otp);
-  const codReady = !(info?.cod_amount_due > 0) || (codCollected ? (collectionMethod !== 'momo' || Boolean(paymentRef.trim())) : true);
+  const codReady = !(info?.cod_amount_due > 0) || (
+    Boolean(codCollected) && (collectionMethod !== 'momo' || Boolean(paymentRef.trim()))
+  );
 
   const supportPhone = settings?.contact_phone || settings?.whatsapp_number || '';
   const supportWa = formatPhoneForWa(settings?.whatsapp_number || settings?.contact_phone || '');
+
+  // Enforce strict no-referrer & scrub signed JWTs from browser URL bar
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="referrer"]');
+    const prevContent = meta?.getAttribute('content') || 'strict-origin-when-cross-origin';
+    if (meta) meta.setAttribute('content', 'no-referrer');
+    return () => {
+      if (meta) meta.setAttribute('content', prevContent);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (urlToken) {
+      setToken(urlToken);
+      if (urlManifest) setManifestToken(urlManifest);
+      try {
+        sessionStorage.setItem(HANDOFF_SESSION_SS_KEY, JSON.stringify({
+          token: urlToken,
+          manifestToken: urlManifest || manifestToken || '',
+        }));
+        if (urlManifest) {
+          sessionStorage.setItem('bc_rider_active_manifest', urlManifest);
+        }
+      } catch {}
+      if (typeof window !== 'undefined' && window.location.search) {
+        window.history.replaceState({}, '', '/rider-handoff');
+      }
+    }
+  }, [urlToken, urlManifest, manifestToken]);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -364,11 +408,20 @@ export default function RiderHandoff() {
     }
     setPasteValue('');
     if (parsed.route === '/rider-manifest') {
-      navigate(`/rider-manifest?token=${encodeURIComponent(parsed.token)}`);
+      try {
+        sessionStorage.setItem('bc_rider_active_manifest', parsed.token);
+      } catch {}
+      navigate('/rider-manifest');
     } else {
-      const qs = { token: parsed.token };
-      if (parsed.manifestToken) qs.manifest = parsed.manifestToken;
-      setSearchParams(qs);
+      const nextManifest = parsed.manifestToken || manifestToken || '';
+      try {
+        sessionStorage.setItem(HANDOFF_SESSION_SS_KEY, JSON.stringify({
+          token: parsed.token,
+          manifestToken: nextManifest,
+        }));
+      } catch {}
+      setToken(parsed.token);
+      if (nextManifest) setManifestToken(nextManifest);
     }
   };
 
@@ -381,6 +434,10 @@ export default function RiderHandoff() {
     }
     if (!photoUrl) {
       setError('Capture a live photo of the parcel before completing delivery.');
+      return;
+    }
+    if (info?.cod_amount_due > 0 && !codCollected) {
+      setError(`Confirm collection of GHS ${Number(info.cod_amount_due).toFixed(2)} (Cash or Mobile Money) before completing delivery.`);
       return;
     }
     if (info?.cod_amount_due > 0 && codCollected && collectionMethod === 'momo' && !paymentRef.trim()) {
@@ -449,7 +506,12 @@ export default function RiderHandoff() {
               </div>
             </div>
             <Link
-              to={manifestToken ? `/rider-manifest?token=${encodeURIComponent(manifestToken)}` : '/rider-manifest'}
+              to="/rider-manifest"
+              onClick={() => {
+                if (manifestToken) {
+                  try { sessionStorage.setItem('bc_rider_active_manifest', manifestToken); } catch {}
+                }
+              }}
               className="rp-sync-btn"
             >
               ← Route Console
@@ -472,7 +534,10 @@ export default function RiderHandoff() {
                 </button>
                 {manifestToken && (
                   <Link
-                    to={`/rider-manifest?token=${encodeURIComponent(manifestToken)}`}
+                    to="/rider-manifest"
+                    onClick={() => {
+                      try { sessionStorage.setItem('bc_rider_active_manifest', manifestToken); } catch {}
+                    }}
                     className="rp-act-btn"
                   >
                     ← Back to Route Manifest
@@ -496,7 +561,12 @@ export default function RiderHandoff() {
           <section className="rp-step-card">
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
               <Link
-                to={manifestToken ? `/rider-manifest?token=${encodeURIComponent(manifestToken)}` : '/rider-manifest'}
+                to="/rider-manifest"
+                onClick={() => {
+                  if (manifestToken) {
+                    try { sessionStorage.setItem('bc_rider_active_manifest', manifestToken); } catch {}
+                  }
+                }}
                 className="rp-primary-cta rp-primary-cta--gold"
               >
                 Open Rider Route Console →
@@ -511,8 +581,8 @@ export default function RiderHandoff() {
                 <input
                   id="rh-paste-input"
                   type="text"
-                  className="rp-search-input"
-                  style={{ paddingLeft: 14, flex: 1 }}
+                  className="rp-text-input"
+                  style={{ flex: 1 }}
                   placeholder="Paste https://.../rider-handoff?token=... or route link"
                   value={pasteValue}
                   onChange={e => { setPasteValue(e.target.value); setPasteError(''); }}
@@ -663,7 +733,12 @@ export default function RiderHandoff() {
             </div>
 
             <Link
-              to={manifestToken ? `/rider-manifest?token=${encodeURIComponent(manifestToken)}` : '/rider-manifest'}
+              to="/rider-manifest"
+              onClick={() => {
+                if (manifestToken) {
+                  try { sessionStorage.setItem('bc_rider_active_manifest', manifestToken); } catch {}
+                }
+              }}
               className="rp-primary-cta rp-primary-cta--gold"
             >
               ← Back to Next Stop on Route
@@ -689,7 +764,12 @@ export default function RiderHandoff() {
       <header className="rp-topbar">
         <div className="rp-topbar-inner">
           <Link
-            to={manifestToken ? `/rider-manifest?token=${encodeURIComponent(manifestToken)}` : '/rider-manifest'}
+            to="/rider-manifest"
+            onClick={() => {
+              if (manifestToken) {
+                try { sessionStorage.setItem('bc_rider_active_manifest', manifestToken); } catch {}
+              }
+            }}
             className="rp-sync-btn"
           >
             ← Route
@@ -945,8 +1025,7 @@ export default function RiderHandoff() {
                 value={recipientName}
                 onChange={e => setRecipientName(e.target.value)}
                 placeholder="Customer or receptionist name"
-                className="rp-search-input"
-                style={{ paddingLeft: 12 }}
+                className="rp-text-input"
               />
             </div>
 
@@ -959,7 +1038,7 @@ export default function RiderHandoff() {
                     checked={codCollected}
                     onChange={e => setCodCollected(e.target.checked)}
                   />
-                  <span>Collected GHS {info.cod_amount_due.toFixed(2)} from customer</span>
+                  <span>Collected GHS {info.cod_amount_due.toFixed(2)} from customer *</span>
                 </label>
 
                 {codCollected && (
@@ -988,8 +1067,8 @@ export default function RiderHandoff() {
                         placeholder="Enter MoMo Transaction ID *"
                         value={paymentRef}
                         onChange={e => setPaymentRef(e.target.value)}
-                        className="rp-search-input"
-                        style={{ marginTop: 10, paddingLeft: 12, background: '#fff' }}
+                        className="rp-text-input"
+                        style={{ marginTop: 10, background: '#fff' }}
                       />
                     )}
                   </>
@@ -1007,7 +1086,7 @@ export default function RiderHandoff() {
               {photoUrl ? '✓ Parcel Photo' : '○ Parcel Photo'}
             </div>
             <div className={`rp-ready-chip${codReady ? ' is-ready' : ''}`}>
-              {codReady ? '✓ Settlement' : '○ MoMo Ref'}
+              {codReady ? '✓ Settlement' : !codCollected ? '○ Confirm COD' : '○ MoMo Ref'}
             </div>
           </div>
 

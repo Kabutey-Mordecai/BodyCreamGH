@@ -16,6 +16,7 @@ const logger        = require('../utils/logger');
 const VALID_DELIVERY_STATUSES = ['pending', 'in_transit', 'out_for_delivery', 'delivered'];
 const VALID_VEHICLE_TYPES = ['motorbike', 'van', 'bicycle', 'car', 'courier'];
 const MAX_POD_OTP_ATTEMPTS = 5;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 
 let ridersTablePromise = null;
 async function ensureRidersTable() {
@@ -32,9 +33,14 @@ async function ensureRidersTable() {
           zone_coverage VARCHAR(160),
           notes         TEXT,
           is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
+          token_version INTEGER      NOT NULL DEFAULT 1,
           created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
           updated_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE dispatch_riders
+          ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE deliveries
+          ADD COLUMN IF NOT EXISTS pod_otp_sent_at TIMESTAMPTZ;
         CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_riders_name_lower
           ON dispatch_riders (LOWER(TRIM(name)));
         CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_riders_phone_norm
@@ -68,16 +74,42 @@ function normalizeRiderPhone(raw) {
   return { clean: trimmed.slice(0, 40), norm: norm.slice(0, 32) };
 }
 
+function sqlNormalizedPhoneExpr(colExpr) {
+  const digits = `REGEXP_REPLACE(COALESCE(${colExpr}, ''), '\\D', '', 'g')`;
+  return `(CASE
+    WHEN LENGTH(${digits}) = 10 AND LEFT(${digits}, 1) = '0' THEN '233' || SUBSTRING(${digits} FROM 2)
+    WHEN LENGTH(${digits}) = 9 THEN '233' || ${digits}
+    ELSE ${digits}
+  END)`;
+}
+
 async function findRegisteredRiderByName(name) {
   if (typeof name !== 'string' || !name.trim()) return null;
   try {
     await ensureRidersTable();
     const { rows } = await pool.query(
-      `SELECT id, name, phone, vehicle_type, vehicle_plate, zone_coverage, is_active
+      `SELECT id, name, phone, phone_norm, vehicle_type, vehicle_plate, zone_coverage, is_active, token_version
          FROM dispatch_riders
         WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))
         LIMIT 1`,
       [name.trim()]
+    );
+    return rows[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+async function findRegisteredRiderById(id) {
+  if (typeof id !== 'string' || !id.trim()) return null;
+  try {
+    await ensureRidersTable();
+    const { rows } = await pool.query(
+      `SELECT id, name, phone, phone_norm, vehicle_type, vehicle_plate, zone_coverage, is_active, token_version
+         FROM dispatch_riders
+        WHERE id = $1
+        LIMIT 1`,
+      [id.trim()]
     );
     return rows[0] || null;
   } catch {
@@ -133,9 +165,14 @@ const MANIFEST_EXPIRY_PRESETS = {
   '14d': '14d',
 };
 
-function signRiderToken(deliveryId, trackingNumber) {
+function signRiderToken(deliveryId, trackingNumber, deliveryPartner = null) {
   return jwt.sign(
-    { sub: deliveryId, tn: trackingNumber, purpose: 'rider_pod' },
+    {
+      sub: deliveryId,
+      tn: trackingNumber,
+      dp: deliveryPartner ? String(deliveryPartner).trim() : null,
+      purpose: 'rider_pod',
+    },
     process.env.JWT_SECRET,
     { algorithm: 'HS256', expiresIn: '14d' }
   );
@@ -160,11 +197,21 @@ function verifyRiderToken(rawToken) {
   }
 }
 
-function signRiderManifestToken({ deliveryPartner, driverPhone, expiresIn = '7d' } = {}) {
+function signRiderManifestToken({
+  deliveryPartner,
+  driverPhone,
+  riderId = null,
+  tokenVersion = null,
+  scope = 'rider',
+  expiresIn = '7d',
+} = {}) {
   const safeExpiry = MANIFEST_EXPIRY_PRESETS[expiresIn] || '7d';
   return jwt.sign(
     {
       purpose: 'rider_manifest',
+      sc: scope === 'all' ? 'all' : 'rider',
+      rid: riderId || null,
+      tv: Number.isInteger(tokenVersion) ? tokenVersion : null,
       dp: deliveryPartner || null,
       ph: driverPhone || null,
     },
@@ -192,11 +239,43 @@ function verifyRiderManifestToken(rawToken) {
   }
 }
 
-// Middleware for signed rider photo upload
-function requireRiderToken(req, res, next) {
+// Middleware for signed rider photo upload — verifies delivery state before accepting bytes
+async function requireRiderToken(req, res, next) {
   try {
-    const token = req.query.token || req.headers['x-rider-token'] || req.body?.token;
-    req.rider = verifyRiderToken(token);
+    const token = req.headers['x-rider-token'] || req.query.token || req.body?.token;
+    const payload = verifyRiderToken(token);
+
+    const { rows } = await pool.query(
+      `SELECT d.id, d.tracking_number, d.delivery_partner, d.pod_verified_at, d.status,
+              o.status AS order_status
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+        WHERE d.id = $1
+        LIMIT 1`,
+      [payload.sub]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Delivery not found' });
+    }
+    const d = rows[0];
+    if (payload.tn && d.tracking_number !== payload.tn) {
+      return res.status(401).json({ error: 'Invalid rider handoff link' });
+    }
+    if (['cancelled', 'refunded'].includes(d.order_status)) {
+      return res.status(409).json({ error: 'This order was cancelled or refunded — return parcel to Dispatch.' });
+    }
+    if (d.pod_verified_at || d.status === 'delivered' || d.order_status === 'delivered') {
+      return res.status(409).json({ error: 'This delivery is already verified and closed.' });
+    }
+    if (
+      payload.dp &&
+      d.delivery_partner &&
+      String(d.delivery_partner).trim().toLowerCase() !== String(payload.dp).trim().toLowerCase()
+    ) {
+      return res.status(403).json({ error: 'This stop has been reassigned to another rider.' });
+    }
+
+    req.rider = payload;
     next();
   } catch (err) {
     res.status(err.status || 401).json({ error: err.message });
@@ -237,11 +316,13 @@ async function dispatchOrderWithOtp({
   const otp = String(crypto.randomInt(100000, 1000000));
   const otpHash = hashPodOtp(otp);
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await ensureRidersTable();
   await pool.query(
     `UPDATE deliveries
         SET pod_otp_hash = $1,
             pod_otp_expires_at = $2,
             pod_otp_attempts = 0,
+            pod_otp_sent_at = NOW(),
             updated_at = NOW()
       WHERE id = $3`,
     [otpHash, expiresAt, deliveryId]
@@ -341,6 +422,11 @@ const bulkDispatch = async (req, res) => {
       ? delivery_partner.trim()
       : 'In-house Dispatch Bike';
     const matchedRider = await findRegisteredRiderByName(rawPartner);
+    if (matchedRider && !matchedRider.is_active) {
+      return res.status(400).json({
+        error: `Rider "${matchedRider.name}" is currently marked Off Duty. Activate them in Riders & Fleet before dispatching.`,
+      });
+    }
     const cleanPartner = matchedRider?.name || rawPartner;
     const cleanPhone = (typeof driver_phone === 'string' && driver_phone.trim())
       ? driver_phone.trim()
@@ -388,6 +474,9 @@ const bulkDispatch = async (req, res) => {
     const token = signRiderManifestToken({
       deliveryPartner: cleanPartner,
       driverPhone: cleanPhone || null,
+      riderId: matchedRider?.id || null,
+      tokenVersion: matchedRider?.token_version ?? null,
+      scope: 'rider',
       expiresIn: safeExpiry,
     });
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -615,18 +704,20 @@ const sendPodOtp = async (req, res) => {
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days (supports intercity & 3rd-party couriers)
     const zoneCode = d.zone_code || resolveGhanaZone(d.shipping_region, d.shipping_city);
 
+    await ensureRidersTable();
     await pool.query(
       `UPDATE deliveries
           SET pod_otp_hash = $1,
               pod_otp_expires_at = $2,
               pod_otp_attempts = 0,
+              pod_otp_sent_at = NOW(),
               zone_code = COALESCE(zone_code, $3),
               updated_at = NOW()
         WHERE id = $4`,
       [otpHash, expiresAt, zoneCode, deliveryId]
     );
 
-    const riderToken = signRiderToken(d.id, d.tracking_number);
+    const riderToken = signRiderToken(d.id, d.tracking_number, d.delivery_partner);
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
     const riderUrl = `${frontendUrl}/rider-handoff?token=${encodeURIComponent(riderToken)}`;
 
@@ -687,11 +778,11 @@ const sendPodOtp = async (req, res) => {
 // ── Rider (signed token): view safe handoff details ───────────────────────────
 const getRiderHandoff = async (req, res) => {
   try {
-    const payload = verifyRiderToken(req.query.token || req.headers['x-rider-token']);
+    const payload = verifyRiderToken(req.headers['x-rider-token'] || req.query.token);
     const { rows } = await pool.query(
       `SELECT d.id, d.order_id, d.status, d.tracking_number, d.zone_code, d.delivery_partner,
               d.pod_verified_at, d.pod_verified_method, d.pod_photo_url, d.pod_otp_attempts,
-              o.order_number, o.total_amount, o.payment_method, o.payment_status,
+              o.order_number, o.status AS order_status, o.total_amount, o.payment_method, o.payment_status,
               o.shipping_address, o.shipping_city, o.shipping_region,
               o.ghana_post_gps, o.delivery_landmark,
               COALESCE(u.first_name, o.guest_first_name, 'Customer') AS recipient_first_name,
@@ -706,7 +797,25 @@ const getRiderHandoff = async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Delivery not found' });
 
     const r = rows[0];
-    const alreadyVerified = Boolean(r.pod_verified_at);
+    if (payload.tn && r.tracking_number !== payload.tn) {
+      return res.status(401).json({ error: 'Invalid rider handoff link' });
+    }
+    if (['cancelled', 'refunded'].includes(r.order_status)) {
+      return res.status(409).json({
+        error: `Order #${r.order_number} has been ${r.order_status}. Do not hand over this parcel — return it to Dispatch.`,
+      });
+    }
+    if (
+      payload.dp &&
+      r.delivery_partner &&
+      String(r.delivery_partner).trim().toLowerCase() !== String(payload.dp).trim().toLowerCase()
+    ) {
+      return res.status(403).json({
+        error: `Order #${r.order_number} has been reassigned to another rider. Refresh your Route Manifest.`,
+      });
+    }
+
+    const alreadyVerified = Boolean(r.pod_verified_at) || r.status === 'delivered' || r.order_status === 'delivered';
     const isCodUnpaid = r.payment_method === 'pay_on_delivery' &&
       !['paid', 'partially_refunded', 'refunded'].includes(r.payment_status);
 
@@ -788,11 +897,52 @@ const confirmRiderDelivery = async (req, res) => {
     }
 
     const d = rows[0];
-    if (d.pod_verified_at) {
+    if (payload.tn && d.tracking_number !== payload.tn) {
+      await client.query('ROLLBACK');
+      tx = false;
+      return res.status(401).json({ error: 'Invalid rider handoff link' });
+    }
+    if (['cancelled', 'refunded'].includes(d.order_status)) {
+      await client.query('ROLLBACK');
+      tx = false;
+      return res.status(409).json({
+        error: `Order #${d.order_number} was ${d.order_status}. Do not hand over parcel — return to Dispatch.`,
+      });
+    }
+    if (
+      payload.dp &&
+      d.delivery_partner &&
+      String(d.delivery_partner).trim().toLowerCase() !== String(payload.dp).trim().toLowerCase()
+    ) {
+      await client.query('ROLLBACK');
+      tx = false;
+      return res.status(403).json({ error: 'This stop has been reassigned to another rider.' });
+    }
+    if (d.pod_verified_at || d.status === 'delivered' || d.order_status === 'delivered') {
       await client.query('ROLLBACK');
       tx = false;
       return res.status(409).json({ error: 'This delivery is already verified' });
     }
+
+    const isCodUnpaid = d.payment_method === 'pay_on_delivery' &&
+      !['paid', 'partially_refunded', 'refunded'].includes(d.payment_status);
+    if (isCodUnpaid) {
+      if (cod_collected !== true) {
+        await client.query('ROLLBACK');
+        tx = false;
+        return res.status(400).json({
+          error: `Confirm collection of GHS ${Number(d.total_amount || 0).toFixed(2)} (Cash or Mobile Money) before completing this Pay-on-Delivery stop.`,
+        });
+      }
+      if (collection_method === 'momo' && !(typeof payment_reference === 'string' && payment_reference.trim())) {
+        await client.query('ROLLBACK');
+        tx = false;
+        return res.status(400).json({
+          error: 'Enter the Mobile Money Transaction ID / Reference for MoMo COD collection.',
+        });
+      }
+    }
+
     if (!d.pod_otp_hash) {
       await client.query('ROLLBACK');
       tx = false;
@@ -846,8 +996,6 @@ const confirmRiderDelivery = async (req, res) => {
       [pod_photo_url, numLat, numLng, numAcc, safeRecipient, d.id]
     );
 
-    const isCodUnpaid = d.payment_method === 'pay_on_delivery' &&
-      !['paid', 'partially_refunded', 'refunded'].includes(d.payment_status);
     const markCodPaid = isCodUnpaid && cod_collected === true;
 
     await client.query(
@@ -979,6 +1127,14 @@ const confirmCustomerReceipt = async (req, res) => {
     }
     if (order.status !== 'shipped') {
       return res.status(400).json({ error: 'Only shipped orders can be confirmed as received' });
+    }
+    if (
+      order.payment_method === 'pay_on_delivery' &&
+      !['paid', 'partially_refunded', 'refunded'].includes(order.payment_status)
+    ) {
+      return res.status(403).json({
+        error: 'Pay-on-Delivery orders must be verified at handoff by your dispatch rider upon payment.',
+      });
     }
 
     await client.query('BEGIN');
@@ -1338,6 +1494,8 @@ const updateRider = async (req, res) => {
       : existing.notes;
 
     const isActive = typeof req.body?.is_active === 'boolean' ? req.body.is_active : existing.is_active;
+    // Automatically revoke existing WhatsApp route links whenever a rider is taken Off Duty
+    const bumpTokenVersion = existing.is_active && !isActive;
 
     const { rows: updatedRows } = await pool.query(
       `UPDATE dispatch_riders
@@ -1349,10 +1507,11 @@ const updateRider = async (req, res) => {
               zone_coverage = $6,
               notes = $7,
               is_active = $8,
+              token_version = COALESCE(token_version, 1) + CASE WHEN $10::boolean THEN 1 ELSE 0 END,
               updated_at = NOW()
         WHERE id = $9
         RETURNING *`,
-      [name, phoneClean, phoneNorm, vehicleType, vehiclePlate, zoneCoverage, notes, isActive, riderId]
+      [name, phoneClean, phoneNorm, vehicleType, vehiclePlate, zoneCoverage, notes, isActive, riderId, bumpTokenVersion]
     );
 
     // Keep open deliveries synced if rider name or phone changed
@@ -1375,17 +1534,58 @@ const updateRider = async (req, res) => {
       action: 'rider.update',
       resourceType: 'dispatch_rider',
       resourceId: riderId,
-      details: { name, phone: phoneClean, is_active: isActive },
+      details: { name, phone: phoneClean, is_active: isActive, links_revoked: bumpTokenVersion },
       ip: req.ip,
     }).catch(() => {});
 
-    res.json({ rider: updatedRows[0], message: `Rider "${name}" updated.` });
+    res.json({
+      rider: updatedRows[0],
+      message: bumpTokenVersion
+        ? `Rider "${name}" marked Off Duty and active route links revoked.`
+        : `Rider "${name}" updated.`,
+    });
   } catch (err) {
     logger.error('updateRider error', { err: err.message });
     if (err.code === '23505') {
       return res.status(409).json({ error: 'Another rider already uses that name or phone number.' });
     }
     res.status(500).json({ error: 'Failed to update rider' });
+  }
+};
+
+const revokeRiderLinks = async (req, res) => {
+  try {
+    await ensureRidersTable();
+    const { riderId } = req.params;
+    const { rows } = await pool.query(
+      `UPDATE dispatch_riders
+          SET token_version = COALESCE(token_version, 1) + 1,
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [riderId]
+    );
+    if (!rows.length) {
+      return res.status(404).json({ error: 'Rider not found' });
+    }
+    const rider = rows[0];
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail || req.user?.email,
+      action: 'rider.revoke_links',
+      resourceType: 'dispatch_rider',
+      resourceId: riderId,
+      details: { name: rider.name, new_token_version: rider.token_version },
+      ip: req.ip,
+    }).catch(() => {});
+
+    res.json({
+      rider,
+      message: `Revoked all previously shared route links for "${rider.name}". Generate a fresh link when ready.`,
+    });
+  } catch (err) {
+    logger.error('revokeRiderLinks error', { err: err.message });
+    res.status(500).json({ error: 'Failed to revoke rider links' });
   }
 };
 
@@ -1491,13 +1691,28 @@ const removeLegacyPartner = async (req, res) => {
                 updated_at = NOW()
           WHERE d.delivery_partner IS NOT NULL
             AND TRIM(d.delivery_partner) <> ''
-            AND LOWER(TRIM(d.delivery_partner)) <> 'in-house dispatch bike'
+            AND LOWER(TRIM(d.delivery_partner)) NOT IN (
+              'in-house dispatch bike',
+              'in-house dispatch',
+              'dhl / external courier',
+              'external courier'
+            )
             AND NOT EXISTS (
               SELECT 1 FROM dispatch_riders r
                WHERE LOWER(TRIM(r.name)) = LOWER(TRIM(d.delivery_partner))
             )
             ${forceActive ? '' : `AND (d.pod_verified_at IS NOT NULL OR d.status = 'delivered')`}`
       );
+
+      await logAdminAction({
+        actorId: req.user?.id,
+        actorEmail: req.userEmail || req.user?.email,
+        action: 'rider.legacy_cleanup_all',
+        resourceType: 'dispatch_rider',
+        resourceId: null,
+        details: { force: forceActive, cleared_rows: rowCount },
+        ip: req.ip,
+      }).catch(() => {});
 
       return res.json({
         cleared_rows: rowCount,
@@ -1539,6 +1754,16 @@ const removeLegacyPartner = async (req, res) => {
       [partnerName]
     );
 
+    await logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail || req.user?.email,
+      action: 'rider.legacy_remove',
+      resourceType: 'dispatch_rider',
+      resourceId: null,
+      details: { partner_name: partnerName, force: forceActive, active_stops_reassigned: activeCount, cleared_rows: rowCount },
+      ip: req.ip,
+    }).catch(() => {});
+
     res.json({
       cleared_rows: rowCount,
       message: activeCount > 0
@@ -1554,13 +1779,40 @@ const removeLegacyPartner = async (req, res) => {
 // ── Admin: generate 1 signed Multi-Stop Rider Manifest link (20+ orders) ─────
 const createRiderManifestLink = async (req, res) => {
   try {
+    await ensureRidersTable();
     const rawPartner = typeof req.body?.delivery_partner === 'string' ? req.body.delivery_partner.trim() : '';
+    const requestedScope = req.body?.scope === 'all' ? 'all' : 'rider';
     const matchedRider = rawPartner ? await findRegisteredRiderByName(rawPartner) : null;
+
+    if (matchedRider && !matchedRider.is_active) {
+      return res.status(400).json({
+        error: `Rider "${matchedRider.name}" is currently marked Off Duty. Activate them before generating a route link.`,
+      });
+    }
+
     const cleanPartner = matchedRider?.name || rawPartner;
-    const cleanPhone = (typeof req.body?.driver_phone === 'string' && req.body.driver_phone.trim())
+    const rawPhone = (typeof req.body?.driver_phone === 'string' && req.body.driver_phone.trim())
       ? req.body.driver_phone.trim()
       : (matchedRider?.phone || '');
+    const { clean: cleanPhone, norm: phoneNorm } = normalizeRiderPhone(rawPhone);
     const expiresIn = MANIFEST_EXPIRY_PRESETS[req.body?.expires_in] || '7d';
+
+    if (!cleanPartner && !phoneNorm) {
+      if (requestedScope !== 'all') {
+        return res.status(400).json({
+          error: 'Select a specific dispatch rider (or choose Supervisor Master View with scope="all").',
+        });
+      }
+      if (!['super_admin', 'admin'].includes(req.user?.role)) {
+        return res.status(403).json({
+          error: 'Only Admin or Super Admin accounts can generate an all-fleet master manifest link.',
+        });
+      }
+    } else if (!cleanPartner && phoneNorm && phoneNorm.length < 9) {
+      return res.status(400).json({ error: 'Enter a full 10-digit rider phone number to filter by phone.' });
+    }
+
+    const effectiveScope = (!cleanPartner && !phoneNorm) ? 'all' : 'rider';
 
     const conditions = [
       `d.status IN ('pending', 'in_transit', 'out_for_delivery')`,
@@ -1571,9 +1823,9 @@ const createRiderManifestLink = async (req, res) => {
     if (cleanPartner) {
       params.push(cleanPartner);
       conditions.push(`LOWER(TRIM(COALESCE(d.delivery_partner, ''))) = LOWER(TRIM($${params.length}))`);
-    } else if (cleanPhone) {
-      params.push(`%${cleanPhone.replace(/\s+/g, '')}%`);
-      conditions.push(`REPLACE(COALESCE(d.driver_phone, ''), ' ', '') ILIKE $${params.length}`);
+    } else if (phoneNorm) {
+      params.push(phoneNorm);
+      conditions.push(`${sqlNormalizedPhoneExpr('d.driver_phone')} = $${params.length}`);
     }
 
     const { rows } = await pool.query(
@@ -1587,6 +1839,9 @@ const createRiderManifestLink = async (req, res) => {
     const token = signRiderManifestToken({
       deliveryPartner: cleanPartner || null,
       driverPhone: cleanPhone || null,
+      riderId: matchedRider?.id || null,
+      tokenVersion: matchedRider?.token_version ?? null,
+      scope: effectiveScope,
       expiresIn,
     });
     const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
@@ -1597,9 +1852,10 @@ const createRiderManifestLink = async (req, res) => {
       actorEmail: req.userEmail,
       action: 'delivery.rider_manifest_created',
       resourceType: 'delivery',
-      resourceId: null,
+      resourceId: matchedRider?.id || null,
       details: {
-        delivery_partner: cleanPartner || 'ALL',
+        scope: effectiveScope,
+        delivery_partner: cleanPartner || 'ALL_SUPERVISOR',
         driver_phone: cleanPhone || null,
         expires_in: expiresIn,
         active_count: rows[0]?.active_count || 0,
@@ -1610,8 +1866,9 @@ const createRiderManifestLink = async (req, res) => {
     res.json({
       manifest_url: manifestUrl,
       active_count: rows[0]?.active_count || 0,
-      delivery_partner: cleanPartner || 'All Active Riders',
+      delivery_partner: cleanPartner || 'All Active Stops (Supervisor)',
       driver_phone: cleanPhone || null,
+      scope: effectiveScope,
       expires_in: expiresIn,
     });
   } catch (err) {
@@ -1623,19 +1880,51 @@ const createRiderManifestLink = async (req, res) => {
 // ── Rider (signed manifest token): view all assigned stops + live COD tally ──
 const getRiderManifest = async (req, res) => {
   try {
-    const payload = verifyRiderManifestToken(req.query.token || req.headers['x-rider-manifest']);
-    const matchedRider = payload.dp ? await findRegisteredRiderByName(payload.dp) : null;
+    await ensureRidersTable();
+    const payload = verifyRiderManifestToken(req.headers['x-rider-manifest'] || req.query.token);
+
+    let matchedRider = null;
+    if (payload.rid) {
+      matchedRider = await findRegisteredRiderById(payload.rid);
+      if (!matchedRider || !matchedRider.is_active) {
+        return res.status(403).json({
+          error: 'This rider account is inactive or has been removed by Dispatch.',
+        });
+      }
+      if (Number.isInteger(payload.tv) && Number(matchedRider.token_version || 1) !== payload.tv) {
+        return res.status(403).json({
+          error: 'This dispatch route link has been revoked. Request a fresh link from Dispatch.',
+        });
+      }
+    } else if (payload.dp) {
+      matchedRider = await findRegisteredRiderByName(payload.dp);
+      if (matchedRider && !matchedRider.is_active) {
+        return res.status(403).json({
+          error: 'This rider is currently marked Off Duty by Dispatch.',
+        });
+      }
+    }
+
+    const effectivePartner = matchedRider?.name || payload.dp || null;
+    const { norm: scopePhoneNorm } = normalizeRiderPhone(payload.ph || '');
+
+    if (!effectivePartner && !scopePhoneNorm && payload.sc === 'rider') {
+      return res.status(403).json({ error: 'Invalid manifest scope.' });
+    }
 
     const conditions = [
       `(d.status IN ('pending', 'in_transit', 'out_for_delivery') OR (d.status = 'delivered' AND d.pod_verified_at >= CURRENT_DATE))`,
     ];
     const params = [];
-    if (payload.dp) {
-      params.push(payload.dp);
+    if (effectivePartner) {
+      params.push(effectivePartner);
       conditions.push(`LOWER(TRIM(COALESCE(d.delivery_partner, ''))) = LOWER(TRIM($${params.length}))`);
-    } else if (payload.ph) {
-      params.push(`%${String(payload.ph).replace(/\s+/g, '')}%`);
-      conditions.push(`REPLACE(COALESCE(d.driver_phone, ''), ' ', '') ILIKE $${params.length}`);
+    } else if (scopePhoneNorm) {
+      if (scopePhoneNorm.length < 9) {
+        return res.status(403).json({ error: 'Invalid rider phone scope.' });
+      }
+      params.push(scopePhoneNorm);
+      conditions.push(`${sqlNormalizedPhoneExpr('d.driver_phone')} = $${params.length}`);
     }
 
     const { rows } = await pool.query(
@@ -1702,12 +1991,12 @@ const getRiderManifest = async (req, res) => {
         verified: isVerified,
         pod_verified_at: r.pod_verified_at,
         has_otp: Boolean(r.has_otp),
-        handoff_token: isVerified ? null : signRiderToken(r.id, r.tracking_number),
+        handoff_token: isVerified ? null : signRiderToken(r.id, r.tracking_number, r.delivery_partner),
       };
     });
 
     res.json({
-      rider_label: matchedRider?.name || payload.dp || 'All Active Dispatches',
+      rider_label: effectivePartner || 'All Active Dispatches',
       driver_phone: matchedRider?.phone || payload.ph || null,
       vehicle_type: matchedRider?.vehicle_type || null,
       vehicle_plate: matchedRider?.vehicle_plate || null,
@@ -1728,7 +2017,8 @@ const getRiderManifest = async (req, res) => {
 // ── Rider (signed pod OR manifest token): resend fresh 6-digit OTP at doorstep ─
 const riderResendPodOtp = async (req, res) => {
   try {
-    const rawToken = req.body?.token || req.headers['x-rider-token'] || req.headers['x-rider-manifest'];
+    await ensureRidersTable();
+    const rawToken = req.headers['x-rider-token'] || req.headers['x-rider-manifest'] || req.body?.token;
     if (!rawToken || typeof rawToken !== 'string') {
       return res.status(401).json({ error: 'Missing rider authentication token' });
     }
@@ -1741,16 +2031,33 @@ const riderResendPodOtp = async (req, res) => {
     }
 
     let deliveryId = null;
+    let effectiveManifestPartner = null;
     if (payload?.purpose === 'rider_pod' && payload?.sub) {
       deliveryId = payload.sub;
     } else if (payload?.purpose === 'rider_manifest' && req.body?.delivery_id) {
       deliveryId = req.body.delivery_id;
+      if (payload.rid) {
+        const rider = await findRegisteredRiderById(payload.rid);
+        if (!rider || !rider.is_active) {
+          return res.status(403).json({ error: 'This rider account is inactive or removed.' });
+        }
+        if (Number.isInteger(payload.tv) && Number(rider.token_version || 1) !== payload.tv) {
+          return res.status(403).json({ error: 'This dispatch route link has been revoked.' });
+        }
+        effectiveManifestPartner = rider.name;
+      } else if (payload.dp) {
+        const rider = await findRegisteredRiderByName(payload.dp);
+        if (rider && !rider.is_active) {
+          return res.status(403).json({ error: 'This rider is currently Off Duty.' });
+        }
+        effectiveManifestPartner = rider?.name || payload.dp;
+      }
     } else {
       return res.status(400).json({ error: 'delivery_id is required when using a manifest link' });
     }
 
     const { rows } = await pool.query(
-      `SELECT d.*, o.order_number, o.customer_id, o.guest_email, o.guest_phone,
+      `SELECT d.*, o.order_number, o.status AS order_status, o.customer_id, o.guest_email, o.guest_phone,
               o.guest_first_name, o.shipping_city, o.shipping_region,
               u.email AS user_email, u.first_name AS user_first_name, u.phone AS user_phone
          FROM deliveries d
@@ -1762,21 +2069,52 @@ const riderResendPodOtp = async (req, res) => {
     if (!rows.length) return res.status(404).json({ error: 'Delivery not found' });
 
     const d = rows[0];
-    if (d.pod_verified_at) {
+    if (['cancelled', 'refunded'].includes(d.order_status)) {
+      return res.status(409).json({ error: `Order #${d.order_number} was ${d.order_status} — return parcel to Dispatch.` });
+    }
+    if (d.pod_verified_at || d.status === 'delivered' || d.order_status === 'delivered') {
       return res.status(409).json({ error: 'Delivery is already verified' });
+    }
+
+    if (payload.purpose === 'rider_pod') {
+      if (payload.tn && d.tracking_number !== payload.tn) {
+        return res.status(401).json({ error: 'Invalid rider handoff link' });
+      }
+      if (
+        payload.dp &&
+        d.delivery_partner &&
+        String(d.delivery_partner).trim().toLowerCase() !== String(payload.dp).trim().toLowerCase()
+      ) {
+        return res.status(403).json({ error: 'This stop has been reassigned to another rider.' });
+      }
     }
 
     // If using a scoped manifest token, ensure this delivery belongs to that rider scope
     if (payload.purpose === 'rider_manifest') {
-      if (payload.dp && String(d.delivery_partner || '').trim().toLowerCase() !== String(payload.dp).trim().toLowerCase()) {
+      if (
+        effectiveManifestPartner &&
+        String(d.delivery_partner || '').trim().toLowerCase() !== String(effectiveManifestPartner).trim().toLowerCase()
+      ) {
         return res.status(403).json({ error: 'Delivery is not assigned to this rider manifest' });
       }
-      if (payload.ph) {
-        const normAssigned = String(d.driver_phone || '').replace(/\s+/g, '');
-        const normScope = String(payload.ph).replace(/\s+/g, '');
-        if (!normAssigned.includes(normScope)) {
+      if (!effectiveManifestPartner && payload.ph) {
+        const { norm: normAssigned } = normalizeRiderPhone(d.driver_phone || '');
+        const { norm: normScope } = normalizeRiderPhone(payload.ph || '');
+        if (!normScope || normScope.length < 9 || normAssigned !== normScope) {
           return res.status(403).json({ error: 'Delivery is not assigned to this rider phone' });
         }
+      }
+    }
+
+    // Enforce 60-second per-delivery resend cooldown to prevent customer SMS/email spam
+    if (d.pod_otp_sent_at) {
+      const elapsedMs = Date.now() - new Date(d.pod_otp_sent_at).getTime();
+      if (elapsedMs >= 0 && elapsedMs < OTP_RESEND_COOLDOWN_MS) {
+        const waitSecs = Math.max(1, Math.ceil((OTP_RESEND_COOLDOWN_MS - elapsedMs) / 1000));
+        return res.status(429).json({
+          error: `A 6-digit code was just sent. Please wait ${waitSecs}s before resending.`,
+          retry_after_seconds: waitSecs,
+        });
       }
     }
 
@@ -1790,6 +2128,7 @@ const riderResendPodOtp = async (req, res) => {
           SET pod_otp_hash = $1,
               pod_otp_expires_at = $2,
               pod_otp_attempts = 0,
+              pod_otp_sent_at = NOW(),
               zone_code = COALESCE(zone_code, $3),
               updated_at = NOW()
         WHERE id = $4`,
@@ -1849,6 +2188,7 @@ module.exports = {
   listRiders,
   createRider,
   updateRider,
+  revokeRiderLinks,
   deleteRider,
   removeLegacyPartner,
   createRiderManifestLink,

@@ -5,6 +5,8 @@ import { useSettings } from '../context/SettingsContext';
 import './RiderPortal.css';
 
 const SAVED_SESSION_KEY = 'bc_rider_manifest_session';
+const ACTIVE_MANIFEST_SS_KEY = 'bc_rider_active_manifest';
+export const HANDOFF_SESSION_SS_KEY = 'bc_rider_handoff_session';
 
 function formatPhoneForWa(phone) {
   if (!phone) return '';
@@ -75,13 +77,22 @@ function readSavedManifestSession() {
 }
 
 export default function RiderManifest() {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const settings = useSettings();
-  const token = searchParams.get('token') || '';
+  const urlToken = searchParams.get('token') || '';
+
+  const [token, setToken] = useState(() => {
+    if (urlToken) return urlToken;
+    try {
+      return sessionStorage.getItem(ACTIVE_MANIFEST_SS_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
 
   const [data, setData]               = useState(null);
-  const [loading, setLoading]         = useState(Boolean(token));
+  const [loading, setLoading]         = useState(() => Boolean(urlToken || token));
   const [syncing, setSyncing]         = useState(false);
   const [error, setError]             = useState('');
   const [errorKind, setErrorKind]     = useState(''); // 'auth' | 'network' | ''
@@ -101,6 +112,44 @@ export default function RiderManifest() {
   const supportPhone = settings?.contact_phone || settings?.whatsapp_number || '';
   const supportWa = formatPhoneForWa(settings?.whatsapp_number || settings?.contact_phone || '');
 
+  // Enforce strict no-referrer while on Rider Console & scrub signed JWT from browser URL bar
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="referrer"]');
+    const prevContent = meta?.getAttribute('content') || 'strict-origin-when-cross-origin';
+    if (meta) meta.setAttribute('content', 'no-referrer');
+    return () => {
+      if (meta) meta.setAttribute('content', prevContent);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (urlToken) {
+      setToken(urlToken);
+      try {
+        sessionStorage.setItem(ACTIVE_MANIFEST_SS_KEY, urlToken);
+      } catch {}
+      if (typeof window !== 'undefined' && window.location.search) {
+        window.history.replaceState({}, '', '/rider-manifest');
+      }
+    }
+  }, [urlToken]);
+
+  const handleSignOutRoute = useCallback(() => {
+    try {
+      localStorage.removeItem(SAVED_SESSION_KEY);
+      sessionStorage.removeItem(ACTIVE_MANIFEST_SS_KEY);
+      sessionStorage.removeItem(HANDOFF_SESSION_SS_KEY);
+    } catch {}
+    setSavedSession(null);
+    setToken('');
+    setData(null);
+    setError('');
+    setErrorKind('');
+    if (typeof window !== 'undefined' && window.location.search) {
+      window.history.replaceState({}, '', '/rider-manifest');
+    }
+  }, []);
+
   const loadManifest = useCallback(async (isRefresh = false) => {
     if (!token) {
       setData(null);
@@ -118,6 +167,7 @@ export default function RiderManifest() {
       setData(res);
       setLastSyncedAt(new Date());
       try {
+        sessionStorage.setItem(ACTIVE_MANIFEST_SS_KEY, token);
         const nextSaved = {
           token,
           rider_label: res.rider_label || 'Active Dispatch Route',
@@ -132,7 +182,17 @@ export default function RiderManifest() {
       const status = err.response?.status;
       if (status === 401 || status === 403) {
         setErrorKind('auth');
-        setError('This dispatch route link has expired or is no longer valid. Request a fresh link from Dispatch or paste your newest WhatsApp link below.');
+        setError(
+          err.response?.data?.error ||
+          'This dispatch route link has expired or been revoked. Request a fresh link from Dispatch or paste your newest WhatsApp link below.'
+        );
+        try {
+          sessionStorage.removeItem(ACTIVE_MANIFEST_SS_KEY);
+          if (savedSession?.token === token) {
+            localStorage.removeItem(SAVED_SESSION_KEY);
+            setSavedSession(null);
+          }
+        } catch {}
       } else {
         setErrorKind('network');
         setError(err.response?.data?.error || 'Could not reach dispatch server. Check your mobile data connection and tap Retry.');
@@ -141,7 +201,7 @@ export default function RiderManifest() {
       setLoading(false);
       setSyncing(false);
     }
-  }, [token]);
+  }, [token, savedSession?.token]);
 
   useEffect(() => {
     loadManifest(false);
@@ -171,11 +231,18 @@ export default function RiderManifest() {
     }
     setPasteValue('');
     if (parsed.route === '/rider-handoff') {
-      const qs = new URLSearchParams({ token: parsed.token });
-      if (parsed.manifestToken) qs.set('manifest', parsed.manifestToken);
-      navigate(`/rider-handoff?${qs.toString()}`);
+      try {
+        sessionStorage.setItem(HANDOFF_SESSION_SS_KEY, JSON.stringify({
+          token: parsed.token,
+          manifestToken: parsed.manifestToken || token || '',
+        }));
+      } catch {}
+      navigate('/rider-handoff');
     } else {
-      setSearchParams({ token: parsed.token });
+      try {
+        sessionStorage.setItem(ACTIVE_MANIFEST_SS_KEY, parsed.token);
+      } catch {}
+      setToken(parsed.token);
     }
   };
 
@@ -347,7 +414,10 @@ export default function RiderManifest() {
                   type="button"
                   className="rp-primary-cta"
                   style={{ width: 'auto', minHeight: 42, padding: '8px 16px' }}
-                  onClick={() => setSearchParams({ token: savedSession.token })}
+                  onClick={() => {
+                    try { sessionStorage.setItem(ACTIVE_MANIFEST_SS_KEY, savedSession.token); } catch {}
+                    setToken(savedSession.token);
+                  }}
                 >
                   Resume Route →
                 </button>
@@ -355,10 +425,7 @@ export default function RiderManifest() {
                   type="button"
                   className="rp-act-btn"
                   style={{ minHeight: 42 }}
-                  onClick={() => {
-                    try { localStorage.removeItem(SAVED_SESSION_KEY); } catch {}
-                    setSavedSession(null);
-                  }}
+                  onClick={handleSignOutRoute}
                 >
                   Clear
                 </button>
@@ -383,8 +450,8 @@ export default function RiderManifest() {
             <form onSubmit={handleOpenPastedLink} className="rp-link-input-row">
               <input
                 type="text"
-                className="rp-search-input"
-                style={{ paddingLeft: 14, flex: 1 }}
+                className="rp-text-input"
+                style={{ flex: 1 }}
                 placeholder="Paste https://.../rider-manifest?token=... or WhatsApp text"
                 value={pasteValue}
                 onChange={e => { setPasteValue(e.target.value); setPasteError(''); }}
@@ -483,14 +550,26 @@ export default function RiderManifest() {
             </div>
           </div>
 
-          <button
-            type="button"
-            className="rp-sync-btn"
-            onClick={() => loadManifest(true)}
-            disabled={syncing}
-          >
-            <span>{syncing ? 'Syncing…' : '↻ Sync'}</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+            <button
+              type="button"
+              className="rp-sync-btn"
+              onClick={() => loadManifest(true)}
+              disabled={syncing}
+            >
+              <span>{syncing ? 'Syncing…' : '↻ Sync'}</span>
+            </button>
+            <button
+              type="button"
+              className="rp-sync-btn"
+              onClick={handleSignOutRoute}
+              title="Close route and clear saved token from this phone"
+              aria-label="Exit route"
+              style={{ padding: '0 10px', opacity: 0.85 }}
+            >
+              Exit
+            </button>
+          </div>
         </div>
         {!isOnline && (
           <div className="rp-offline-bar">
@@ -779,12 +858,21 @@ export default function RiderManifest() {
                       </div>
 
                       {stop.handoff_token && (
-                        <Link
-                          to={`/rider-handoff?token=${encodeURIComponent(stop.handoff_token)}&manifest=${encodeURIComponent(token)}`}
+                        <button
+                          type="button"
                           className="rp-primary-cta rp-primary-cta--gold"
+                          onClick={() => {
+                            try {
+                              sessionStorage.setItem(HANDOFF_SESSION_SS_KEY, JSON.stringify({
+                                token: stop.handoff_token,
+                                manifestToken: token,
+                              }));
+                            } catch {}
+                            navigate('/rider-handoff');
+                          }}
                         >
                           Verify &amp; Complete Stop →
-                        </Link>
+                        </button>
                       )}
                     </>
                   ) : (

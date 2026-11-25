@@ -30,17 +30,33 @@ function nextStatus(current) {
  */
 async function advanceShipment(trackingNumber) {
   const { rows } = await pool.query(
-    'SELECT id, order_id, status FROM deliveries WHERE tracking_number = $1',
+    `SELECT d.id, d.order_id, d.status, d.pod_verified_at,
+            o.status AS order_status, o.payment_method, o.payment_status
+       FROM deliveries d
+       JOIN orders o ON o.id = d.order_id
+      WHERE d.tracking_number = $1`,
     [trackingNumber]
   );
 
   if (!rows.length) throw new Error(`No shipment found for tracking number: ${trackingNumber}`);
 
   const shipment = rows[0];
+  if (['cancelled', 'refunded'].includes(shipment.order_status)) {
+    throw new Error(`Cannot advance shipment for a ${shipment.order_status} order`);
+  }
+
   const next = nextStatus(shipment.status);
 
   if (!next) {
     return { alreadyDelivered: true, current: shipment.status, trackingNumber };
+  }
+
+  if (
+    next === 'delivered' &&
+    shipment.payment_method === 'pay_on_delivery' &&
+    !['paid', 'partially_refunded', 'refunded'].includes(shipment.payment_status)
+  ) {
+    throw new Error('Unpaid Pay-on-Delivery orders cannot be marked delivered until COD payment is collected or verified via Rider OTP');
   }
 
   await pool.query(

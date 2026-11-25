@@ -62,7 +62,8 @@ export default function Orders() {
 
   // Rider Manifest Dispatch Hub Modal
   const [manifestOpen, setManifestOpen]     = useState(false);
-  const [manifestPartner, setManifestPartner] = useState('');
+  const [manifestPartner, setManifestPartner] = useState('In-house Dispatch Bike');
+  const [manifestSupervisorAll, setManifestSupervisorAll] = useState(false);
   const [manifestPhone, setManifestPhone]   = useState('');
   const [manifestExpiry, setManifestExpiry] = useState('7d');
   const [manifestBusy, setManifestBusy]     = useState(false);
@@ -137,23 +138,32 @@ export default function Orders() {
 
   useEffect(() => {
     if (!manifestOpen) return;
+    const isAll = manifestSupervisorAll && !manifestPartner.trim() && !manifestPhone.trim();
+    if (!isAll && !manifestPartner.trim() && !manifestPhone.trim()) {
+      setManifestResult(null);
+      return;
+    }
     const t = setTimeout(async () => {
       setManifestBusy(true);
       try {
         const { data } = await deliveriesAPI.createManifestLink({
-          delivery_partner: manifestPartner.trim() || undefined,
-          driver_phone: manifestPhone.trim() || undefined,
+          delivery_partner: isAll ? undefined : (manifestPartner.trim() || undefined),
+          driver_phone: isAll ? undefined : (manifestPhone.trim() || undefined),
+          scope: isAll ? 'all' : 'rider',
           expires_in: manifestExpiry,
         });
         setManifestResult(data);
-      } catch {
-        // silent on background refresh
+      } catch (err) {
+        setManifestResult(null);
+        if (err.response?.status === 403 || err.response?.status === 400) {
+          toast.error(err.response?.data?.error || 'Could not generate route link');
+        }
       } finally {
         setManifestBusy(false);
       }
     }, 180);
     return () => clearTimeout(t);
-  }, [manifestOpen, manifestPartner, manifestPhone, manifestExpiry]);
+  }, [manifestOpen, manifestPartner, manifestPhone, manifestExpiry, manifestSupervisorAll]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetchOrders(false);
@@ -812,44 +822,49 @@ export default function Orders() {
                   </Link>
                 </div>
                 <div className="rm-rider-grid">
-                  {(() => {
-                    const totalActive = knownPartners.reduce((sum, p) => sum + (p.active_count || 0), 0);
-                    const isAll = !manifestPartner.trim();
-                    return (
-                      <button
-                        type="button"
-                        className={`rm-rider-card${isAll ? ' is-selected' : ''}`}
-                        onClick={() => { setManifestPartner(''); setManifestPhone(''); }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <div className="rm-rider-name">All Active Riders</div>
-                          <div className="rm-rider-sub">Master fleet manifest</div>
-                        </div>
-                        <span className="rm-rider-stop-pill">{totalActive}</span>
-                      </button>
-                    );
-                  })()}
-
                   {knownPartners.map(p => {
-                    const selected = manifestPartner.toLowerCase() === p.delivery_partner.toLowerCase();
+                    const selected = !manifestSupervisorAll && manifestPartner.toLowerCase() === p.delivery_partner.toLowerCase();
                     return (
                       <button
                         key={p.delivery_partner}
                         type="button"
                         className={`rm-rider-card${selected ? ' is-selected' : ''}`}
                         onClick={() => {
+                          setManifestSupervisorAll(false);
                           setManifestPartner(p.delivery_partner);
                           setManifestPhone(p.driver_phone || '');
                         }}
                       >
                         <div style={{ minWidth: 0 }}>
                           <div className="rm-rider-name">{p.delivery_partner}</div>
-                          <div className="rm-rider-sub">{p.driver_phone || 'No phone saved'}</div>
+                          <div className="rm-rider-sub">{p.driver_phone || 'General pool / courier'}</div>
                         </div>
                         <span className="rm-rider-stop-pill">{p.active_count}</span>
                       </button>
                     );
                   })}
+
+                  {(() => {
+                    const totalActive = knownPartners.reduce((sum, p) => sum + (p.active_count || 0), 0);
+                    const isAll = manifestSupervisorAll && !manifestPartner.trim();
+                    return (
+                      <button
+                        type="button"
+                        className={`rm-rider-card${isAll ? ' is-selected' : ''}`}
+                        onClick={() => {
+                          setManifestSupervisorAll(true);
+                          setManifestPartner('');
+                          setManifestPhone('');
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div className="rm-rider-name">All Active Stops</div>
+                          <div className="rm-rider-sub">Supervisor view only</div>
+                        </div>
+                        <span className="rm-rider-stop-pill">{totalActive}</span>
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 10, marginTop: 10 }}>
@@ -857,13 +872,19 @@ export default function Orders() {
                     type="text"
                     placeholder="Or filter by custom rider / courier name…"
                     value={manifestPartner}
-                    onChange={e => setManifestPartner(e.target.value)}
+                    onChange={e => {
+                      setManifestSupervisorAll(false);
+                      setManifestPartner(e.target.value);
+                    }}
                   />
                   <input
                     type="text"
                     placeholder="Rider WhatsApp phone (e.g. 0241234567)"
                     value={manifestPhone}
-                    onChange={e => setManifestPhone(e.target.value)}
+                    onChange={e => {
+                      setManifestSupervisorAll(false);
+                      setManifestPhone(e.target.value);
+                    }}
                   />
                 </div>
               </div>

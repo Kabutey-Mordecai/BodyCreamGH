@@ -191,6 +191,7 @@ export const deliveriesAPI = {
   getRiders:           ()                     => api.get('/deliveries/riders'),
   createRider:         (data)                 => api.post('/deliveries/riders', data),
   updateRider:         (riderId, data)        => api.put(`/deliveries/riders/${riderId}`, data),
+  revokeRiderLinks:    (riderId)              => api.post(`/deliveries/riders/${riderId}/revoke-links`),
   deleteRider:         (riderId, force = false) => api.delete(`/deliveries/riders/${riderId}${force ? '?force=true' : ''}`),
   removeLegacyPartner: (data)                 => api.delete('/deliveries/riders/legacy', { data }),
   create:              (data)                 => api.post('/deliveries', data),

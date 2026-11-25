@@ -195,11 +195,17 @@ export const deliveriesAPI = {
   getByOrder:           (orderId)          => api.get(`/deliveries/order/${orderId}`),
   track:                (trackingNumber)   => api.get(`/deliveries/track/${encodeURIComponent(trackingNumber)}`),
   confirmReceipt:       (orderId)          => api.post(`/deliveries/order/${orderId}/confirm-receipt`),
-  getRiderManifest:     (token)            => api.get('/deliveries/rider/manifest', { params: { token } }),
-  riderResendOtp:       (payload)          => api.post('/deliveries/rider/resend-otp', payload),
-  getRiderHandoff:      (token)            => api.get('/deliveries/rider/handoff', { params: { token } }),
-  uploadRiderPhoto:     (token, formData)  => api.post('/deliveries/rider/photo', formData, { params: { token }, headers: { 'Content-Type': 'multipart/form-data' } }),
-  confirmRiderDelivery: (payload)          => api.post('/deliveries/rider/confirm', payload),
+  getRiderManifest:     (token)            => api.get('/deliveries/rider/manifest', { headers: { 'x-rider-manifest': token } }),
+  riderResendOtp:       ({ token, ...body }) => api.post('/deliveries/rider/resend-otp', body, {
+    headers: body?.delivery_id ? { 'x-rider-manifest': token } : { 'x-rider-token': token },
+  }),
+  getRiderHandoff:      (token)            => api.get('/deliveries/rider/handoff', { headers: { 'x-rider-token': token } }),
+  uploadRiderPhoto:     (token, formData)  => api.post('/deliveries/rider/photo', formData, {
+    headers: { 'Content-Type': 'multipart/form-data', 'x-rider-token': token },
+  }),
+  confirmRiderDelivery: ({ token, ...body }) => api.post('/deliveries/rider/confirm', body, {
+    headers: { 'x-rider-token': token },
+  }),
 };
 
 // ── Site settings — storefront reads these on load ────────────────────────────
