@@ -8,13 +8,14 @@ import Modal from '../components/Modal';
 import { printInvoice } from '../utils/printInvoice';
 import { printWaybill } from '../utils/printWaybill';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import './Orders.css';
 
 // Fulfilment flow is strictly forward-moving. Skipping to "delivered" is allowed
 // if the merchant updates late (e.g. phone-confirmed pickups).
 const STATUS_FLOW = ['pending', 'confirmed', 'processing', 'shipped', 'delivered'];
 const CANCELLABLE_STATUSES = ['pending', 'confirmed', 'processing'];
 const REFUNDABLE_STATUSES = ['cancelled', 'delivered'];
-const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
+const fmt = (n) => `GHS ${Number(n || 0).toLocaleString('en-GH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 function refundLabel(order) {
   if (!order) return null;
@@ -116,7 +117,7 @@ export default function OrderDetail() {
       .catch(() => { setPartialReturns([]); setReturnableItems([]); });
   };
 
-  useEffect(load, [id]);
+  useEffect(load, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     settingsAPI.getAll().then(({ data }) => setStore(data)).catch(() => {});
@@ -230,8 +231,12 @@ export default function OrderDetail() {
     e.preventDefault();
     setDeliverySaving(true);
     try {
-      await deliveriesAPI.create({ order_id: id, ...deliveryForm });
-      toast.success('Delivery created — order marked as shipped');
+      await deliveriesAPI.create({
+        order_id: id,
+        ...deliveryForm,
+        delivery_partner: deliveryForm.delivery_partner.trim() || 'In-house Dispatch Bike',
+      });
+      toast.success('Rider dispatched — order marked as shipped & customer notified');
       load();
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to create delivery');
@@ -341,9 +346,9 @@ export default function OrderDetail() {
     try {
       const { data } = await deliveriesAPI.sendPodOtp(delivery.id);
       setPodLinkInfo(data);
-      toast.success('6-digit Delivery OTP sent to customer & Rider Link ready');
+      toast.success('6-digit Delivery Code sent to customer');
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to send delivery OTP');
+      toast.error(err.response?.data?.error || 'Failed to send delivery code');
     } finally {
       setPodSending(false);
     }
@@ -410,6 +415,8 @@ export default function OrderDetail() {
 
   const currentIdx = STATUS_FLOW.indexOf(order.status);
   const canShowStatusFlow = currentIdx >= 0;
+  const nextStatus = currentIdx >= 0 && currentIdx < STATUS_FLOW.length - 1 ? STATUS_FLOW[currentIdx + 1] : null;
+  const canSkipToDelivered = currentIdx >= 1 && currentIdx < 3; // confirmed or processing can jump directly to delivered if picked up/handed off
   const canCancel = CANCELLABLE_STATUSES.includes(order.status);
   const canRefund = ['paid', 'payment_review'].includes(order.payment_status) &&
     REFUNDABLE_STATUSES.includes(order.status) &&
@@ -417,48 +424,97 @@ export default function OrderDetail() {
   const canMarkPaid = order.payment_method === 'pay_on_delivery' &&
     !['paid', 'partially_refunded', 'refunded'].includes(order.payment_status) &&
     !['cancelled', 'refunded'].includes(order.status);
+
   const refundInfo = refundLabel(order);
+  const hasRefundActivity = Boolean(
+    canRefund ||
+    (order.refund_status && order.refund_status !== 'not_requested') ||
+    refundInfo?.status === 'refund_owed' ||
+    order.refund_amount ||
+    order.refund_notes
+  );
+
   const subtotal = (order.items || []).reduce((s, it) => s + Number(it.subtotal || (it.price_at_purchase * it.quantity) || 0), 0);
 
-  // Phone from user profile or guest order fields; fallback to notes
   const phoneFromNotes = order.notes?.match(/(?:^|\n)Phone:\s*(.+?)(\n|$)/i)?.[1]?.trim();
   const displayPhone = order.customer_phone || order.guest_phone || phoneFromNotes;
+  const cleanCustomerName = `${order.first_name || order.customer_name || 'Customer'} ${order.last_name || ''}`.trim();
+  const initials = cleanCustomerName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map(w => w[0]?.toUpperCase() || '')
+    .join('') || 'C';
+
+  const fullAddressString = [
+    order.shipping_address,
+    order.shipping_city,
+    order.shipping_region,
+  ].filter(Boolean).join(', ');
+
+  const statusBtnLabel = (s) => {
+    if (order.fulfillment_method === 'pickup') {
+      if (s === 'shipped') return 'Mark Ready for Pickup';
+      if (s === 'delivered') return 'Mark Picked Up';
+    }
+    return `Mark as ${s.charAt(0).toUpperCase() + s.slice(1)}`;
+  };
 
   return (
     <div>
-      <div className="page-header">
+      {/* ── Header Bar ──────────────────────────────────────────────── */}
+      <div className="od-header-bar">
         <div>
-          <Link to="/orders" className="muted text-sm" style={{ textDecoration: 'none' }}>← Back to orders</Link>
-          <h1 style={{ marginTop: 6 }}>
-            Order #{order.order_number || order.id?.slice(0, 8)}
-          </h1>
-          <p className="muted">
-            Placed {new Date(order.created_at).toLocaleString('en-GH')}
-          </p>
+          <Link to="/orders" className="pe-back-link" style={{ textDecoration: 'none', color: 'var(--ac-text-muted)', fontSize: '0.8rem', fontWeight: 500 }}>
+            ← Back to Orders
+          </Link>
+          <div className="od-title-line">
+            <h1>Order #{order.order_number || order.id?.slice(0, 8)}</h1>
+            <StatusBadge status={order.fulfillment_method === 'pickup' && order.status === 'shipped' ? 'ready_for_pickup' : order.status} />
+            <StatusBadge status={order.payment_status} />
+            {hasRefundActivity && refundInfo && (
+              <span className={`badge ${refundInfo.cls}`}>{refundInfo.label}</span>
+            )}
+          </div>
+          <div className="od-meta-line">
+            Placed {new Date(order.created_at).toLocaleString('en-GH', { dateStyle: 'medium', timeStyle: 'short' })}
+            {' · '}
+            {order.fulfillment_method === 'pickup' ? 'Pickup Station' : 'Door Delivery'}
+            {' · '}
+            {order.payment_method === 'pay_on_delivery' ? 'Pay on Delivery (COD)' : 'Paystack Online'}
+          </div>
         </div>
+
         <div className="page-actions">
-          <StatusBadge status={order.status} />
-          <StatusBadge status={order.payment_status} />
-          {refundInfo && <span className={`badge ${refundInfo.cls}`}>{refundInfo.label}</span>}
           <button
-            className="btn btn-outline"
+            type="button"
+            className="btn btn-outline btn-sm"
             onClick={() => printInvoice(order, store)}
-            title="Print invoice / packing slip"
+            title="Print customer invoice / packing slip"
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" style={{ marginRight: 6 }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
               <path d="M6 9V2h12v7" />
               <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
               <rect x="6" y="14" width="12" height="8" />
             </svg>
-            Print invoice
+            Print Invoice
           </button>
-          <button className="btn btn-outline" onClick={() => printWaybill(order, store, delivery)} title="Print Jumia-style dispatch waybill (A4 / 80mm)">Print Waybill</button>
+          <button
+            type="button"
+            className="btn btn-outline btn-sm"
+            onClick={() => printWaybill(order, store, delivery)}
+            title="Print A4 or 80mm thermal dispatch barcode waybill"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+              <path d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14M21 5v14" />
+            </svg>
+            Print Waybill
+          </button>
         </div>
       </div>
 
-      {/* Status progression tracker */}
+      {/* ── Fulfilment Progress Tracker & Focused Next-Action Strip ─── */}
       {canShowStatusFlow && (
-        <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card od-tracker-card">
           <div className="card-body">
             <div className="status-track">
               {STATUS_FLOW.map((s, i) => {
@@ -476,57 +532,56 @@ export default function OrderDetail() {
               })}
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginTop: 16, flexWrap: 'wrap' }}>
-              {STATUS_FLOW.map((s, i) => {
-                const isNext = i === currentIdx + 1;
-                const canDirectDeliver = s === 'delivered' && currentIdx >= 1 && currentIdx < 4;
-                const enabled = isNext || canDirectDeliver;
+            {(nextStatus || canSkipToDelivered || canCancel || canRefund) && (
+              <div className="od-tracker-footer">
+                <div className="od-tracker-primary-actions">
+                  {nextStatus && (
+                    <button
+                      type="button"
+                      className="btn btn-accent btn-sm"
+                      disabled={saving}
+                      onClick={() => setPendingStatus(nextStatus)}
+                    >
+                      → {statusBtnLabel(nextStatus)}
+                    </button>
+                  )}
+                  {canSkipToDelivered && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      disabled={saving}
+                      onClick={() => setPendingStatus('delivered')}
+                    >
+                      ✓ {statusBtnLabel('delivered')}
+                    </button>
+                  )}
+                </div>
 
-                const btnLabel = order.fulfillment_method === 'pickup'
-                  ? (s === 'shipped' ? 'Mark Ready for Pickup' : s === 'delivered' ? 'Mark Picked Up' : `Mark as ${s}`)
-                  : `Mark as ${s}`;
-
-                return (
-                  <button
-                    key={s}
-                    className={`btn btn-sm ${isNext || canDirectDeliver ? 'btn-accent' : 'btn-outline'}`}
-                    disabled={saving || !enabled}
-                    onClick={() => setPendingStatus(s)}
-                    style={{ textTransform: 'capitalize' }}
-                  >
-                    {btnLabel}
-                  </button>
-                );
-              })}
-              {canCancel && (
-                <button
-                  className="btn btn-sm btn-outline"
-                  style={{ color: 'var(--ac-danger)', borderColor: 'var(--ac-danger-soft)' }}
-                  disabled={saving}
-                  onClick={() => setCancelOpen(true)}
-                >
-                  Cancel order
-                </button>
-              )}
-              {canMarkPaid && (
-                <button
-                  className="btn btn-sm btn-accent"
-                  disabled={markPaidSaving}
-                  onClick={handleMarkPaid}
-                >
-                  {markPaidSaving ? 'Updating…' : '✓ Mark Paid (Cash/MoMo)'}
-                </button>
-              )}
-              {canRefund && (
-                <button
-                  className="btn btn-sm btn-accent"
-                  disabled={refundSaving}
-                  onClick={() => setRefundOpen(true)}
-                >
-                  Refund order
-                </button>
-              )}
-            </div>
+                <div className="od-tracker-secondary-actions">
+                  {canRefund && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      disabled={refundSaving}
+                      onClick={() => setRefundOpen(true)}
+                    >
+                      Issue Refund
+                    </button>
+                  )}
+                  {canCancel && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ color: 'var(--ac-danger)', borderColor: 'rgba(220, 38, 38, 0.35)' }}
+                      disabled={saving}
+                      onClick={() => setCancelOpen(true)}
+                    >
+                      Cancel Order
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -535,407 +590,761 @@ export default function OrderDetail() {
         <div className="card" style={{ marginBottom: 16 }}>
           <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <div>
-              <div style={{ fontWeight: 600 }}>Refund available</div>
-              <div className="muted text-sm">Full refund amount: {fmt(order.total_amount)}</div>
+              <div style={{ fontWeight: 600 }}>Order cancelled — refund owed</div>
+              <div className="muted text-sm">Full refundable amount: {fmt(order.total_amount)}</div>
             </div>
             <button className="btn btn-accent btn-sm" onClick={() => setRefundOpen(true)} disabled={refundSaving}>
-              Refund order
+              Issue Refund
             </button>
           </div>
         </div>
       )}
 
-      {/* ── Cancel request pending banner ──────────────────────── */}
+      {/* ── Customer Cancel / Return Request Alert Banners ──────────── */}
       {order.cancel_requested && !order.cancel_request_rejected && order.status !== 'cancelled' && (
-        <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--ac-warning, #e8b84b)' }}>
-          <div className="card-body">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-              <div>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  ⚠ Customer requested cancellation
-                </div>
-                {order.cancel_reason && (
-                  <div className="muted text-sm" style={{ maxWidth: 480 }}>
-                    Reason: {order.cancel_reason}
-                  </div>
-                )}
-                {order.cancel_requested_at && (
-                  <div className="muted text-sm">
-                    Requested {new Date(order.cancel_requested_at).toLocaleString('en-GH')}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                <button
-                  className="btn btn-sm btn-danger"
-                  disabled={requestActionSaving}
-                  onClick={() => handleRequestAction('approveCancelRequest', 'Cancellation approved')}
-                >
-                  Approve & cancel
-                </button>
-                <button
-                  className="btn btn-sm btn-outline"
-                  disabled={requestActionSaving}
-                  onClick={() => handleRequestAction('rejectCancelRequest', 'Cancellation request rejected')}
-                >
-                  Reject
-                </button>
-              </div>
+        <div className="card" style={{ marginBottom: 16, borderLeft: '3px solid var(--ac-warning)' }}>
+          <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 600, marginBottom: 4 }}>⚠ Customer requested cancellation</div>
+              {order.cancel_reason && <div className="muted text-sm">Reason: {order.cancel_reason}</div>}
+              {order.cancel_requested_at && (
+                <div className="muted text-xs">Requested {new Date(order.cancel_requested_at).toLocaleString('en-GH')}</div>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn btn-sm btn-danger" disabled={requestActionSaving} onClick={() => handleRequestAction('approveCancelRequest', 'Cancellation approved')}>
+                Approve &amp; Cancel
+              </button>
+              <button className="btn btn-sm btn-outline" disabled={requestActionSaving} onClick={() => handleRequestAction('rejectCancelRequest', 'Cancellation request rejected')}>
+                Reject
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Return request banner ───────────────────────── */}
       {order.return_requested && !order.return_request_rejected && order.status === 'delivered' && (() => {
         const returnDecided = order.refund_status === 'pending' || order.refund_status === 'success';
         return (
-          <div
-            className="card"
-            style={{
-              marginBottom: 16,
-              borderLeft: returnDecided
-                ? '3px solid var(--ac-success, #27ae60)'
-                : '3px solid var(--ac-info, #5ba4cf)',
-            }}
-          >
-            <div className="card-body">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                <div>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                    {returnDecided
-                      ? (order.refund_status === 'success'
-                          ? '✓ Return approved — refund completed'
-                          : '✓ Return approved — refund pending with Paystack')
-                      : '↩ Customer requested a return'}
-                  </div>
-                  {order.return_reason && (
-                    <div className="muted text-sm" style={{ maxWidth: 480 }}>
-                      Reason: {order.return_reason}
-                    </div>
-                  )}
-                  {order.return_requested_at && (
-                    <div className="muted text-sm">
-                      Requested {new Date(order.return_requested_at).toLocaleString('en-GH')}
-                    </div>
-                  )}
+          <div className="card" style={{ marginBottom: 16, borderLeft: returnDecided ? '3px solid var(--ac-success)' : '3px solid var(--ac-info)' }}>
+            <div className="card-body" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+              <div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  {returnDecided
+                    ? (order.refund_status === 'success' ? '✓ Return approved — refund completed' : '✓ Return approved — refund pending with Paystack')
+                    : '↩ Customer requested a return'}
                 </div>
-                {returnDecided ? (
-                  <span className="badge badge-info" style={{ alignSelf: 'center' }}>
-                    {order.refund_status === 'success' ? 'Refunded' : 'Approved · Refund Pending'}
-                  </span>
-                ) : (
-                  <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                    <button
-                      className="btn btn-sm btn-accent"
-                      disabled={requestActionSaving}
-                      onClick={() => handleRequestAction('approveReturnRequest', 'Return approved & refund initiated')}
-                    >
-                      Approve & refund
-                    </button>
-                    <button
-                      className="btn btn-sm btn-outline"
-                      disabled={requestActionSaving}
-                      onClick={() => handleRequestAction('rejectReturnRequest', 'Return request rejected')}
-                    >
-                      Reject
-                    </button>
-                  </div>
-                )}
+                {order.return_reason && <div className="muted text-sm">Reason: {order.return_reason}</div>}
               </div>
+              {returnDecided ? (
+                <span className="badge badge-info">{order.refund_status === 'success' ? 'Refunded' : 'Approved · Refund Pending'}</span>
+              ) : (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn btn-sm btn-accent" disabled={requestActionSaving} onClick={() => handleRequestAction('approveReturnRequest', 'Return approved & refund initiated')}>
+                    Approve &amp; Refund
+                  </button>
+                  <button className="btn btn-sm btn-outline" disabled={requestActionSaving} onClick={() => handleRequestAction('rejectReturnRequest', 'Return request rejected')}>
+                    Reject
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         );
       })()}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }} className="od-grid">
+      {/* ── Balanced 2-Column Workspace (Zero Empty Void!) ──────────── */}
+      <div className="od-workspace">
 
-        {/* Items */}
-        <div className="card">
-          <div className="card-header"><h2 className="card-title">Items</h2></div>
-          <div style={{ padding: 0 }}>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Product</th>
-                  <th className="cell-right">Qty</th>
-                  <th className="cell-right">Unit</th>
-                  <th className="cell-right">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(order.items || []).map(it => (
-                  <tr key={it.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                        <div style={{
-                          width: 42, height: 42, borderRadius: 'var(--ac-radius, 6px)',
-                          background: 'var(--ac-surface-2)', border: '1px solid var(--ac-border)',
-                          overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center'
-                        }}>
-                          {it.image_url ? (
-                            <img
-                              src={resolveImageUrl(it.image_url)}
-                              alt={it.product_name || it.name}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                              onError={e => { e.currentTarget.style.display = 'none'; }}
-                            />
-                          ) : (
-                            <span style={{ fontSize: '0.65rem', color: 'var(--ac-text-muted)' }}>No img</span>
-                          )}
+        {/* ════════ LEFT OPERATIONAL COLUMN ════════ */}
+        <div className="od-main-col">
+
+          {/* 1. Order Items & Financial Breakdown */}
+          <div className="card">
+            <div className="card-header">
+              <h2 className="card-title">
+                Order Items ({(order.items || []).reduce((n, i) => n + Number(i.quantity || 1), 0)})
+              </h2>
+              <span className="muted text-xs">{(order.items || []).length} SKU{(order.items || []).length === 1 ? '' : 's'}</span>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Product</th>
+                    <th className="cell-right" style={{ width: 64 }}>Qty</th>
+                    <th className="cell-right" style={{ width: 120 }}>Unit Price</th>
+                    <th className="cell-right" style={{ width: 130 }}>Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(order.items || []).map(it => (
+                    <tr key={it.id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <div style={{
+                            width: 46, height: 46, borderRadius: 8,
+                            background: 'var(--ac-surface-2)', border: '1px solid var(--ac-border)',
+                            overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          }}>
+                            {it.image_url ? (
+                              <img
+                                src={resolveImageUrl(it.image_url)}
+                                alt={it.product_name || it.name}
+                                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                onError={e => { e.currentTarget.style.display = 'none'; }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: '0.65rem', color: 'var(--ac-text-muted)' }}>No img</span>
+                            )}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <Link to={`/products/${it.product_id}`} className="cell-primary" style={{ display: 'block', lineHeight: 1.3 }}>
+                              {it.product_name || it.name}
+                            </Link>
+                            {it.variant_label && (
+                              <span className="ap-sku-badge" style={{ marginTop: 4, display: 'inline-block', padding: '1px 7px', borderRadius: 5, background: 'var(--ac-surface-2)', border: '1px solid var(--ac-border)', fontSize: '0.72rem', color: 'var(--ac-text-muted)' }}>
+                                {it.variant_label}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                        <div style={{ minWidth: 0 }}>
-                          <Link to={`/products/${it.product_id}`} className="cell-primary" style={{ display: 'block', lineHeight: 1.3 }}>
-                            {it.product_name || it.name}
-                          </Link>
-                          {it.variant_label && (
-                            <div style={{
-                              display: 'inline-block',
-                              fontSize: '0.72rem',
-                              fontWeight: 500,
-                              color: 'var(--ac-text-muted)',
-                              background: 'var(--ac-surface-2)',
-                              border: '1px solid var(--ac-border)',
-                              borderRadius: '4px',
-                              padding: '1px 6px',
-                              marginTop: 4,
-                            }}>
-                              {it.variant_label}
+                      </td>
+                      <td className="cell-right" style={{ fontWeight: 600 }}>×{it.quantity}</td>
+                      <td className="cell-right cell-muted" style={{ whiteSpace: 'nowrap' }}>{fmt(it.price_at_purchase || it.price)}</td>
+                      <td className="cell-right cell-primary" style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                        {fmt(it.subtotal || (it.price_at_purchase * it.quantity))}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="od-totals-box">
+              <div className="od-totals-inner">
+                <div className="od-total-row">
+                  <span className="muted">Items Subtotal</span>
+                  <span>{fmt(subtotal)}</span>
+                </div>
+                {Number(order.discount_amount) > 0 && (
+                  <div className="od-total-row" style={{ color: 'var(--ac-success)' }}>
+                    <span>Discount {order.coupon_code ? `(${order.coupon_code})` : ''}</span>
+                    <span>− {fmt(order.discount_amount)}</span>
+                  </div>
+                )}
+                <div className="od-total-row">
+                  <span className="muted">Delivery Fee</span>
+                  <span>{Number(order.delivery_fee) === 0 ? 'Free' : fmt(order.delivery_fee)}</span>
+                </div>
+                <div className="od-total-row od-total-row--grand">
+                  <span>Order Total</span>
+                  <span>{fmt(order.total_amount)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Dispatch & Rider Fulfilment Center (Promoted to Main Column!) */}
+          {order.fulfillment_method === 'pickup' ? (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">Pickup Station Fulfilment</h2>
+                <StatusBadge status={order.status === 'shipped' ? 'ready_for_pickup' : order.status} />
+              </div>
+              <div className="card-body">
+                <div className="od-delivery-summary-grid">
+                  <div>
+                    <div className="od-kv-label">Station</div>
+                    <div className="od-kv-val">{store.pickup_location || 'East Legon Station (Accra)'}</div>
+                  </div>
+                  <div>
+                    <div className="od-kv-label">Stage</div>
+                    <div className="od-kv-val">
+                      {order.status === 'delivered' ? 'Picked Up' :
+                       order.status === 'shipped' ? 'Ready for Pickup' :
+                       order.status === 'processing' ? 'Packing at Station' : 'Awaiting Prep'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="od-kv-label">Verification</div>
+                    <div className="od-kv-val">Customer ID / Order #</div>
+                  </div>
+                </div>
+
+                {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' ? (
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {order.status === 'pending' && (
+                      <button type="button" className="btn btn-accent btn-sm" onClick={() => changeStatus('confirmed', 'Pickup order confirmed by admin')} disabled={saving}>
+                        ✓ Confirm Pickup Order
+                      </button>
+                    )}
+                    {order.status !== 'pending' && order.status !== 'shipped' && (
+                      <button type="button" className="btn btn-accent btn-sm" onClick={() => changeStatus('shipped', 'Order marked ready for pickup by admin')} disabled={saving}>
+                        📦 Mark Ready for Pickup
+                      </button>
+                    )}
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => changeStatus('delivered', 'Order picked up by customer')} disabled={saving}>
+                      ✓ Confirm Customer Picked Up
+                    </button>
+                  </div>
+                ) : order.status === 'delivered' ? (
+                  <div className="alert alert-info" style={{ marginBottom: 0 }}>
+                    ✓ Customer has collected this order from the pickup station.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <h2 className="card-title">Dispatch &amp; Rider Proof-of-Delivery</h2>
+                  <p className="muted text-xs" style={{ marginTop: 2 }}>
+                    {delivery
+                      ? 'Track courier stage, share live route manifest, or verify 6-digit OTP & photo handoff.'
+                      : 'Assign an in-house rider or courier to mark this order Shipped and send the customer their 6-digit delivery code.'}
+                  </p>
+                </div>
+                {delivery && <StatusBadge status={delivery.status} />}
+              </div>
+
+              <div className="card-body">
+                {delivery ? (
+                  <form onSubmit={handleUpdateDelivery}>
+                    <div className="od-delivery-summary-grid">
+                      <div>
+                        <div className="od-kv-label">Assigned Rider / Courier</div>
+                        <div className="od-kv-val">{delivery.delivery_partner || 'In-house Dispatch'}</div>
+                      </div>
+                      <div>
+                        <div className="od-kv-label">Tracking Number</div>
+                        <div className="od-kv-val mono" style={{ fontSize: '0.82rem' }}>{delivery.tracking_number || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="od-kv-label">Rider Phone</div>
+                        <div className="od-kv-val">{delivery.driver_phone || 'Not set'}</div>
+                      </div>
+                      {delivery.estimated_delivery && (
+                        <div>
+                          <div className="od-kv-label">Est. Delivery</div>
+                          <div className="od-kv-val">{new Date(delivery.estimated_delivery).toLocaleDateString('en-GH')}</div>
+                        </div>
+                      )}
+                    </div>
+
+                    {delivery.pod_verified_at ? (
+                      <div style={{ background: 'var(--ac-success-soft)', border: '1px solid rgba(5, 150, 105, 0.35)', borderRadius: 10, padding: 14, display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {delivery.pod_photo_url && (
+                          <a href={resolveImageUrl(delivery.pod_photo_url)} target="_blank" rel="noopener noreferrer">
+                            <img
+                              src={resolveImageUrl(delivery.pod_photo_url)}
+                              alt="Proof of delivery parcel"
+                              style={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 8, border: '1px solid rgba(5,150,105,0.4)' }}
+                            />
+                          </a>
+                        )}
+                        <div style={{ flex: 1, minWidth: 200 }}>
+                          <div style={{ fontWeight: 700, color: 'var(--ac-success)', fontSize: '0.9rem' }}>
+                            ✓ Proof of Delivery Verified ({delivery.pod_verified_method === 'rider_otp_photo' ? '6-Digit OTP + Live Photo + GPS' : 'Verified'})
+                          </div>
+                          <div className="muted text-xs" style={{ marginTop: 3 }}>
+                            {new Date(delivery.pod_verified_at).toLocaleString('en-GH')}
+                            {delivery.pod_recipient_name ? ` · Received by ${delivery.pod_recipient_name}` : ''}
+                          </div>
+                          {delivery.pod_lat != null && delivery.pod_lng != null && (
+                            <div style={{ marginTop: 6 }}>
+                              <a
+                                href={`https://www.google.com/maps?q=${delivery.pod_lat},${delivery.pod_lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: 'var(--ac-success)', fontWeight: 600, fontSize: '0.8rem', textDecoration: 'underline' }}
+                              >
+                                📍 Open GPS Drop-off Pin ({Number(delivery.pod_lat).toFixed(4)}, {Number(delivery.pod_lng).toFixed(4)}) ↗
+                              </a>
                             </div>
                           )}
                         </div>
                       </div>
-                    </td>
-                    <td className="cell-right" style={{ verticalAlign: 'middle' }}>{it.quantity}</td>
-                    <td className="cell-right cell-muted" style={{ verticalAlign: 'middle' }}>{fmt(it.price_at_purchase || it.price)}</td>
-                    <td className="cell-right cell-primary" style={{ verticalAlign: 'middle' }}>{fmt(it.subtotal || (it.price_at_purchase * it.quantity))}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <button
+                            type="button"
+                            className="btn btn-primary btn-sm"
+                            disabled={manifestLoading}
+                            onClick={handleGetRiderManifest}
+                          >
+                            {manifestLoading
+                              ? 'Generating Route Link…'
+                              : `🏍️ Get Rider Route Link (${delivery.delivery_partner || 'All Stops'})`}
+                          </button>
 
-            <div style={{ padding: 16, borderTop: '1px solid var(--ac-border)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.88rem' }}>
-                <span className="muted">Subtotal</span>
-                <span>{fmt(subtotal)}</span>
-              </div>
-              {Number(order.discount_amount) > 0 && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.88rem', color: 'var(--ac-success)' }}>
-                  <span>Discount {order.coupon_code ? `(${order.coupon_code})` : ''}</span>
-                  <span>- {fmt(order.discount_amount)}</span>
-                </div>
-              )}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: '0.88rem' }}>
-                <span className="muted">Delivery</span>
-                <span>{Number(order.delivery_fee) === 0 ? 'Free' : fmt(order.delivery_fee)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0 2px', borderTop: '1px solid var(--ac-border)', marginTop: 6, fontWeight: 600 }}>
-                <span>Total</span>
-                <span>{fmt(order.total_amount)}</span>
+                          {delivery.tracking_number && delivery.status !== 'delivered' && (
+                            <button
+                              type="button"
+                              className="btn btn-accent btn-sm"
+                              disabled={deliverySaving}
+                              onClick={handleAdvanceSimulation}
+                            >
+                              {delivery.status === 'pending'
+                                ? '→ Advance to In Transit'
+                                : delivery.status === 'in_transit'
+                                  ? '→ Advance to Out for Delivery'
+                                  : '✓ Mark Delivered'}
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            className="btn btn-outline btn-sm"
+                            disabled={podSending}
+                            onClick={handleSendPodOtp}
+                          >
+                            {podSending ? 'Sending…' : '🔑 Resend 6-Digit Customer OTP'}
+                          </button>
+                        </div>
+
+                        {manifestInfo?.manifest_url && (
+                          <div className="rm-share-card">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                              <strong style={{ fontSize: '0.84rem' }}>
+                                {manifestInfo.delivery_partner} · {manifestInfo.active_count} Active Stop{manifestInfo.active_count === 1 ? '' : 's'}
+                              </strong>
+                              <span className="badge badge-success">Valid {manifestInfo.expires_in}</span>
+                            </div>
+                            <div className="rm-url-box">
+                              <input type="text" readOnly value={manifestInfo.manifest_url} onFocus={e => e.target.select()} />
+                            </div>
+                            <div className="rm-action-grid">
+                              <button
+                                type="button"
+                                className="btn btn-outline btn-sm"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(manifestInfo.manifest_url);
+                                  toast.success('Rider manifest link copied');
+                                }}
+                              >
+                                📋 Copy Link
+                              </button>
+                              <a
+                                href={manifestInfo.manifest_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-outline btn-sm"
+                                style={{ textDecoration: 'none' }}
+                              >
+                                ↗ Open Rider App
+                              </a>
+                              <a
+                                href={`https://wa.me/${String(delivery.driver_phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Dispatch Route (${manifestInfo.active_count} stops · ${manifestInfo.delivery_partner}):\n${manifestInfo.manifest_url}`)}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="btn btn-whatsapp btn-sm"
+                                style={{ textDecoration: 'none' }}
+                              >
+                                💬 Send on WhatsApp
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        {podLinkInfo?.demo_otp && (
+                          <div className="alert alert-info" style={{ marginBottom: 0 }}>
+                            Demo OTP (SMS unconfigured): <strong>{podLinkInfo.demo_otp}</strong>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <details style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed var(--ac-border)' }}>
+                      <summary className="muted text-xs" style={{ cursor: 'pointer', fontWeight: 600 }}>
+                        Edit courier stage, phone, or tracking # manually
+                      </summary>
+                      <div className="od-dispatch-grid" style={{ marginTop: 12 }}>
+                        <div>
+                          <label>Courier Stage</label>
+                          <select value={deliveryStatus} onChange={e => setDeliveryStatus(e.target.value)}>
+                            <option value="pending">Pending Pickup</option>
+                            <option value="in_transit">In Transit</option>
+                            <option value="out_for_delivery">Out for Delivery</option>
+                            <option value="delivered">Delivered</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label>Tracking #</label>
+                          <input
+                            type="text"
+                            placeholder={delivery.tracking_number || 'e.g. BC-ACC-...'}
+                            value={deliveryForm.tracking_number}
+                            onChange={e => setDeliveryForm(f => ({ ...f, tracking_number: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                      <button type="submit" className="btn btn-outline btn-sm" disabled={deliverySaving}>
+                        {deliverySaving ? 'Saving…' : 'Save Delivery Details'}
+                      </button>
+                    </details>
+                  </form>
+                ) : (
+                  <form onSubmit={handleCreateDelivery}>
+                    <div className="rm-step-label">Quick-Assign Dispatch Rider</div>
+                    <div className="od-rider-chips">
+                      <button
+                        type="button"
+                        className={`od-rider-chip${deliveryForm.delivery_partner === 'In-house Dispatch Bike' ? ' is-selected' : ''}`}
+                        onClick={() => setDeliveryForm(prev => ({ ...prev, delivery_partner: 'In-house Dispatch Bike' }))}
+                      >
+                        🏍️ In-house Bike Rider
+                      </button>
+                      {knownPartners
+                        .filter(p => p.delivery_partner.toLowerCase() !== 'in-house dispatch bike')
+                        .slice(0, 8)
+                        .map(p => {
+                          const isSel = deliveryForm.delivery_partner.toLowerCase() === p.delivery_partner.toLowerCase();
+                          return (
+                            <button
+                              key={p.delivery_partner}
+                              type="button"
+                              className={`od-rider-chip${isSel ? ' is-selected' : ''}`}
+                              onClick={() => setDeliveryForm(prev => ({
+                                ...prev,
+                                delivery_partner: p.delivery_partner,
+                                driver_phone: p.driver_phone || prev.driver_phone,
+                              }))}
+                            >
+                              <span>{p.delivery_partner}</span>
+                              {p.active_count > 0 && (
+                                <span style={{ fontSize: '0.68rem', opacity: 0.75 }}>({p.active_count})</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      <button
+                        type="button"
+                        className={`od-rider-chip${deliveryForm.delivery_partner === 'DHL / External Courier' ? ' is-selected' : ''}`}
+                        onClick={() => setDeliveryForm(prev => ({ ...prev, delivery_partner: 'DHL / External Courier' }))}
+                      >
+                        📦 External Courier
+                      </button>
+                    </div>
+
+                    <div className="od-dispatch-grid">
+                      <div>
+                        <label htmlFor="od-dp">Rider / Courier Name *</label>
+                        <input
+                          id="od-dp"
+                          type="text"
+                          placeholder="e.g. In-house Dispatch Bike, Kwame Bike"
+                          value={deliveryForm.delivery_partner}
+                          onChange={e => setDeliveryForm(prev => ({ ...prev, delivery_partner: e.target.value }))}
+                          required
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="od-ph">Rider WhatsApp Phone</label>
+                        <input
+                          id="od-ph"
+                          type="text"
+                          placeholder="e.g. 024 123 4567"
+                          value={deliveryForm.driver_phone}
+                          onChange={e => setDeliveryForm(prev => ({ ...prev, driver_phone: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="od-trk">Tracking # (auto-generated if blank)</label>
+                        <input
+                          id="od-trk"
+                          type="text"
+                          placeholder="Auto-assigned e.g. BC-ACC-..."
+                          value={deliveryForm.tracking_number}
+                          onChange={e => setDeliveryForm(prev => ({ ...prev, tracking_number: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label htmlFor="od-eta">Estimated Delivery Date</label>
+                        <input
+                          id="od-eta"
+                          type="date"
+                          value={deliveryForm.estimated_delivery}
+                          onChange={e => setDeliveryForm(prev => ({ ...prev, estimated_delivery: e.target.value }))}
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      className="btn btn-accent"
+                      disabled={deliverySaving || order.status === 'cancelled'}
+                    >
+                      {deliverySaving ? 'Dispatching…' : '🚚 Dispatch Rider & Send Customer 6-Digit Code'}
+                    </button>
+                  </form>
+                )}
               </div>
             </div>
-          </div>
+          )}
+
+          {/* 3. Status & Audit Timeline */}
+          {statusLog.length > 0 && (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">Order Activity Timeline</h2>
+                <span className="muted text-xs">{statusLog.length} event{statusLog.length === 1 ? '' : 's'}</span>
+              </div>
+              <div className="card-body">
+                <div className="od-admin-log">
+                  {statusLog.map((entry, i) => (
+                    <div key={i} className="od-admin-log-entry">
+                      <div className="od-admin-log-dot" />
+                      <div className="od-admin-log-body">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          {entry.from_status && (
+                            <>
+                              <StatusBadge status={entry.from_status} />
+                              <span style={{ color: 'var(--ac-text-muted)', fontSize: '0.75rem' }}>→</span>
+                            </>
+                          )}
+                          <StatusBadge status={entry.to_status} />
+                          <span style={{ fontSize: '0.73rem', color: 'var(--ac-text-muted)', marginLeft: 'auto' }}>
+                            {new Date(entry.created_at).toLocaleString('en-GH', {
+                              day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                            })}
+                          </span>
+                        </div>
+                        {entry.note && (
+                          <p style={{ fontSize: '0.82rem', color: 'var(--ac-text-muted)', margin: '4px 0 0', lineHeight: 1.5 }}>
+                            {entry.note}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Customer + shipping */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* ════════ RIGHT CONTEXT SIDEBAR ════════ */}
+        <div className="od-side-col">
+
+          {/* 1. Customer Card */}
           <div className="card">
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="card-header">
               <h2 className="card-title">Customer</h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {order.customer_id && (
-                  <Link
-                    to={`/customers/${order.customer_id}`}
-                    style={{ fontSize: '0.78rem', color: 'var(--ac-primary)', textDecoration: 'none', fontWeight: 500 }}
-                  >
-                    View Profile &rarr;
-                  </Link>
-                )}
-                {order.is_guest && (
-                  <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', background: '#3b2d1d', color: '#e5c378', border: '1px solid rgba(201,165,90,0.3)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Guest Checkout
-                  </span>
-                )}
-              </div>
+              {order.customer_id ? (
+                <Link to={`/customers/${order.customer_id}`} style={{ fontSize: '0.78rem', color: 'var(--ac-accent)', fontWeight: 600 }}>
+                  View Profile →
+                </Link>
+              ) : order.is_guest ? (
+                <span className="badge badge-accent">Guest</span>
+              ) : null}
             </div>
             <div className="card-body">
-              <div style={{ fontSize: '0.96rem', fontWeight: 600, marginBottom: 4 }}>
-                {order.customer_id ? (
-                  <Link to={`/customers/${order.customer_id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                    {order.first_name || order.customer_name || '—'} {order.last_name || ''}
-                  </Link>
-                ) : (
-                  <>{order.first_name || order.customer_name || '—'} {order.last_name || ''}</>
-                )}
-              </div>
-              {order.email && (
-                <div className="text-sm muted" style={{ marginBottom: 4 }}>
-                  <a href={`mailto:${order.email}`} style={{ color: 'inherit', textDecoration: 'underline' }}>
-                    ✉️ {order.email}
-                  </a>
+              <div className="od-customer-top">
+                <div className="od-avatar">{initials}</div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.94rem' }}>{cleanCustomerName}</div>
+                  {order.email && (
+                    <a href={`mailto:${order.email}`} className="muted text-xs" style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {order.email}
+                    </a>
+                  )}
                 </div>
-              )}
+              </div>
+
               {displayPhone && (
-                <div className="text-sm" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-                  <span>📞 {displayPhone}</span>
-                  <a
-                    href={`https://wa.me/${displayPhone.replace(/[^0-9]/g, '')}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="badge"
-                    style={{ fontSize: '0.7rem', padding: '2px 7px', textDecoration: 'none', background: '#25D366', color: '#fff', fontWeight: 600, borderRadius: '4px' }}
-                  >
-                    WhatsApp
-                  </a>
-                  <a
-                    href={`tel:${displayPhone}`}
-                    className="badge badge-neutral"
-                    style={{ fontSize: '0.7rem', padding: '2px 7px', textDecoration: 'none', borderRadius: '4px' }}
-                  >
-                    Call
-                  </a>
+                <div className="od-contact-list">
+                  <div className="od-kv-row">
+                    <span className="muted">Phone</span>
+                    <span className="mono" style={{ fontSize: '0.82rem', fontWeight: 600 }}>{displayPhone}</span>
+                  </div>
+                  <div className="od-contact-actions">
+                    <a
+                      href={`https://wa.me/${displayPhone.replace(/\D/g, '').replace(/^0/, '233')}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="btn btn-whatsapp btn-sm"
+                      style={{ flex: 1, textDecoration: 'none' }}
+                    >
+                      💬 WhatsApp
+                    </a>
+                    <a
+                      href={`tel:${displayPhone}`}
+                      className="btn btn-outline btn-sm"
+                      style={{ flex: 1, textDecoration: 'none' }}
+                    >
+                      📞 Call
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
           </div>
 
+          {/* 2. Destination / Pickup Card */}
           <div className="card">
-            <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 className="card-title">{order.fulfillment_method === 'pickup' ? 'Pickup Station' : 'Shipping'}</h2>
-              {order.fulfillment_method === 'pickup' ? (
-                <span className="badge badge-accent" style={{ fontSize: '0.72rem' }}>Pickup Station</span>
-              ) : (
-                <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>Door Delivery</span>
-              )}
+            <div className="card-header">
+              <h2 className="card-title">{order.fulfillment_method === 'pickup' ? 'Pickup Station' : 'Delivery Address'}</h2>
+              <span className={`badge ${order.fulfillment_method === 'pickup' ? 'badge-accent' : 'badge-neutral'}`}>
+                {order.fulfillment_method === 'pickup' ? 'Pickup' : 'Door Delivery'}
+              </span>
             </div>
             <div className="card-body">
               {order.fulfillment_method === 'pickup' ? (
-                <div style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
-                  <div style={{ fontWeight: 600, color: 'var(--ac-text)' }}>
-                    📍 East Legon Station (Accra)
-                  </div>
-                  <div className="muted" style={{ fontSize: '0.84rem', marginTop: 2 }}>
-                    {order.shipping_address || 'Opposite A&C Mall, Boundary Road, East Legon'}
-                  </div>
-                  {(order.shipping_city || order.shipping_region) && (
-                    <div className="muted" style={{ fontSize: '0.84rem' }}>
-                      {order.shipping_city || 'Accra'}{order.shipping_region ? `, ${order.shipping_region}` : ''}
-                    </div>
-                  )}
-                  <div style={{ marginTop: 8, padding: '6px 10px', background: 'var(--ac-surface-sunken)', borderRadius: 4, fontSize: '0.8rem', color: 'var(--ac-text-muted)' }}>
-                    Customer will collect in person. Ensure ID matches customer name.
+                <div style={{ fontSize: '0.86rem', lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 600 }}>{store.pickup_location || 'East Legon Station (Accra)'}</div>
+                  <div className="muted text-xs" style={{ marginTop: 4 }}>
+                    Customer collects parcel in person — verify recipient ID or order number.
                   </div>
                 </div>
               ) : (
-                <div style={{ fontSize: '0.9rem', lineHeight: 1.6 }}>
-                  {order.shipping_address && <div>{order.shipping_address}</div>}
-                  {(order.shipping_city || order.shipping_region) && (
-                    <div>{order.shipping_city}{order.shipping_region ? `, ${order.shipping_region}` : ''}</div>
+                <div style={{ fontSize: '0.86rem', lineHeight: 1.6 }}>
+                  {fullAddressString ? (
+                    <div style={{ fontWeight: 500 }}>{fullAddressString}</div>
+                  ) : (
+                    <div className="muted">Address not provided</div>
                   )}
                   {order.ghana_post_gps && (
-                    <div><strong>GhanaPostGPS:</strong> {order.ghana_post_gps}</div>
+                    <div style={{ marginTop: 6 }}>
+                      <span className="muted text-xs">GhanaPostGPS: </span>
+                      <strong className="mono" style={{ fontSize: '0.8rem' }}>{order.ghana_post_gps}</strong>
+                    </div>
                   )}
                   {order.delivery_landmark && (
-                    <div><strong>Landmark:</strong> {order.delivery_landmark}</div>
+                    <div style={{ marginTop: 4 }}>
+                      <span className="muted text-xs">Landmark: </span>
+                      <span>{order.delivery_landmark}</span>
+                    </div>
                   )}
-                  {!order.shipping_address && !order.shipping_city && <div className="muted">Not provided</div>}
+
+                  {fullAddressString && (
+                    <div style={{ display: 'flex', gap: 6, marginTop: 12 }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        style={{ flex: 1 }}
+                        onClick={() => {
+                          navigator.clipboard?.writeText(fullAddressString);
+                          toast.success('Delivery address copied');
+                        }}
+                      >
+                        📋 Copy
+                      </button>
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.ghana_post_gps || fullAddressString)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-outline btn-sm"
+                        style={{ flex: 1, textDecoration: 'none' }}
+                      >
+                        📍 Maps ↗
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
 
+          {/* 3. Unified Payment & Refund Card */}
           <div className="card">
-            <div className="card-header"><h2 className="card-title">Payment</h2></div>
+            <div className="card-header">
+              <h2 className="card-title">Payment &amp; Settlement</h2>
+              <StatusBadge status={order.payment_status} />
+            </div>
             <div className="card-body">
-              <div style={{ fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <div className="od-kv-row">
                 <span className="muted">Method</span>
-                <span>{order.payment_method === 'pay_on_delivery' ? 'Pay on Delivery' : 'Paystack'}</span>
+                <span style={{ fontWeight: 600 }}>
+                  {order.payment_method === 'pay_on_delivery' ? 'Pay on Delivery (COD)' : 'Paystack Online'}
+                </span>
               </div>
-              <div style={{ fontSize: '0.9rem', display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span className="muted">Status</span><StatusBadge status={order.payment_status} />
+              <div className="od-kv-row">
+                <span className="muted">Order Total</span>
+                <strong style={{ fontSize: '0.92rem' }}>{fmt(order.total_amount)}</strong>
               </div>
               {order.payment_reference && (
-                <div style={{ fontSize: '0.8rem', marginTop: 8 }}>
-                  <div className="muted text-xs">Reference</div>
-                  <div className="mono" style={{ wordBreak: 'break-all' }}>{order.payment_reference}</div>
+                <div className="od-kv-row">
+                  <span className="muted">Reference</span>
+                  <span className="mono" style={{ fontSize: '0.76rem', wordBreak: 'break-all' }}>{order.payment_reference}</span>
                 </div>
               )}
+              <div className="od-kv-row">
+                <span className="muted">Refund Status</span>
+                <span className={`badge ${refundInfo.cls}`}>{refundInfo.label}</span>
+              </div>
+
               {canMarkPaid && (
                 <button
+                  type="button"
                   className="btn btn-accent btn-sm"
                   style={{ width: '100%', marginTop: 12 }}
                   onClick={handleMarkPaid}
                   disabled={markPaidSaving}
                 >
-                  {markPaidSaving ? 'Updating…' : 'Mark Paid (Cash/MoMo Collected)'}
+                  {markPaidSaving ? 'Updating…' : '✓ Record Cash / MoMo Collected'}
                 </button>
               )}
-            </div>
-          </div>
 
-          <div className="card">
-            <div className="card-header">
-              <h2 className="card-title">Refund</h2>
-              <span className={`badge ${refundInfo.cls}`}>{refundInfo.label}</span>
-            </div>
-            <div className="card-body">
-              <div className="od-refund-grid">
-                <span className="muted">Status</span>
-                <StatusBadge status={order.refund_status || 'not_requested'} />
-                <span className="muted">Method</span>
-                <span>{order.refund_method || '—'}</span>
-                <span className="muted">Amount</span>
-                <span>{order.refund_amount ? fmt(order.refund_amount) : '—'}</span>
-                <span className="muted">Reference</span>
-                <span className="mono" style={{ wordBreak: 'break-all' }}>{order.refund_reference || '—'}</span>
-                <span className="muted">Requested</span>
-                <span>{order.refund_requested_at ? new Date(order.refund_requested_at).toLocaleString('en-GH') : '—'}</span>
-                <span className="muted">Refunded</span>
-                <span>{order.refunded_at ? new Date(order.refunded_at).toLocaleString('en-GH') : '—'}</span>
-              </div>
-              {order.refund_notes && (
-                <div style={{ marginTop: 12 }}>
-                  <div className="muted text-xs">Notes</div>
-                  <div style={{ fontSize: '0.86rem', whiteSpace: 'pre-wrap', marginTop: 4 }}>{order.refund_notes}</div>
+              {hasRefundActivity && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--ac-border)' }}>
+                  <div className="od-refund-grid">
+                    {order.refund_method && (
+                      <>
+                        <span className="muted">Method</span>
+                        <span>{order.refund_method}</span>
+                      </>
+                    )}
+                    {order.refund_amount && (
+                      <>
+                        <span className="muted">Refunded</span>
+                        <strong>{fmt(order.refund_amount)}</strong>
+                      </>
+                    )}
+                    {order.refund_reference && (
+                      <>
+                        <span className="muted">Ref</span>
+                        <span className="mono" style={{ fontSize: '0.76rem', wordBreak: 'break-all' }}>{order.refund_reference}</span>
+                      </>
+                    )}
+                  </div>
+                  {order.refund_notes && (
+                    <div className="muted text-xs" style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>{order.refund_notes}</div>
+                  )}
+                  {canRefund && (
+                    <button
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{ width: '100%', marginTop: 10 }}
+                      onClick={() => setRefundOpen(true)}
+                      disabled={refundSaving}
+                    >
+                      Process Refund
+                    </button>
+                  )}
                 </div>
               )}
-              {canRefund && (
-                <button
-                  className="btn btn-accent btn-sm"
-                  style={{ width: '100%', marginTop: 14 }}
-                  onClick={() => setRefundOpen(true)}
-                  disabled={refundSaving}
-                >
-                  Refund order
-                </button>
-              )}
             </div>
           </div>
 
+          {/* 4. Duplicate Payments Alert (only when present) */}
           {payments.some(p => p.status === 'duplicate') && (
-            <div className="card" style={{ borderColor: 'var(--color-danger, #c0392b)' }}>
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 className="card-title">Duplicate Payments</h2>
+            <div className="card" style={{ borderColor: 'var(--ac-danger)' }}>
+              <div className="card-header">
+                <h2 className="card-title">Duplicate Charges</h2>
                 <span className="badge badge-danger">Action Required</span>
               </div>
               <div className="card-body">
-                <p className="muted" style={{ fontSize: '0.84rem', marginTop: 0 }}>
-                  These extra Paystack charges were flagged as duplicates on an already-paid order. Refunding them does not cancel the order.
-                </p>
                 {payments.filter(p => p.status === 'duplicate').map(p => (
-                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 0', borderTop: '1px solid var(--border-color, #eee)' }}>
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '8px 0' }}>
                     <div style={{ minWidth: 0 }}>
-                      <div className="mono" style={{ fontSize: '0.82rem', wordBreak: 'break-all' }}>{p.paystack_reference}</div>
-                      <div className="muted" style={{ fontSize: '0.8rem' }}>
-                        {p.currency || 'GHS'} {Number(p.amount || 0).toFixed(2)} · {p.created_at ? new Date(p.created_at).toLocaleString('en-GH') : ''}
-                      </div>
+                      <div className="mono" style={{ fontSize: '0.78rem', wordBreak: 'break-all' }}>{p.paystack_reference}</div>
+                      <div className="muted text-xs">{fmt(p.amount)}</div>
                     </div>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      disabled={dupRefundingId === p.id}
-                      onClick={() => handleRefundDuplicate(p)}
-                    >
-                      {dupRefundingId === p.id ? 'Refunding…' : 'Refund duplicate'}
+                    <button className="btn btn-danger btn-sm" disabled={dupRefundingId === p.id} onClick={() => handleRefundDuplicate(p)}>
+                      {dupRefundingId === p.id ? 'Refunding…' : 'Refund'}
                     </button>
                   </div>
                 ))}
@@ -943,35 +1352,46 @@ export default function OrderDetail() {
             </div>
           )}
 
+          {/* 5. Order Notes (only when present) */}
+          {order.notes && (
+            <div className="card">
+              <div className="card-header"><h2 className="card-title">Customer / Order Notes</h2></div>
+              <div className="card-body">
+                <div style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{order.notes}</div>
+              </div>
+            </div>
+          )}
+
+          {/* 6. Partial Item Returns (only when present or eligible) */}
           {(partialReturns.length > 0 || (order.status === 'delivered' && ['paid', 'partially_refunded'].includes(order.payment_status) && returnableItems.some(i => Number(i.remaining_quantity) > 0))) && (
             <div className="card">
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 className="card-title">Item Return Requests ({partialReturns.length})</h2>
+              <div className="card-header">
+                <h2 className="card-title">Item Returns ({partialReturns.length})</h2>
                 {order.status === 'delivered' && ['paid', 'partially_refunded'].includes(order.payment_status) && returnableItems.some(i => Number(i.remaining_quantity) > 0) && (
                   <button className="btn btn-outline btn-sm" onClick={() => setAdminRetOpen(o => !o)}>
-                    {adminRetOpen ? 'Close' : 'Create Return (Admin)'}
+                    {adminRetOpen ? 'Close' : '+ New Return'}
                   </button>
                 )}
               </div>
               <div className="card-body">
                 {adminRetOpen && (
-                  <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border-color, #eee)' }}>
-                    <div className="muted" style={{ fontSize: '0.78rem', marginBottom: 8 }}>
-                      Creates a return on behalf of the customer (bypasses return window / missing delivered_at).
-                    </div>
+                  <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--ac-border)' }}>
                     {returnableItems.filter(i => Number(i.remaining_quantity) > 0).map(it => {
                       const q = Number(adminRetQty[it.id] || 0);
                       return (
                         <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                           <label style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <input type="checkbox" checked={q > 0} onChange={e => setAdminRetQty(p => ({ ...p, [it.id]: e.target.checked ? 1 : 0 }))} />
+                            <input type="checkbox" style={{ width: 'auto' }} checked={q > 0} onChange={e => setAdminRetQty(p => ({ ...p, [it.id]: e.target.checked ? 1 : 0 }))} />
                             {it.product_name} (max {it.remaining_quantity})
                           </label>
                           {q > 0 && (
                             <input
-                              type="number" min={1} max={it.remaining_quantity} value={q}
+                              type="number"
+                              min={1}
+                              max={it.remaining_quantity}
+                              value={q}
                               onChange={e => setAdminRetQty(p => ({ ...p, [it.id]: Math.max(1, Math.min(Number(it.remaining_quantity), parseInt(e.target.value, 10) || 1)) }))}
-                              style={{ width: 56 }}
+                              style={{ width: 58 }}
                             />
                           )}
                         </div>
@@ -979,58 +1399,36 @@ export default function OrderDetail() {
                     })}
                     <input
                       type="text"
-                      placeholder="Return reason (required)"
+                      placeholder="Return reason *"
                       value={adminRetReason}
                       onChange={e => setAdminRetReason(e.target.value)}
-                      style={{ width: '100%', marginTop: 6, marginBottom: 8 }}
+                      style={{ marginTop: 6, marginBottom: 8 }}
                     />
                     <button className="btn btn-accent btn-sm" disabled={adminRetSaving} onClick={handleAdminCreateReturn}>
-                      {adminRetSaving ? 'Creating…' : 'Create Return Request'}
+                      {adminRetSaving ? 'Creating…' : 'Create Return'}
                     </button>
                   </div>
                 )}
-                {partialReturns.map((rr) => {
+
+                {partialReturns.map(rr => {
                   const opts = retOptions[rr.id] || { restock_items: false, include_delivery_fee: false };
                   const busy = retActionId === rr.id;
                   return (
-                    <div key={rr.id} style={{ padding: '12px 0', borderTop: '1px solid var(--border-color, #eee)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-                        <strong>GHS {Number(rr.refund_amount || 0).toFixed(2)}</strong>
+                    <div key={rr.id} style={{ padding: '10px 0', borderTop: '1px solid var(--ac-border)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <strong>{fmt(rr.refund_amount)}</strong>
                         <span className={`badge ${rr.status === 'refunded' ? 'badge-success' : rr.status === 'refund_failed' || rr.status === 'rejected' ? 'badge-danger' : 'badge-warning'}`}>
                           {rr.status}
                         </span>
                       </div>
-                      <div className="muted" style={{ fontSize: '0.82rem', marginTop: 4 }}>{rr.reason}</div>
-                      {Array.isArray(rr.items) && rr.items.length > 0 && (
-                        <ul style={{ margin: '6px 0 8px 18px', fontSize: '0.82rem' }}>
-                          {rr.items.map((it) => (
-                            <li key={it.id}>
-                              {it.product_name}{it.variant_label ? ` (${it.variant_label})` : ''} × {it.quantity} — GHS {Number(it.line_refund_amount || 0).toFixed(2)}
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                      <div className="muted text-xs" style={{ marginTop: 4 }}>{rr.reason}</div>
                       {rr.status === 'pending' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
-                          <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <input
-                              type="checkbox"
-                              checked={opts.restock_items}
-                              onChange={(e) => setRetOptions(prev => ({ ...prev, [rr.id]: { ...opts, restock_items: e.target.checked } }))}
-                            />
-                            Restock returned items (unopened / sealed only)
+                          <label style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <input type="checkbox" style={{ width: 'auto' }} checked={opts.restock_items} onChange={e => setRetOptions(prev => ({ ...prev, [rr.id]: { ...opts, restock_items: e.target.checked } }))} />
+                            Restock sealed items
                           </label>
-                          {Number(order.delivery_fee || 0) > 0 && (
-                            <label style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <input
-                                type="checkbox"
-                                checked={opts.include_delivery_fee}
-                                onChange={(e) => setRetOptions(prev => ({ ...prev, [rr.id]: { ...opts, include_delivery_fee: e.target.checked } }))}
-                              />
-                              Include delivery fee (+GHS {Number(order.delivery_fee).toFixed(2)})
-                            </label>
-                          )}
-                          <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                          <div style={{ display: 'flex', gap: 8 }}>
                             <button className="btn btn-accent btn-sm" disabled={busy} onClick={() => handleApprovePartialReturn(rr)}>
                               {busy ? 'Processing…' : 'Approve & Refund'}
                             </button>
@@ -1040,11 +1438,6 @@ export default function OrderDetail() {
                           </div>
                         </div>
                       )}
-                      {rr.status === 'refund_failed' && (
-                        <button className="btn btn-danger btn-sm" style={{ marginTop: 8 }} disabled={busy} onClick={() => handleApprovePartialReturn(rr)}>
-                          {busy ? 'Retrying…' : 'Retry Paystack Refund'}
-                        </button>
-                      )}
                     </div>
                   );
                 })}
@@ -1052,474 +1445,38 @@ export default function OrderDetail() {
             </div>
           )}
 
-          {order.notes && (
-            <div className="card">
-              <div className="card-header"><h2 className="card-title">Notes</h2></div>
-              <div className="card-body">
-                <div style={{ fontSize: '0.88rem', whiteSpace: 'pre-wrap' }}>{order.notes}</div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Delivery management / Pickup Station Fulfilment ──────────────────── */}
-          {order.fulfillment_method === 'pickup' ? (
-            <div className="card">
-              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2 className="card-title">Pickup Station Fulfilment</h2>
-                <StatusBadge status={order.status === 'shipped' ? 'ready_for_pickup' : order.status} />
-              </div>
-              <div className="card-body">
-                <div style={{ fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span className="muted">Station</span>
-                    <span style={{ fontWeight: 500 }}>{store.pickup_location || 'East Legon Station (Accra)'}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span className="muted">Pickup Status</span>
-                    <span style={{ fontWeight: 600 }}>
-                      {order.status === 'delivered' ? 'Picked Up / Completed' :
-                       order.status === 'shipped' ? 'Ready for Pickup' :
-                       order.status === 'processing' ? 'Processing at Station' :
-                       order.status === 'confirmed' ? 'Confirmed (Awaiting Packing)' :
-                       order.status === 'cancelled' ? 'Cancelled' :
-                       order.status === 'refunded' ? 'Refunded' : 'Pending Confirmation'}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span className="muted">Fulfillment Type</span>
-                    <span>Self-Pickup</span>
-                  </div>
-                </div>
-
-                {order.status !== 'delivered' && order.status !== 'cancelled' && order.status !== 'refunded' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {order.status === 'pending' && (
-                      <button
-                        type="button"
-                        className="btn btn-accent btn-sm"
-                        style={{ width: '100%' }}
-                        onClick={() => changeStatus('confirmed', 'Pickup order confirmed by admin')}
-                        disabled={saving}
-                      >
-                        {saving ? 'Updating…' : '✓ Confirm Pickup Order'}
-                      </button>
-                    )}
-                    {order.status !== 'pending' && order.status !== 'shipped' && (
-                      <button
-                        type="button"
-                        className="btn btn-accent btn-sm"
-                        style={{ width: '100%' }}
-                        onClick={() => changeStatus('shipped', 'Order marked ready for pickup by admin')}
-                        disabled={saving}
-                      >
-                        {saving ? 'Updating…' : '📦 Mark Ready for Pickup'}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-success btn-sm"
-                      style={{ width: '100%' }}
-                      onClick={() => changeStatus('delivered', 'Order picked up by customer')}
-                      disabled={saving}
-                    >
-                      {saving ? 'Updating…' : '✓ Confirm Customer Picked Up'}
-                    </button>
-                  </div>
-                )}
-                {order.status === 'delivered' && (
-                  <div style={{ padding: '8px 12px', background: 'var(--ac-surface-sunken)', borderRadius: 4, color: 'var(--ac-success)', fontSize: '0.85rem', textAlign: 'center', fontWeight: 500 }}>
-                    ✓ Order has been collected by the customer.
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="card">
-              <div className="card-header">
-                <h2 className="card-title">Delivery</h2>
-                {delivery && <StatusBadge status={delivery.status} />}
-              </div>
-              <div className="card-body">
-                {delivery ? (
-                  /* Existing delivery — show info + allow status/detail update */
-                  <form onSubmit={handleUpdateDelivery}>
-                    <div style={{ fontSize: '0.88rem', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                      {delivery.delivery_partner && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span className="muted">Courier</span>
-                          <span>{delivery.delivery_partner}</span>
-                        </div>
-                      )}
-                      {delivery.tracking_number && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span className="muted">Tracking #</span>
-                          <span className="mono">{delivery.tracking_number}</span>
-                        </div>
-                      )}
-                      {delivery.estimated_delivery && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span className="muted">Est. delivery</span>
-                          <span>{new Date(delivery.estimated_delivery).toLocaleDateString('en-GH')}</span>
-                        </div>
-                      )}
-                      {delivery.driver_phone && (
-                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <span className="muted">Driver phone</span>
-                          <span>{delivery.driver_phone}</span>
-                        </div>
-                      )}
-                    </div>
-                    {delivery.tracking_number && delivery.status !== 'delivered' && (
-                      <button
-                        type="button"
-                        className="btn btn-accent btn-sm"
-                        style={{ width: '100%', marginBottom: 10, fontSize: '0.84rem', fontWeight: 700 }}
-                        disabled={deliverySaving}
-                        onClick={handleAdvanceSimulation}
-                      >
-                        {delivery.status === 'pending'
-                          ? 'Advance to In Transit →'
-                          : delivery.status === 'in_transit'
-                            ? 'Advance to Out for Delivery →'
-                            : 'Mark as Delivered ✓'}
-                      </button>
-                    )}
-
-                    <details style={{ marginBottom: 12 }}>
-                      <summary className="muted text-xs" style={{ cursor: 'pointer', userSelect: 'none', fontWeight: 600 }}>
-                        Edit status or tracking # manually
-                      </summary>
-                      <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px dashed var(--ac-border)' }}>
-                        <div className="form-group" style={{ marginBottom: 8 }}>
-                          <label style={{ fontSize: '0.78rem' }}>Status</label>
-                          <select
-                            value={deliveryStatus}
-                            onChange={e => setDeliveryStatus(e.target.value)}
-                            style={{ width: '100%' }}
-                          >
-                            <option value="pending">Pending</option>
-                            <option value="in_transit">In transit</option>
-                            <option value="out_for_delivery">Out for delivery</option>
-                            <option value="delivered">Delivered</option>
-                          </select>
-                        </div>
-
-                        <div className="form-group" style={{ marginBottom: 10 }}>
-                          <label style={{ fontSize: '0.78rem' }}>Tracking #</label>
-                          <input
-                            type="text"
-                            placeholder={delivery.tracking_number || 'e.g. BC-ACC-...'}
-                            value={deliveryForm.tracking_number}
-                            onChange={e => setDeliveryForm(f => ({ ...f, tracking_number: e.target.value }))}
-                          />
-                        </div>
-
-                        <button
-                          type="submit"
-                          className="btn btn-outline btn-sm"
-                          style={{ width: '100%' }}
-                          disabled={deliverySaving}
-                        >
-                          {deliverySaving ? 'Saving…' : 'Save manual changes'}
-                        </button>
-                      </div>
-                    </details>
-
-                    {/* ── Multi-Layer Proof of Delivery (OTP + Rider Handoff Link + Photo + GPS) ── */}
-                    <div style={{ paddingTop: 12, borderTop: '1px solid var(--ac-border)' }}>
-                      <div style={{ fontSize: '0.74rem', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--ac-text-muted)' }}>
-                        Proof of Delivery &amp; Rider Links
-                      </div>
-
-                      {delivery.pod_verified_at ? (
-                        <div style={{ background: '#ecfdf5', border: '1px solid #10b981', borderRadius: 6, padding: 10, fontSize: '0.82rem' }}>
-                          <div style={{ fontWeight: 700, color: '#065f46', marginBottom: 4 }}>
-                            ✓ Verified Delivered ({delivery.pod_verified_method === 'rider_otp_photo' ? '6-Digit OTP + Photo + GPS' : delivery.pod_verified_method === 'customer_confirmed' ? 'Confirmed by Customer' : 'Admin Verified'})
-                          </div>
-                          <div className="muted text-xs">
-                            {new Date(delivery.pod_verified_at).toLocaleString('en-GH')}
-                            {delivery.pod_recipient_name ? ` · Received by: ${delivery.pod_recipient_name}` : ''}
-                          </div>
-                          {delivery.pod_lat != null && delivery.pod_lng != null && (
-                            <div style={{ marginTop: 6 }}>
-                              <a
-                                href={`https://www.google.com/maps?q=${delivery.pod_lat},${delivery.pod_lng}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                style={{ color: '#047857', fontWeight: 600, fontSize: '0.78rem' }}
-                              >
-                                📍 View GPS Drop-off Location ({Number(delivery.pod_lat).toFixed(4)}, {Number(delivery.pod_lng).toFixed(4)})
-                              </a>
-                            </div>
-                          )}
-                          {delivery.pod_photo_url && (
-                            <a
-                              href={resolveImageUrl(delivery.pod_photo_url)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              style={{ display: 'inline-block', marginTop: 8 }}
-                            >
-                              <img
-                                src={resolveImageUrl(delivery.pod_photo_url)}
-                                alt="Proof of delivery parcel"
-                                style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 6, border: '1px solid #a7f3d0' }}
-                              />
-                            </a>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                          <button
-                            type="button"
-                            className="btn btn-primary btn-sm"
-                            style={{ width: '100%', fontSize: '0.82rem' }}
-                            disabled={manifestLoading}
-                            onClick={handleGetRiderManifest}
-                          >
-                            {manifestLoading
-                              ? 'Loading Rider Link…'
-                              : `🏍️ Share Rider Link (${delivery.delivery_partner || 'All Stops'})`}
-                          </button>
-
-                          {manifestInfo?.manifest_url && (
-                            <div style={{ padding: 10, background: 'var(--ac-surface-2, #181b20)', borderRadius: 8, border: '1px solid var(--ac-border)', fontSize: '0.76rem' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                                <span style={{ fontWeight: 700 }}>{manifestInfo.delivery_partner}</span>
-                                <span style={{ color: '#22c55e', fontWeight: 700 }}>
-                                  {manifestInfo.active_count} stop{manifestInfo.active_count === 1 ? '' : 's'} · {manifestInfo.expires_in}
-                                </span>
-                              </div>
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
-                                <button
-                                  type="button"
-                                  className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.74rem', justifyContent: 'center' }}
-                                  onClick={() => {
-                                    navigator.clipboard?.writeText(manifestInfo.manifest_url);
-                                    toast.success('Rider link copied');
-                                  }}
-                                >
-                                  📋 Copy
-                                </button>
-                                <a
-                                  href={manifestInfo.manifest_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.74rem', textDecoration: 'none', justifyContent: 'center' }}
-                                >
-                                  ↗ Open
-                                </a>
-                                <a
-                                  href={`https://wa.me/${String(delivery.driver_phone || '').replace(/\D/g, '').replace(/^0/, '233')}?text=${encodeURIComponent(`BodyCream GH Rider Route (${manifestInfo.active_count} stops · ${manifestInfo.delivery_partner}):\n${manifestInfo.manifest_url}`)}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="btn btn-outline btn-sm"
-                                  style={{ fontSize: '0.74rem', color: '#22c55e', borderColor: 'rgba(34,197,94,0.4)', textDecoration: 'none', justifyContent: 'center' }}
-                                >
-                                  💬 WhatsApp
-                                </a>
-                              </div>
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem', color: 'var(--ac-text-muted)' }}>
-                            <span>6-digit code sent automatically on dispatch</span>
-                            <button
-                              type="button"
-                              disabled={podSending}
-                              onClick={handleSendPodOtp}
-                              style={{
-                                background: 'none',
-                                border: 'none',
-                                padding: 0,
-                                color: 'var(--ac-accent)',
-                                fontWeight: 600,
-                                cursor: 'pointer',
-                                textDecoration: 'underline',
-                                fontSize: '0.74rem',
-                              }}
-                            >
-                              {podSending ? 'Sending…' : 'Resend OTP'}
-                            </button>
-                          </div>
-
-                          {podLinkInfo?.demo_otp && (
-                            <div style={{ fontSize: '0.75rem', color: '#92400e', background: '#fef3c7', padding: '4px 8px', borderRadius: 4 }}>
-                              Demo OTP (SMS unconfigured): <strong>{podLinkInfo.demo_otp}</strong>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </form>
-                ) : (
-                  /* No delivery yet — create one */
-                  <form onSubmit={handleCreateDelivery}>
-                    <p className="muted text-sm" style={{ marginBottom: 12 }}>
-                      No delivery record yet. Creating one will mark this order as <strong>shipped</strong> and notify the customer.
-                    </p>
-
-                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                        onClick={() => setDeliveryForm(prev => ({
-                          ...prev,
-                          delivery_partner: 'In-house Dispatch Bike',
-                        }))}
-                      >
-                        In-house Bike Rider
-                      </button>
-                      {knownPartners
-                        .filter(p => p.delivery_partner.toLowerCase() !== 'in-house dispatch bike')
-                        .map(p => (
-                          <button
-                            key={p.delivery_partner}
-                            type="button"
-                            className="btn btn-outline btn-sm"
-                            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                            onClick={() => setDeliveryForm(prev => ({
-                              ...prev,
-                              delivery_partner: p.delivery_partner,
-                              driver_phone: p.driver_phone || prev.driver_phone,
-                            }))}
-                          >
-                            {p.delivery_partner}
-                          </button>
-                        ))}
-                      <button
-                        type="button"
-                        className="btn btn-outline btn-sm"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                        onClick={() => setDeliveryForm(prev => ({
-                          ...prev,
-                          delivery_partner: 'DHL / External Courier',
-                        }))}
-                      >
-                        External Courier
-                      </button>
-                    </div>
-
-                    {[
-                      { name: 'delivery_partner',   label: 'Rider / courier name',                 placeholder: 'e.g. In-house Dispatch Bike, Kwame, DHL' },
-                      { name: 'tracking_number',    label: 'Tracking # (auto-generated if blank)', placeholder: 'Leave blank for own bike rider' },
-                      { name: 'driver_phone',       label: 'Rider / driver phone (optional)',      placeholder: '+233 XX XXX XXXX' },
-                    ].map(f => (
-                      <div className="form-group" key={f.name} style={{ marginBottom: 10 }}>
-                        <label style={{ fontSize: '0.8rem' }}>{f.label}</label>
-                        <input
-                          type="text"
-                          placeholder={f.placeholder}
-                          value={deliveryForm[f.name]}
-                          onChange={e => setDeliveryForm(prev => ({ ...prev, [f.name]: e.target.value }))}
-                        />
-                      </div>
-                    ))}
-
-                    <div className="form-group" style={{ marginBottom: 12 }}>
-                      <label style={{ fontSize: '0.8rem' }}>Estimated delivery date (optional)</label>
-                      <input
-                        type="date"
-                        value={deliveryForm.estimated_delivery}
-                        onChange={e => setDeliveryForm(f => ({ ...f, estimated_delivery: e.target.value }))}
-                      />
-                    </div>
-
-                    <button
-                      type="submit"
-                      className="btn btn-accent btn-sm"
-                      style={{ width: '100%' }}
-                      disabled={deliverySaving}
-                    >
-                      {deliverySaving ? 'Creating…' : 'Create delivery & mark shipped'}
-                    </button>
-                  </form>
-                )}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Status history — rendered below the 2-col grid so it spans full width
-          without displacing the Customer column from the right-hand slot */}
-      {statusLog.length > 0 && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <div className="card-header"><h2 className="card-title">Status History</h2></div>
-          <div className="card-body">
-            <div className="od-admin-log">
-              {statusLog.map((entry, i) => (
-                <div key={i} className="od-admin-log-entry">
-                  <div className="od-admin-log-dot" />
-                  <div className="od-admin-log-body">
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      {entry.from_status && (
-                        <>
-                          <StatusBadge status={entry.from_status} />
-                          <span style={{ color: 'var(--ac-text-muted)', fontSize: '0.75rem' }}>→</span>
-                        </>
-                      )}
-                      <StatusBadge status={entry.to_status} />
-                    </div>
-                    {entry.note && (
-                      <p style={{ fontSize: '0.82rem', color: 'var(--ac-text-muted)', margin: '4px 0 2px', lineHeight: 1.5 }}>
-                        {entry.note}
-                      </p>
-                    )}
-                    <p style={{ fontSize: '0.72rem', color: 'var(--ac-text-muted)', marginTop: 2 }}>
-                      {new Date(entry.created_at).toLocaleString('en-GH', {
-                        day: 'numeric', month: 'short', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit',
-                      })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* ── Dialogs & Modals ────────────────────────────────────────── */}
       <ConfirmDialog
         open={!!pendingStatus}
         onClose={() => setPendingStatus(null)}
         onConfirm={() => { const s = pendingStatus; setPendingStatus(null); changeStatus(s); }}
-        title={`Mark as ${pendingStatus}?`}
-        message={`This will update the order status and may trigger customer notifications.`}
+        title={`Mark order as ${pendingStatus}?`}
+        message="This updates the order stage and sends automated status notifications to the customer."
         confirmLabel={`Mark ${pendingStatus}`}
       />
 
       <Modal
         open={codModalOpen}
         onClose={() => { if (!markPaidSaving) setCodModalOpen(false); }}
-        title="Confirm Pay-on-Delivery Collection"
+        title="Confirm Pay-on-Delivery Settlement"
       >
         <form onSubmit={handleConfirmCodPayment}>
           {codFromDeliver && (
-            <div
-              style={{
-                background: '#fef3c7',
-                border: '1px solid #f59e0b',
-                color: '#92400e',
-                borderRadius: 6,
-                padding: '10px 12px',
-                fontSize: '0.84rem',
-                marginBottom: 14,
-              }}
-            >
-              <strong>Unpaid COD Order ({fmt(order.total_amount)}):</strong> Confirm how the rider collected payment before marking this order delivered.
+            <div className="alert alert-warning" style={{ marginBottom: 14 }}>
+              <strong>Unpaid COD Order ({fmt(order.total_amount)}):</strong> Confirm how the rider collected payment before marking Delivered.
             </div>
           )}
 
-          <div className="form-group" style={{ marginBottom: 12 }}>
+          <div className="field">
             <label>Amount Collected</label>
             <input type="text" value={fmt(order.total_amount)} disabled />
           </div>
 
-          <div className="form-group" style={{ marginBottom: 12 }}>
-            <label>Payment Method Received</label>
+          <div className="field">
+            <label>Collection Method</label>
             <select
               value={codForm.collection_method}
               onChange={e => setCodForm(f => ({ ...f, collection_method: e.target.value }))}
@@ -1530,7 +1487,7 @@ export default function OrderDetail() {
             </select>
           </div>
 
-          <div className="form-group" style={{ marginBottom: 12 }}>
+          <div className="field">
             <label>
               {codForm.collection_method === 'momo'
                 ? 'MoMo Transaction ID / Reference *'
@@ -1545,7 +1502,7 @@ export default function OrderDetail() {
             />
           </div>
 
-          <div className="form-group" style={{ marginBottom: 12 }}>
+          <div className="field">
             <label>Collected By (Rider / Staff Name)</label>
             <input
               type="text"
@@ -1556,18 +1513,15 @@ export default function OrderDetail() {
           </div>
 
           {order.status !== 'delivered' && (
-            <div className="form-group" style={{ marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer', fontSize: '0.86rem' }}>
               <input
-                id="cod-mark-delivered"
                 type="checkbox"
                 style={{ width: 'auto' }}
                 checked={codForm.mark_delivered}
                 onChange={e => setCodForm(f => ({ ...f, mark_delivered: e.target.checked }))}
               />
-              <label htmlFor="cod-mark-delivered" style={{ margin: 0, cursor: 'pointer', fontSize: '0.86rem' }}>
-                Also mark order &amp; delivery as <strong>Delivered</strong>
-              </label>
-            </div>
+              <span>Also mark order &amp; delivery as <strong>Delivered</strong></span>
+            </label>
           )}
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
@@ -1584,24 +1538,11 @@ export default function OrderDetail() {
                 Deliver Without Payment
               </button>
             )}
-            <button
-              type="button"
-              className="btn btn-outline btn-sm"
-              disabled={markPaidSaving}
-              onClick={() => setCodModalOpen(false)}
-            >
+            <button type="button" className="btn btn-outline btn-sm" disabled={markPaidSaving} onClick={() => setCodModalOpen(false)}>
               Cancel
             </button>
-            <button
-              type="submit"
-              className="btn btn-accent btn-sm"
-              disabled={markPaidSaving}
-            >
-              {markPaidSaving
-                ? 'Saving…'
-                : codForm.mark_delivered
-                  ? 'Confirm Payment & Deliver'
-                  : 'Confirm Payment Received'}
+            <button type="submit" className="btn btn-accent btn-sm" disabled={markPaidSaving}>
+              {markPaidSaving ? 'Saving…' : codForm.mark_delivered ? 'Confirm Payment & Deliver' : 'Confirm Payment Received'}
             </button>
           </div>
         </form>
@@ -1609,31 +1550,24 @@ export default function OrderDetail() {
 
       <Modal
         open={cancelOpen}
-        onClose={() => {
-          if (!cancelSaving) {
-            setCancelOpen(false);
-            setCancelError('');
-          }
-        }}
+        onClose={() => { if (!cancelSaving) { setCancelOpen(false); setCancelError(''); } }}
         title="Cancel order"
         size="md"
         footer={
           <>
-            <button className="btn btn-outline" onClick={() => setCancelOpen(false)} disabled={cancelSaving}>
-              Close
-            </button>
+            <button className="btn btn-outline" onClick={() => setCancelOpen(false)} disabled={cancelSaving}>Close</button>
             <button className="btn btn-danger" onClick={handleCancelOrder} disabled={cancelSaving}>
-              {cancelSaving ? 'Cancelling...' : 'Cancel order'}
+              {cancelSaving ? 'Cancelling…' : 'Cancel order'}
             </button>
           </>
         }
       >
-        <div className="form-group">
-          <label>Reason</label>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label>Cancellation Reason</label>
           <textarea
             rows={4}
             maxLength={500}
-            placeholder="Optional cancellation reason"
+            placeholder="Optional reason shared in order history"
             value={cancelReason}
             onChange={e => setCancelReason(e.target.value)}
           />
@@ -1643,25 +1577,18 @@ export default function OrderDetail() {
 
       <Modal
         open={refundOpen}
-        onClose={() => {
-          if (!refundSaving) {
-            setRefundOpen(false);
-            setRefundError('');
-          }
-        }}
+        onClose={() => { if (!refundSaving) { setRefundOpen(false); setRefundError(''); } }}
         title="Refund order"
         size="md"
         footer={
           <>
-            <button className="btn btn-outline" onClick={() => setRefundOpen(false)} disabled={refundSaving}>
-              Close
-            </button>
+            <button className="btn btn-outline" onClick={() => setRefundOpen(false)} disabled={refundSaving}>Close</button>
             <button
               className="btn btn-primary"
               onClick={handleRefundOrder}
               disabled={refundSaving || (refundForm.method === 'manual' && !refundForm.reference.trim())}
             >
-              {refundSaving ? 'Submitting...' : 'Confirm refund'}
+              {refundSaving ? 'Submitting…' : 'Confirm refund'}
             </button>
           </>
         }
@@ -1670,18 +1597,15 @@ export default function OrderDetail() {
           <span className="muted">Full refund amount</span>
           <strong>{fmt(order.total_amount)}</strong>
         </div>
-        <div className="form-group">
+        <div className="field">
           <label>Method</label>
-          <select
-            value={refundForm.method}
-            onChange={e => setRefundForm(f => ({ ...f, method: e.target.value }))}
-          >
+          <select value={refundForm.method} onChange={e => setRefundForm(f => ({ ...f, method: e.target.value }))}>
             <option value="paystack">Paystack</option>
             <option value="manual">Manual</option>
           </select>
         </div>
-        <div className="form-group" style={{ marginTop: 12 }}>
-          <label>Reference{refundForm.method === 'manual' ? '' : ' (optional)'}</label>
+        <div className="field">
+          <label>Reference{refundForm.method === 'manual' ? ' *' : ' (optional)'}</label>
           <input
             type="text"
             maxLength={255}
@@ -1690,28 +1614,20 @@ export default function OrderDetail() {
             onChange={e => setRefundForm(f => ({ ...f, reference: e.target.value }))}
           />
         </div>
-        <div className="form-group" style={{ marginTop: 12 }}>
+        <div className="field" style={{ marginBottom: 0 }}>
           <label>Notes</label>
           <textarea
-            rows={4}
+            rows={3}
             maxLength={1000}
             placeholder="Optional refund notes"
             value={refundForm.notes}
             onChange={e => setRefundForm(f => ({ ...f, notes: e.target.value }))}
           />
         </div>
-        {refundForm.method === 'paystack' && (
-          <p className="muted text-sm" style={{ marginTop: 10 }}>
-            Paystack refunds stay pending until Paystack confirms processing by webhook.
-          </p>
-        )}
         {refundError && <div className="alert alert-error" style={{ marginTop: 12 }}>{refundError}</div>}
       </Modal>
 
       <style>{`
-        @media (max-width: 900px) {
-          .od-grid { grid-template-columns: 1fr !important; }
-        }
         .status-track {
           display: flex;
           align-items: center;
@@ -1752,15 +1668,16 @@ export default function OrderDetail() {
         .track-step.done .track-dot {
           background: var(--ac-accent);
           border-color: var(--ac-accent);
-          color: #fff;
+          color: #141010;
+          font-weight: 700;
         }
         .track-step.current .track-dot {
-          box-shadow: 0 0 0 4px rgba(201, 165, 90, 0.2);
+          box-shadow: 0 0 0 4px rgba(201, 165, 90, 0.22);
         }
         .track-label {
           font-size: 0.72rem;
-          font-weight: 500;
-          letter-spacing: 0.04em;
+          font-weight: 600;
+          letter-spacing: 0.03em;
           color: var(--ac-text-muted);
           text-transform: capitalize;
         }
@@ -1771,11 +1688,10 @@ export default function OrderDetail() {
           border-left: 2px solid var(--ac-border);
           padding-left: 18px;
           margin-left: 8px;
-          gap: 0;
         }
         .od-admin-log-entry {
           position: relative;
-          padding-bottom: 16px;
+          padding-bottom: 14px;
         }
         .od-admin-log-entry:last-child { padding-bottom: 0; }
         .od-admin-log-dot {
@@ -1787,16 +1703,14 @@ export default function OrderDetail() {
           background: var(--ac-accent);
           border: 2px solid var(--ac-bg);
         }
-        .od-admin-log-body { }
         .od-refund-grid {
           display: grid;
-          grid-template-columns: minmax(92px, auto) 1fr;
-          gap: 8px 12px;
+          grid-template-columns: minmax(84px, auto) 1fr;
+          gap: 6px 12px;
           align-items: center;
-          font-size: 0.86rem;
+          font-size: 0.84rem;
         }
       `}</style>
     </div>
   );
 }
-

@@ -172,9 +172,9 @@ export default function App() {
     <ErrorBoundary>
       <div className="app">
         <ScrollToTop />
-        <Navigation />
+        {!isRiderRoute && <Navigation />}
 
-        <main className="main-content">
+        <main className="main-content" style={isRiderRoute ? { paddingTop: 0 } : undefined}>
           <Suspense fallback={<PageFallback />}>
             <RouteFade>
             <Routes>
@@ -218,8 +218,8 @@ export default function App() {
           </Suspense>
         </main>
 
-        <Footer />
-        <StickyCartBar />
+        {!isRiderRoute && <Footer />}
+        {!isRiderRoute && <StickyCartBar />}
         {!isRiderRoute && <WhatsAppFloat />}
         {!isRiderRoute && (
           <Suspense fallback={null}>

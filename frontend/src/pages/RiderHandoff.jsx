@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { deliveriesAPI } from '../services/api';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import './RiderPortal.css';
 
 export default function RiderHandoff() {
   const [searchParams] = useSearchParams();
@@ -15,13 +16,15 @@ export default function RiderHandoff() {
   const [otpNotice, setOtpNotice]       = useState('');
   const [copiedReceipt, setCopiedReceipt] = useState(false);
 
-  const [otp, setOtp]               = useState('');
+  const [otpDigits, setOtpDigits]   = useState(['', '', '', '', '', '']);
+  const otpRefs = useRef([]);
+
   const [recipientName, setRecipientName] = useState('');
   const [photoUrl, setPhotoUrl]     = useState('');
   const [uploading, setUploading]   = useState(false);
   const [gps, setGps]               = useState({ lat: null, lng: null, accuracy: null, status: 'pending' });
 
-  // Live in-page camera state (prevents gallery uploads on phones & desktop)
+  // Live in-page camera state
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraError, setCameraError]   = useState('');
   const videoRef  = useRef(null);
@@ -33,6 +36,8 @@ export default function RiderHandoff() {
 
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone]             = useState(null);
+
+  const otp = otpDigits.join('');
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -48,7 +53,7 @@ export default function RiderHandoff() {
     setCameraError('');
     setError('');
     if (!navigator.mediaDevices?.getUserMedia) {
-      setCameraError('Live camera API is unavailable in this browser. Use the fallback button below.');
+      setCameraError('Live camera API is unavailable in this browser. Tap below to open your phone camera.');
       return;
     }
     try {
@@ -63,7 +68,6 @@ export default function RiderHandoff() {
       });
       streamRef.current = stream;
       setCameraActive(true);
-      // Attach stream once <video> mounts
       requestAnimationFrame(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -73,8 +77,8 @@ export default function RiderHandoff() {
     } catch (err) {
       setCameraError(
         err?.name === 'NotAllowedError'
-          ? 'Camera permission denied. Please allow camera access in your browser settings.'
-          : 'Could not open rear camera. Ensure no other app is using the camera.'
+          ? 'Camera permission denied. Allow camera access or use the device camera button below.'
+          : 'Could not open rear camera. Tap below to capture with your device camera.'
       );
     }
   };
@@ -82,7 +86,7 @@ export default function RiderHandoff() {
   const captureLiveFrame = async () => {
     const video = videoRef.current;
     if (!video || !video.videoWidth) {
-      setCameraError('Camera is still warming up — try tapping Capture again.');
+      setCameraError('Camera is still warming up — tap Capture again in a moment.');
       return;
     }
     setUploading(true);
@@ -152,6 +156,62 @@ export default function RiderHandoff() {
       .finally(() => setLoading(false));
   }, [token]);
 
+  const handleDigitChange = (index, rawVal) => {
+    const clean = rawVal.replace(/\D/g, '');
+    if (!clean) {
+      setOtpDigits(prev => {
+        const next = [...prev];
+        next[index] = '';
+        return next;
+      });
+      return;
+    }
+    // Support multi-digit paste/autofill into any box
+    if (clean.length > 1) {
+      const chars = clean.slice(0, 6).split('');
+      setOtpDigits(prev => {
+        const next = [...prev];
+        chars.forEach((ch, offset) => {
+          if (index + offset < 6) next[index + offset] = ch;
+        });
+        return next;
+      });
+      const focusIdx = Math.min(5, index + chars.length);
+      otpRefs.current[focusIdx]?.focus();
+      return;
+    }
+    setOtpDigits(prev => {
+      const next = [...prev];
+      next[index] = clean;
+      return next;
+    });
+    if (index < 5) {
+      otpRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleDigitKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+    if (e.key === 'ArrowLeft' && index > 0) {
+      otpRefs.current[index - 1]?.focus();
+    }
+    if (e.key === 'ArrowRight' && index < 5) {
+      otpRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleDigitPaste = (e) => {
+    const pasted = (e.clipboardData?.getData('text') || '').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    e.preventDefault();
+    const next = ['', '', '', '', '', ''];
+    pasted.split('').forEach((c, i) => { next[i] = c; });
+    setOtpDigits(next);
+    otpRefs.current[Math.min(5, pasted.length)]?.focus();
+  };
+
   const handleFallbackPhotoChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -177,7 +237,7 @@ export default function RiderHandoff() {
     try {
       const { data } = await deliveriesAPI.riderResendOtp({ token });
       const extra = data.demo_otp ? ` (Demo OTP: ${data.demo_otp})` : '';
-      setOtpNotice(`✓ Fresh 6-digit code sent to customer's email/SMS${extra}`);
+      setOtpNotice(`✓ Fresh 6-digit delivery code sent to customer${extra}`);
       setInfo(prev => prev ? { ...prev, attempts_remaining: 5 } : prev);
     } catch (err) {
       setError(err.response?.data?.error || 'Could not resend 6-digit code.');
@@ -190,15 +250,15 @@ export default function RiderHandoff() {
     e.preventDefault();
     setError('');
     if (!/^\d{6}$/.test(otp.trim())) {
-      setError('Enter the customer\'s 6-digit delivery code.');
+      setError("Enter all 6 digits of the customer's Delivery Verification Code.");
       return;
     }
     if (!photoUrl) {
-      setError('Please capture a live photo of the parcel before confirming.');
+      setError('Capture a live photo of the parcel before completing delivery.');
       return;
     }
     if (info?.cod_amount_due > 0 && codCollected && collectionMethod === 'momo' && !paymentRef.trim()) {
-      setError('Please enter the MoMo Transaction ID / Reference.');
+      setError('Enter the MoMo Transaction ID / Reference.');
       return;
     }
     setSubmitting(true);
@@ -218,40 +278,65 @@ export default function RiderHandoff() {
       stopCamera();
       setDone(data);
     } catch (err) {
-      setError(err.response?.data?.error || 'Verification failed. Please check the 6-digit code.');
+      setError(err.response?.data?.error || 'Verification failed. Double-check the 6-digit code with the customer.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const wrapStyle = {
-    maxWidth: 460,
-    margin: '24px auto 60px',
-    padding: '0 16px',
-  };
-  const cardStyle = {
-    background: 'var(--color-surface, #fff)',
-    border: '1px solid var(--color-border, #e5e0d8)',
-    borderRadius: 12,
-    padding: 20,
-    boxShadow: '0 4px 18px rgba(0,0,0,0.05)',
-  };
-
   if (loading) {
-    return <div style={wrapStyle}><div style={cardStyle}>Loading dispatch handoff…</div></div>;
-  }
-
-  if (!info) {
     return (
-      <div style={wrapStyle}>
-        <div style={cardStyle}>
-          <h2 style={{ marginTop: 0 }}>Rider Handoff Unavailable</h2>
-          <p style={{ color: '#b91c1c' }}>{error || 'This dispatch link is invalid or expired.'}</p>
+      <div className="rp-shell">
+        <header className="rp-topbar">
+          <div className="rp-topbar-inner">
+            <div className="rp-brand-group">
+              <div className="rp-brand-badge">🏍️</div>
+              <div>
+                <div className="rp-eyebrow">Proof of Delivery</div>
+                <div className="rp-rider-title">Loading Stop Handoff…</div>
+              </div>
+            </div>
+          </div>
+        </header>
+        <div className="rp-container">
+          <div className="rp-step-card" style={{ textAlign: 'center', padding: '40px 20px', color: '#64748b' }}>
+            Preparing verification terminal…
+          </div>
         </div>
       </div>
     );
   }
 
+  if (!info) {
+    return (
+      <div className="rp-shell">
+        <header className="rp-topbar">
+          <div className="rp-topbar-inner">
+            <div className="rp-brand-group">
+              <div className="rp-brand-badge">🏍️</div>
+              <div>
+                <div className="rp-eyebrow">Proof of Delivery</div>
+                <div className="rp-rider-title">Handoff Unavailable</div>
+              </div>
+            </div>
+          </div>
+        </header>
+        <div className="rp-container">
+          <div className="rp-step-card" style={{ borderColor: '#fca5a5', background: '#fef2f2' }}>
+            <h2 style={{ fontSize: '1.15rem', color: '#991b1b', marginBottom: 6 }}>Dispatch Link Invalid or Expired</h2>
+            <p style={{ fontSize: '0.9rem', color: '#7f1d1d' }}>{error || 'Return to your route manifest and refresh.'}</p>
+            {manifestToken && (
+              <Link to={`/rider-manifest?token=${encodeURIComponent(manifestToken)}`} className="rp-primary-cta" style={{ marginTop: 14 }}>
+                ← Return to Route Manifest
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Completed / Digital POD Certificate Screen ────────────────
   if (done || info.already_verified) {
     const verifiedAtStr = done?.verified_at || info.pod_verified_at || new Date().toISOString();
     const recName = done?.recipient_name || recipientName || info.recipient_first_name || 'Customer';
@@ -261,7 +346,7 @@ export default function RiderHandoff() {
       ? `https://www.google.com/maps?q=${recLat},${recLng}`
       : null;
     const codSummary = done?.cod_paid
-      ? `COD Collected: GH₵${Number(done.amount || info.cod_amount_due || 0).toFixed(2)} (${(done.collection_method || collectionMethod || 'cash').toUpperCase()}${done.payment_reference ? ` · Ref: ${done.payment_reference}` : ''})`
+      ? `COD Collected: GHS ${Number(done.amount || info.cod_amount_due || 0).toFixed(2)} (${(done.collection_method || collectionMethod || 'cash').toUpperCase()}${done.payment_reference ? ` · Ref: ${done.payment_reference}` : ''})`
       : (info.payment_status === 'paid' ? 'Payment: PAID ONLINE' : 'Payment: Settled');
 
     const receiptText = [
@@ -281,198 +366,244 @@ export default function RiderHandoff() {
         setCopiedReceipt(true);
         setTimeout(() => setCopiedReceipt(false), 2500);
       } catch {
-        // Fallback ignored on restricted webviews
+        // ignore
       }
     };
 
     return (
-      <div style={wrapStyle}>
-        <div style={{ ...cardStyle, borderColor: '#10b981', background: '#ecfdf5' }}>
-          <h2 style={{ marginTop: 0, color: '#065f46' }}>✓ Delivery Verified & Logged</h2>
-          <p style={{ margin: '6px 0', fontSize: '0.9rem' }}>
-            Order <strong>#{info.order_number}</strong> (<span style={{ fontFamily: 'monospace' }}>{info.tracking_number}</span>) is closed.
-          </p>
-          <div style={{ background: '#fff', border: '1px solid #a7f3d0', borderRadius: 8, padding: 12, margin: '12px 0', fontSize: '0.84rem', lineHeight: 1.6 }}>
-            <div><strong>Received By:</strong> {recName}</div>
-            <div><strong>Verified At:</strong> {new Date(verifiedAtStr).toLocaleString()}</div>
-            <div><strong>{codSummary}</strong></div>
-            {mapsUrl && (
+      <div className="rp-shell">
+        <header className="rp-topbar">
+          <div className="rp-topbar-inner">
+            <div className="rp-brand-group">
+              <div className="rp-brand-badge" style={{ background: '#10b981', color: '#fff' }}>✓</div>
               <div>
-                <strong>GPS Pin:</strong>{' '}
-                <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#047857', fontWeight: 600 }}>
-                  {Number(recLat).toFixed(5)}, {Number(recLng).toFixed(5)} ↗
-                </a>
+                <div className="rp-eyebrow" style={{ color: '#34d399' }}>Proof of Delivery Confirmed</div>
+                <div className="rp-rider-title">Order #{info.order_number}</div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="rp-container">
+          <div className="rp-step-card" style={{ borderTop: '5px solid #10b981' }}>
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', background: '#dcfce7', color: '#166534', fontSize: '1.6rem', fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                ✓
+              </div>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#065f46' }}>Delivery Verified &amp; Logged</h2>
+              <p style={{ fontSize: '0.84rem', color: '#475569', marginTop: 4 }}>
+                Confirmation receipts have been emailed to the customer and admin operations.
+              </p>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, fontSize: '0.85rem', lineHeight: 1.7, marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Tracking #</span>
+                <strong style={{ fontFamily: 'monospace' }}>{info.tracking_number}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Received By</span>
+                <strong>{recName}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Timestamp</span>
+                <strong>{new Date(verifiedAtStr).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ color: '#64748b' }}>Settlement</span>
+                <strong style={{ color: '#065f46' }}>{codSummary}</strong>
+              </div>
+              {mapsUrl && (
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: '#64748b' }}>GPS Stamp</span>
+                  <a href={mapsUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1d4ed8', fontWeight: 700 }}>
+                    {Number(recLat).toFixed(4)}, {Number(recLng).toFixed(4)} ↗
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {(photoUrl || info.pod_photo_url) && (
+              <div className="rp-photo-preview" style={{ marginBottom: 14 }}>
+                <span className="rp-photo-ok-tag">✓ Parcel Photo Recorded</span>
+                <img src={resolveImageUrl(photoUrl || info.pod_photo_url)} alt="Delivered parcel" />
               </div>
             )}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+              <button type="button" className="rp-act-btn" onClick={copyReceipt}>
+                {copiedReceipt ? '✓ Copied!' : '📋 Copy Receipt'}
+              </button>
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(receiptText)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rp-act-btn rp-act-btn--wa"
+              >
+                💬 Share Receipt
+              </a>
+            </div>
+
+            {manifestToken && (
+              <Link
+                to={`/rider-manifest?token=${encodeURIComponent(manifestToken)}`}
+                className="rp-primary-cta rp-primary-cta--gold"
+              >
+                ← Back to Next Stop on Route
+              </Link>
+            )}
           </div>
-
-          <div style={{ fontSize: '0.8rem', color: '#065f46', marginBottom: 10 }}>
-            📧 Verification copies have been automatically emailed to the <strong>Customer</strong> and <strong>Admin</strong>.
-          </div>
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-            <button type="button" className="btn btn-outline" onClick={copyReceipt} style={{ flex: 1, fontSize: '0.82rem', fontWeight: 700 }}>
-              {copiedReceipt ? '✓ Receipt Copied!' : '📋 Copy Rider Receipt'}
-            </button>
-            <a
-              href={`https://wa.me/?text=${encodeURIComponent(receiptText)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="btn btn-outline"
-              style={{ flex: 1, fontSize: '0.82rem', fontWeight: 700, textAlign: 'center', textDecoration: 'none' }}
-            >
-              💬 Save to WhatsApp
-            </a>
-          </div>
-
-          {manifestToken && (
-            <Link
-              to={`/rider-manifest?token=${encodeURIComponent(manifestToken)}`}
-              className="btn btn-accent btn-full"
-              style={{ display: 'block', textAlign: 'center', textDecoration: 'none', fontWeight: 700, marginBottom: 10 }}
-            >
-              ← Back to Next Stop on Manifest
-            </Link>
-          )}
-
-          {(photoUrl || info.pod_photo_url) && (
-            <img
-              src={resolveImageUrl(photoUrl || info.pod_photo_url)}
-              alt="Delivered parcel"
-              style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 8, marginTop: 8 }}
-            />
-          )}
         </div>
       </div>
     );
   }
 
+  const mapsQuery = info.address
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(info.address)}`
+    : null;
+
   return (
-    <div style={wrapStyle}>
-      {manifestToken && (
-        <div style={{ marginBottom: 10 }}>
-          <Link
-            to={`/rider-manifest?token=${encodeURIComponent(manifestToken)}`}
-            style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-ink, #111)', textDecoration: 'none' }}
-          >
-            ← Back to Rider Manifest
-          </Link>
+    <div className="rp-shell">
+      {/* ── Sticky Handoff Topbar ───────────────────────────────────── */}
+      <header className="rp-topbar">
+        <div className="rp-topbar-inner">
+          {manifestToken ? (
+            <Link
+              to={`/rider-manifest?token=${encodeURIComponent(manifestToken)}`}
+              className="rp-sync-btn"
+              style={{ textDecoration: 'none' }}
+            >
+              ← Route
+            </Link>
+          ) : (
+            <div className="rp-brand-badge">🏍️</div>
+          )}
+
+          <div style={{ textAlign: 'center', minWidth: 0 }}>
+            <div className="rp-eyebrow">Doorstep Handoff</div>
+            <div className="rp-rider-title">Order #{info.order_number}</div>
+          </div>
+
+          <span className="rp-zone-badge">{info.zone_code}</span>
         </div>
-      )}
-      <div style={cardStyle}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--color-muted)' }}>
-              Proof of Delivery Handoff
+      </header>
+
+      <div className="rp-container">
+        {/* ── Stop Overview & Payment Alert ─────────────────────────── */}
+        <section className="rp-step-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: '1.08rem', fontWeight: 800 }}>
+                {info.recipient_first_name}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: '#64748b', fontFamily: 'monospace', marginTop: 2 }}>
+                {info.tracking_number} · {info.item_count} {info.item_count === 1 ? 'item' : 'items'}
+              </div>
             </div>
-            <h2 style={{ margin: '2px 0 0', fontSize: '1.25rem' }}>Order #{info.order_number}</h2>
+            {mapsQuery && (
+              <a href={mapsQuery} target="_blank" rel="noopener noreferrer" className="rp-maps-btn">
+                🗺️ Maps ↗
+              </a>
+            )}
           </div>
-          <div style={{ background: '#111', color: '#fff', fontWeight: 900, fontSize: '1.1rem', padding: '6px 12px', borderRadius: 6, letterSpacing: '0.06em' }}>
-            {info.zone_code}
+
+          <div style={{ fontSize: '0.86rem', color: '#334155', marginBottom: 12, lineHeight: 1.45 }}>
+            📍 {info.address || 'No street address'}
           </div>
-        </div>
 
-        <div style={{ fontSize: '0.86rem', color: 'var(--color-muted)', marginBottom: 12 }}>
-          <div><strong>Tracking:</strong> <span style={{ fontFamily: 'monospace' }}>{info.tracking_number}</span></div>
-          <div><strong>Recipient:</strong> {info.recipient_first_name} ({info.item_count} item{info.item_count === 1 ? '' : 's'})</div>
-          <div><strong>Address:</strong> {info.address}</div>
-        </div>
-
-        <div
-          style={{
-            padding: '10px 12px',
-            borderRadius: 8,
-            fontWeight: 800,
-            textAlign: 'center',
-            marginBottom: 16,
-            background: info.cod_amount_due > 0 ? '#111' : '#ecfdf5',
-            color: info.cod_amount_due > 0 ? '#fff' : '#065f46',
-            border: info.cod_amount_due > 0 ? '2px solid #111' : '1px solid #10b981',
-          }}
-        >
-          {info.cod_amount_due > 0
-            ? `COLLECT GHS ${info.cod_amount_due.toFixed(2)} (CASH OR MOMO)`
-            : 'PREPAID ONLINE — DO NOT COLLECT CASH'}
-        </div>
+          <div className={`rp-pay-banner ${info.cod_amount_due > 0 ? 'rp-pay-banner--cod' : 'rp-pay-banner--prepaid'}`} style={{ marginBottom: 0 }}>
+            <span>
+              {info.cod_amount_due > 0
+                ? `💵 COLLECT GHS ${info.cod_amount_due.toFixed(2)} BEFORE HANDOFF`
+                : '✓ PREPAID ONLINE — DO NOT COLLECT CASH'}
+            </span>
+          </div>
+        </section>
 
         {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #ef4444', color: '#b91c1c', padding: '10px 12px', borderRadius: 8, fontSize: '0.85rem', marginBottom: 14 }}>
-            {error}
+          <div style={{ background: '#fef2f2', border: '1.5px solid #ef4444', color: '#991b1b', padding: '12px 14px', borderRadius: 12, fontSize: '0.85rem', fontWeight: 700, marginBottom: 14 }}>
+            ⚠ {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
-          <div className="field" style={{ marginBottom: 14 }}>
-            <label htmlFor="pod-otp" style={{ fontWeight: 700, display: 'block', marginBottom: 4 }}>
-              1. Customer&apos;s 6-Digit Delivery Code *
-            </label>
-            <input
-              id="pod-otp"
-              type="text"
-              inputMode="numeric"
-              pattern="\d{6}"
-              maxLength={6}
-              required
-              placeholder="6-digit code"
-              value={otp}
-              onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              style={{ width: '100%', padding: '12px', fontSize: '1.25rem', letterSpacing: '0.3em', textAlign: 'center', fontWeight: 700 }}
-            />
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: 'var(--color-muted)', marginTop: 6 }}>
-              <span>Attempts remaining: {info.attempts_remaining}</span>
+          {/* ── STEP 1: 6-Box Segmented OTP Verification ────────────── */}
+          <section className="rp-step-card">
+            <div className="rp-step-head">
+              <span className="rp-step-num">1</span>
+              <div>
+                <div className="rp-step-title">Customer&apos;s 6-Digit Delivery Code</div>
+                <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                  Ask the customer for the 6-digit code sent to their SMS or email.
+                </div>
+              </div>
+            </div>
+
+            <div className="rp-otp-grid" onPaste={handleDigitPaste}>
+              {otpDigits.map((digit, idx) => (
+                <input
+                  key={idx}
+                  ref={el => { otpRefs.current[idx] = el; }}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete={idx === 0 ? 'one-time-code' : 'off'}
+                  maxLength={6}
+                  aria-label={`Digit ${idx + 1}`}
+                  value={digit}
+                  onChange={e => handleDigitChange(idx, e.target.value)}
+                  onKeyDown={e => handleDigitKeyDown(idx, e)}
+                  className={`rp-otp-digit${digit ? ' is-filled' : ''}`}
+                />
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.76rem', color: '#64748b' }}>
+              <span>Attempts left: <strong>{info.attempts_remaining}</strong></span>
               <button
                 type="button"
                 disabled={resendingOtp}
                 onClick={handleResendOtp}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: 0,
-                  color: 'var(--color-accent-dark, #9a7428)',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  textDecoration: 'underline',
-                  fontSize: '0.78rem',
-                }}
+                style={{ background: 'none', border: 'none', padding: 0, color: '#b45309', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}
               >
                 {resendingOtp ? 'Sending code…' : '🔑 Resend 6-digit code to customer'}
               </button>
             </div>
+
             {otpNotice && (
-              <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#065f46', background: '#ecfdf5', padding: '6px 8px', borderRadius: 6, fontWeight: 600 }}>
+              <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#065f46', background: '#ecfdf5', padding: '8px 10px', borderRadius: 8, fontWeight: 700 }}>
                 {otpNotice}
               </div>
             )}
-          </div>
+          </section>
 
-          <div className="field" style={{ marginBottom: 14 }}>
-            <label style={{ fontWeight: 700, display: 'block', marginBottom: 6 }}>
-              2. Live Camera Photo of Parcel / Label *
-            </label>
+          {/* ── STEP 2: Live Parcel Photo & GPS Lock ────────────────── */}
+          <section className="rp-step-card">
+            <div className="rp-step-head">
+              <span className="rp-step-num">2</span>
+              <div>
+                <div className="rp-step-title">Parcel Photo &amp; GPS Location</div>
+                <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                  Snap a clear photo of the sealed parcel or waybill at the doorstep.
+                </div>
+              </div>
+            </div>
 
             {cameraActive ? (
-              <div style={{ borderRadius: 10, overflow: 'hidden', border: '2px solid #111', background: '#000' }}>
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  style={{ width: '100%', display: 'block', maxHeight: 280, objectFit: 'cover' }}
-                />
-                <div style={{ display: 'flex', gap: 8, padding: 10, background: '#111' }}>
+              <div className="rp-camera-stage">
+                <video ref={videoRef} autoPlay playsInline muted />
+                <div className="rp-camera-bar">
                   <button
                     type="button"
-                    className="btn btn-accent"
-                    style={{ flex: 1, fontWeight: 700 }}
+                    className="rp-primary-cta rp-primary-cta--gold"
+                    style={{ flex: 1, minHeight: 42, padding: '8px 12px' }}
                     disabled={uploading}
                     onClick={captureLiveFrame}
                   >
-                    {uploading ? 'Uploading…' : '📸 Capture Live Photo'}
+                    {uploading ? 'Uploading…' : '📸 Capture Photo'}
                   </button>
                   <button
                     type="button"
-                    className="btn btn-outline"
-                    style={{ color: '#fff', borderColor: '#555' }}
+                    className="rp-sync-btn"
                     disabled={uploading}
                     onClick={stopCamera}
                   >
@@ -480,23 +611,30 @@ export default function RiderHandoff() {
                   </button>
                 </div>
               </div>
+            ) : photoUrl ? (
+              <div>
+                <div className="rp-photo-preview" style={{ marginBottom: 10 }}>
+                  <span className="rp-photo-ok-tag">✓ Photo Ready</span>
+                  <img src={resolveImageUrl(photoUrl)} alt="Captured parcel proof" />
+                </div>
+                <button type="button" className="rp-act-btn" style={{ width: '100%' }} onClick={startLiveCamera} disabled={uploading}>
+                  📷 Retake Parcel Photo
+                </button>
+              </div>
             ) : (
-              <button
-                type="button"
-                className="btn btn-outline btn-full"
-                disabled={uploading}
-                onClick={startLiveCamera}
-                style={{ fontWeight: 700 }}
-              >
-                {photoUrl ? '📷 Retake Live Camera Photo' : '📷 Open Live Camera'}
-              </button>
-            )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <button
+                  type="button"
+                  className="rp-act-btn"
+                  style={{ width: '100%', minHeight: 48, borderStyle: 'dashed', borderWidth: 2 }}
+                  disabled={uploading}
+                  onClick={startLiveCamera}
+                >
+                  {uploading ? 'Uploading photo…' : '📷 Open Rear Camera'}
+                </button>
 
-            {cameraError && (
-              <div style={{ marginTop: 8, fontSize: '0.8rem', color: '#92400e', background: '#fef3c7', padding: '8px 10px', borderRadius: 6 }}>
-                <div>{cameraError}</div>
-                <label style={{ display: 'inline-block', marginTop: 6, textDecoration: 'underline', cursor: 'pointer', fontWeight: 700 }}>
-                  Fallback: Open Device Camera / Upload
+                <label className="rp-act-btn" style={{ width: '100%', fontSize: '0.76rem', color: '#475569' }}>
+                  <span>Or use phone native camera app</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -509,86 +647,105 @@ export default function RiderHandoff() {
               </div>
             )}
 
-            {photoUrl && !cameraActive && (
-              <img
-                src={resolveImageUrl(photoUrl)}
-                alt="Captured parcel proof"
-                style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 8, marginTop: 8, border: '1px solid var(--color-border)' }}
-              />
+            {cameraError && (
+              <div style={{ marginTop: 8, fontSize: '0.78rem', color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', padding: '8px 10px', borderRadius: 8 }}>
+                {cameraError}
+              </div>
             )}
-          </div>
 
-          <div className="field" style={{ marginBottom: 14 }}>
-            <label htmlFor="pod-recipient" style={{ fontWeight: 700, display: 'block', marginBottom: 4 }}>
-              3. Received By (Name)
-            </label>
-            <input
-              id="pod-recipient"
-              type="text"
-              value={recipientName}
-              onChange={e => setRecipientName(e.target.value)}
-              placeholder="Recipient name"
-              style={{ width: '100%', padding: 10 }}
-            />
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', padding: '8px 10px', background: '#f8f7f4', borderRadius: 6, marginBottom: 14 }}>
-            <span>
-              📍 GPS:{' '}
-              {gps.status === 'ok'
-                ? `${gps.lat.toFixed(4)}, ${gps.lng.toFixed(4)} (±${gps.accuracy}m)`
-                : gps.status === 'locating'
-                  ? 'Locating…'
-                  : 'Not captured'}
-            </span>
-            <button type="button" className="btn btn-outline" style={{ padding: '2px 8px', fontSize: '0.75rem' }} onClick={captureGps}>
-              Refresh GPS
-            </button>
-          </div>
-
-          {info.cod_amount_due > 0 && (
-            <div style={{ padding: 12, border: '1px solid var(--color-border)', borderRadius: 8, marginBottom: 16 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, marginBottom: 8 }}>
-                <input
-                  type="checkbox"
-                  checked={codCollected}
-                  onChange={e => setCodCollected(e.target.checked)}
-                />
-                Collected GHS {info.cod_amount_due.toFixed(2)} from customer
-              </label>
-              {codCollected && (
-                <>
-                  <select
-                    value={collectionMethod}
-                    onChange={e => setCollectionMethod(e.target.value)}
-                    style={{ width: '100%', padding: 8, marginBottom: 8 }}
-                  >
-                    <option value="cash">Cash</option>
-                    <option value="momo">Mobile Money (MoMo)</option>
-                    <option value="bank_transfer">Bank Transfer</option>
-                  </select>
-                  {collectionMethod === 'momo' && (
-                    <input
-                      type="text"
-                      required
-                      placeholder="MoMo Transaction ID *"
-                      value={paymentRef}
-                      onChange={e => setPaymentRef(e.target.value)}
-                      style={{ width: '100%', padding: 8 }}
-                    />
-                  )}
-                </>
-              )}
+            <div className="rp-gps-strip" style={{ marginTop: 12 }}>
+              <span style={{ color: gps.status === 'ok' ? '#166534' : '#475569' }}>
+                {gps.status === 'ok'
+                  ? `● GPS Locked: ${gps.lat.toFixed(4)}, ${gps.lng.toFixed(4)} (±${gps.accuracy}m)`
+                  : gps.status === 'locating'
+                    ? '◌ Acquiring GPS coordinates…'
+                    : '○ GPS optional (permission not granted)'}
+              </span>
+              <button type="button" className="rp-zone-chip" onClick={captureGps}>
+                Refresh GPS
+              </button>
             </div>
-          )}
+          </section>
+
+          {/* ── STEP 3: Recipient Name & COD Settlement ─────────────── */}
+          <section className="rp-step-card">
+            <div className="rp-step-head">
+              <span className="rp-step-num">3</span>
+              <div>
+                <div className="rp-step-title">Recipient &amp; Payment Confirmation</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: info.cod_amount_due > 0 ? 14 : 0 }}>
+              <label htmlFor="pod-recipient" style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', marginBottom: 5 }}>
+                Received By (Name)
+              </label>
+              <input
+                id="pod-recipient"
+                type="text"
+                value={recipientName}
+                onChange={e => setRecipientName(e.target.value)}
+                placeholder="Customer or receptionist name"
+                className="rp-search-input"
+                style={{ paddingLeft: 12 }}
+              />
+            </div>
+
+            {info.cod_amount_due > 0 && (
+              <div style={{ padding: 12, borderRadius: 12, background: '#fffbeb', border: '1px solid #fde68a' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, fontSize: '0.86rem', color: '#92400e', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    style={{ width: 18, height: 18 }}
+                    checked={codCollected}
+                    onChange={e => setCodCollected(e.target.checked)}
+                  />
+                  <span>Collected GHS {info.cod_amount_due.toFixed(2)} from customer</span>
+                </label>
+
+                {codCollected && (
+                  <>
+                    <div className="rp-method-pills" role="group" aria-label="COD collection method">
+                      {[
+                        { key: 'cash',          label: '💵 Cash' },
+                        { key: 'momo',          label: '📱 MoMo' },
+                        { key: 'bank_transfer', label: '🏦 Bank' },
+                      ].map(m => (
+                        <button
+                          key={m.key}
+                          type="button"
+                          className={`rp-method-pill${collectionMethod === m.key ? ' is-active' : ''}`}
+                          onClick={() => setCollectionMethod(m.key)}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {collectionMethod === 'momo' && (
+                      <input
+                        type="text"
+                        required
+                        placeholder="Enter MoMo Transaction ID *"
+                        value={paymentRef}
+                        onChange={e => setPaymentRef(e.target.value)}
+                        className="rp-search-input"
+                        style={{ marginTop: 10, paddingLeft: 12, background: '#fff' }}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </section>
 
           <button
             type="submit"
-            className="btn btn-accent btn-full"
+            className="rp-primary-cta rp-primary-cta--gold"
             disabled={submitting || uploading || cameraActive}
-            style={{ padding: '12px 16px', fontSize: '1rem', fontWeight: 700 }}
+            style={{ minHeight: 54, fontSize: '1rem' }}
           >
-            {submitting ? 'Verifying…' : '✓ Verify & Complete Delivery'}
+            {submitting ? 'Verifying Delivery…' : '✓ Confirm & Complete Delivery'}
           </button>
         </form>
       </div>
