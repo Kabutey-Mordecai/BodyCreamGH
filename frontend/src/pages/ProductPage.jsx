@@ -16,12 +16,19 @@ import './ProductPage.css';
 // TO CUSTOMIZE: Placeholder shown when the product has no image
 const PLACEHOLDER_IMG = 'https://placehold.co/700x700?text=No+Image';
 
+// TO CUSTOMIZE: Trust row under the Add to Cart button
+const TRUST_ROW = [
+  { icon: '🚚', label: 'Free delivery',  sub: 'Over GHS 200' },
+  { icon: '✦',  label: '100% Authentic', sub: 'Verified brands' },
+  { icon: '↩',  label: '3-day returns',  sub: 'No questions asked' },
+];
+
 // TO CUSTOMIZE: Static sell points shown on every product page
 const HIGHLIGHTS = [
-  'Verified brand distributors',
-  'Melanin-rich skin formulas',
-  'Paraben & sulfate free',
-  'Dermatologist tested',
+  'Sourced from verified beauty distributors',
+  'Formulated for melanin-rich skin',
+  'Free from parabens, sulfates & artificial dyes',
+  'Cruelty-free & dermatologist tested',
 ];
 
 const RECENTLY_VIEWED_KEY = 'bodycream_recently_viewed';
@@ -489,28 +496,6 @@ export default function ProductPage() {
   }
   const galleryImages = product.images?.length ? product.images : [];
   const isMulti       = galleryImages.length > 1;
-  const activeUnitPrice = isOnSale ? pdpEffectivePrice : effectivePrice;
-  const lineTotalPrice  = activeUnitPrice * qty;
-  const unlocksFreeDelivery = freeDeliveryOver > 0 && lineTotalPrice >= freeDeliveryOver;
-  const returnDays = Number(settings.return_window_days) || 3;
-
-  const waDigits = String(settings.whatsapp_number || '').replace(/\D/g, '');
-  const waFormatted = waDigits.length === 10 && waDigits.startsWith('0')
-    ? `233${waDigits.slice(1)}`
-    : waDigits;
-  const waHref = waFormatted
-    ? `https://wa.me/${waFormatted}?text=${encodeURIComponent(
-        `Hi ${settings.store_name || 'BodyCream GH'}, I'd like to ask about "${product.name}"${
-          selectedVariant ? ` (${selectedVariant.option_values.map(ov => ov.value).join(' / ')})` : ''
-        }.`
-      )}`
-    : null;
-
-  const activeMainImgUrl = selectedVariant?.image_url
-    ? resolveImageUrl(selectedVariant.image_url)
-    : galleryImages.length > 0
-      ? resolveImageUrl(galleryImages[selectedIdx]?.url)
-      : (resolveImageUrl(product.image_url) || PLACEHOLDER_IMG);
 
   const prev = () => { setMainImgLoaded(false); setSelectedIdx(i => Math.max(0, i - 1)); };
   const next = () => { setMainImgLoaded(false); setSelectedIdx(i => Math.min(galleryImages.length - 1, i + 1)); };
@@ -540,494 +525,365 @@ export default function ProductPage() {
     <div className="page-section product-page">
       <div className="container">
         {/* Breadcrumb */}
-        <nav className="breadcrumb" aria-label="Breadcrumb">
+        <nav className="breadcrumb">
           <Link to="/">Home</Link>
           <span>/</span>
           <Link to="/shop">Shop</Link>
-          {product.category && (
-            <>
-              <span>/</span>
-              <Link to={`/shop?category=${encodeURIComponent(product.category)}`}>
-                {product.category}
-              </Link>
-            </>
-          )}
           <span>/</span>
-          <span className="breadcrumb-current">{product.name}</span>
+          <span>{product.name}</span>
         </nav>
 
         <div className="product-detail">
-          {/* ── Left: Sticky Studio Gallery ──────────────────── */}
-          <div className="pdp-media-col">
-            {galleryImages.length > 0 ? (
-              <div className={`pdp-gallery${isMulti ? ' pdp-gallery--with-thumbs' : ''}`}>
-                {/* Thumbnail rail (left on desktop, bottom strip on mobile) */}
-                {isMulti && (
-                  <div className="pdp-thumbs" role="tablist" aria-label="Select product image">
-                    {galleryImages.map((img, i) => (
-                      <button
-                        key={img.id ?? i}
-                        type="button"
-                        role="tab"
-                        className={`pdp-thumb${i === selectedIdx ? ' pdp-thumb--active' : ''}`}
-                        onClick={() => { if (i !== selectedIdx) setMainImgLoaded(false); setSelectedIdx(i); }}
-                        aria-label={`Image ${i + 1}${img.is_primary ? ' (primary)' : ''}`}
-                        aria-selected={i === selectedIdx}
-                      >
-                        <img
-                          src={resolveImageUrl(img.url)}
-                          alt=""
-                          onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
-                        />
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Main studio stage */}
+          {/* ── Left: image slider ──────────────────── */}
+          {galleryImages.length > 0 ? (
+            <div className="pdp-gallery">
+              {/* Main slide area */}
+              <div
+                className="pdp-slider"
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
+                onKeyDown={e => {
+                  if (!isMulti) return;
+                  if (e.key === 'ArrowLeft')  { e.preventDefault(); prev(); }
+                  if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+                }}
+                tabIndex={isMulti ? 0 : -1}
+                role={isMulti ? 'region' : undefined}
+                aria-label={isMulti ? 'Product image slider' : undefined}
+              >
                 <div
-                  className="pdp-slider"
-                  onTouchStart={handleTouchStart}
-                  onTouchEnd={handleTouchEnd}
-                  onKeyDown={e => {
-                    if (!isMulti) return;
-                    if (e.key === 'ArrowLeft')  { e.preventDefault(); prev(); }
-                    if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
-                  }}
-                  tabIndex={isMulti ? 0 : -1}
-                  role={isMulti ? 'region' : undefined}
-                  aria-label={isMulti ? 'Product image slider' : undefined}
-                >
-                  {isOnSale && (
-                    <span className="pdp-stage-badge pdp-stage-badge--sale">
-                      {pdpDiscountPct}% OFF
-                    </span>
-                  )}
-
-                  <button
-                    type="button"
-                    className={`pdp-stage-wishlist${isSaved ? ' is-saved' : ''}`}
-                    onClick={handleWishlist}
-                    aria-label={isSaved ? 'Remove from wishlist' : 'Save to wishlist'}
-                    title={isSaved ? 'Saved to wishlist' : 'Save to wishlist'}
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                      <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                    </svg>
-                  </button>
-
-                  <div
-                    className={`product-detail-img pdp-img--zoomable ${!mainImgLoaded ? 'img-placeholder-shimmer' : ''}`}
-                    onClick={() => openLightbox(selectedIdx)}
-                    title="Click to enlarge"
-                  >
-                    <img
-                      src={activeMainImgUrl}
-                      alt={product.name}
-                      fetchpriority="high"
-                      className={`img-fade-in ${mainImgLoaded ? 'is-loaded' : ''}`}
-                      onLoad={() => setMainImgLoaded(true)}
-                      onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; setMainImgLoaded(true); }}
-                    />
-                    <div className="pdp-zoom-pill" aria-hidden="true">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
-                      </svg>
-                      <span>Zoom</span>
-                    </div>
-                  </div>
-
-                  {isMulti && (
-                    <>
-                      <button
-                        type="button"
-                        className="pdp-arrow pdp-arrow--prev"
-                        onClick={prev}
-                        disabled={selectedIdx === 0}
-                        aria-label="Previous image"
-                      >
-                        &#8249;
-                      </button>
-                      <button
-                        type="button"
-                        className="pdp-arrow pdp-arrow--next"
-                        onClick={next}
-                        disabled={selectedIdx === galleryImages.length - 1}
-                        aria-label="Next image"
-                      >
-                        &#8250;
-                      </button>
-                      <div className="pdp-counter" aria-live="polite" aria-atomic="true">
-                        {selectedIdx + 1} / {galleryImages.length}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="pdp-slider">
-                {isOnSale && (
-                  <span className="pdp-stage-badge pdp-stage-badge--sale">
-                    {pdpDiscountPct}% OFF
-                  </span>
-                )}
-                <button
-                  type="button"
-                  className={`pdp-stage-wishlist${isSaved ? ' is-saved' : ''}`}
-                  onClick={handleWishlist}
-                  aria-label={isSaved ? 'Remove from wishlist' : 'Save to wishlist'}
-                  title={isSaved ? 'Saved to wishlist' : 'Save to wishlist'}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                  </svg>
-                </button>
-                <div
-                  className="product-detail-img pdp-img--zoomable"
-                  onClick={() => product.image_url && openLightbox(-1)}
-                  title={product.image_url ? 'Click to enlarge' : undefined}
+                  className={`product-detail-img pdp-img--zoomable ${!mainImgLoaded ? 'img-placeholder-shimmer' : ''}`}
+                  onClick={() => openLightbox(selectedIdx)}
+                  title="Click to enlarge"
                 >
                   <img
-                    src={activeMainImgUrl}
+                    src={resolveImageUrl(galleryImages[selectedIdx]?.url)}
                     alt={product.name}
-                    onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
+                    fetchpriority="high"
+                    className={`img-fade-in ${mainImgLoaded ? 'is-loaded' : ''}`}
+                    onLoad={() => setMainImgLoaded(true)}
+                    onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; setMainImgLoaded(true); }}
                   />
-                  {product.image_url && (
-                    <div className="pdp-zoom-pill" aria-hidden="true">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/>
-                      </svg>
-                      <span>Zoom</span>
-                    </div>
-                  )}
+                  <div className="pdp-zoom-hint" aria-hidden="true">&#128269;</div>
                 </div>
-              </div>
-            )}
-          </div>
 
-          {/* ── Right: Luxury Buy Box ─────────────────────────── */}
+                {isMulti && (
+                  <>
+                    <button
+                      type="button"
+                      className="pdp-arrow pdp-arrow--prev"
+                      onClick={prev}
+                      disabled={selectedIdx === 0}
+                      aria-label="Previous image"
+                    >
+                      &#8249;
+                    </button>
+                    <button
+                      type="button"
+                      className="pdp-arrow pdp-arrow--next"
+                      onClick={next}
+                      disabled={selectedIdx === galleryImages.length - 1}
+                      aria-label="Next image"
+                    >
+                      &#8250;
+                    </button>
+                    <div className="pdp-counter" aria-live="polite" aria-atomic="true">
+                      {selectedIdx + 1} / {galleryImages.length}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Thumbnail strip */}
+              {isMulti && (
+                <div className="pdp-thumbs" role="tablist" aria-label="Select image">
+                  {galleryImages.map((img, i) => (
+                    <button
+                      key={img.id ?? i}
+                      type="button"
+                      role="tab"
+                      className={`pdp-thumb${i === selectedIdx ? ' pdp-thumb--active' : ''}`}
+                      onClick={() => { if (i !== selectedIdx) setMainImgLoaded(false); setSelectedIdx(i); }}
+                      aria-label={`Image ${i + 1}${img.is_primary ? ' (primary)' : ''}`}
+                      aria-selected={i === selectedIdx}
+                    >
+                      <img
+                        src={resolveImageUrl(img.url)}
+                        alt=""
+                        onError={e => { e.currentTarget.onerror = null; e.currentTarget.src = PLACEHOLDER_IMG; }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              className="product-detail-img pdp-img--zoomable"
+              onClick={() => product.image_url && openLightbox(-1)}
+              title={product.image_url ? 'Click to enlarge' : undefined}
+            >
+              <img
+                src={resolveImageUrl(product.image_url) || PLACEHOLDER_IMG}
+                alt={product.name}
+              />
+              {product.image_url && <div className="pdp-zoom-hint" aria-hidden="true">&#128269;</div>}
+            </div>
+          )}
+
+          {/* ── Right: info ─────────────────────────── */}
           <div className="product-detail-info">
-            <div className="pdp-eyebrow-row">
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 6 }}>
               {product.brand && (
                 <Link
                   to={`/shop?brand=${encodeURIComponent(product.brand)}`}
-                  className="pdp-brand-pill"
+                  className="section-label"
+                  style={{ textDecoration: 'none', color: 'var(--color-accent-dark)', marginBottom: 0 }}
                 >
                   {product.brand}
                 </Link>
               )}
-              {product.category && (
-                <Link
-                  to={`/shop?category=${encodeURIComponent(product.category)}`}
-                  className="pdp-category-tag"
-                >
-                  {product.category}
-                </Link>
+              {product.brand && product.category && (
+                <span style={{ color: 'var(--color-muted)', fontSize: '0.78rem' }}>·</span>
               )}
-              <span className="pdp-authentic-pill">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
-                  <path d="M20 6L9 17l-5-5"/>
-                </svg>
-                100% Authentic
+              {product.category && (
+                <span className="section-label" style={{ marginBottom: 0 }}>{product.category}</span>
+              )}
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  background: 'var(--color-accent-light, #faf6ee)',
+                  color: 'var(--color-accent-dark, #8b6b23)',
+                  border: '1px solid rgba(201, 165, 90, 0.35)',
+                }}
+              >
+                ✓ 100% Authentic
               </span>
             </div>
 
             <h1 className="product-detail-name">{product.name}</h1>
+            <div className="gold-divider" style={{ margin: '0 0 18px 0' }} />
 
-            {/* Rating + Live Stock Pill on one clean row */}
-            <div className="pdp-meta-row">
-              {product.review_count > 0 ? (
-                <a href="#customer-reviews" className="product-detail-rating">
-                  <StarRating value={parseFloat(product.avg_rating || 0)} size="sm" />
-                  <span className="product-detail-rating-label">
-                    <strong>{parseFloat(product.avg_rating).toFixed(1)}</strong> ({product.review_count} review{product.review_count !== 1 ? 's' : ''})
-                  </span>
-                </a>
-              ) : (
-                <a href="#customer-reviews" className="pdp-first-review-link">
-                  ★ Be the first to review
-                </a>
-              )}
-
-              {isOutOfStock ? (
-                <span className="pdp-stock-pill pdp-stock-pill--oos">Out of Stock</span>
-              ) : isLowStock ? (
-                <span className="pdp-stock-pill pdp-stock-pill--low">
-                  <span className="stock-dot stock-dot--low" /> Only {effectiveStock} left
-                </span>
-              ) : (
-                <span className="pdp-stock-pill pdp-stock-pill--in">
-                  <span className="stock-dot" /> In Stock · {effectiveStock} ready
-                </span>
-              )}
+            <div className="product-detail-rating">
+              <StarRating value={parseFloat(product.avg_rating || 0)} size="md" />
+              <span className="product-detail-rating-label">
+                {product.review_count > 0
+                  ? `${parseFloat(product.avg_rating).toFixed(1)} (${product.review_count} review${product.review_count !== 1 ? 's' : ''})`
+                  : 'No reviews yet'}
+              </span>
             </div>
 
-            {/* Price Block */}
-            <div className="pdp-price-block">
-              {isOnSale ? (
-                <div className="pdp-price-sale">
-                  <span className="pdp-price-badge">{pdpSaleBadge}</span>
-                  <div className="pdp-price-row">
-                    <span className="pdp-price-current">GHS {pdpEffectivePrice.toFixed(2)}</span>
-                    <span className="pdp-price-was">GHS {pdpOriginalPrice.toFixed(2)}</span>
-                    <span className="pdp-price-off">Save {pdpDiscountPct}%</span>
-                  </div>
-                  {countdown && !selectedVariant && (
-                    <div className="pdp-countdown">{countdown}</div>
-                  )}
+            {isOnSale ? (
+              <div className="pdp-price-sale">
+                <span className="pdp-price-badge">{pdpSaleBadge}</span>
+                <div className="pdp-price-row">
+                  <span className="pdp-price-current">GHS {pdpEffectivePrice.toFixed(2)}</span>
+                  <span className="pdp-price-was">GHS {pdpOriginalPrice.toFixed(2)}</span>
+                  <span className="pdp-price-off">{pdpDiscountPct}% off</span>
                 </div>
-              ) : (
-                <div className="pdp-price-standard">
-                  {(() => {
-                    const activePrices = (variantData?.variants || [])
-                      .filter(v => v.is_active !== false)
-                      .map(v => parseFloat(v.price))
-                      .filter(n => !Number.isNaN(n));
-                    const minP = activePrices.length > 0
-                      ? Math.min(...activePrices)
-                      : (product.min_price != null ? parseFloat(product.min_price) : parseFloat(product.price));
-                    const maxP = activePrices.length > 0
-                      ? Math.max(...activePrices)
-                      : (product.max_price != null ? parseFloat(product.max_price) : minP);
-                    const hasRange = product.has_variants && maxP > minP;
+                {countdown && !selectedVariant && (
+                  <div className="pdp-countdown">{countdown}</div>
+                )}
+              </div>
+            ) : (
+              <p className="product-detail-price">
+                {(() => {
+                  const activePrices = (variantData?.variants || [])
+                    .filter(v => v.is_active !== false)
+                    .map(v => parseFloat(v.price))
+                    .filter(n => !Number.isNaN(n));
+                  const minP = activePrices.length > 0
+                    ? Math.min(...activePrices)
+                    : (product.min_price != null ? parseFloat(product.min_price) : parseFloat(product.price));
+                  const maxP = activePrices.length > 0
+                    ? Math.max(...activePrices)
+                    : (product.max_price != null ? parseFloat(product.max_price) : minP);
+                  const hasRange = product.has_variants && maxP > minP;
 
-                    if (product.has_variants && !selectedVariant) {
-                      return (
-                        <span className="product-detail-price">
-                          {hasRange ? `GHS ${minP.toFixed(2)} – GHS ${maxP.toFixed(2)}` : `GHS ${minP.toFixed(2)}`}
+                  if (product.has_variants && !selectedVariant) {
+                    return hasRange
+                      ? `GHS ${minP.toFixed(2)} – GHS ${maxP.toFixed(2)}`
+                      : `GHS ${minP.toFixed(2)}`;
+                  }
+                  return (
+                    <>
+                      <span>GHS {effectivePrice.toFixed(2)}</span>
+                      {hasRange && (
+                        <span style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, color: 'var(--color-muted)', marginTop: 2 }}>
+                          Price range: GHS {minP.toFixed(2)} – GHS {maxP.toFixed(2)}
                         </span>
-                      );
-                    }
-                    return (
-                      <div className="pdp-price-inline">
-                        <span className="product-detail-price">GHS {effectivePrice.toFixed(2)}</span>
-                        {hasRange && (
-                          <span className="pdp-price-range-chip">
-                            Sizes from GHS {minP.toFixed(0)} – {maxP.toFixed(0)}
+                      )}
+                    </>
+                  );
+                })()}
+              </p>
+            )}
+
+            {/* ── Variant selector ──────────────────────────── */}
+            {variantData && (variantData.option_types || []).length > 0 && (
+              <div className="pdp-variant-selector">
+                {variantData.option_types.map(optType => (
+                  <div key={optType.id} className="pdp-variant-group">
+                    <div className="pdp-variant-label">
+                      <span>
+                        VARIATION AVAILABLE · {optType.name}
+                        {selectedOptions[optType.id] && (
+                          <span className="pdp-variant-selected-val">
+                            {' — '}{(optType.values || []).find(v => v.id === selectedOptions[optType.id])?.value}
                           </span>
                         )}
-                      </div>
-                    );
-                  })()}
-                </div>
-              )}
-            </div>
+                      </span>
+                      {selectedVariant && (
+                        <span className="pdp-variant-selected-price">
+                          GHS {parseFloat(selectedVariant.price).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="pdp-variant-options">
+                      {(optType.values || []).map(val => {
+                        const isSelected = selectedOptions[optType.id] === val.id;
+                        const hasStock   = variantData.variants.some(v =>
+                          v.is_active &&
+                          v.stock_quantity > 0 &&
+                          v.option_values.some(ov => ov.option_value_id === val.id)
+                        );
+                        return (
+                          <button
+                            key={val.id}
+                            type="button"
+                            disabled={!hasStock}
+                            className={`pdp-variant-btn${isSelected ? ' pdp-variant-btn--selected' : ''}${!hasStock ? ' pdp-variant-btn--oos' : ''}`}
+                            onClick={() => setSelectedOptions(prev => ({ ...prev, [optType.id]: val.id }))}
+                          >
+                            {val.value}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {product.has_variants && !selectedVariant && (
+                  <p className="pdp-variant-prompt">Select all options to add to cart.</p>
+                )}
+              </div>
+            )}
+
+            {isOutOfStock ? (
+              <span className="badge badge-cancelled">Out of Stock</span>
+            ) : isLowStock ? (
+              <span className="stock-hint stock-hint--low">
+                <span className="stock-dot stock-dot--low" /> Low stock — only {effectiveStock} left!
+              </span>
+            ) : (
+              <span className="stock-hint">
+                <span className="stock-dot" /> In stock — {effectiveStock} available
+              </span>
+            )}
+            {!isOutOfStock && (
+              <p className="pdp-delivery-est">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true" style={{ display: 'inline', verticalAlign: 'middle', marginRight: 5 }}>
+                  <rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                </svg>
+                {settings.delivery_estimate_accra
+                  ? `Accra: ${settings.delivery_estimate_accra} · Nationwide: ${settings.delivery_estimate_nationwide}`
+                  : 'Estimated delivery: 2–5 business days'}
+              </p>
+            )}
 
             {product.description && (
               <p className="product-detail-desc">{product.description}</p>
             )}
 
-            {/* ── Variant selector (with per-option price preview when 1 option type) ── */}
-            {variantData && (variantData.option_types || []).length > 0 && (
-              <div className="pdp-variant-selector">
-                {variantData.option_types.map(optType => {
-                  const singleOptionGroup = variantData.option_types.length === 1;
-                  const selectedValLabel = (optType.values || []).find(v => v.id === selectedOptions[optType.id])?.value;
-                  return (
-                    <div key={optType.id} className="pdp-variant-group">
-                      <div className="pdp-variant-label">
-                        <span>
-                          Select {optType.name}:
-                          {selectedValLabel && (
-                            <strong className="pdp-variant-selected-val"> {selectedValLabel}</strong>
-                          )}
-                        </span>
-                      </div>
-                      <div className="pdp-variant-options">
-                        {(optType.values || []).map(val => {
-                          const isSelected = selectedOptions[optType.id] === val.id;
-                          const matchingVariant = singleOptionGroup
-                            ? variantData.variants.find(v =>
-                                v.is_active &&
-                                v.option_values.some(ov => ov.option_value_id === val.id)
-                              )
-                            : null;
-                          const hasStock = variantData.variants.some(v =>
-                            v.is_active &&
-                            v.stock_quantity > 0 &&
-                            v.option_values.some(ov => ov.option_value_id === val.id)
-                          );
-                          return (
-                            <button
-                              key={val.id}
-                              type="button"
-                              disabled={!hasStock}
-                              className={`pdp-variant-btn${isSelected ? ' pdp-variant-btn--selected' : ''}${!hasStock ? ' pdp-variant-btn--oos' : ''}`}
-                              onClick={() => {
-                                setSelectedOptions(prevOpts => ({ ...prevOpts, [optType.id]: val.id }));
-                                setQty(1);
-                              }}
-                            >
-                              <span className="pdp-variant-btn-name">{val.value}</span>
-                              {matchingVariant && (
-                                <span className="pdp-variant-btn-price">
-                                  GHS {parseFloat(matchingVariant.price).toFixed(0)}
-                                </span>
-                              )}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-                {product.has_variants && !selectedVariant && (
-                  <p className="pdp-variant-prompt">Please select an option above to add to cart.</p>
-                )}
-              </div>
-            )}
-
-            {/* ── Unified Purchase Action Row: [ − 1 + ] [ Add to Cart · GHS X ] [ ♡ ] ── */}
-            <div className="pdp-purchase-box">
-              <div className="pdp-purchase-row">
-                {!isOutOfStock && (!product.has_variants || selectedVariant) && (
-                  <div className="qty-control" role="group" aria-label="Quantity">
-                    <button
-                      type="button"
-                      onClick={() => setQty(q => Math.max(1, q - 1))}
-                      disabled={qty <= 1}
-                      aria-label="Decrease quantity"
-                    >−</button>
-                    <input
-                      id="qty"
-                      name="quantity"
-                      type="number"
-                      aria-label="Quantity"
-                      min={1}
-                      max={effectiveStock}
-                      value={qty}
-                      onChange={e =>
-                        setQty(Math.min(
-                          effectiveStock,
-                          Math.max(1, parseInt(e.target.value) || 1)
-                        ))
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setQty(q => Math.min(effectiveStock, q + 1))}
-                      disabled={qty >= effectiveStock}
-                      aria-label="Increase quantity"
-                    >+</button>
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  className="btn btn-accent pdp-add-btn"
-                  onClick={handleAddToCart}
-                  disabled={isOutOfStock || adding || (product.has_variants && !selectedVariant)}
-                >
-                  {adding ? (
-                    'Adding…'
-                  ) : isOutOfStock ? (
-                    'Out of Stock'
-                  ) : product.has_variants && !selectedVariant ? (
-                    'Select Options'
-                  ) : (
-                    <>
-                      <span>Add to Cart</span>
-                      <span className="pdp-add-btn-sep">·</span>
-                      <span>GHS {lineTotalPrice.toFixed(2)}</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  className={`pdp-wishlist-icon-btn${isSaved ? ' pdp-wishlist-icon-btn--saved' : ''}`}
-                  onClick={handleWishlist}
-                  aria-label={isSaved ? 'Remove from wishlist' : 'Save to wishlist'}
-                  title={isSaved ? 'Saved to Wishlist' : 'Add to Wishlist'}
-                >
-                  <svg width="19" height="19" viewBox="0 0 24 24" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                    <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
-                  </svg>
-                </button>
-              </div>
-
-              {waHref && (
-                <a
-                  href={waHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="pdp-wa-assist-link"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                    <path d="M20.52 3.48A11.86 11.86 0 0012.06 0C5.5 0 .16 5.34.16 11.9c0 2.1.55 4.15 1.6 5.95L0 24l6.32-1.66a11.9 11.9 0 005.74 1.46h.01c6.55 0 11.89-5.34 11.89-11.9 0-3.18-1.24-6.17-3.44-8.42z"/>
-                  </svg>
-                  <span>Questions or quick order? Chat with a beauty advisor on WhatsApp →</span>
-                </a>
-              )}
-            </div>
-
-            {/* ── Fulfilment, MoMo/COD Payment & Return Assurance Card ── */}
-            <div className="pdp-assurance-card">
-              <div className="pdp-assurance-row">
-                <span className="pdp-assurance-icon" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-                    <rect x="1" y="3" width="15" height="13" rx="1"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
-                  </svg>
-                </span>
-                <div className="pdp-assurance-text">
-                  <strong>
-                    {settings.delivery_estimate_accra
-                      ? `Accra ${settings.delivery_estimate_accra} · Nationwide ${settings.delivery_estimate_nationwide}`
-                      : 'Accra 1–2 business days · Nationwide 3–5 business days'}
-                  </strong>
-                  <span>
-                    {freeDeliveryOver > 0
-                      ? unlocksFreeDelivery
-                        ? '✓ Qualifies for FREE Delivery!'
-                        : `Free delivery on orders over GHS ${freeDeliveryOver}`
-                      : 'Fast tracked rider dispatch across Ghana'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="pdp-assurance-row">
-                <span className="pdp-assurance-icon" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-                    <rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/>
-                  </svg>
-                </span>
-                <div className="pdp-assurance-text">
-                  <strong>Flexible Ghana Checkout</strong>
-                  <div className="pdp-payment-pills">
-                    <span>MTN MoMo</span>
-                    <span>Telecel Cash</span>
-                    <span>Visa / Card</span>
-                    <span>Pay on Delivery</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pdp-assurance-row">
-                <span className="pdp-assurance-icon" aria-hidden="true">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>
-                  </svg>
-                </span>
-                <div className="pdp-assurance-text">
-                  <strong>{returnDays}-Day Hassle-Free Returns &amp; Verified Authentic</strong>
-                  <span>Sealed authentic stock sourced from authorized brand distributors</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Compact 2x2 Highlights Grid */}
-            <ul className="product-highlights-grid">
+            {/* Sell points — always shown, even if description is short */}
+            <ul className="product-highlights">
               {HIGHLIGHTS.map(h => (
-                <li key={h}>
-                  <span className="pdp-highlight-check" aria-hidden="true">✦</span>
-                  <span>{h}</span>
-                </li>
+                <li key={h}>{h}</li>
               ))}
             </ul>
 
+            {/* Quantity selector — only shown when variant is resolved (or product has no variants) */}
+            {!isOutOfStock && (!product.has_variants || selectedVariant) && (
+              <div className="qty-selector">
+                <label htmlFor="qty">Quantity</label>
+                <div className="qty-control">
+                  <button
+                    onClick={() => setQty(q => Math.max(1, q - 1))}
+                    disabled={qty <= 1}
+                    aria-label="Decrease quantity"
+                  >−</button>
+                  <input
+                    id="qty"
+                    name="quantity"
+                    type="number"
+                    min={1}
+                    max={effectiveStock}
+                    value={qty}
+                    onChange={e =>
+                      setQty(Math.min(
+                        effectiveStock,
+                        Math.max(1, parseInt(e.target.value) || 1)
+                      ))
+                    }
+                  />
+                  <button
+                    onClick={() => setQty(q => Math.min(effectiveStock, q + 1))}
+                    disabled={qty >= effectiveStock}
+                    aria-label="Increase quantity"
+                  >+</button>
+                </div>
+              </div>
+            )}
+
+            <button
+              className="btn btn-accent btn-full product-cta"
+              onClick={handleAddToCart}
+              disabled={isOutOfStock || adding || (product.has_variants && !selectedVariant)}
+            >
+              {adding ? 'Adding…'
+                : isOutOfStock ? 'Out of Stock'
+                : product.has_variants && !selectedVariant ? 'Select options'
+                : 'Add to Cart'}
+            </button>
+
+            {/* Wishlist — secondary action */}
+            <button
+              type="button"
+              className={`btn btn-outline btn-full pdp-wishlist-btn${isSaved ? ' pdp-wishlist-btn--saved' : ''}`}
+              onClick={handleWishlist}
+              aria-label={isSaved ? 'Remove from wishlist' : 'Save to wishlist'}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill={isSaved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+              </svg>
+              {isSaved ? 'Saved to Wishlist' : 'Add to Wishlist'}
+            </button>
+
+            {/* WhatsApp-to-Order CTA — shown when store whatsapp_number is configured */}
+            {/* Trust row under the CTA */}
+            <div className="product-trust-row">
+              {TRUST_ROW.map(t => (
+                <div key={t.icon} className="product-trust-item">
+                  <span className="product-trust-icon">{t.icon}</span>
+                  <div>
+                    <strong>{t.icon === '↩' ? `${Number(settings.return_window_days) || 3}-day returns` : t.label}</strong>
+                    <span>
+                      {t.icon === '🚚'
+                        ? (freeDeliveryOver > 0 ? `Free over GHS ${freeDeliveryOver}` : 'Free delivery')
+                        : t.sub}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
             {/* ── Structured Beauty D2C Accordions (searchable native <details>) ── */}
             <section className="pdp-accordions" aria-label="Product details and care">
-              <details className="pdp-accordion-item" open>
+              <details className="pdp-accordion-item">
                 <summary>Key Botanicals &amp; Ingredients</summary>
                 <div className="pdp-accordion-body">
                   <p>
@@ -1041,7 +897,7 @@ export default function ProductPage() {
                 <div className="pdp-accordion-body">
                   <p>
                     {product.how_to_use ||
-                      'Warm a small amount between palms and massage onto clean skin as part of your daily morning or evening routine.'}
+                      'Warm a small amount between palms and massage onto slightly damp skin after bathing to lock in lasting hydration.'}
                   </p>
                 </div>
               </details>
@@ -1061,307 +917,274 @@ export default function ProductPage() {
 
       {/* ── Related products ─────────────────────────────────── */}
       {related.length > 0 && (
-        <section className="container pdp-strip-section" aria-label="Related products">
-          <div className="pdp-section-head">
-            <div>
-              <span className="section-label">Complete Your Ritual</span>
-              <h2 className="pdp-strip-heading">You may also like</h2>
-            </div>
-            <Link to={product.category ? `/shop?category=${encodeURIComponent(product.category)}` : '/shop'} className="pdp-section-link">
-              View more →
-            </Link>
+        <div className="container pdp-strip-section">
+          <h2 className="pdp-strip-heading">You may also like</h2>
+          <div className="gold-divider" style={{ margin: '0 0 20px' }} />
+          <div className="pdp-card-strip">
+            {related.map(p => <ProductCard key={p.id} product={p} />)}
           </div>
-          <div className="pdp-card-grid">
-            {related.slice(0, 4).map(p => <ProductCard key={p.id} product={p} />)}
-          </div>
-        </section>
+        </div>
       )}
 
       {/* ── Reviews ──────────────────────────────────────────── */}
-      <section id="customer-reviews" className="container reviews-section" aria-label="Customer reviews">
-        <div className="pdp-section-head">
-          <div>
-            <span className="section-label">Verified Feedback</span>
-            <h2 className="reviews-heading">Customer Reviews</h2>
-          </div>
-        </div>
+      <div className="container reviews-section">
+        <h2 className="reviews-heading">Customer Reviews</h2>
+        <div className="gold-divider" style={{ margin: '0 0 32px' }} />
 
-        {reviews.length === 0 && reviewMeta.total === 0 ? (
-          <div className="reviews-empty-banner">
-            <div className="reviews-empty-copy">
-              <div className="reviews-empty-stars" aria-hidden="true">★★★★★</div>
-              <h3>Be the first to review {product.name}</h3>
-              <p>
-                Have you tried this formula? Verified customers can share honest ratings, skin-type notes, and swatch photos.
-              </p>
-            </div>
-            <div className="reviews-empty-cta">
-              {!user ? (
-                <Link to="/login" className="btn btn-outline">
-                  Sign In to Write a Review
-                </Link>
-              ) : canReviewData?.already_reviewed ? (
-                <div className="review-already-done">
-                  <span>✓</span> Your review has been submitted and is awaiting approval.
-                </div>
-              ) : canReviewData?.can_review ? (
-                <span className="pdp-authentic-pill">Share your review below ↓</span>
-              ) : (
-                <span className="reviews-verified-note">✓ Verified purchasers can post reviews after delivery</span>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="reviews-layout">
-            {/* ── Summary + distribution ── */}
-            {reviewMeta.summary && reviewMeta.summary.review_count > 0 && (
-              <div className="reviews-summary">
-                <div className="reviews-avg">{parseFloat(reviewMeta.summary.avg_rating).toFixed(1)}</div>
-                <StarRating value={parseFloat(reviewMeta.summary.avg_rating)} size="lg" />
-                <div className="reviews-count">
-                  Based on {reviewMeta.summary.review_count} review{reviewMeta.summary.review_count !== 1 ? 's' : ''}
-                </div>
+        <div className="reviews-layout">
+          {/* ── Summary + distribution ── */}
+          {reviewMeta.summary && reviewMeta.summary.review_count > 0 ? (
+            <div className="reviews-summary">
+              <div className="reviews-avg">{parseFloat(reviewMeta.summary.avg_rating).toFixed(1)}</div>
+              <StarRating value={parseFloat(reviewMeta.summary.avg_rating)} size="lg" />
+              <div className="reviews-count">
+                Based on {reviewMeta.summary.review_count} review{reviewMeta.summary.review_count !== 1 ? 's' : ''}
+              </div>
 
-                {/* Distribution bars */}
-                <div className="reviews-distribution">
-                  {[5,4,3,2,1].map(star => {
-                    const count = reviewMeta.summary.distribution[star] || 0;
-                    const pct   = reviewMeta.summary.review_count > 0
-                      ? Math.round((count / reviewMeta.summary.review_count) * 100) : 0;
-                    return (
-                      <div key={star} className="reviews-dist-row">
-                        <span className="reviews-dist-label">{star} ★</span>
-                        <div className="reviews-dist-bar-wrap">
-                          <div className="reviews-dist-bar" style={{ width: `${pct}%` }} />
-                        </div>
-                        <span className="reviews-dist-pct">{pct}%</span>
+              {/* Distribution bars */}
+              <div className="reviews-distribution">
+                {[5,4,3,2,1].map(star => {
+                  const count = reviewMeta.summary.distribution[star] || 0;
+                  const pct   = reviewMeta.summary.review_count > 0
+                    ? Math.round((count / reviewMeta.summary.review_count) * 100) : 0;
+                  return (
+                    <div key={star} className="reviews-dist-row">
+                      <span className="reviews-dist-label">{star} ★</span>
+                      <div className="reviews-dist-bar-wrap">
+                        <div className="reviews-dist-bar" style={{ width: `${pct}%` }} />
                       </div>
-                    );
-                  })}
-                </div>
+                      <span className="reviews-dist-pct">{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="reviews-summary reviews-summary--empty">
+              <div className="reviews-avg reviews-avg--none">—</div>
+              <div className="reviews-count">No reviews yet</div>
+            </div>
+          )}
+
+          {/* ── Review list ── */}
+          <div className="reviews-list">
+            {/* Sort controls */}
+            {reviews.length > 0 && (
+              <div className="reviews-sort">
+                <span className="reviews-sort-label">Sort:</span>
+                {[
+                  { key: 'recent',  label: 'Most Recent' },
+                  { key: 'helpful', label: 'Most Helpful' },
+                  { key: 'highest', label: 'Highest Rated' },
+                  { key: 'lowest',  label: 'Lowest Rated' },
+                ].map(s => (
+                  <button
+                    key={s.key}
+                    className={`reviews-sort-btn${reviewSort === s.key ? ' reviews-sort-btn--active' : ''}`}
+                    onClick={() => handleSortChange(s.key)}
+                  >
+                    {s.label}
+                  </button>
+                ))}
               </div>
             )}
 
-            {/* ── Review list ── */}
-            <div className="reviews-list">
-              {reviews.length > 0 && (
-                <div className="reviews-sort">
-                  <span className="reviews-sort-label">Sort:</span>
-                  {[
-                    { key: 'recent',  label: 'Most Recent' },
-                    { key: 'helpful', label: 'Most Helpful' },
-                    { key: 'highest', label: 'Highest Rated' },
-                    { key: 'lowest',  label: 'Lowest Rated' },
-                  ].map(s => (
-                    <button
-                      key={s.key}
-                      className={`reviews-sort-btn${reviewSort === s.key ? ' reviews-sort-btn--active' : ''}`}
-                      onClick={() => handleSortChange(s.key)}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              )}
+            {reviews.length === 0 && reviewMeta.total === 0 && (
+              <p className="reviews-empty">No reviews yet. Be the first to share your experience!</p>
+            )}
 
-              {reviews.map(r => {
-                const isLong    = r.body && r.body.length > 200;
-                const expanded  = expandedReviews[r.id];
-                const bodyText  = isLong && !expanded ? r.body.slice(0, 200) + '…' : r.body;
-                const relDate   = (() => {
-                  const diff = Date.now() - new Date(r.created_at).getTime();
-                  const days = Math.floor(diff / 86400000);
-                  if (days < 1)   return 'Today';
-                  if (days < 7)   return `${days} day${days !== 1 ? 's' : ''} ago`;
-                  if (days < 30)  return `${Math.floor(days / 7)} week${Math.floor(days / 7) !== 1 ? 's' : ''} ago`;
-                  if (days < 365) return `${Math.floor(days / 30)} month${Math.floor(days / 30) !== 1 ? 's' : ''} ago`;
-                  return `${Math.floor(days / 365)} year${Math.floor(days / 365) !== 1 ? 's' : ''} ago`;
-                })();
+            {reviews.map(r => {
+              const isLong    = r.body && r.body.length > 200;
+              const expanded  = expandedReviews[r.id];
+              const bodyText  = isLong && !expanded ? r.body.slice(0, 200) + '…' : r.body;
+              const relDate   = (() => {
+                const diff = Date.now() - new Date(r.created_at).getTime();
+                const days = Math.floor(diff / 86400000);
+                if (days < 1)   return 'Today';
+                if (days < 7)   return `${days} day${days !== 1 ? 's' : ''} ago`;
+                if (days < 30)  return `${Math.floor(days / 7)} week${Math.floor(days / 7) !== 1 ? 's' : ''} ago`;
+                if (days < 365) return `${Math.floor(days / 30)} month${Math.floor(days / 30) !== 1 ? 's' : ''} ago`;
+                return `${Math.floor(days / 365)} year${Math.floor(days / 365) !== 1 ? 's' : ''} ago`;
+              })();
 
-                return (
-                  <div key={r.id} className="review-card">
-                    <div className="review-header">
-                      <StarRating value={r.rating} size="sm" />
-                      <span className="review-verified">✓ Verified Purchase</span>
-                    </div>
-                    <div className="review-meta">
-                      <span className="review-author">{r.first_name} {r.last_initial}.</span>
-                      <span className="review-date">{relDate}</span>
-                    </div>
-                    {r.title && <div className="review-title">{r.title}</div>}
-                    {r.body && (
-                      <p className="review-body">
-                        {bodyText}
-                        {isLong && (
-                          <button
-                            className="review-expand-btn"
-                            onClick={() => setExpandedReviews(prev => ({ ...prev, [r.id]: !expanded }))}
-                          >
-                            {expanded ? ' Show less' : ' Read more'}
-                          </button>
-                        )}
-                      </p>
-                    )}
-                    {Array.isArray(r.images) && r.images.length > 0 && (
-                      <div className="review-images-row" role="group" aria-label="Customer review photos">
-                        {r.images.map((imgUrl, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            className="review-thumb-btn"
-                            onClick={() => setReviewPhotoModal({ url: resolveImageUrl(imgUrl), alt: `${r.title || 'Review'} photo ${idx + 1}` })}
-                            aria-label={`View photo ${idx + 1} full screen`}
-                          >
-                            <img src={resolveImageUrl(imgUrl)} alt="" loading="lazy" />
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {r.admin_reply && (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          marginBottom: 10,
-                          padding: '10px 14px',
-                          borderRadius: 8,
-                          background: 'var(--color-bg-subtle, #f8f5ef)',
-                          borderLeft: '3px solid var(--color-accent, #c9a55a)',
-                          fontSize: '0.86rem',
-                        }}
-                      >
-                        <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-accent-dark, #9a7428)', marginBottom: 4 }}>
-                          Response from {settings.store_name || 'BodyCream GH'}
-                          {r.admin_reply_at ? ` · ${new Date(r.admin_reply_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
-                        </div>
-                        <div style={{ color: 'var(--color-ink, #1f1b16)', lineHeight: 1.5 }}>{r.admin_reply}</div>
-                      </div>
-                    )}
-                    <button
-                      className={`review-helpful-btn${helpfulSent[r.id] ? ' review-helpful-btn--sent' : ''}`}
-                      onClick={() => handleHelpful(r.id)}
-                      disabled={helpfulSent[r.id]}
-                    >
-                      {helpfulSent[r.id] ? '✓ Marked helpful' : `Helpful? Yes (${r.helpful_count || 0})`}
-                    </button>
+              return (
+                <div key={r.id} className="review-card">
+                  <div className="review-header">
+                    <StarRating value={r.rating} size="sm" />
+                    <span className="review-verified">✓ Verified Purchase</span>
                   </div>
-                );
-              })}
-
-              {reviewPage < reviewMeta.totalPages && (
-                <button className="reviews-load-more" onClick={handleLoadMore}>
-                  Load more reviews
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* ── Write a review (shown below existing reviews, or inline if eligible buyer on 0-review product) ── */}
-        {(reviews.length > 0 || reviewMeta.total > 0 || canReviewData?.can_review) && (
-          <div className="reviews-write-section">
-            {!user ? (
-              <div className="review-login-prompt">
-                <p>Want to share your experience?</p>
-                <Link to="/login" className="btn btn-outline">Log in to leave a review</Link>
-              </div>
-            ) : canReviewData === null ? null : canReviewData.already_reviewed ? (
-              <div className="review-already-done">
-                <span>✓</span> Your review has been submitted and is awaiting approval.
-              </div>
-            ) : canReviewData.can_review ? (
-              <form className="review-form" onSubmit={submitReview}>
-                <h3 className="review-form-heading">Write a Review</h3>
-                <div className="field">
-                  <label>Your rating</label>
-                  <StarRating
-                    value={reviewForm.rating}
-                    interactive
-                    size="lg"
-                    onChange={v => setReviewForm(f => ({ ...f, rating: v }))}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="review-title">Title <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
-                  <input
-                    id="review-title"
-                    name="title"
-                    type="text"
-                    maxLength={120}
-                    placeholder="Summarise your experience"
-                    value={reviewForm.title}
-                    onChange={e => setReviewForm(f => ({ ...f, title: e.target.value }))}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="review-body">Review <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
-                  <textarea
-                    id="review-body"
-                    name="body"
-                    rows={4}
-                    placeholder="What did you think of the product?"
-                    value={reviewForm.body}
-                    onChange={e => setReviewForm(f => ({ ...f, body: e.target.value }))}
-                  />
-                </div>
-                <div className="field">
-                  <label>Photos / Swatches <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional, up to 3)</span></label>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                    <label className="btn btn-sm btn-outline" style={{ cursor: 'pointer', margin: 0 }}>
-                      {reviewUploading ? 'Uploading…' : '+ Add Photo'}
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp"
-                        style={{ display: 'none' }}
-                        disabled={reviewUploading || (reviewForm.images?.length || 0) >= 3}
-                        onChange={handleReviewPhotoUpload}
-                      />
-                    </label>
-                    <span className="muted text-xs">JPG, PNG, or WebP up to 5MB</span>
+                  <div className="review-meta">
+                    <span className="review-author">{r.first_name} {r.last_initial}.</span>
+                    <span className="review-date">{relDate}</span>
                   </div>
-                  {Array.isArray(reviewForm.images) && reviewForm.images.length > 0 && (
-                    <div className="review-upload-previews">
-                      {reviewForm.images.map((url, i) => (
-                        <div key={i} className="review-upload-thumb">
-                          <img src={resolveImageUrl(url)} alt={`Upload preview ${i + 1}`} />
-                          <button
-                            type="button"
-                            className="review-upload-remove"
-                            onClick={() => handleRemoveReviewPhoto(i)}
-                            aria-label="Remove photo"
-                          >
-                            ×
-                          </button>
-                        </div>
+                  {r.title && <div className="review-title">{r.title}</div>}
+                  {r.body && (
+                    <p className="review-body">
+                      {bodyText}
+                      {isLong && (
+                        <button
+                          className="review-expand-btn"
+                          onClick={() => setExpandedReviews(prev => ({ ...prev, [r.id]: !expanded }))}
+                        >
+                          {expanded ? ' Show less' : ' Read more'}
+                        </button>
+                      )}
+                    </p>
+                  )}
+                  {Array.isArray(r.images) && r.images.length > 0 && (
+                    <div className="review-images-row" role="group" aria-label="Customer review photos">
+                      {r.images.map((imgUrl, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          className="review-thumb-btn"
+                          onClick={() => setReviewPhotoModal({ url: resolveImageUrl(imgUrl), alt: `${r.title || 'Review'} photo ${idx + 1}` })}
+                          aria-label={`View photo ${idx + 1} full screen`}
+                        >
+                          <img src={resolveImageUrl(imgUrl)} alt="" loading="lazy" />
+                        </button>
                       ))}
                     </div>
                   )}
+                  {r.admin_reply && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        marginBottom: 10,
+                        padding: '10px 14px',
+                        borderRadius: 8,
+                        background: 'var(--color-bg-subtle, #f8f5ef)',
+                        borderLeft: '3px solid var(--color-accent, #c9a55a)',
+                        fontSize: '0.86rem',
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.78rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-accent-dark, #9a7428)', marginBottom: 4 }}>
+                        Response from {settings.store_name || 'BodyCream GH'}
+                        {r.admin_reply_at ? ` · ${new Date(r.admin_reply_at).toLocaleDateString('en-GH', { month: 'short', day: 'numeric', year: 'numeric' })}` : ''}
+                      </div>
+                      <div style={{ color: 'var(--color-ink, #1f1b16)', lineHeight: 1.5 }}>{r.admin_reply}</div>
+                    </div>
+                  )}
+                  <button
+                    className={`review-helpful-btn${helpfulSent[r.id] ? ' review-helpful-btn--sent' : ''}`}
+                    onClick={() => handleHelpful(r.id)}
+                    disabled={helpfulSent[r.id]}
+                  >
+                    {helpfulSent[r.id] ? '✓ Marked helpful' : `Helpful? Yes (${r.helpful_count || 0})`}
+                  </button>
                 </div>
-                <button type="submit" className="btn btn-accent" disabled={submitting}>
-                  {submitting ? 'Submitting…' : 'Submit Review'}
-                </button>
-              </form>
-            ) : (
-              <div className="review-not-purchased">
-                Purchase this product to leave a review.
-              </div>
+              );
+            })}
+
+            {/* Load more */}
+            {reviewPage < reviewMeta.totalPages && (
+              <button className="reviews-load-more" onClick={handleLoadMore}>
+                Load more reviews
+              </button>
             )}
           </div>
-        )}
-      </section>
+        </div>
+
+        {/* ── Write a review ── */}
+        <div className="reviews-write-section">
+          {!user ? (
+            <div className="review-login-prompt">
+              <p>Want to share your experience?</p>
+              <Link to="/login" className="btn btn-outline">Log in to leave a review</Link>
+            </div>
+          ) : canReviewData === null ? null /* loading */ : canReviewData.already_reviewed ? (
+            <div className="review-already-done">
+              <span>✓</span> Your review has been submitted and is awaiting approval.
+            </div>
+          ) : canReviewData.can_review ? (
+            <form className="review-form" onSubmit={submitReview}>
+              <h3 className="review-form-heading">Write a Review</h3>
+              <div className="field">
+                <label>Your rating</label>
+                <StarRating
+                  value={reviewForm.rating}
+                  interactive
+                  size="lg"
+                  onChange={v => setReviewForm(f => ({ ...f, rating: v }))}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="review-title">Title <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+                <input
+                  id="review-title"
+                  name="title"
+                  type="text"
+                  maxLength={120}
+                  placeholder="Summarise your experience"
+                  value={reviewForm.title}
+                  onChange={e => setReviewForm(f => ({ ...f, title: e.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="review-body">Review <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional)</span></label>
+                <textarea
+                  id="review-body"
+                  name="body"
+                  rows={4}
+                  placeholder="What did you think of the product?"
+                  value={reviewForm.body}
+                  onChange={e => setReviewForm(f => ({ ...f, body: e.target.value }))}
+                />
+              </div>
+              <div className="field">
+                <label>Photos / Swatches <span style={{ color: 'var(--color-muted)', fontWeight: 400 }}>(optional, up to 3)</span></label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <label className="btn btn-sm btn-outline" style={{ cursor: 'pointer', margin: 0 }}>
+                    {reviewUploading ? 'Uploading…' : '+ Add Photo'}
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      style={{ display: 'none' }}
+                      disabled={reviewUploading || (reviewForm.images?.length || 0) >= 3}
+                      onChange={handleReviewPhotoUpload}
+                    />
+                  </label>
+                  <span className="muted text-xs">JPG, PNG, or WebP up to 5MB</span>
+                </div>
+                {Array.isArray(reviewForm.images) && reviewForm.images.length > 0 && (
+                  <div className="review-upload-previews">
+                    {reviewForm.images.map((url, i) => (
+                      <div key={i} className="review-upload-thumb">
+                        <img src={resolveImageUrl(url)} alt={`Upload preview ${i + 1}`} />
+                        <button
+                          type="button"
+                          className="review-upload-remove"
+                          onClick={() => handleRemoveReviewPhoto(i)}
+                          aria-label="Remove photo"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button type="submit" className="btn btn-accent" disabled={submitting}>
+                {submitting ? 'Submitting…' : 'Submit Review'}
+              </button>
+            </form>
+          ) : (
+            <div className="review-not-purchased">
+              Purchase this product to leave a review.
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* ── Recently viewed ──────────────────────────────────── */}
       {recentlyViewed.length > 0 && (
-        <section className="container pdp-strip-section pdp-strip-section--last" aria-label="Recently viewed products">
-          <div className="pdp-section-head">
-            <div>
-              <span className="section-label">Your History</span>
-              <h2 className="pdp-strip-heading">Recently Viewed</h2>
-            </div>
+        <div className="container pdp-strip-section">
+          <h2 className="pdp-strip-heading">Recently Viewed</h2>
+          <div className="gold-divider" style={{ margin: '0 0 20px' }} />
+          <div className="pdp-card-strip">
+            {recentlyViewed.map(p => <ProductCard key={p.id} product={p} />)}
           </div>
-          <div className="pdp-card-grid">
-            {recentlyViewed.slice(0, 4).map(p => <ProductCard key={p.id} product={p} />)}
-          </div>
-        </section>
+        </div>
       )}
 
       {/* ── Sticky Mobile Add-to-Cart Bar ───────────────── */}
@@ -1369,7 +1192,7 @@ export default function ProductPage() {
         <div className="pdp-sticky-mobile-info">
           <span className="pdp-sticky-mobile-name">{product.name}</span>
           <span className="pdp-sticky-mobile-price">
-            {qty > 1 ? `${qty} × ` : ''}GHS {lineTotalPrice.toFixed(2)}
+            GHS {(isOnSale ? pdpEffectivePrice : effectivePrice).toFixed(2)}
             {selectedVariant
               ? ` · ${selectedVariant.option_values.map(ov => ov.value).join(' / ')}`
               : ''}
