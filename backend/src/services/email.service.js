@@ -629,6 +629,28 @@ const sendOtpEmail = async (to, { firstName, otp }) => {
   });
 };
 
+// ── Customer Proof-of-Delivery OTP ────────────────────────────────────────────
+
+const sendDeliveryOtpEmail = async (to, { firstName, otp, orderNumber }) => {
+  if (!isConfigured() || !to) return;
+  const orderLabel = orderNumber ? `Order #${orderNumber}` : 'your order';
+  await getTransporter().sendMail({
+    from: getFromAddress(),
+    to,
+    subject: orderNumber
+      ? `Your delivery code for Order #${orderNumber} — BodyCream GH`
+      : 'Your delivery verification code — BodyCream GH',
+    html: `<div style="font-family:sans-serif;max-width:480px;margin:0 auto">
+      <h2>Delivery Verification Code</h2>
+      ${firstName ? `<p>Hi ${escapeHtml(firstName)},</p>` : ''}
+      <p>Your 6-digit delivery code for <strong>${escapeHtml(orderLabel)}</strong> is:</p>
+      <p style="font-size:2rem;font-weight:700;letter-spacing:0.2em;color:#1c1410;margin:20px 0">${escapeHtml(otp)}</p>
+      <p>Share this code <strong>ONLY</strong> with the dispatch rider face-to-face after inspecting your parcel.</p>
+      <p style="color:#888;font-size:0.85rem">Thank you for shopping with BodyCream GH.</p>
+    </div>`,
+  });
+};
+
 const sendAdminPaymentAlert = async (to, { orderNumber, title, detail }) => {
   if (!isConfigured() || !to) return;
   await getTransporter().sendMail({
@@ -812,6 +834,7 @@ module.exports = {
   sendAdminOrderCancelled, sendAdminOrderRefunded, sendAdminOrderShipped, sendAdminOrderDelivered,
   sendAdminPaymentAlert,
   sendOtpEmail,
+  sendDeliveryOtpEmail,
   sendProofOfDeliveryReceipt,
   sendNewsletterWelcome, sendNewsletterEmail,
 };

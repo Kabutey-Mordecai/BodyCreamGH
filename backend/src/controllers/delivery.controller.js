@@ -188,8 +188,9 @@ async function dispatchOrderWithOtp({
       deliveryPartner: finalPartner,
     }).catch(err => logger.error('sendShippingNotification error', { err: err.message }));
 
-    if (typeof emailService.sendOtpEmail === 'function') {
-      emailService.sendOtpEmail(emailAddress, { firstName, otp })
+    const sendDeliveryOtp = emailService.sendDeliveryOtpEmail || emailService.sendOtpEmail;
+    if (typeof sendDeliveryOtp === 'function') {
+      sendDeliveryOtp(emailAddress, { firstName, otp, orderNumber: order.order_number })
         .catch(err => logger.warn('Auto POD OTP email failed', { err: err.message }));
     }
   }
@@ -517,10 +518,12 @@ const sendPodOtp = async (req, res) => {
       }).catch(err => logger.warn('POD OTP SMS failed', { err: err.message }));
     }
 
-    if (email && typeof emailService.sendOtpEmail === 'function') {
-      emailService.sendOtpEmail(email, {
+    const sendDeliveryOtp = emailService.sendDeliveryOtpEmail || emailService.sendOtpEmail;
+    if (email && typeof sendDeliveryOtp === 'function') {
+      sendDeliveryOtp(email, {
         firstName: d.first_name || 'Valued Customer',
         otp,
+        orderNumber: d.order_number,
       }).catch(err => logger.warn('POD OTP email failed', { err: err.message }));
     }
 
@@ -1157,8 +1160,9 @@ const riderResendPodOtp = async (req, res) => {
       }).catch(err => logger.warn('Rider resend OTP SMS failed', { err: err.message }));
     }
 
-    if (email && typeof emailService.sendOtpEmail === 'function') {
-      emailService.sendOtpEmail(email, { firstName, otp })
+    const sendDeliveryOtp = emailService.sendDeliveryOtpEmail || emailService.sendOtpEmail;
+    if (email && typeof sendDeliveryOtp === 'function') {
+      sendDeliveryOtp(email, { firstName, otp, orderNumber: d.order_number })
         .catch(err => logger.warn('Rider resend OTP email failed', { err: err.message }));
     }
 
