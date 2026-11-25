@@ -235,9 +235,8 @@ export default function RiderHandoff() {
     setOtpNotice('');
     setError('');
     try {
-      const { data } = await deliveriesAPI.riderResendOtp({ token });
-      const extra = data.demo_otp ? ` (Demo OTP: ${data.demo_otp})` : '';
-      setOtpNotice(`✓ Fresh 6-digit delivery code sent to customer${extra}`);
+      await deliveriesAPI.riderResendOtp({ token });
+      setOtpNotice('✓ Fresh 6-digit delivery code sent to customer via SMS & email');
       setInfo(prev => prev ? { ...prev, attempts_remaining: 5 } : prev);
     } catch (err) {
       setError(err.response?.data?.error || 'Could not resend 6-digit code.');

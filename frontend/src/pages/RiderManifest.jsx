@@ -81,12 +81,11 @@ export default function RiderManifest() {
     setResendingId(stop.delivery_id);
     setOtpToast('');
     try {
-      const { data: res } = await deliveriesAPI.riderResendOtp({
+      await deliveriesAPI.riderResendOtp({
         token,
         delivery_id: stop.delivery_id,
       });
-      const extra = res.demo_otp ? ` (Demo OTP: ${res.demo_otp})` : '';
-      setOtpToast(`✓ Fresh 6-digit delivery code sent to ${stop.customer_name} for #${stop.order_number}${extra}`);
+      setOtpToast(`✓ Fresh 6-digit delivery code sent to ${stop.customer_name} for #${stop.order_number}`);
       setData(prev => prev ? {
         ...prev,
         stops: prev.stops.map(s => s.delivery_id === stop.delivery_id ? { ...s, has_otp: true } : s),

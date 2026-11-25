@@ -553,10 +553,6 @@ const sendPodOtp = async (req, res) => {
       zone_code: zoneCode,
       expires_at: expiresAt.toISOString(),
     };
-    // On non-production demos without live SMS credentials, surface the demo OTP so buyers can test end-to-end
-    if (process.env.NODE_ENV !== 'production' && !process.env.SMS_API_KEY) {
-      response.demo_otp = otp;
-    }
 
     res.json(response);
   } catch (err) {
@@ -1179,9 +1175,6 @@ const riderResendPodOtp = async (req, res) => {
       message: 'Fresh 6-digit delivery code sent to customer!',
       expires_at: expiresAt.toISOString(),
     };
-    if (process.env.NODE_ENV !== 'production' && !process.env.SMS_API_KEY) {
-      response.demo_otp = otp;
-    }
     res.json(response);
   } catch (err) {
     logger.error('riderResendPodOtp error', { err: err.message });

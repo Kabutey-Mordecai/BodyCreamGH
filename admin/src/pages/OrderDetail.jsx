@@ -78,7 +78,6 @@ export default function OrderDetail() {
   const [deliveryStatus, setDeliveryStatus] = useState('');
   const [deliverySaving, setDeliverySaving] = useState(false);
   const [podSending, setPodSending]         = useState(false);
-  const [podLinkInfo, setPodLinkInfo]       = useState(null);
 
   const [knownPartners, setKnownPartners]   = useState([]);
   const [manifestInfo, setManifestInfo]     = useState(null);
@@ -344,9 +343,8 @@ export default function OrderDetail() {
     if (!delivery?.id) return;
     setPodSending(true);
     try {
-      const { data } = await deliveriesAPI.sendPodOtp(delivery.id);
-      setPodLinkInfo(data);
-      toast.success('6-digit Delivery Code sent to customer');
+      await deliveriesAPI.sendPodOtp(delivery.id);
+      toast.success('6-digit Delivery Code sent privately to customer');
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to send delivery code');
     } finally {
@@ -946,12 +944,6 @@ export default function OrderDetail() {
                                 💬 Send on WhatsApp
                               </a>
                             </div>
-                          </div>
-                        )}
-
-                        {podLinkInfo?.demo_otp && (
-                          <div className="alert alert-info" style={{ marginBottom: 0 }}>
-                            Demo OTP (SMS unconfigured): <strong>{podLinkInfo.demo_otp}</strong>
                           </div>
                         )}
                       </div>
