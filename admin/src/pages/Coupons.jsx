@@ -72,7 +72,8 @@ export default function Coupons() {
       value:      parseFloat(form.value),
       min_order:  form.min_order  ? parseFloat(form.min_order)  : 0,
       max_uses:   form.max_uses   ? parseInt(form.max_uses)      : null,
-      expires_at: form.expires_at ? new Date(form.expires_at).toISOString() : null,
+      // Expire at the END of the chosen day (not 00:00), so "expires today/tomorrow" works as expected.
+      expires_at: form.expires_at ? new Date(`${form.expires_at}T23:59:59.999Z`).toISOString() : null,
     };
     try {
       if (editId) {
