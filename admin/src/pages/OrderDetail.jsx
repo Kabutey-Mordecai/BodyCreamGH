@@ -238,8 +238,10 @@ export default function OrderDetail() {
     try {
       await deliveriesAPI.create({
         order_id: id,
-        ...deliveryForm,
         delivery_partner: deliveryForm.delivery_partner.trim() || 'In-house Dispatch Bike',
+        driver_phone: deliveryForm.driver_phone.trim() || undefined,
+        tracking_number: deliveryForm.tracking_number.trim() || undefined,
+        estimated_delivery: deliveryForm.estimated_delivery ? deliveryForm.estimated_delivery : undefined,
       });
       toast.success('Rider dispatched — order marked as shipped & customer notified');
       load();

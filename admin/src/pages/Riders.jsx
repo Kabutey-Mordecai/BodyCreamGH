@@ -189,7 +189,9 @@ export default function Riders() {
       setModalOpen(false);
       loadRiders(true);
     } catch (err) {
-      setFormError(err.response?.data?.error || 'Could not save rider');
+      const msg = err.response?.data?.error || 'Could not save rider';
+      setFormError(msg);
+      toast.error(msg);
     } finally {
       setSaving(false);
     }

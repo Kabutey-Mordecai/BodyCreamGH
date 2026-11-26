@@ -23,6 +23,13 @@ module.exports = {
 
   update: async (id, { status, trackingNumber, estimatedDelivery, actualDeliveryDate, driverPhone, deliveryPartner }) => {
     const updatePhone = driverPhone !== undefined;
+    const cleanEstimated = (typeof estimatedDelivery === 'string' && estimatedDelivery.trim())
+      ? estimatedDelivery.trim()
+      : (estimatedDelivery === null ? null : undefined);
+    const cleanActual = (typeof actualDeliveryDate === 'string' && actualDeliveryDate.trim())
+      ? actualDeliveryDate.trim()
+      : (actualDeliveryDate === null ? null : undefined);
+
     await pool.query(
       `UPDATE deliveries
        SET status               = COALESCE($1, status),
@@ -35,11 +42,11 @@ module.exports = {
        WHERE id = $7`,
       [
         status             ?? null,
-        trackingNumber     ?? null,
-        estimatedDelivery  ?? null,
-        actualDeliveryDate ?? null,
+        (typeof trackingNumber === 'string' && trackingNumber.trim()) ? trackingNumber.trim() : null,
+        cleanEstimated     ?? null,
+        cleanActual        ?? null,
         driverPhone        ?? null,
-        deliveryPartner    ?? null,
+        (typeof deliveryPartner === 'string' && deliveryPartner.trim()) ? deliveryPartner.trim() : null,
         id,
         updatePhone,
       ]
