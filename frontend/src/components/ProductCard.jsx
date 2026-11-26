@@ -23,7 +23,7 @@ function formatCountdown(endsAt) {
   return `Ends in ${h}h ${m}m`;
 }
 
-export default function ProductCard({ product, isFlashDeal = false }) {
+export default function ProductCard({ product }) {
   const { addItem, cart, updateItem, removeItem } = useCart();
   const { user }             = useAuth();
   const { savedIds, toggle } = useWishlist();
@@ -49,7 +49,7 @@ export default function ProductCard({ product, isFlashDeal = false }) {
   const isSaleByCompare = !isSaleByPromo
     && product.compare_at_price
     && parseFloat(product.compare_at_price) > parseFloat(product.price);
-  const isOnSale = isSaleByPromo || isSaleByCompare || isFlashDeal;
+  const isOnSale = isSaleByPromo || isSaleByCompare;
 
   let effectivePrice, originalPrice, discountPct, saleBadgeText, countdownText;
   if (isSaleByPromo) {
@@ -63,11 +63,6 @@ export default function ProductCard({ product, isFlashDeal = false }) {
     originalPrice   = parseFloat(product.compare_at_price);
     discountPct     = Math.round((1 - effectivePrice / originalPrice) * 100);
     saleBadgeText   = 'SALE';
-  } else if (isFlashDeal) {
-    effectivePrice  = parseFloat(product.price);
-    originalPrice   = Math.round(effectivePrice * 1.25);
-    discountPct     = 20;
-    saleBadgeText   = 'FLASH DEAL';
   }
 
   const handleWishlist = async (e) => {
@@ -290,30 +285,18 @@ export default function ProductCard({ product, isFlashDeal = false }) {
             GHS {parseFloat(product.price).toFixed(2)}
           </p>
         )}
-        {/* Scarcity meter / stock claim progress bar (Jumia Ventes Flash pattern) */}
-        {!isOutOfStock && (isLowStock || isOnSale || isFlashDeal) && (() => {
-          const stockLeft = product.stock_quantity > 0 ? product.stock_quantity : 8;
-          const pctClaimed = Math.min(94, Math.max(70, 100 - Math.round((stockLeft / (stockLeft + 14)) * 100)));
-          return (
-            <div className="product-card-scarcity">
-              <div className="scarcity-bar-wrap" aria-hidden="true">
-                <div
-                  className="scarcity-bar-fill"
-                  style={{
-                    width: `${isLowStock
-                      ? Math.max(15, Math.min(100, (product.stock_quantity / threshold) * 100))
-                      : pctClaimed}%`
-                  }}
-                />
-              </div>
-              <span className="scarcity-text">
-                {isLowStock
-                  ? `Only ${product.stock_quantity} left in stock`
-                  : `🔥 ${stockLeft} left in stock · ${pctClaimed}% claimed`}
-              </span>
+        {/* Authentic low stock warning — clean, honest scarcity */}
+        {!isOutOfStock && isLowStock && (
+          <div className="product-card-scarcity">
+            <div className="scarcity-bar-wrap" aria-hidden="true">
+              <div
+                className="scarcity-bar-fill"
+                style={{ width: `${Math.max(15, Math.min(100, (product.stock_quantity / threshold) * 100))}%` }}
+              />
             </div>
-          );
-        })()}
+            <span className="scarcity-text">Only {product.stock_quantity} left in stock</span>
+          </div>
+        )}
       </div>
 
     </article>

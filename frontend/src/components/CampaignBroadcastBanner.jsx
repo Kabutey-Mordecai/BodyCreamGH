@@ -104,11 +104,11 @@ export default function CampaignBroadcastBanner({ compact = false }) {
 
   return (
     <section className={`cbb-broadcast-section cbb-theme-${theme}`} aria-label="Special Promotional Campaign">
-      <div className="cbb-ambient-glow" />
       <div className="container cbb-container">
-        <div className="cbb-grid">
-          {/* Main Campaign Message */}
-          <div className="cbb-content">
+        <div className="cbb-strip-layout">
+
+          {/* Left: Event Branding & Copy */}
+          <div className="cbb-strip-brand">
             <div className="cbb-badge-row">
               <span className="cbb-badge">
                 <span className="cbb-pulse-dot" />
@@ -116,92 +116,52 @@ export default function CampaignBroadcastBanner({ compact = false }) {
               </span>
               <span className="cbb-guarantee-pill">{guarantee}</span>
             </div>
-
             <h2 className="cbb-headline">{headline}</h2>
             <p className="cbb-subtext">{subtext}</p>
+          </div>
 
-            {/* Voucher code & CTA row */}
-            <div className="cbb-action-row">
+          {/* Right: Live Ticking Countdown, 1-Click Voucher & Single Clean CTA */}
+          <div className="cbb-strip-actions">
+            {/* Live Ticking Countdown */}
+            <div className="cbb-strip-timer" aria-label="Campaign countdown timer">
+              <span className="cbb-timer-title">ENDS IN</span>
+              <div className="cbb-timer-digits">
+                <span className="cbb-digit-group">
+                  <strong>{String(timeLeft.days).padStart(2, '0')}</strong><small>D</small>
+                </span>
+                <span className="cbb-sep">:</span>
+                <span className="cbb-digit-group">
+                  <strong>{String(timeLeft.hours).padStart(2, '0')}</strong><small>H</small>
+                </span>
+                <span className="cbb-sep">:</span>
+                <span className="cbb-digit-group">
+                  <strong>{String(timeLeft.minutes).padStart(2, '0')}</strong><small>M</small>
+                </span>
+                <span className="cbb-sep">:</span>
+                <span className="cbb-digit-group">
+                  <strong>{String(timeLeft.seconds).padStart(2, '0')}</strong><small>S</small>
+                </span>
+              </div>
+            </div>
+
+            <div className="cbb-strip-cta-wrap">
+              {couponCode && (
+                <button
+                  type="button"
+                  className="cbb-voucher-pill"
+                  onClick={handleCopyCode}
+                  title="Click to copy coupon voucher"
+                >
+                  <span>Code: <strong>{couponCode}</strong></span>
+                  <span className="cbb-copy-hint">{copied ? '✓ Copied' : '📋 Copy'}</span>
+                </button>
+              )}
               <Link to={ctaLink} className="btn cbb-btn-primary">
                 {ctaText} →
               </Link>
-
-              {couponCode && (
-                <div className="cbb-voucher-box">
-                  <span className="cbb-voucher-label">Voucher Code:</span>
-                  <button
-                    type="button"
-                    className="cbb-voucher-code"
-                    onClick={handleCopyCode}
-                    title="Click to copy coupon code"
-                  >
-                    <span>{couponCode}</span>
-                    <span className="cbb-copy-badge">{copied ? '✓ Copied!' : 'Copy Code'}</span>
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Trust perks row */}
-            <div className="cbb-perks-row">
-              <div className="cbb-perk">
-                <span className="cbb-perk-icon">🚚</span>
-                <span>{perk1}</span>
-              </div>
-              <div className="cbb-perk">
-                <span className="cbb-perk-icon">⚡</span>
-                <span>{perk2}</span>
-              </div>
-              <div className="cbb-perk">
-                <span className="cbb-perk-icon">💵</span>
-                <span>{perk3}</span>
-              </div>
             </div>
           </div>
 
-          {/* Live Countdown & Urgency Box */}
-          <div className="cbb-urgency-card">
-            <div className="cbb-urgency-header">
-              <span className="cbb-fire-icon">🔥</span>
-              <span className="cbb-urgency-title">DEAL ENDS IN</span>
-            </div>
-
-            <div className="cbb-countdown-grid">
-              <div className="cbb-timer-unit">
-                <span className="cbb-timer-num">{String(timeLeft.days).padStart(2, '0')}</span>
-                <span className="cbb-timer-label">DAYS</span>
-              </div>
-              <span className="cbb-timer-colon">:</span>
-              <div className="cbb-timer-unit">
-                <span className="cbb-timer-num">{String(timeLeft.hours).padStart(2, '0')}</span>
-                <span className="cbb-timer-label">HOURS</span>
-              </div>
-              <span className="cbb-timer-colon">:</span>
-              <div className="cbb-timer-unit">
-                <span className="cbb-timer-num">{String(timeLeft.minutes).padStart(2, '0')}</span>
-                <span className="cbb-timer-label">MINS</span>
-              </div>
-              <span className="cbb-timer-colon">:</span>
-              <div className="cbb-timer-unit">
-                <span className="cbb-timer-num">{String(timeLeft.seconds).padStart(2, '0')}</span>
-                <span className="cbb-timer-label">SECS</span>
-              </div>
-            </div>
-
-            <div className="cbb-stock-urgency">
-              <div className="cbb-stock-bar-wrap">
-                <div className="cbb-stock-bar" style={{ width: `${stockPercentage}%` }} />
-              </div>
-              <div className="cbb-stock-text">
-                <span>🔥 {stockLabel}</span>
-                <span>{stockSub}</span>
-              </div>
-            </div>
-
-            <Link to={ctaLink} className="cbb-urgency-cta">
-              {urgencyCta} →
-            </Link>
-          </div>
         </div>
       </div>
     </section>

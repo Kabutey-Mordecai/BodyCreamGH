@@ -16,13 +16,6 @@ import './ProductPage.css';
 // TO CUSTOMIZE: Placeholder shown when the product has no image
 const PLACEHOLDER_IMG = 'https://placehold.co/700x700?text=No+Image';
 
-// TO CUSTOMIZE: Trust row under the Add to Cart button
-const TRUST_ROW = [
-  { icon: '🚚', label: 'Free delivery',  sub: 'Over GHS 200' },
-  { icon: '✦',  label: '100% Authentic', sub: 'Verified brands' },
-  { icon: '↩',  label: '3-day returns',  sub: 'No questions asked' },
-];
-
 // TO CUSTOMIZE: Static sell points shown on every product page
 const HIGHLIGHTS = [
   'Sourced from verified beauty distributors',
@@ -864,56 +857,49 @@ export default function ProductPage() {
             </button>
 
             {/* WhatsApp-to-Order CTA — shown when store whatsapp_number is configured */}
-            {/* Trust row under the CTA */}
-            <div className="product-trust-row">
-              {TRUST_ROW.map(t => (
-                <div key={t.icon} className="product-trust-item">
-                  <span className="product-trust-icon">{t.icon}</span>
+            {/* ── Unified Clean Assurance & Delivery Card ── */}
+            <div className="pdp-assurance-card">
+              <div className="pdp-assurance-grid">
+                <div className="pdp-assurance-item">
+                  <span className="pdp-assurance-icon">⚡</span>
                   <div>
-                    <strong>{t.icon === '↩' ? `${Number(settings.return_window_days) || 3}-day returns` : t.label}</strong>
-                    <span>
-                      {t.icon === '🚚'
-                        ? (freeDeliveryOver > 0 ? `Free over GHS ${freeDeliveryOver}` : 'Free delivery')
-                        : t.sub}
-                    </span>
+                    <strong>Accra Express Dispatch</strong>
+                    <span>Same-day Accra &amp; nationwide delivery (2–4 days)</span>
                   </div>
                 </div>
-              ))}
-            </div>
+                <div className="pdp-assurance-item">
+                  <span className="pdp-assurance-icon">🛡️</span>
+                  <div>
+                    <strong>100% Authentic Brands</strong>
+                    <span>Directly sourced &amp; tamper-evident sealed</span>
+                  </div>
+                </div>
+                <div className="pdp-assurance-item">
+                  <span className="pdp-assurance-icon">💵</span>
+                  <div>
+                    <strong>Pay on Delivery &amp; MoMo</strong>
+                    <span>MTN MoMo, Telecel Cash &amp; Doorstep COD</span>
+                  </div>
+                </div>
+                <div className="pdp-assurance-item">
+                  <span className="pdp-assurance-icon">↩</span>
+                  <div>
+                    <strong>{Number(settings.return_window_days) || 3}-Day Returns</strong>
+                    <span>Easy hassle-free exchange window</span>
+                  </div>
+                </div>
+              </div>
 
-            {/* ── Jumia-Inspired Fulfillment & Authenticity Assurance Card ── */}
-            <div className="pdp-delivery-box">
-              <div className="pdp-delivery-item">
-                <span className="pdp-delivery-icon">⚡</span>
-                <div>
-                  <strong>Accra Express Same-Day &amp; 24h Dispatch</strong>
-                  <p>Order before 3:00 PM for same-day Accra dispatch. Nationwide delivery across all regions in 2–4 business days.</p>
-                </div>
-              </div>
-              <div className="pdp-delivery-item">
-                <span className="pdp-delivery-icon">🛡️</span>
-                <div>
-                  <strong>100% Genuine Brand Guarantee</strong>
-                  <p>Sourced directly from verified distributors with tamper-evident sealed packaging.</p>
-                </div>
-              </div>
-              <div className="pdp-delivery-item">
-                <span className="pdp-delivery-icon">💵</span>
-                <div>
-                  <strong>Pay on Delivery &amp; Mobile Money</strong>
-                  <p>Pay upon doorstep delivery or securely online via MTN MoMo, Telecel Cash, and Bank Cards.</p>
-                </div>
-              </div>
               {settings.whatsapp_number && (
-                <div className="pdp-delivery-assist">
-                  <span>Questions or prefer ordering by phone?</span>
+                <div className="pdp-assurance-concierge">
+                  <span>Need assistance or skincare advice?</span>
                   <a
                     href={`https://wa.me/${settings.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(`Hello, I would like to inquire about ${product.name} on BodyCream GH.`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="pdp-assist-link"
+                    className="pdp-concierge-link"
                   >
-                    💬 Chat with Beauty Advisor →
+                    Chat with Beauty Specialist →
                   </a>
                 </div>
               )}

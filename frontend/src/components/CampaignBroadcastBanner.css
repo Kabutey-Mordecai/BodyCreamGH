@@ -77,37 +77,43 @@
   border-bottom-color: #d4af37;
 }
 
-/* ── Grid Layout ── */
+/* ── Clean Luxury Strip Layout ── */
 .cbb-container {
   position: relative;
   z-index: 2;
 }
 
-.cbb-grid {
-  display: grid;
-  grid-template-columns: 1.4fr 1fr;
-  gap: 36px;
+.cbb-strip-layout {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
 }
 
-/* ── Left Content Area ── */
+.cbb-strip-brand {
+  flex: 1 1 440px;
+  min-width: 0;
+}
+
 .cbb-badge-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 12px;
+  margin-bottom: 6px;
 }
 
 .cbb-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 12px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+  font-weight: 700;
 }
 
 .cbb-pulse-dot {
@@ -126,238 +132,133 @@
 }
 
 .cbb-guarantee-pill {
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: #c9a55a;
   background: rgba(201, 165, 90, 0.12);
   border: 1px solid rgba(201, 165, 90, 0.25);
-  padding: 4px 10px;
+  padding: 3px 8px;
   border-radius: 999px;
   font-weight: 600;
 }
 
 .cbb-headline {
   font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
-  font-size: clamp(1.8rem, 3.4vw, 2.75rem);
-  font-weight: 800;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  margin: 0 0 10px;
+  font-size: clamp(1.3rem, 2vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0 0 4px;
   color: #fff;
 }
 
 .cbb-subtext {
-  font-size: clamp(0.86rem, 1.2vw, 0.98rem);
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.82);
-  margin: 0 0 20px;
-  max-width: 580px;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.78);
+  margin: 0;
+  white-space: normal;
 }
 
-/* ── Actions: Button & Voucher ── */
-.cbb-action-row {
+/* ── Right Strip Actions & Timer ── */
+.cbb-strip-actions {
   display: flex;
   align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  margin-bottom: 22px;
 }
 
-.cbb-btn-primary {
-  padding: 12px 24px;
-  font-size: 0.92rem;
-  border-radius: 8px;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  transition: all 0.2s ease;
-}
-
-.cbb-voucher-box {
+.cbb-strip-timer {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px dashed rgba(201, 165, 90, 0.6);
-  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(201, 165, 90, 0.3);
+  padding: 6px 14px;
   border-radius: 8px;
 }
 
-.cbb-voucher-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.7);
-  font-weight: 600;
+.cbb-timer-title {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #c9a55a;
 }
 
-.cbb-voucher-code {
-  background: #0d0907;
-  color: #f7d070;
-  border: 1px solid #c9a55a;
-  border-radius: 6px;
-  padding: 5px 10px;
+.cbb-timer-digits {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-family: monospace;
-  font-size: 0.88rem;
-  font-weight: 800;
+}
+
+.cbb-digit-group {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+}
+
+.cbb-digit-group strong {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.cbb-digit-group small {
+  font-size: 0.6rem;
+  color: #c9a55a;
+  margin-left: 1px;
+}
+
+.cbb-sep {
+  color: rgba(201, 165, 90, 0.5);
+  font-weight: 700;
+  margin: 0 1px;
+}
+
+.cbb-strip-cta-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.cbb-voucher-pill {
+  background: rgba(0, 0, 0, 0.5);
+  border: 1px dashed #c9a55a;
+  color: #f7d070;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 0.78rem;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   transition: all 0.2s ease;
 }
 
-.cbb-voucher-code:hover {
-  background: #c9a55a;
-  color: #0d0907;
-}
-
-.cbb-copy-badge {
-  font-size: 0.64rem;
-  background: rgba(201, 165, 90, 0.25);
-  padding: 2px 5px;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-/* ── Trust Perks Row ── */
-.cbb-perks-row {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  flex-wrap: wrap;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  padding-top: 14px;
-  font-size: 0.76rem;
-  color: rgba(255, 255, 255, 0.75);
-}
-
-.cbb-perk {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.cbb-perk-icon {
-  font-size: 0.95rem;
-}
-
-/* ── Right: Urgency & Countdown Box ── */
-.cbb-urgency-card {
-  background: rgba(18, 12, 9, 0.75);
-  border: 1px solid rgba(201, 165, 90, 0.35);
-  border-radius: 12px;
-  padding: 24px;
-  backdrop-filter: blur(8px);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
-  text-align: center;
-}
-
-.cbb-urgency-header {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-bottom: 16px;
-}
-
-.cbb-fire-icon {
-  font-size: 1.1rem;
-}
-
-.cbb-urgency-title {
-  font-size: 0.82rem;
-  font-weight: 800;
-  letter-spacing: 0.12em;
-  color: #c9a55a;
-  text-transform: uppercase;
-}
-
-.cbb-countdown-grid {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin-bottom: 18px;
-}
-
-.cbb-timer-unit {
-  min-width: 58px;
-  padding: 10px 4px 6px;
-  border-radius: 8px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
-}
-
-.cbb-timer-num {
-  font-size: 1.55rem;
-  font-weight: 800;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
-  line-height: 1;
-}
-
-.cbb-timer-label {
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.6);
-  margin-top: 4px;
-}
-
-.cbb-timer-colon {
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: rgba(201, 165, 90, 0.6);
-  margin-top: -8px;
-}
-
-.cbb-stock-urgency {
-  margin-bottom: 18px;
-}
-
-.cbb-stock-bar-wrap {
-  height: 6px;
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  overflow: hidden;
-  margin-bottom: 6px;
-}
-
-.cbb-stock-bar {
-  height: 100%;
-  background: linear-gradient(90deg, #c9a55a, #f59e0b, #ef4444);
-  border-radius: 999px;
-  transition: width 0.4s ease;
-}
-
-.cbb-stock-text {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.7);
-}
-
-.cbb-urgency-cta {
-  display: block;
-  width: 100%;
-  padding: 10px;
-  background: rgba(201, 165, 90, 0.15);
-  border: 1px solid rgba(201, 165, 90, 0.5);
-  color: #f7d070;
-  border-radius: 6px;
-  text-decoration: none;
-  font-size: 0.8rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  transition: all 0.2s ease;
-}
-
-.cbb-urgency-cta:hover {
+.cbb-voucher-pill:hover {
   background: #c9a55a;
   color: #120d09;
+}
+
+.cbb-voucher-pill strong {
+  letter-spacing: 0.05em;
+}
+
+.cbb-copy-hint {
+  font-size: 0.68rem;
+  opacity: 0.85;
+}
+
+.cbb-btn-primary {
+  padding: 8px 18px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border-radius: 6px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.2s ease;
+  white-space: nowrap;
 }
 
 /* ── Compact Banner Variant (For Shop Catalog Header) ── */

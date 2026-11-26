@@ -28,7 +28,7 @@ export default function ProductShelf({ products = [], ariaLabel = 'Products caro
       <div className="product-shelf-track" ref={trackRef}>
         {products.map(p => (
           <div key={p.id} className="product-shelf-item">
-            <ProductCard product={p} isFlashDeal={dark} />
+            <ProductCard product={p} />
           </div>
         ))}
       </div>
