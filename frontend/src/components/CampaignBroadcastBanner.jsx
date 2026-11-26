@@ -25,29 +25,17 @@ function calculateTimeLeft(targetTimestamp) {
 
 export default function CampaignBroadcastBanner({ compact = false }) {
   const settings = useSettings();
-  const [copied, setCopied] = useState(false);
 
   const isEnabled = settings.campaign_banner_enabled !== false && settings.campaign_banner_enabled !== 'false';
   const theme = settings.campaign_theme || 'black_friday'; // 'black_friday' | 'flash_sale' | 'holiday_glow'
 
-  const badge = settings.campaign_badge || '⚡ BLACK FRIDAY FESTIVAL · LIMITED DEALS';
-  const headline = settings.campaign_headline || 'UP TO 50% OFF BESTSELLING BEAUTY';
-  const subtext = settings.campaign_subtext || 'Ghana\'s biggest authentic cosmetics event. Slashed prices on CeraVe, Fenty, Lattafa & more. 100% authentic sealed packaging.';
-  const couponCode = settings.campaign_coupon_code || 'BF50';
+  const badge = settings.campaign_badge || 'BLACK FRIDAY EVENT · LIMITED TIME DEALS';
+  const headline = settings.campaign_headline || 'Up to 50% Off Bestselling Beauty';
+  const subtext = settings.campaign_subtext || 'Slashed prices on authentic, direct-sourced skincare, fragrances, and haircare. Sealed guarantee with fast nationwide delivery.';
   const ctaText = settings.campaign_cta_text || 'Shop Black Friday Deals';
   const rawLink = settings.campaign_cta_link || '/shop?on_sale=true';
   const ctaLink = rawLink === '/shop' ? '/shop?on_sale=true' : rawLink;
   const endsAt = settings.campaign_ends_at || '';
-
-  // Dynamic trust perks & stock urgency meters (100% Admin configurable)
-  const guarantee = settings.campaign_guarantee || '✓ 100% Authentic Brands';
-  const perk1 = settings.campaign_perk1 || `Free delivery over GHS ${settings.free_delivery_threshold || 200}`;
-  const perk2 = settings.campaign_perk2 || 'Accra same-day & 24h dispatch';
-  const perk3 = settings.campaign_perk3 || 'Pay on Delivery available';
-  const stockPercentage = Math.min(100, Math.max(5, Number(settings.campaign_stock_percentage) || 84));
-  const stockLabel = settings.campaign_stock_label || `${stockPercentage}% claimed`;
-  const stockSub = settings.campaign_stock_sub || 'Limited event stock';
-  const urgencyCta = settings.campaign_urgency_cta || (ctaText ? `${ctaText} Now` : 'Claim Deals Now');
 
   const targetTimestamp = useMemo(() => {
     if (endsAt) {
@@ -69,16 +57,6 @@ export default function CampaignBroadcastBanner({ compact = false }) {
 
   if (!isEnabled) return null;
 
-  const handleCopyCode = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (couponCode && navigator.clipboard) {
-      navigator.clipboard.writeText(couponCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    }
-  };
-
   if (compact) {
     return (
       <div className={`cbb-compact cbb-theme-${theme}`}>
@@ -86,14 +64,9 @@ export default function CampaignBroadcastBanner({ compact = false }) {
           <div className="cbb-compact-left">
             <span className="cbb-pulse-dot" />
             <span className="cbb-compact-badge">{badge}</span>
-            <span className="cbb-compact-text"><strong>{headline}</strong> — {subtext}</span>
+            <span className="cbb-compact-text"><strong>{headline}</strong></span>
           </div>
           <div className="cbb-compact-right">
-            {couponCode && (
-              <button type="button" className="cbb-code-pill" onClick={handleCopyCode} title="Click to copy code">
-                Use Code: <strong>{couponCode}</strong> {copied ? '✓ Copied' : '📋 Copy'}
-              </button>
-            )}
             <Link to={ctaLink} className="cbb-compact-cta">
               {ctaText} →
             </Link>
@@ -108,22 +81,20 @@ export default function CampaignBroadcastBanner({ compact = false }) {
       <div className="container cbb-container">
         <div className="cbb-strip-layout">
 
-          {/* Left: Event Branding & Copy */}
+          {/* Left: Event Branding & Editorial Copy */}
           <div className="cbb-strip-brand">
             <div className="cbb-badge-row">
               <span className="cbb-badge">
                 <span className="cbb-pulse-dot" />
                 {badge}
               </span>
-              <span className="cbb-guarantee-pill">{guarantee}</span>
             </div>
             <h2 className="cbb-headline">{headline}</h2>
-            <p className="cbb-subtext">{subtext}</p>
+            {subtext && <p className="cbb-subtext">{subtext}</p>}
           </div>
 
-          {/* Right: Live Ticking Countdown, 1-Click Voucher & Single Clean CTA */}
+          {/* Right: Elegant Ticking Countdown & Single Clean CTA */}
           <div className="cbb-strip-actions">
-            {/* Live Ticking Countdown */}
             <div className="cbb-strip-timer" aria-label="Campaign countdown timer">
               <span className="cbb-timer-title">ENDS IN</span>
               <div className="cbb-timer-digits">
@@ -145,22 +116,9 @@ export default function CampaignBroadcastBanner({ compact = false }) {
               </div>
             </div>
 
-            <div className="cbb-strip-cta-wrap">
-              {couponCode && (
-                <button
-                  type="button"
-                  className="cbb-voucher-pill"
-                  onClick={handleCopyCode}
-                  title="Click to copy coupon voucher"
-                >
-                  <span>Code: <strong>{couponCode}</strong></span>
-                  <span className="cbb-copy-hint">{copied ? '✓ Copied' : '📋 Copy'}</span>
-                </button>
-              )}
-              <Link to={ctaLink} className="btn cbb-btn-primary">
-                {ctaText} →
-              </Link>
-            </div>
+            <Link to={ctaLink} className="btn cbb-btn-primary">
+              {ctaText} →
+            </Link>
           </div>
 
         </div>

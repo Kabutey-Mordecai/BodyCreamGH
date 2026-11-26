@@ -5,64 +5,62 @@
 .cbb-broadcast-section {
   position: relative;
   overflow: hidden;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(201, 165, 90, 0.25);
+  padding: 16px 0;
+  border-bottom: 1px solid rgba(197, 159, 82, 0.2);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   transition: all 0.3s ease;
 }
 
 /* ── Theme 1: Black Friday / Cyber Mega Deals (Deep Black & Gold) ── */
 .cbb-theme-black_friday {
-  background: #181310;
+  background: #140f0c;
   color: #f7f3ee;
-  border-bottom: 1px solid rgba(197, 159, 82, 0.24);
+  border-bottom: 1px solid rgba(197, 159, 82, 0.22);
 }
 .cbb-theme-black_friday .cbb-ambient-glow {
   display: none;
 }
 .cbb-theme-black_friday .cbb-badge {
-  background: var(--color-accent, #c59f52);
-  color: #181310;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+  color: var(--color-accent, #c59f52);
+  font-weight: 600;
+  letter-spacing: 0.14em;
 }
 .cbb-theme-black_friday .cbb-btn-primary {
   background: var(--color-accent, #c59f52);
   color: #181310;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
   border: 1px solid var(--color-accent, #c59f52);
 }
 .cbb-theme-black_friday .cbb-btn-primary:hover {
-  background: #d4af62;
+  background: var(--color-accent-light, #f3e8cf);
   color: #181310;
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(197, 159, 82, 0.25);
+  box-shadow: 0 4px 14px rgba(197, 159, 82, 0.2);
 }
 .cbb-theme-black_friday .cbb-timer-unit {
-  background: #231b17;
-  border: 1px solid rgba(197, 159, 82, 0.25);
+  background: #1e1612;
+  border: 1px solid rgba(197, 159, 82, 0.22);
   color: #f0dfb6;
 }
 
 /* ── Theme 2: Flash Sale / Refined Deep Wine ── */
 .cbb-theme-flash_sale {
-  background: #221010;
+  background: #1f0f0f;
   color: #fbf6f6;
   border-bottom-color: #8b2222;
 }
 .cbb-theme-flash_sale .cbb-badge {
-  background: #8b2222;
-  color: #fff;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  color: #e59999;
+  font-weight: 600;
+  letter-spacing: 0.14em;
 }
 .cbb-theme-flash_sale .cbb-btn-primary {
   background: #8b2222;
   color: #fff;
   border: 1px solid #a32d2d;
   font-weight: 600;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
 }
 .cbb-theme-flash_sale .cbb-timer-unit {
   background: #2b1212;
@@ -72,9 +70,9 @@
 
 /* ── Theme 3: Holiday Glow (Rose Champagne & Gold) ── */
 .cbb-theme-holiday_glow {
-  background: #201712;
+  background: #1c1410;
   color: #faf7f4;
-  border-bottom: 1px solid rgba(197, 159, 82, 0.3);
+  border-bottom: 1px solid rgba(197, 159, 82, 0.25);
 }
 
 /* ── Clean Luxury Strip Layout ── */
@@ -87,76 +85,58 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 24px;
+  gap: 28px;
   flex-wrap: wrap;
 }
 
 .cbb-strip-brand {
-  flex: 1 1 440px;
+  flex: 1 1 480px;
   min-width: 0;
 }
 
 .cbb-badge-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 3px;
+  gap: 8px;
+  margin-bottom: 2px;
 }
 
 .cbb-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 0.68rem;
-  letter-spacing: 0.08em;
+  gap: 7px;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-weight: 700;
+  font-weight: 600;
+  color: var(--color-accent, #c59f52);
 }
 
 .cbb-pulse-dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   background: var(--color-accent, #c59f52);
   border-radius: 50%;
   display: inline-block;
-  opacity: 0.9;
-}
-
-@keyframes cbbPulse {
-  0% { transform: scale(0.9); opacity: 0.7; }
-  50% { transform: scale(1.3); opacity: 1; }
-  100% { transform: scale(0.9); opacity: 0.7; }
-}
-
-.cbb-guarantee-pill {
-  font-size: 0.68rem;
-  color: #c9a55a;
-  background: rgba(201, 165, 90, 0.12);
-  border: 1px solid rgba(201, 165, 90, 0.25);
-  padding: 3px 8px;
-  border-radius: 999px;
-  font-weight: 600;
+  opacity: 0.95;
 }
 
 .cbb-headline {
   font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
-  font-size: clamp(1.15rem, 1.8vw, 1.55rem);
-  font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.01em;
-  margin: 0 0 2px;
-  color: #fff;
+  font-size: clamp(1.25rem, 2vw, 1.65rem);
+  font-weight: 500;
+  line-height: 1.18;
+  letter-spacing: -0.012em;
+  margin: 3px 0 4px;
+  color: #ffffff;
 }
 
 .cbb-subtext {
-  font-size: 0.78rem;
-  line-height: 1.35;
-  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.72);
   margin: 0;
-  white-space: normal;
+  max-width: 580px;
 }
 
 /* ── Right Strip Actions & Timer ── */
@@ -171,24 +151,26 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(201, 165, 90, 0.3);
-  padding: 6px 14px;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(197, 159, 82, 0.22);
+  padding: 7px 14px;
+  border-radius: 4px;
 }
 
 .cbb-timer-title {
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  color: #c9a55a;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--color-accent, #c59f52);
+  text-transform: uppercase;
 }
 
 .cbb-timer-digits {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-family: monospace;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
 }
 
 .cbb-digit-group {
@@ -198,62 +180,30 @@
 }
 
 .cbb-digit-group strong {
-  font-size: 1.05rem;
-  font-weight: 700;
-  color: #fff;
+  font-size: 0.96rem;
+  font-weight: 600;
+  color: #ffffff;
 }
 
 .cbb-digit-group small {
-  font-size: 0.6rem;
-  color: #c9a55a;
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: var(--color-accent, #c59f52);
   margin-left: 1px;
 }
 
 .cbb-sep {
-  color: rgba(201, 165, 90, 0.5);
-  font-weight: 700;
+  color: rgba(197, 159, 82, 0.4);
+  font-weight: 600;
   margin: 0 1px;
 }
 
-.cbb-strip-cta-wrap {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.cbb-voucher-pill {
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px dashed #c9a55a;
-  color: #f7d070;
-  border-radius: 6px;
-  padding: 7px 12px;
-  font-size: 0.78rem;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.2s ease;
-}
-
-.cbb-voucher-pill:hover {
-  background: #c9a55a;
-  color: #120d09;
-}
-
-.cbb-voucher-pill strong {
-  letter-spacing: 0.05em;
-}
-
-.cbb-copy-hint {
-  font-size: 0.68rem;
-  opacity: 0.85;
-}
-
 .cbb-btn-primary {
-  padding: 8px 18px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  border-radius: 6px;
+  padding: 9px 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -303,20 +253,11 @@
   gap: 12px;
 }
 
-.cbb-code-pill {
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px dashed rgba(201, 165, 90, 0.6);
-  color: #f7d070;
-  padding: 3px 8px;
-  border-radius: 4px;
-  font-size: 0.74rem;
-  cursor: pointer;
-}
-
 .cbb-compact-cta {
   font-size: 0.78rem;
-  font-weight: 700;
-  color: #c9a55a;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-accent, #c59f52);
   text-decoration: none;
 }
 .cbb-compact-cta:hover {
