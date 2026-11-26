@@ -46,6 +46,14 @@ const DEFAULTS = {
   campaign_cta_text: 'Shop Black Friday Deals',
   campaign_cta_link: '/shop',
   campaign_ends_at: '',
+  campaign_guarantee: '✓ 100% Authentic Brands',
+  campaign_perk1: 'Free delivery over GHS 200',
+  campaign_perk2: 'Accra same-day & 24h dispatch',
+  campaign_perk3: 'Pay on Delivery available',
+  campaign_stock_percentage: 84,
+  campaign_stock_label: '84% claimed',
+  campaign_stock_sub: 'Limited event stock',
+  campaign_urgency_cta: 'Claim Black Friday Deals Now',
 
   // Jumia-inspired promotional modal popup (100% admin controlled)
   promo_popup_enabled: false,

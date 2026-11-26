@@ -38,6 +38,16 @@ export default function CampaignBroadcastBanner({ compact = false }) {
   const ctaLink = settings.campaign_cta_link || '/shop';
   const endsAt = settings.campaign_ends_at || '';
 
+  // Dynamic trust perks & stock urgency meters (100% Admin configurable)
+  const guarantee = settings.campaign_guarantee || '✓ 100% Authentic Brands';
+  const perk1 = settings.campaign_perk1 || `Free delivery over GHS ${settings.free_delivery_threshold || 200}`;
+  const perk2 = settings.campaign_perk2 || 'Accra same-day & 24h dispatch';
+  const perk3 = settings.campaign_perk3 || 'Pay on Delivery available';
+  const stockPercentage = Math.min(100, Math.max(5, Number(settings.campaign_stock_percentage) || 84));
+  const stockLabel = settings.campaign_stock_label || `${stockPercentage}% claimed`;
+  const stockSub = settings.campaign_stock_sub || 'Limited event stock';
+  const urgencyCta = settings.campaign_urgency_cta || (ctaText ? `${ctaText} Now` : 'Claim Deals Now');
+
   const targetTimestamp = useMemo(() => {
     if (endsAt) {
       const parsed = new Date(endsAt).getTime();
@@ -104,7 +114,7 @@ export default function CampaignBroadcastBanner({ compact = false }) {
                 <span className="cbb-pulse-dot" />
                 {badge}
               </span>
-              <span className="cbb-guarantee-pill">✓ 100% Authentic Brands</span>
+              <span className="cbb-guarantee-pill">{guarantee}</span>
             </div>
 
             <h2 className="cbb-headline">{headline}</h2>
@@ -136,15 +146,15 @@ export default function CampaignBroadcastBanner({ compact = false }) {
             <div className="cbb-perks-row">
               <div className="cbb-perk">
                 <span className="cbb-perk-icon">🚚</span>
-                <span>Free delivery over GHS 200</span>
+                <span>{perk1}</span>
               </div>
               <div className="cbb-perk">
                 <span className="cbb-perk-icon">⚡</span>
-                <span>Accra same-day & 24h dispatch</span>
+                <span>{perk2}</span>
               </div>
               <div className="cbb-perk">
                 <span className="cbb-perk-icon">💵</span>
-                <span>Pay on Delivery available</span>
+                <span>{perk3}</span>
               </div>
             </div>
           </div>
@@ -180,16 +190,16 @@ export default function CampaignBroadcastBanner({ compact = false }) {
 
             <div className="cbb-stock-urgency">
               <div className="cbb-stock-bar-wrap">
-                <div className="cbb-stock-bar" style={{ width: '84%' }} />
+                <div className="cbb-stock-bar" style={{ width: `${stockPercentage}%` }} />
               </div>
               <div className="cbb-stock-text">
-                <span>🔥 84% claimed</span>
-                <span>Limited event stock</span>
+                <span>🔥 {stockLabel}</span>
+                <span>{stockSub}</span>
               </div>
             </div>
 
             <Link to={ctaLink} className="cbb-urgency-cta">
-              Claim Black Friday Deals Now →
+              {urgencyCta} →
             </Link>
           </div>
         </div>

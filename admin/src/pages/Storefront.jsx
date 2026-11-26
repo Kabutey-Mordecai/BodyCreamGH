@@ -113,6 +113,14 @@ const DEFAULTS = {
   campaign_cta_text: 'Shop Black Friday',
   campaign_cta_link: '/shop',
   campaign_ends_at: '',
+  campaign_guarantee: '✓ 100% Authentic Brands',
+  campaign_perk1: 'Free delivery over GHS 200',
+  campaign_perk2: 'Accra same-day & 24h dispatch',
+  campaign_perk3: 'Pay on Delivery available',
+  campaign_stock_percentage: 84,
+  campaign_stock_label: '84% claimed',
+  campaign_stock_sub: 'Limited event stock',
+  campaign_urgency_cta: 'Claim Black Friday Deals Now',
 
   // Jumia-inspired dual campaign split tiles
   campaign_tiles_enabled: true,
@@ -387,6 +395,14 @@ export default function Storefront() {
         campaign_coupon_code: 'BF50',
         campaign_cta_text: 'Shop Black Friday',
         campaign_cta_link: '/shop',
+        campaign_guarantee: '✓ 100% Authentic Brands',
+        campaign_perk1: 'Free delivery over GHS 200',
+        campaign_perk2: 'Accra same-day & 24h dispatch',
+        campaign_perk3: 'Pay on Delivery available',
+        campaign_stock_percentage: 84,
+        campaign_stock_label: '84% claimed',
+        campaign_stock_sub: 'Limited event stock',
+        campaign_urgency_cta: 'Claim Black Friday Deals Now',
       }));
     } else if (preset === 'flash_sale') {
       setData(prev => ({
@@ -399,6 +415,14 @@ export default function Storefront() {
         campaign_coupon_code: 'FLASH20',
         campaign_cta_text: 'Claim Flash Deals',
         campaign_cta_link: '/shop',
+        campaign_guarantee: '⚡ Lightning Express Drop',
+        campaign_perk1: 'Free delivery over GHS 200',
+        campaign_perk2: 'Dispatches within 2h in Accra',
+        campaign_perk3: 'Pay on Delivery & MoMo accepted',
+        campaign_stock_percentage: 92,
+        campaign_stock_label: '92% sold out',
+        campaign_stock_sub: 'Flash drop ends at midnight',
+        campaign_urgency_cta: 'Claim Flash Deals Now',
       }));
     } else if (preset === 'holiday_glow') {
       setData(prev => ({
@@ -411,6 +435,14 @@ export default function Storefront() {
         campaign_coupon_code: 'GLOW15',
         campaign_cta_text: 'Explore Holiday Gifts',
         campaign_cta_link: '/shop',
+        campaign_guarantee: '✨ Gift-Ready Sealed Packaging',
+        campaign_perk1: 'Complimentary gift wrapping',
+        campaign_perk2: 'Nationwide express holiday dispatch',
+        campaign_perk3: 'Pay on Delivery & MoMo accepted',
+        campaign_stock_percentage: 75,
+        campaign_stock_label: '75% reserved',
+        campaign_stock_sub: 'Holiday edition batch',
+        campaign_urgency_cta: 'Claim Holiday Gifts Now',
       }));
     }
     setDirty(true);
@@ -908,6 +940,92 @@ export default function Storefront() {
                         onChange={e => update('campaign_ends_at', e.target.value ? new Date(e.target.value).toISOString() : '')}
                       />
                       <div className="hint">Leave empty to use rolling midnight countdown.</div>
+                    </div>
+                  </div>
+
+                  {/* Trust Perks & Stock Urgency Meter Controls */}
+                  <div style={{ marginTop: 16, padding: 14, background: 'var(--ac-surface-2)', borderRadius: 8 }}>
+                    <h4 style={{ margin: '0 0 10px', fontSize: '0.9rem' }}>Trust Perks & Stock Urgency Meters</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+                      <div className="field">
+                        <label>Top Guarantee Badge</label>
+                        <input
+                          type="text"
+                          value={data.campaign_guarantee || ''}
+                          onChange={e => update('campaign_guarantee', e.target.value)}
+                          placeholder="✓ 100% Authentic Brands"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Countdown Card Action Text</label>
+                        <input
+                          type="text"
+                          value={data.campaign_urgency_cta || ''}
+                          onChange={e => update('campaign_urgency_cta', e.target.value)}
+                          placeholder="Claim Black Friday Deals Now"
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 10 }}>
+                      <div className="field">
+                        <label>Trust Perk #1</label>
+                        <input
+                          type="text"
+                          value={data.campaign_perk1 || ''}
+                          onChange={e => update('campaign_perk1', e.target.value)}
+                          placeholder="Free delivery over GHS 200"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Trust Perk #2</label>
+                        <input
+                          type="text"
+                          value={data.campaign_perk2 || ''}
+                          onChange={e => update('campaign_perk2', e.target.value)}
+                          placeholder="Accra same-day & 24h dispatch"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Trust Perk #3</label>
+                        <input
+                          type="text"
+                          value={data.campaign_perk3 || ''}
+                          onChange={e => update('campaign_perk3', e.target.value)}
+                          placeholder="Pay on Delivery available"
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 14, marginTop: 10 }}>
+                      <div className="field">
+                        <label>Claimed %</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={data.campaign_stock_percentage || 84}
+                          onChange={e => update('campaign_stock_percentage', Number(e.target.value))}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Stock Claim Label</label>
+                        <input
+                          type="text"
+                          value={data.campaign_stock_label || ''}
+                          onChange={e => update('campaign_stock_label', e.target.value)}
+                          placeholder="84% claimed"
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Stock Sub-label</label>
+                        <input
+                          type="text"
+                          value={data.campaign_stock_sub || ''}
+                          onChange={e => update('campaign_stock_sub', e.target.value)}
+                          placeholder="Limited event stock"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
