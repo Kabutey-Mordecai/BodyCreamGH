@@ -26,6 +26,8 @@ const {
   createRiderManifestLink,
   getRiderManifest,
   riderResendPodOtp,
+  getRiderSettlement,
+  settleRiderCash,
 } = require('../controllers/delivery.controller');
 const { advanceShipment, simulateFullJourney } = require('../services/courier.service');
 
@@ -78,6 +80,8 @@ router.post('/rider/confirm',    riderConfirmLimiter, confirmRiderDelivery);
 // ── Authenticated ─────────────────────────────────────────────────────────────
 router.get('/partners',                         verifyToken, requireAdmin, requireFulfillmentOrAdmin, getDeliveryPartners);
 router.get('/riders',                           verifyToken, requireAdmin, requireFulfillmentOrAdmin, listRiders);
+router.get('/riders/:riderId/settlement',        verifyToken, requireAdmin, requireFulfillmentOrAdmin, getRiderSettlement);
+router.post('/riders/:riderId/settle',            verifyToken, requireAdmin, requireFulfillmentOrAdmin, settleRiderCash);
 router.post('/riders',                          verifyToken, requireAdmin, requireFulfillmentOrAdmin, createRider);
 router.delete('/riders/legacy',                 verifyToken, requireAdmin, requireFulfillmentOrAdmin, removeLegacyPartner);
 router.put('/riders/:riderId',                  verifyToken, requireAdmin, requireFulfillmentOrAdmin, updateRider);

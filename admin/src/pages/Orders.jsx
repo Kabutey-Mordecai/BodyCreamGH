@@ -1,11 +1,14 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ordersAPI, deliveriesAPI } from '../services/api';
+import { ordersAPI, deliveriesAPI, settingsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import DataTable from '../components/DataTable';
 import SearchInput from '../components/SearchInput';
 import StatusBadge from '../components/StatusBadge';
 import StatCard from '../components/StatCard';
+import { buildWhatsAppLink } from '../utils/whatsappTemplates';
+import { printBulkWaybills } from '../utils/printWaybill';
+import { printBulkInvoices } from '../utils/printInvoice';
 import './Orders.css';
 
 // Top workflow queues (clean 5-tab bar — never clips horizontally)
@@ -59,6 +62,7 @@ export default function Orders() {
   const [abandonedLoading, setAbandonedLoading] = useState(false);
   const [remindingId, setRemindingId]       = useState(null);
   const [selectedIds, setSelectedIds]       = useState([]);
+  const [bulkPrinting, setBulkPrinting]     = useState(false);
 
   // Rider Manifest Dispatch Hub Modal
   const [manifestOpen, setManifestOpen]     = useState(false);
@@ -234,6 +238,66 @@ export default function Orders() {
     a.click();
     URL.revokeObjectURL(url);
     toast.success(`Exported ${chosen.length} order${chosen.length !== 1 ? 's' : ''}`);
+  };
+
+  const handleBulkPrintInvoices = async () => {
+    if (!selectedIds.length) return;
+    setBulkPrinting(true);
+    try {
+      const [storeRes, ...ordersResponses] = await Promise.all([
+        settingsAPI.getAll().catch(() => ({ data: {} })),
+        ...selectedIds.map(id => ordersAPI.getById(id).catch(() => null)),
+      ]);
+      const store = storeRes?.data || {};
+      const validOrders = ordersResponses
+        .filter(Boolean)
+        .map(r => (r.data?.order ? { ...r.data.order, items: r.data.items } : r.data));
+
+      if (!validOrders.length) {
+        toast.error('Could not load order details for printing');
+        return;
+      }
+      printBulkInvoices(validOrders, store);
+    } catch {
+      toast.error('Failed to prepare bulk invoices');
+    } finally {
+      setBulkPrinting(false);
+    }
+  };
+
+  const handleBulkPrintWaybills = async () => {
+    if (!selectedIds.length) return;
+    setBulkPrinting(true);
+    try {
+      const [storeRes, ...results] = await Promise.all([
+        settingsAPI.getAll().catch(() => ({ data: {} })),
+        ...selectedIds.map(async id => {
+          try {
+            const ordRes = await ordersAPI.getById(id);
+            const rawOrder = ordRes.data?.order ? { ...ordRes.data.order, items: ordRes.data.items } : ordRes.data;
+            let delivery = null;
+            try {
+              const delRes = await deliveriesAPI.getByOrder(id);
+              delivery = delRes.data?.delivery || delRes.data || null;
+            } catch (_) {}
+            return { order: rawOrder, delivery };
+          } catch (_) {
+            return null;
+          }
+        }),
+      ]);
+      const store = storeRes?.data || {};
+      const validItems = results.filter(Boolean);
+      if (!validItems.length) {
+        toast.error('Could not load order waybill data');
+        return;
+      }
+      printBulkWaybills(validItems, store);
+    } catch {
+      toast.error('Failed to prepare bulk waybills');
+    } finally {
+      setBulkPrinting(false);
+    }
   };
 
   const handleExport = async () => {
@@ -609,6 +673,24 @@ export default function Orders() {
                 >
                   Assign / Dispatch ({selectedIds.length})
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={handleBulkPrintWaybills}
+                  disabled={bulkPrinting}
+                  title="Print dispatch waybills for selected orders"
+                >
+                  {bulkPrinting ? 'Preparing…' : `🖨️ Waybills (${selectedIds.length})`}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  onClick={handleBulkPrintInvoices}
+                  disabled={bulkPrinting}
+                  title="Print customer invoices for selected orders"
+                >
+                  {bulkPrinting ? 'Preparing…' : `📄 Invoices (${selectedIds.length})`}
+                </button>
                 <button type="button" className="btn btn-outline btn-sm" onClick={handleExportSelectedCSV}>
                   ↓ Export Selected
                 </button>
@@ -671,8 +753,20 @@ export default function Orders() {
                         <span className="badge badge-accent" style={{ fontSize: '0.6rem', padding: '1px 6px' }}>Guest</span>
                       )}
                     </div>
-                    <div className="cell-muted text-xs" style={{ maxWidth: 230, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {o.customer_phone || o.customer_email || ''}
+                    <div className="cell-muted text-xs" style={{ maxWidth: 230, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{o.customer_phone || o.customer_email || ''}</span>
+                      {o.customer_phone && buildWhatsAppLink(o.customer_phone) && (
+                        <a
+                          href={buildWhatsAppLink(o.customer_phone)}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={e => e.stopPropagation()}
+                          style={{ color: 'var(--ac-success)', textDecoration: 'none', fontSize: '0.84rem', fontWeight: 600, flexShrink: 0 }}
+                          title="Open WhatsApp chat with customer"
+                        >
+                          💬
+                        </a>
+                      )}
                     </div>
                   </div>
                 ),

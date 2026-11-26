@@ -550,16 +550,18 @@ const getRequestCounts = async (req, res) => {
             AND COALESCE(refund_status, 'not_requested') NOT IN ('pending', 'success')
         ) AS return_count,
         COUNT(*) FILTER (WHERE status = 'pending') AS pending_orders,
-        (SELECT COUNT(*) FROM return_requests WHERE status = 'pending') AS partial_return_count
+        (SELECT COUNT(*) FROM return_requests WHERE status = 'pending') AS partial_return_count,
+        (SELECT order_number FROM orders WHERE status = 'pending' ORDER BY created_at DESC LIMIT 1) AS latest_order_number
       FROM orders
     `);
     const legacyReturns = parseInt(rows[0].return_count, 10) || 0;
     const partialReturns = parseInt(rows[0].partial_return_count, 10) || 0;
     res.json({
-      cancel:         parseInt(rows[0].cancel_count, 10) || 0,
-      return:         legacyReturns + partialReturns,
+      cancel:            parseInt(rows[0].cancel_count, 10) || 0,
+      return:            legacyReturns + partialReturns,
       partialReturns,
-      pendingOrders:  parseInt(rows[0].pending_orders, 10) || 0,
+      pendingOrders:     parseInt(rows[0].pending_orders, 10) || 0,
+      latestOrderNumber: rows[0].latest_order_number || null,
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch request counts' });

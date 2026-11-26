@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { customersAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import StatusBadge from '../components/StatusBadge';
+import { buildWhatsAppLink } from '../utils/whatsappTemplates';
 
 const fmt = (n) => `GHS ${Number(n || 0).toFixed(2)}`;
 
@@ -78,7 +79,22 @@ export default function CustomerDetail() {
                 <tbody>
                   {[
                     ['Email',    customer.email],
-                    ['Phone',    customer.phone || '—'],
+                    ['Phone',    (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>{customer.phone || '—'}</span>
+                        {customer.phone && buildWhatsAppLink(customer.phone) && (
+                          <a
+                            href={buildWhatsAppLink(customer.phone)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="btn btn-whatsapp btn-sm text-xs"
+                            style={{ padding: '2px 8px', fontSize: '0.74rem', textDecoration: 'none' }}
+                          >
+                            💬 WhatsApp
+                          </a>
+                        )}
+                      </div>
+                    )],
                     ['Joined',   new Date(customer.created_at).toLocaleDateString('en-GH', { year: 'numeric', month: 'long', day: 'numeric' })],
                     ['Address',  customer.address || '—'],
                   ].map(([label, value]) => (

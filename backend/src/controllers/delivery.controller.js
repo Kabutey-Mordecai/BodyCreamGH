@@ -2176,6 +2176,129 @@ const riderResendPodOtp = async (req, res) => {
   }
 };
 
+// ── Admin: get end-of-day rider cash settlement reconciliation ────────────
+const getRiderSettlement = async (req, res) => {
+  try {
+    const { riderId } = req.params;
+    const { rows: riderRows } = await pool.query(
+      `SELECT id, name, phone, vehicle_type, vehicle_plate FROM dispatch_riders WHERE id = $1`,
+      [riderId]
+    );
+    if (!riderRows.length) {
+      return res.status(404).json({ error: 'Rider not found' });
+    }
+    const rider = riderRows[0];
+
+    // Completed deliveries today
+    const { rows: completedToday } = await pool.query(
+      `SELECT d.id AS delivery_id, d.order_id, d.tracking_number, d.status,
+              d.pod_verified_at, d.updated_at,
+              o.order_number, o.total_amount, o.payment_method, o.payment_status,
+              COALESCE(u.first_name || ' ' || u.last_name, u.first_name, NULLIF(TRIM(COALESCE(o.guest_first_name, '') || ' ' || COALESCE(o.guest_last_name, '')), ''), o.guest_email, 'Customer') AS customer_name,
+              COALESCE(u.phone, o.guest_phone) AS customer_phone,
+              o.shipping_city, o.shipping_region
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+         LEFT JOIN users u ON o.customer_id = u.id
+        WHERE LOWER(TRIM(d.delivery_partner)) = LOWER(TRIM($1))
+          AND (d.pod_verified_at IS NOT NULL OR d.status = 'delivered')
+          AND COALESCE(d.pod_verified_at, d.updated_at) >= CURRENT_DATE
+        ORDER BY COALESCE(d.pod_verified_at, d.updated_at) DESC`,
+      [rider.name]
+    );
+
+    // Active stops currently on route
+    const { rows: pendingStops } = await pool.query(
+      `SELECT d.id AS delivery_id, o.order_number, o.total_amount, o.payment_method, o.payment_status
+         FROM deliveries d
+         JOIN orders o ON o.id = d.order_id
+        WHERE LOWER(TRIM(d.delivery_partner)) = LOWER(TRIM($1))
+          AND d.status IN ('pending', 'in_transit', 'out_for_delivery')
+          AND d.pod_verified_at IS NULL
+          AND o.status NOT IN ('delivered', 'cancelled', 'refunded')`,
+      [rider.name]
+    );
+
+    const codCompletedToday = completedToday
+      .filter(d => d.payment_method === 'pay_on_delivery')
+      .reduce((s, d) => s + Number(d.total_amount || 0), 0);
+
+    const codPendingStops = pendingStops
+      .filter(d => d.payment_method === 'pay_on_delivery' && d.payment_status !== 'paid')
+      .reduce((s, d) => s + Number(d.total_amount || 0), 0);
+
+    res.json({
+      rider,
+      deliveries_today: completedToday,
+      pending_stops: pendingStops,
+      cod_collected_today_ghs: Number(codCompletedToday.toFixed(2)),
+      cod_pending_ghs: Number(codPendingStops.toFixed(2)),
+      total_deliveries_today: completedToday.length,
+    });
+  } catch (err) {
+    logger.error('getRiderSettlement error', { err: err.message });
+    res.status(500).json({ error: 'Failed to retrieve rider settlement data' });
+  }
+};
+
+// ── Admin: record end-of-day rider cash handover & settlement ─────────────
+const settleRiderCash = async (req, res) => {
+  try {
+    const { riderId } = req.params;
+    const { cash_received, notes, expected_amount, orders_settled } = req.body;
+
+    const { rows: riderRows } = await pool.query(
+      `SELECT id, name, phone, vehicle_type, vehicle_plate FROM dispatch_riders WHERE id = $1`,
+      [riderId]
+    );
+    if (!riderRows.length) {
+      return res.status(404).json({ error: 'Rider not found' });
+    }
+    const rider = riderRows[0];
+
+    const supervisor = req.user ? (req.user.name || req.user.email) : 'Dispatch Supervisor';
+    const settlementId = `SETTLE-${Date.now().toString().slice(-6)}-${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+    const received = Number(cash_received || 0);
+    const expected = Number(expected_amount || 0);
+    const variance = Number((received - expected).toFixed(2));
+
+    logAdminAction({
+      actorId: req.user?.id,
+      actorEmail: req.userEmail,
+      action: 'rider.cash_settlement',
+      resourceType: 'dispatch_rider',
+      resourceId: riderId,
+      details: {
+        settlement_id: settlementId,
+        rider_name: rider.name,
+        expected_ghs: expected,
+        received_ghs: received,
+        variance_ghs: variance,
+        supervisor,
+        notes: notes || '',
+        order_count: Array.isArray(orders_settled) ? orders_settled.length : 0,
+      },
+      ip: req.ip,
+    }).catch(() => {});
+
+    res.json({
+      success: true,
+      settlement_id: settlementId,
+      rider,
+      expected_ghs: expected,
+      received_ghs: received,
+      variance_ghs: variance,
+      supervisor,
+      notes: notes || '',
+      settled_at: new Date().toISOString(),
+      order_count: Array.isArray(orders_settled) ? orders_settled.length : 0,
+    });
+  } catch (err) {
+    logger.error('settleRiderCash error', { err: err.message });
+    res.status(500).json({ error: 'Failed to record rider cash settlement' });
+  }
+};
+
 module.exports = {
   ensureRidersTable,
   createDelivery,
@@ -2198,4 +2321,6 @@ module.exports = {
   createRiderManifestLink,
   getRiderManifest,
   riderResendPodOtp,
+  getRiderSettlement,
+  settleRiderCash,
 };

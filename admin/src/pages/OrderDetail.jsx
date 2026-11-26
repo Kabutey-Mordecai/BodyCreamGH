@@ -8,6 +8,7 @@ import Modal from '../components/Modal';
 import { printInvoice } from '../utils/printInvoice';
 import { printWaybill } from '../utils/printWaybill';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { buildWhatsAppLink, WA_TEMPLATES } from '../utils/whatsappTemplates';
 import './Orders.css';
 
 // Fulfilment flow is strictly forward-moving. Skipping to "delivered" is allowed
@@ -1266,7 +1267,7 @@ export default function OrderDetail() {
                   </div>
                   <div className="od-contact-actions">
                     <a
-                      href={`https://wa.me/${displayPhone.replace(/\D/g, '').replace(/^0/, '233')}`}
+                      href={buildWhatsAppLink(displayPhone) || '#'}
                       target="_blank"
                       rel="noreferrer"
                       className="btn btn-whatsapp btn-sm"
@@ -1281,6 +1282,59 @@ export default function OrderDetail() {
                     >
                       📞 Call
                     </a>
+                  </div>
+
+                  {/* 1-Click WhatsApp Quick Message Templates */}
+                  <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div className="muted text-xs" style={{ fontWeight: 600 }}>Quick WhatsApp Messages:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      <a
+                        href={buildWhatsAppLink(displayPhone, WA_TEMPLATES.orderConfirmation(order)) || '#'}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="btn btn-ghost btn-sm text-xs"
+                        style={{ padding: '4px 8px', fontSize: '0.74rem', border: '1px solid var(--ac-border)', textDecoration: 'none' }}
+                        title="Send Order Confirmation message"
+                      >
+                        ✨ Confirmed
+                      </a>
+                      {delivery && (
+                        <a
+                          href={buildWhatsAppLink(displayPhone, WA_TEMPLATES.deliveryHandoffWithOtp(order, delivery)) || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-ghost btn-sm text-xs"
+                          style={{ padding: '4px 8px', fontSize: '0.74rem', border: '1px solid var(--ac-border)', textDecoration: 'none' }}
+                          title="Send Dispatch & 6-digit Delivery Code message"
+                        >
+                          🛵 Dispatched
+                        </a>
+                      )}
+                      {order.payment_method === 'pay_on_delivery' && order.payment_status !== 'paid' && (
+                        <a
+                          href={buildWhatsAppLink(displayPhone, WA_TEMPLATES.paymentReminderCod(order)) || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-ghost btn-sm text-xs"
+                          style={{ padding: '4px 8px', fontSize: '0.74rem', border: '1px solid var(--ac-border)', textDecoration: 'none' }}
+                          title="Send Cash on Delivery payment reminder"
+                        >
+                          💵 COD Reminder
+                        </a>
+                      )}
+                      {order.fulfillment_method === 'pickup' && (
+                        <a
+                          href={buildWhatsAppLink(displayPhone, WA_TEMPLATES.readyForPickup(order, store)) || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="btn btn-ghost btn-sm text-xs"
+                          style={{ padding: '4px 8px', fontSize: '0.74rem', border: '1px solid var(--ac-border)', textDecoration: 'none' }}
+                          title="Send Ready for Pickup station location notice"
+                        >
+                          📍 Pickup Ready
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { deliveriesAPI } from '../services/api';
+import { deliveriesAPI, settingsAPI } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import { printCashSettlementReceipt } from '../utils/printSettlement';
 import StatCard from '../components/StatCard';
 import SearchInput from '../components/SearchInput';
 import Modal from '../components/Modal';
@@ -87,8 +88,16 @@ export default function Riders() {
   // Route Manifest Modal
   const [manifestTarget, setManifestTarget] = useState(null);
   const [manifestExpiry, setManifestExpiry] = useState('24h');
-  const [manifestData, setManifestData] = useState(null);
-  const [manifestBusy, setManifestBusy] = useState(false);
+  const [manifestData, setManifestData]     = useState(null);
+  const [manifestBusy, setManifestBusy]     = useState(false);
+
+  // End-of-Day Cash Settlement Modal
+  const [settleTarget, setSettleTarget]     = useState(null);
+  const [settleData, setSettleData]         = useState(null);
+  const [settleLoading, setSettleLoading]   = useState(false);
+  const [cashReceived, setCashReceived]     = useState('');
+  const [settleNotes, setSettleNotes]       = useState('');
+  const [settling, setSettling]             = useState(false);
 
   const loadRiders = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
@@ -204,6 +213,58 @@ export default function Riders() {
       loadRiders(true);
     } catch (err) {
       toast.error(err.response?.data?.error || 'Failed to update status');
+    }
+  };
+
+  const openSettlementModal = async (rider) => {
+    setSettleTarget(rider);
+    setSettleData(null);
+    setSettleLoading(true);
+    setCashReceived('');
+    setSettleNotes('');
+    try {
+      const { data } = await deliveriesAPI.getRiderSettlement(rider.id);
+      setSettleData(data);
+      setCashReceived(String(data.cod_collected_today_ghs ?? 0));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to load rider settlement data');
+    } finally {
+      setSettleLoading(false);
+    }
+  };
+
+  const handleConfirmSettlement = async (e) => {
+    e.preventDefault();
+    if (!settleTarget || !settleData) return;
+    const receivedNum = Number(cashReceived);
+    if (isNaN(receivedNum) || receivedNum < 0) {
+      toast.error('Please enter a valid cash amount');
+      return;
+    }
+    setSettling(true);
+    try {
+      const [storeRes, settleRes] = await Promise.all([
+        settingsAPI.getAll().catch(() => ({ data: {} })),
+        deliveriesAPI.settleRiderCash(settleTarget.id, {
+          cash_received: receivedNum,
+          expected_amount: settleData.cod_collected_today_ghs,
+          notes: settleNotes,
+          orders_settled: settleData.deliveries_today || [],
+        }),
+      ]);
+      const store = storeRes?.data || {};
+      const settlementResult = {
+        ...settleRes.data,
+        deliveries: settleData.deliveries_today || [],
+      };
+      toast.success(`Cash settlement logged for ${settleTarget.name}`);
+      setSettleTarget(null);
+      loadRiders(true);
+      printCashSettlementReceipt(settlementResult, store);
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to settle rider cash');
+    } finally {
+      setSettling(false);
     }
   };
 
@@ -613,6 +674,14 @@ export default function Riders() {
                         <div className="rf-row-actions">
                           <button
                             type="button"
+                            className={`btn btn-sm ${Number(rider.cod_collected_today_ghs || 0) > 0 ? 'btn-primary' : 'btn-outline'}`}
+                            title="End-of-day courier COD cash settlement"
+                            onClick={() => openSettlementModal(rider)}
+                          >
+                            💰 Settle{Number(rider.cod_collected_today_ghs || 0) > 0 ? ` (${fmtGhs(rider.cod_collected_today_ghs)})` : ''}
+                          </button>
+                          <button
+                            type="button"
                             className="btn btn-outline btn-sm"
                             disabled={!rider.is_active}
                             title={!rider.is_active ? 'Set rider On duty before generating a route link' : 'Generate signed WhatsApp route link'}
@@ -942,6 +1011,169 @@ export default function Riders() {
               </button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* ── End-of-Day Rider COD Cash Settlement Modal ──────────────── */}
+      <Modal
+        open={Boolean(settleTarget)}
+        onClose={() => !settling && setSettleTarget(null)}
+        title={`Shift COD Settlement — ${settleTarget?.name || 'Rider'}`}
+      >
+        {settleLoading ? (
+          <div style={{ textAlign: 'center', padding: '36px 0' }}>
+            <div className="spinner" />
+            <p className="muted text-sm" style={{ marginTop: 12 }}>Loading deliveries and cash audit...</p>
+          </div>
+        ) : !settleData ? (
+          <div style={{ padding: '24px 0', textAlign: 'center' }}>
+            <p className="muted">No settlement data available.</p>
+          </div>
+        ) : (
+          <form onSubmit={handleConfirmSettlement} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Rider quick info */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--ac-bg-subtle)', padding: '10px 14px', borderRadius: 6, fontSize: '0.82rem' }}>
+              <div>
+                <strong>{settleTarget?.name}</strong> · {settleTarget?.phone || 'No phone'}
+              </div>
+              <span className="badge badge-neutral">
+                {VEHICLE_LABELS[settleTarget?.vehicle_type] || 'Motorbike'} {settleTarget?.vehicle_plate ? `(${settleTarget.vehicle_plate})` : ''}
+              </span>
+            </div>
+
+            {/* Metrics cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <div style={{ border: '1px solid var(--ac-border)', borderRadius: 6, padding: 10, background: 'var(--ac-card-bg)' }}>
+                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--ac-text-muted)', fontWeight: 700 }}>
+                  Deliveries Today
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 4 }}>
+                  {settleData.total_deliveries_today || 0}
+                </div>
+              </div>
+              <div style={{ border: '1px solid var(--ac-accent)', borderRadius: 6, padding: 10, background: 'var(--ac-bg-subtle)' }}>
+                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--ac-accent)', fontWeight: 700 }}>
+                  Expected COD Cash
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 4, color: 'var(--ac-accent)' }}>
+                  {fmtGhs(settleData.cod_collected_today_ghs)}
+                </div>
+              </div>
+              <div style={{ border: '1px solid var(--ac-border)', borderRadius: 6, padding: 10, background: 'var(--ac-card-bg)' }}>
+                <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', color: 'var(--ac-text-muted)', fontWeight: 700 }}>
+                  Pending on Road
+                </div>
+                <div style={{ fontSize: '1.25rem', fontWeight: 800, marginTop: 4 }}>
+                  {fmtGhs(settleData.cod_pending_ghs)}
+                </div>
+              </div>
+            </div>
+
+            {/* Cash Handover Input & Live Variance */}
+            <div className="field">
+              <label htmlFor="settle-cash-received">Physical Cash Handed Over (GHS) *</label>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input
+                  id="settle-cash-received"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  style={{ fontSize: '1.1rem', fontWeight: 700, maxWidth: 220 }}
+                  value={cashReceived}
+                  onChange={e => setCashReceived(e.target.value)}
+                  placeholder="0.00"
+                />
+                {(() => {
+                  const exp = Number(settleData.cod_collected_today_ghs || 0);
+                  const rec = Number(cashReceived || 0);
+                  const diff = rec - exp;
+                  if (Math.abs(diff) < 0.01) {
+                    return <span className="badge badge-success" style={{ padding: '6px 12px' }}>✓ Exact Match (Balanced)</span>;
+                  }
+                  if (diff > 0) {
+                    return <span className="badge badge-info" style={{ padding: '6px 12px' }}>+{fmtGhs(diff)} Surplus</span>;
+                  }
+                  return <span className="badge badge-danger" style={{ padding: '6px 12px' }}>-{fmtGhs(Math.abs(diff))} Shortage</span>;
+                })()}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div className="field">
+              <label htmlFor="settle-notes">Supervisor Settlement Notes</label>
+              <textarea
+                id="settle-notes"
+                rows={2}
+                value={settleNotes}
+                onChange={e => setSettleNotes(e.target.value)}
+                placeholder="e.g. Full cash received and verified into safe deposit. Shift completed."
+              />
+            </div>
+
+            {/* Delivered Orders List preview */}
+            <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--ac-text-muted)' }}>
+                  Delivered Orders Breakdown ({settleData.deliveries_today?.length || 0})
+                </span>
+              </div>
+              <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid var(--ac-border)', borderRadius: 4 }}>
+                <table style={{ margin: 0, fontSize: '0.76rem' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: '6px 8px' }}>Order #</th>
+                      <th style={{ padding: '6px 8px' }}>Customer</th>
+                      <th style={{ padding: '6px 8px' }}>Payment</th>
+                      <th className="cell-right" style={{ padding: '6px 8px' }}>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(settleData.deliveries_today || []).map(d => (
+                      <tr key={d.delivery_id}>
+                        <td style={{ padding: '6px 8px', fontWeight: 600 }}>#{d.order_number}</td>
+                        <td style={{ padding: '6px 8px' }}>{d.customer_name}</td>
+                        <td style={{ padding: '6px 8px' }}>
+                          <span className={`badge ${d.payment_method === 'pay_on_delivery' ? 'badge-warning' : 'badge-neutral'}`} style={{ fontSize: '0.64rem' }}>
+                            {d.payment_method === 'pay_on_delivery' ? 'COD' : 'Prepaid'}
+                          </span>
+                        </td>
+                        <td className="cell-right" style={{ padding: '6px 8px', fontWeight: 700 }}>
+                          {fmtGhs(d.total_amount)}
+                        </td>
+                      </tr>
+                    ))}
+                    {(!settleData.deliveries_today || settleData.deliveries_today.length === 0) && (
+                      <tr>
+                        <td colSpan="4" style={{ textAlign: 'center', padding: '12px 8px', color: 'var(--ac-text-muted)' }}>
+                          No deliveries recorded today.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 8 }}>
+              <button
+                type="button"
+                className="btn btn-outline"
+                disabled={settling}
+                onClick={() => setSettleTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={settling}
+              >
+                {settling ? 'Logging...' : 'Confirm & Print Voucher 🖨️'}
+              </button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>

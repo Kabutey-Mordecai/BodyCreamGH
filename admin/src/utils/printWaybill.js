@@ -54,7 +54,8 @@ export function code128Svg(text, height = 56) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${total} ${height}" preserveAspectRatio="none" class="barcode" role="img" aria-label="Barcode ${esc(text)}">${rects}</svg>`;
 }
 
-export function printWaybill(order, store = {}, delivery = null) {
+export function buildWaybillSheetHtml(rawOrder, store = {}, delivery = null) {
+  const order = rawOrder?.order ? { ...rawOrder.order, items: rawOrder.items } : rawOrder;
   const num = order.order_number || String(order.id || '').slice(0, 8);
   const trackingCode = delivery?.tracking_number || num;
   const zoneCode = delivery?.zone_code || resolveZone(order.shipping_region, order.shipping_city);
@@ -76,16 +77,82 @@ export function printWaybill(order, store = {}, delivery = null) {
     <td class="r">${money(it.price_at_purchase || it.price)}</td>
     <td class="r">${money(it.subtotal || it.price_at_purchase * it.quantity)}</td></tr>`).join('');
 
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Waybill ${esc(trackingCode)}</title>
-<style>
+  return `<div class="sheet">
+    <div class="label-box">
+      <div class="brand-bar">
+        <h1>${esc(store.store_name || 'BODYCREAM GH')}</h1>
+        <div class="tag">EXPRESS DISPATCH WAYBILL</div>
+      </div>
+
+      <div class="grid-row">
+        <div class="cell">
+          <div class="lbl">Ship To (Recipient)</div>
+          <div class="recipient">${esc(name)}</div>
+          <div><b>Phone:</b> ${esc(phone || '—')}</div>
+          <div style="margin-top:4px"><b>Address:</b> ${esc(addr || '—')}</div>
+          ${order.fulfillment_method === 'pickup' ? '<div style="margin-top:4px;color:#c9a55a;font-weight:700">★ STATION PICKUP</div>' : ''}
+        </div>
+        <div class="cell">
+          <div><b>Order #:</b> ${esc(num)}</div>
+          <div><b>Order Date:</b> ${esc(new Date(order.created_at).toLocaleDateString('en-GH'))}</div>
+          <div><b># items:</b> ${totalItemQty}</div>
+          <div class="collect-box ${cod ? 'cod' : ''}">
+            <div style="font-size:11px;font-weight:700;line-height:1.25">
+              ${cod ? 'AMOUNT TO COLLECT<br>(CASH / MOMO)' : 'PREPAID ONLINE<br>DO NOT COLLECT'}
+            </div>
+            <div class="collect-amt">${money(collectAmount)}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid-row">
+        <div class="cell zone-cell">
+          <div>
+            <div class="lbl">Dispatch Hub / Rider</div>
+            <div><b>${esc(partner)}</b></div>
+            ${delivery?.driver_phone ? `<div class="muted">${esc(delivery.driver_phone)}</div>` : ''}
+          </div>
+          <div class="zone-big">${esc(zoneCode)}</div>
+        </div>
+        <div class="cell barcode-wrap">
+          <div class="lbl">Parcel Tracking Barcode</div>
+          ${code128Svg(trackingCode)}
+          <div class="code-txt">${esc(trackingCode)}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="pod-note">
+      PROOF OF DELIVERY REQUIRED: Rider must verify customer's 6-digit Delivery OTP &amp; snap parcel photo on handoff.
+    </div>
+
+    <table>
+      <thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="totals">
+      <div><span>Subtotal</span><span>${money(subtotal)}</span></div>
+      ${Number(order.discount_amount) > 0 ? `<div><span>Discount</span><span>- ${money(order.discount_amount)}</span></div>` : ''}
+      <div><span>Delivery</span><span>${Number(order.delivery_fee) ? money(order.delivery_fee) : 'Free'}</span></div>
+      <div class="grand"><span>TOTAL</span><span>${money(order.total_amount)}</span></div>
+    </div>
+    <div class="sign">
+      <div>Rider name &amp; signature</div>
+      <div>Customer signature</div>
+      <div>Date / time</div>
+    </div>
+  </div>`;
+}
+
+const BASE_STYLES = `
   :root{font-family:system-ui,Arial,sans-serif;color:#000}
   body{margin:0;padding:16px;background:#eee}
   .toolbar{display:flex;gap:8px;justify-content:center;margin-bottom:12px}
   .toolbar button{padding:6px 14px;font-size:14px;cursor:pointer}
-  .sheet{background:#fff;margin:0 auto;padding:14mm;box-sizing:border-box;width:210mm;font-size:13px}
+  .sheet{background:#fff;margin:0 auto 20px auto;padding:14mm;box-sizing:border-box;width:210mm;font-size:13px;page-break-after:always;break-after:page}
+  .sheet:last-child{page-break-after:avoid;break-after:avoid;margin-bottom:0}
   body.thermal .sheet{width:80mm;padding:3mm;font-size:11px}
 
-  /* Jumia-style boxed shipping label grid */
   .label-box{border:2.5px solid #000}
   .brand-bar{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-bottom:2px solid #000;background:#000;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .brand-bar h1{margin:0;font-size:20px;letter-spacing:1px;text-transform:uppercase}
@@ -118,86 +185,61 @@ export function printWaybill(order, store = {}, delivery = null) {
   .r{text-align:right} .v{font-size:.9em;color:#444}
   .totals{margin-left:auto;width:55%;margin-top:6px} .totals div{display:flex;justify-content:space-between;padding:2px 0}
   .grand{font-weight:900;font-size:1.15em;border-top:2px solid #000;margin-top:2px;padding-top:4px}
-  .sign{display:flex;gap:16px;margin-top:26px} .sign div{flex:1;border-top:1px solid #000;padding-top:4px;font-size:.85em}
-  body.thermal .sign{flex-direction:column;gap:20px}
-  body.thermal .totals{width:100%}
+  .sign{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed #666;font-size:10px;color:#444;text-align:center}
+  .sign div{border-top:1px solid #000;padding-top:3px}
 
-  @page{size:A4;margin:0}
   @media print{
-    body{background:#fff;padding:0} .toolbar{display:none}
-    .sheet{box-shadow:none;margin:0}
-    body.a4 .sheet{width:auto}
-    body.thermal .sheet{width:80mm}
+    body{background:#fff;padding:0}
+    .toolbar{display:none}
+    .sheet{margin:0;padding:12mm;box-shadow:none;border:none}
   }
-</style></head><body class="a4">
+`;
+
+export function printWaybill(order, store = {}, delivery = null) {
+  const sheetHtml = buildWaybillSheetHtml(order, store, delivery);
+  const num = order.order_number || String(order.id || '').slice(0, 8);
+  const trackingCode = delivery?.tracking_number || num;
+
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Waybill ${esc(trackingCode)}</title>
+<style>${BASE_STYLES}</style></head><body>
 <div class="toolbar">
-  <button id="a4">A4 Sheet</button><button id="th">80mm Thermal</button><button id="pr">Print Label</button>
+  <button id="pr" style="font-weight:700">🖨️ Print Waybill</button>
+  <button id="a4">Standard A4</button>
+  <button id="th">Thermal 80mm</button>
 </div>
-<div class="sheet">
-  <div class="label-box">
-    <div class="brand-bar">
-      <h1>${esc(store.store_name || 'BODYCREAM GH')}</h1>
-      <span class="tag">EXPRESS DISPATCH</span>
-    </div>
+${sheetHtml}
+<script>
+  const b=document.body, st=document.createElement('style'); document.head.appendChild(st);
+  function mode(m){b.className=m; st.textContent='@page{size:'+(m==='thermal'?'80mm auto':'A4')+';margin:0}'}
+  document.getElementById('a4').onclick=()=>mode('a4');
+  document.getElementById('th').onclick=()=>mode('thermal');
+  document.getElementById('pr').onclick=()=>window.print();
+  mode('a4');
+</script></body></html>`;
 
-    <div class="grid-row">
-      <div class="cell">
-        <div class="lbl">Deliver To</div>
-        <div class="recipient">${esc(name)}</div>
-        <div>Tel: <b>${esc(phone || '—')}</b></div>
-        <div style="margin-top:4px">${esc(addr || 'Address not provided')}</div>
-        ${order.ghana_post_gps ? `<div class="muted" style="margin-top:2px">GPS: ${esc(order.ghana_post_gps)}</div>` : ''}
-      </div>
-      <div class="cell">
-        <div><b>Order #:</b> ${esc(num)}</div>
-        <div><b>Order Date:</b> ${esc(new Date(order.created_at).toLocaleDateString('en-GH'))}</div>
-        <div><b># items:</b> ${totalItemQty}</div>
-        <div class="collect-box ${cod ? 'cod' : ''}">
-          <div style="font-size:11px;font-weight:700;line-height:1.25">
-            ${cod ? 'AMOUNT TO COLLECT<br>(CASH / MOMO)' : 'PREPAID ONLINE<br>DO NOT COLLECT'}
-          </div>
-          <div class="collect-amt">${money(collectAmount)}</div>
-        </div>
-      </div>
-    </div>
+  const w = window.open('', '_blank', 'width=900,height=900');
+  if (!w) return;
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+}
 
-    <div class="grid-row">
-      <div class="cell zone-cell">
-        <div>
-          <div class="lbl">Dispatch Hub / Rider</div>
-          <div><b>${esc(partner)}</b></div>
-          ${delivery?.driver_phone ? `<div class="muted">${esc(delivery.driver_phone)}</div>` : ''}
-        </div>
-        <div class="zone-big">${esc(zoneCode)}</div>
-      </div>
-      <div class="cell barcode-wrap">
-        <div class="lbl">Parcel Tracking Barcode</div>
-        ${code128Svg(trackingCode)}
-        <div class="code-txt">${esc(trackingCode)}</div>
-      </div>
-    </div>
-  </div>
+export function printBulkWaybills(ordersWithDeliveries, store = {}) {
+  if (!Array.isArray(ordersWithDeliveries) || !ordersWithDeliveries.length) return;
+  const sheets = ordersWithDeliveries.map(item => {
+    const ord = item.order || item;
+    const del = item.delivery || null;
+    return buildWaybillSheetHtml(ord, store, del);
+  }).join('\n');
 
-  <div class="pod-note">
-    PROOF OF DELIVERY REQUIRED: Rider must verify customer's 6-digit Delivery OTP &amp; snap parcel photo on handoff.
-  </div>
-
-  <table>
-    <thead><tr><th>Item</th><th class="r">Qty</th><th class="r">Unit</th><th class="r">Total</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
-  <div class="totals">
-    <div><span>Subtotal</span><span>${money(subtotal)}</span></div>
-    ${Number(order.discount_amount) > 0 ? `<div><span>Discount</span><span>- ${money(order.discount_amount)}</span></div>` : ''}
-    <div><span>Delivery</span><span>${Number(order.delivery_fee) ? money(order.delivery_fee) : 'Free'}</span></div>
-    <div class="grand"><span>TOTAL</span><span>${money(order.total_amount)}</span></div>
-  </div>
-  <div class="sign">
-    <div>Rider name &amp; signature</div>
-    <div>Customer signature</div>
-    <div>Date / time</div>
-  </div>
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Bulk Waybills (${ordersWithDeliveries.length} orders)</title>
+<style>${BASE_STYLES}</style></head><body>
+<div class="toolbar">
+  <button id="pr" style="font-weight:700">🖨️ Print All Waybills (${ordersWithDeliveries.length})</button>
+  <button id="a4">Standard A4</button>
+  <button id="th">Thermal 80mm</button>
 </div>
+${sheets}
 <script>
   const b=document.body, st=document.createElement('style'); document.head.appendChild(st);
   function mode(m){b.className=m; st.textContent='@page{size:'+(m==='thermal'?'80mm auto':'A4')+';margin:0}'}

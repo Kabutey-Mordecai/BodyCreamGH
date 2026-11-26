@@ -1,15 +1,17 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Outlet, NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { ordersAPI, adminAPI } from '../services/api';
 import { filterNavGroupsByRole } from '../utils/rbac';
+import { playOrderChime, isSoundMuted, toggleSoundMuted } from '../utils/audioAlert';
 import CommandPalette from '../components/CommandPalette';
 import './AdminLayout.css';
 
 const STORE_NAME = import.meta.env.VITE_STORE_NAME || 'BodyCream GH';
 const STOREFRONT_URL = import.meta.env.VITE_STOREFRONT_URL || 'https://bodycreamgh-shop.vercel.app';
 
-// Sidebar navigation groups (static — badge counts are injected at render).
+// Sidebar navigation groups — organized by merchant workflow
 const NAV_GROUPS_DEF = [
   {
     label: 'Overview',
@@ -20,29 +22,34 @@ const NAV_GROUPS_DEF = [
     ],
   },
   {
-    label: 'Sell',
+    label: 'Operations',
     items: [
-      { to: '/orders',      label: 'Orders',          icon: IconBag,   badgeKey: 'pendingOrders' },
-      { to: '/riders',      label: 'Riders & Fleet',  icon: IconTruck },
-      { to: '/requests',    label: 'Requests',        icon: IconInbox, badgeKey: 'requests' },
+      { to: '/orders',      label: 'Orders',         icon: IconBag,   badgeKey: 'pendingOrders' },
+      { to: '/riders',      label: 'Riders & Fleet', icon: IconTruck },
+      { to: '/requests',    label: 'Requests',       icon: IconInbox, badgeKey: 'requests' },
+    ],
+  },
+  {
+    label: 'Catalog & Store',
+    items: [
       { to: '/products',    label: 'Products',   icon: IconBox },
       { to: '/inventory',   label: 'Inventory',  icon: IconStack },
       { to: '/customers',   label: 'Customers',  icon: IconUsers },
       { to: '/reviews',     label: 'Reviews',    icon: IconStar,  badgeKey: 'pendingReviews' },
-      { to: '/coupons',     label: 'Coupons',    icon: IconTag },
-      { to: '/promotions',  label: 'Promotions', icon: IconPercent },
     ],
   },
   {
-    label: 'Newsletter',
+    label: 'Marketing',
     items: [
+      { to: '/coupons',                label: 'Coupons',     icon: IconTag },
+      { to: '/promotions',             label: 'Promotions',  icon: IconPercent },
       { to: '/newsletter/compose',     label: 'Compose',     icon: IconSend },
       { to: '/newsletter/subscribers', label: 'Subscribers', icon: IconMail },
       { to: '/newsletter/history',     label: 'History',     icon: IconClock },
     ],
   },
   {
-    label: 'Customize',
+    label: 'Settings',
     items: [
       { to: '/storefront',       label: 'Storefront Editor', icon: IconLayout },
       { to: '/theme',            label: 'Theme & Colors',    icon: IconPalette },
@@ -78,6 +85,7 @@ const ROUTE_LABELS = {
 
 export default function AdminLayout() {
   const { user, logout } = useAuth();
+  const toast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -90,7 +98,22 @@ export default function AdminLayout() {
     }
   });
   const [menuOpen, setMenuOpen]       = useState(false);
+  const [quickOpen, setQuickOpen]     = useState(false);
   const [cmdOpen, setCmdOpen]         = useState(false);
+  const [soundMuted, setSoundMutedState] = useState(() => isSoundMuted());
+  const prevPendingRef = useRef(null);
+
+  useEffect(() => {
+    const onSoundToggled = (e) => setSoundMutedState(e.detail?.muted);
+    window.addEventListener('bc:sound-toggled', onSoundToggled);
+    return () => window.removeEventListener('bc:sound-toggled', onSoundToggled);
+  }, []);
+
+  useEffect(() => {
+    setQuickOpen(false);
+    setMenuOpen(false);
+  }, [location.pathname]);
+
   const [theme, setTheme]             = useState(() => {
     try {
       return localStorage.getItem('bc_admin_theme') || 'system';
@@ -135,7 +158,7 @@ export default function AdminLayout() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Fetch pending badge counts
+  // Fetch pending badge counts & alert on new incoming orders
   useEffect(() => {
     const fetchCounts = () => {
       Promise.allSettled([
@@ -144,6 +167,15 @@ export default function AdminLayout() {
       ]).then(([ordersRes, reviewsRes]) => {
         const o = ordersRes.status === 'fulfilled' ? (ordersRes.value.data || {}) : {};
         const r = reviewsRes.status === 'fulfilled' ? (reviewsRes.value.data || {}) : {};
+
+        const newPending = o.pendingOrders ?? 0;
+        if (prevPendingRef.current !== null && newPending > prevPendingRef.current) {
+          playOrderChime();
+          const orderNumMsg = o.latestOrderNumber ? ` #${o.latestOrderNumber}` : '';
+          toast.info(`🔔 New order${orderNumMsg} received! Click Orders to review.`);
+        }
+        prevPendingRef.current = newPending;
+
         setCounts(prev => ({
           ...prev,
           cancel:         o.cancel         ?? prev.cancel,
@@ -154,13 +186,13 @@ export default function AdminLayout() {
       });
     };
     fetchCounts();
-    const timer = setInterval(fetchCounts, 60000);
+    const timer = setInterval(fetchCounts, 45000);
     window.addEventListener('bc:counts-changed', fetchCounts);
     return () => {
       clearInterval(timer);
       window.removeEventListener('bc:counts-changed', fetchCounts);
     };
-  }, []);
+  }, [toast]);
 
   const toggleSidebarCollapse = useCallback(() => {
     setCollapsed(prev => {
@@ -325,6 +357,45 @@ export default function AdminLayout() {
 
           <div className="topbar-spacer" />
 
+          {/* Quick Create Dropdown (+ New) */}
+          <div className="topbar-quick-wrap">
+            <button
+              type="button"
+              className="topbar-quick-btn"
+              onClick={() => setQuickOpen(v => !v)}
+              aria-label="Create new item"
+              title="Create new product, coupon, promotion, rider, or campaign"
+            >
+              <IconPlus />
+              <span>New</span>
+              <IconChevron />
+            </button>
+            {quickOpen && (
+              <div className="topbar-quick-menu" onClick={() => setQuickOpen(false)}>
+                <Link to="/products/new" className="topbar-quick-item">
+                  <span style={{ fontSize: '1rem' }}>📦</span>
+                  <span>New Product</span>
+                </Link>
+                <Link to="/coupons" className="topbar-quick-item">
+                  <span style={{ fontSize: '1rem' }}>🏷️</span>
+                  <span>New Coupon</span>
+                </Link>
+                <Link to="/promotions" className="topbar-quick-item">
+                  <span style={{ fontSize: '1rem' }}>⚡</span>
+                  <span>New Promotion</span>
+                </Link>
+                <Link to="/riders" className="topbar-quick-item">
+                  <span style={{ fontSize: '1rem' }}>🛵</span>
+                  <span>New Fleet Rider</span>
+                </Link>
+                <Link to="/newsletter/compose" className="topbar-quick-item">
+                  <span style={{ fontSize: '1rem' }}>✉️</span>
+                  <span>Compose Email</span>
+                </Link>
+              </div>
+            )}
+          </div>
+
           {/* Global Search / Command Palette Trigger */}
           <button
             type="button"
@@ -340,6 +411,17 @@ export default function AdminLayout() {
             <span className="topbar-cmd-badge">
               <kbd>Ctrl</kbd> <kbd>K</kbd>
             </span>
+          </button>
+
+          {/* Sound Alerts Toggle Button */}
+          <button
+            type="button"
+            className="topbar-theme-btn"
+            onClick={() => setSoundMutedState(toggleSoundMuted())}
+            aria-label={`Order alerts sound is ${soundMuted ? 'muted' : 'active'}`}
+            title={`Order Alerts Sound: ${soundMuted ? 'MUTED (Click to unmute)' : 'ACTIVE (Click to mute)'}`}
+          >
+            {soundMuted ? <IconVolumeMute /> : <IconVolume />}
           </button>
 
           {/* Theme Toggle Button (Light / Dark / System) */}
@@ -481,6 +563,34 @@ function IconSystem() {
       <rect x="2" y="3" width="20" height="14" rx="2" />
       <line x1="8" y1="21" x2="16" y2="21" />
       <line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  );
+}
+
+function IconVolume() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
+    </svg>
+  );
+}
+
+function IconVolumeMute() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <line x1="23" y1="9" x2="17" y2="15" />
+      <line x1="17" y1="9" x2="23" y2="15" />
+    </svg>
+  );
+}
+
+function IconPlus() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
     </svg>
   );
 }

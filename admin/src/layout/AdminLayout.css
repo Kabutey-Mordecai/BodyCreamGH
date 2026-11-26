@@ -362,6 +362,76 @@
   color: var(--ac-text-soft);
 }
 
+/* Quick Create Dropdown */
+.topbar-quick-wrap {
+  position: relative;
+}
+
+.topbar-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--ac-radius);
+  background: var(--ac-btn-primary-bg);
+  color: var(--ac-btn-primary-text);
+  border: 1px solid var(--ac-btn-primary-border);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.topbar-quick-btn:hover {
+  background: var(--ac-btn-primary-hover);
+  box-shadow: var(--ac-shadow-sm);
+}
+
+.topbar-quick-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 200px;
+  background: var(--ac-surface);
+  border: 1px solid var(--ac-border);
+  border-radius: var(--ac-radius);
+  box-shadow: var(--ac-shadow-lg);
+  padding: 6px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.topbar-quick-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--ac-text);
+  text-decoration: none;
+  border-radius: var(--ac-radius-sm);
+  transition: background 0.12s ease;
+}
+
+.topbar-quick-item:hover {
+  background: var(--ac-surface-2);
+  color: var(--ac-text);
+}
+
+@media (max-width: 768px) {
+  .topbar-cmd-btn {
+    min-width: auto;
+    padding: 7px;
+  }
+  .topbar-cmd-placeholder,
+  .topbar-cmd-badge {
+    display: none;
+  }
+}
+
 /* Theme Toggle Button */
 .topbar-theme-btn {
   background: transparent;

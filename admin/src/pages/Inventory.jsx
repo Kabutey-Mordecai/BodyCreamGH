@@ -20,12 +20,47 @@ export default function Inventory() {
   const [saving, setSaving] = useState(false);
   const [LOW, setLOW] = useState(5);
 
+  const [historyItem, setHistoryItem] = useState(undefined); // undefined = closed, null = all, object = single product
+  const [historyList, setHistoryList] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   const load = () => {
     setLoading(true);
     adminAPI.getInventoryOverview()
       .then(({ data }) => setItems(Array.isArray(data) ? data : []))
       .catch(() => toast.error('Failed to load inventory'))
       .finally(() => setLoading(false));
+  };
+
+  const openHistory = async (product = null) => {
+    setHistoryItem(product);
+    setHistoryLoading(true);
+    try {
+      const res = await inventoryAPI.getHistory(product ? product.id : null);
+      setHistoryList(Array.isArray(res.data) ? res.data : []);
+    } catch {
+      toast.error('Failed to load stock history');
+      setHistoryList([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleQuickStep = async (p, delta) => {
+    const current = Number(p.stock_quantity ?? 0);
+    if (current + delta < 0) return toast.warning('Stock cannot be negative');
+    setItems(prev => prev.map(item => item.id === p.id ? { ...item, stock_quantity: current + delta } : item));
+    try {
+      await inventoryAPI.adjust(p.id, {
+        quantity_change: delta,
+        reason: delta > 0 ? 'restock' : 'correction',
+        notes: `Quick step (${delta > 0 ? '+' : ''}${delta})`,
+      });
+      toast.success(`${p.name}: stock is now ${current + delta}`);
+    } catch {
+      toast.error('Failed to adjust stock');
+      load();
+    }
   };
 
   useEffect(() => {
@@ -136,6 +171,11 @@ export default function Inventory() {
           <button className={`btn btn-sm ${filter === 'low' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter('low')}>Low ({stats.lowStock})</button>
           <button className={`btn btn-sm ${filter === 'out' ? 'btn-primary' : 'btn-outline'}`} onClick={() => setFilter('out')}>Out ({stats.outOfStock})</button>
         </div>
+        <div className="toolbar-right">
+          <button type="button" className="btn btn-outline btn-sm" onClick={() => openHistory(null)}>
+            📜 Full Stock Log
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -148,10 +188,41 @@ export default function Inventory() {
             { key: 'sku',  label: 'SKU', className: 'cell-mono', render: p => p.sku || '—' },
             { key: 'price', label: 'Price', className: 'cell-right', render: p => fmt(p.price) },
             { key: 'stock_quantity', label: 'Stock', className: 'cell-right',
-              render: p => <span style={{ fontWeight: 600 }}>{p.stock_quantity ?? 0}</span> },
+              render: p => (
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: '2px 7px', fontSize: '0.78rem', height: 26, minWidth: 24, border: '1px solid var(--ac-border)' }}
+                    onClick={() => handleQuickStep(p, -1)}
+                    title="Subtract 1"
+                    disabled={Number(p.stock_quantity ?? 0) <= 0}
+                  >
+                    -
+                  </button>
+                  <span style={{ fontWeight: 700, minWidth: 28, textAlign: 'center' }}>{p.stock_quantity ?? 0}</span>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ padding: '2px 7px', fontSize: '0.78rem', height: 26, minWidth: 24, border: '1px solid var(--ac-border)' }}
+                    onClick={() => handleQuickStep(p, 1)}
+                    title="Add 1"
+                  >
+                    +
+                  </button>
+                </div>
+              )
+            },
             { key: 'status', label: 'Status', render: p => <StatusBadge status={status(p.stock_quantity)} /> },
-            { key: 'actions', label: '', width: 140, render: p => (
-              <button className="btn btn-outline btn-sm" onClick={() => openAdjust(p)}>Adjust stock</button>
+            { key: 'actions', label: '', width: 170, render: p => (
+              <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => openHistory(p)} title="View stock history">
+                  📋 Log
+                </button>
+                <button type="button" className="btn btn-outline btn-sm" onClick={() => openAdjust(p)}>
+                  Adjust
+                </button>
+              </div>
             )},
           ]}
         />
@@ -218,6 +289,61 @@ export default function Inventory() {
               </div>
             )}
           </>
+        )}
+      </Modal>
+
+      {/* Stock Movement Audit Log Modal */}
+      <Modal
+        open={historyItem !== undefined}
+        onClose={() => setHistoryItem(undefined)}
+        title={historyItem ? `Stock Movement History · ${historyItem.name}` : 'Storewide Stock Movement History'}
+      >
+        {historyLoading ? (
+          <div className="spinner" />
+        ) : historyList.length === 0 ? (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--ac-text-muted)' }}>
+            No stock movement recorded yet.
+          </div>
+        ) : (
+          <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+            <table style={{ width: '100%', fontSize: '0.84rem', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid var(--ac-border)', textAlign: 'left' }}>
+                  <th style={{ padding: '8px 10px' }}>Date</th>
+                  {!historyItem && <th style={{ padding: '8px 10px' }}>Product</th>}
+                  <th style={{ padding: '8px 10px', textAlign: 'right' }}>Change</th>
+                  <th style={{ padding: '8px 10px' }}>Reason</th>
+                  <th style={{ padding: '8px 10px' }}>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historyList.map(h => {
+                  const change = Number(h.quantity_change || 0);
+                  return (
+                    <tr key={h.id} style={{ borderBottom: '1px solid var(--ac-border)' }}>
+                      <td style={{ padding: '8px 10px', color: 'var(--ac-text-muted)', whiteSpace: 'nowrap' }}>
+                        {new Date(h.created_at).toLocaleString('en-GH', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      {!historyItem && (
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{h.product_name || '—'}</td>
+                      )}
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700, color: change > 0 ? 'var(--ac-success)' : 'var(--ac-danger)' }}>
+                        {change > 0 ? `+${change}` : change}
+                      </td>
+                      <td style={{ padding: '8px 10px' }}>
+                        <span className={`badge ${change > 0 ? 'badge-success' : 'badge-neutral'}`} style={{ fontSize: '0.7rem', textTransform: 'capitalize' }}>
+                          {h.reason || 'adjustment'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '8px 10px', color: 'var(--ac-text-muted)', fontSize: '0.78rem' }}>
+                        {h.notes || '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </Modal>
     </div>
