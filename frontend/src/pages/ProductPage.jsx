@@ -881,6 +881,44 @@ export default function ProductPage() {
               ))}
             </div>
 
+            {/* ── Jumia-Inspired Fulfillment & Authenticity Assurance Card ── */}
+            <div className="pdp-delivery-box">
+              <div className="pdp-delivery-item">
+                <span className="pdp-delivery-icon">⚡</span>
+                <div>
+                  <strong>Accra Express Same-Day &amp; 24h Dispatch</strong>
+                  <p>Order before 3:00 PM for same-day Accra dispatch. Nationwide delivery across all regions in 2–4 business days.</p>
+                </div>
+              </div>
+              <div className="pdp-delivery-item">
+                <span className="pdp-delivery-icon">🛡️</span>
+                <div>
+                  <strong>100% Genuine Brand Guarantee</strong>
+                  <p>Sourced directly from verified distributors with tamper-evident sealed packaging.</p>
+                </div>
+              </div>
+              <div className="pdp-delivery-item">
+                <span className="pdp-delivery-icon">💵</span>
+                <div>
+                  <strong>Pay on Delivery &amp; Mobile Money</strong>
+                  <p>Pay upon doorstep delivery or securely online via MTN MoMo, Telecel Cash, and Bank Cards.</p>
+                </div>
+              </div>
+              {settings.whatsapp_number && (
+                <div className="pdp-delivery-assist">
+                  <span>Questions or prefer ordering by phone?</span>
+                  <a
+                    href={`https://wa.me/${settings.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(`Hello, I would like to inquire about ${product.name} on BodyCream GH.`)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="pdp-assist-link"
+                  >
+                    💬 Chat with Beauty Advisor →
+                  </a>
+                </div>
+              )}
+            </div>
+
             {/* ── Structured Beauty D2C Accordions (searchable native <details>) ── */}
             <section className="pdp-accordions" aria-label="Product details and care">
               <details className="pdp-accordion-item">

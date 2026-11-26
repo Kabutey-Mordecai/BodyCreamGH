@@ -1185,3 +1185,67 @@
 .review-lightbox-close:hover {
   background: rgba(255,255,255,0.4);
 }
+
+/* ── Jumia-Inspired Delivery & Authenticity Box ── */
+.pdp-delivery-box {
+  margin-top: 24px;
+  padding: 18px 20px;
+  background: var(--color-surface, #ffffff);
+  border: 1px solid rgba(201, 165, 90, 0.35);
+  border-radius: var(--radius-lg, 12px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pdp-delivery-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pdp-delivery-icon {
+  font-size: 1.25rem;
+  line-height: 1.2;
+  flex-shrink: 0;
+}
+
+.pdp-delivery-item strong {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--color-text, #1c1410);
+  margin-bottom: 2px;
+}
+
+.pdp-delivery-item p {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--color-muted, #766e65);
+}
+
+.pdp-delivery-assist {
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px dashed rgba(201, 165, 90, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 0.82rem;
+  color: var(--color-text, #1c1410);
+}
+
+.pdp-assist-link {
+  font-weight: 700;
+  color: var(--color-accent-dark, #8b6b23);
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.pdp-assist-link:hover {
+  text-decoration: underline;
+}

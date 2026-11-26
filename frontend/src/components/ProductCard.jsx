@@ -144,7 +144,7 @@ export default function ProductCard({ product }) {
         <div className="product-card-badges">
           {isOnSale && (
             <span className={`badge-pill ${isSaleByPromo ? 'badge-promo' : 'badge-sale'}`}>
-              {saleBadgeText}
+              {discountPct ? `-${discountPct}%` : saleBadgeText}
             </span>
           )}
           {isNew && !isOnSale && <span className="badge-pill badge-new">New</span>}
@@ -285,15 +285,24 @@ export default function ProductCard({ product }) {
             GHS {parseFloat(product.price).toFixed(2)}
           </p>
         )}
-        {isLowStock && (
+        {/* Scarcity meter / stock claim progress bar (Jumia Ventes Flash pattern) */}
+        {!isOutOfStock && (isLowStock || isOnSale || product.is_flash_deal) && (
           <div className="product-card-scarcity">
             <div className="scarcity-bar-wrap" aria-hidden="true">
               <div
                 className="scarcity-bar-fill"
-                style={{ width: `${Math.max(15, Math.min(100, (product.stock_quantity / threshold) * 100))}%` }}
+                style={{
+                  width: `${isLowStock
+                    ? Math.max(15, Math.min(100, (product.stock_quantity / threshold) * 100))
+                    : Math.min(94, Math.max(68, 100 - Math.round(((product.stock_quantity || 8) / ((product.stock_quantity || 8) + 16)) * 100)))}%`
+                }}
               />
             </div>
-            <span className="scarcity-text">Only {product.stock_quantity} left in stock</span>
+            <span className="scarcity-text">
+              {isLowStock
+                ? `Only ${product.stock_quantity} left in stock`
+                : `🔥 ${product.stock_quantity ? `${product.stock_quantity} items left` : 'Limited deal stock'}`}
+            </span>
           </div>
         )}
       </div>
