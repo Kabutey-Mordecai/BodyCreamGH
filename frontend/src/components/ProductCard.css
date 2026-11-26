@@ -455,13 +455,19 @@
     width: 14px;
     height: 14px;
   }
+}
 
+.product-card-mobile-action {
+  display: none;
+}
+
+@media (max-width: 768px) {
   .product-card-quick-add {
     display: none !important;
   }
 
   .product-card-mobile-action {
-    display: block;
+    display: block !important;
     margin-top: 10px;
     width: 100%;
   }
@@ -539,10 +545,6 @@
     color: var(--color-primary, #1c1410);
     letter-spacing: 0.02em;
   }
-}
-
-.product-card-mobile-action {
-  display: none;
 }
 
 
