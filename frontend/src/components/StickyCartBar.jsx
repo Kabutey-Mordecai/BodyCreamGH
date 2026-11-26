@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 
@@ -16,8 +17,9 @@ const HIDDEN_PREFIXES = [
 export default function StickyCartBar() {
   const { cartCount, cartTotal } = useCart();
   const { pathname } = useLocation();
+  const [dismissed, setDismissed] = useState(false);
 
-  if (cartCount <= 0) return null;
+  if (cartCount <= 0 || dismissed) return null;
   if (HIDDEN_PREFIXES.some(p => pathname.startsWith(p))) return null;
 
   return (
@@ -33,6 +35,24 @@ export default function StickyCartBar() {
         <Link to="/checkout" className="btn btn-accent btn-sm">
           Checkout →
         </Link>
+        <button
+          type="button"
+          onClick={() => setDismissed(true)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'rgba(255,255,255,0.6)',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            fontSize: '1rem',
+            lineHeight: 1,
+            transition: 'color 0.15s',
+          }}
+          title="Dismiss"
+          aria-label="Dismiss quick bag bar"
+        >
+          ✕
+        </button>
       </div>
     </div>
   );

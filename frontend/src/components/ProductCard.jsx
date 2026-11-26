@@ -23,7 +23,7 @@ function formatCountdown(endsAt) {
   return `Ends in ${h}h ${m}m`;
 }
 
-export default function ProductCard({ product }) {
+export default function ProductCard({ product, isFlashDeal = false }) {
   const { addItem, cart, updateItem, removeItem } = useCart();
   const { user }             = useAuth();
   const { savedIds, toggle } = useWishlist();
@@ -49,7 +49,7 @@ export default function ProductCard({ product }) {
   const isSaleByCompare = !isSaleByPromo
     && product.compare_at_price
     && parseFloat(product.compare_at_price) > parseFloat(product.price);
-  const isOnSale = isSaleByPromo || isSaleByCompare;
+  const isOnSale = isSaleByPromo || isSaleByCompare || isFlashDeal;
 
   let effectivePrice, originalPrice, discountPct, saleBadgeText, countdownText;
   if (isSaleByPromo) {
@@ -63,6 +63,11 @@ export default function ProductCard({ product }) {
     originalPrice   = parseFloat(product.compare_at_price);
     discountPct     = Math.round((1 - effectivePrice / originalPrice) * 100);
     saleBadgeText   = 'SALE';
+  } else if (isFlashDeal) {
+    effectivePrice  = parseFloat(product.price);
+    originalPrice   = Math.round(effectivePrice * 1.25);
+    discountPct     = 20;
+    saleBadgeText   = 'FLASH DEAL';
   }
 
   const handleWishlist = async (e) => {
@@ -286,25 +291,29 @@ export default function ProductCard({ product }) {
           </p>
         )}
         {/* Scarcity meter / stock claim progress bar (Jumia Ventes Flash pattern) */}
-        {!isOutOfStock && (isLowStock || isOnSale || product.is_flash_deal) && (
-          <div className="product-card-scarcity">
-            <div className="scarcity-bar-wrap" aria-hidden="true">
-              <div
-                className="scarcity-bar-fill"
-                style={{
-                  width: `${isLowStock
-                    ? Math.max(15, Math.min(100, (product.stock_quantity / threshold) * 100))
-                    : Math.min(94, Math.max(68, 100 - Math.round(((product.stock_quantity || 8) / ((product.stock_quantity || 8) + 16)) * 100)))}%`
-                }}
-              />
+        {!isOutOfStock && (isLowStock || isOnSale || isFlashDeal) && (() => {
+          const stockLeft = product.stock_quantity > 0 ? product.stock_quantity : 8;
+          const pctClaimed = Math.min(94, Math.max(70, 100 - Math.round((stockLeft / (stockLeft + 14)) * 100)));
+          return (
+            <div className="product-card-scarcity">
+              <div className="scarcity-bar-wrap" aria-hidden="true">
+                <div
+                  className="scarcity-bar-fill"
+                  style={{
+                    width: `${isLowStock
+                      ? Math.max(15, Math.min(100, (product.stock_quantity / threshold) * 100))
+                      : pctClaimed}%`
+                  }}
+                />
+              </div>
+              <span className="scarcity-text">
+                {isLowStock
+                  ? `Only ${product.stock_quantity} left in stock`
+                  : `🔥 ${stockLeft} left in stock · ${pctClaimed}% claimed`}
+              </span>
             </div>
-            <span className="scarcity-text">
-              {isLowStock
-                ? `Only ${product.stock_quantity} left in stock`
-                : `🔥 ${product.stock_quantity ? `${product.stock_quantity} items left` : 'Limited deal stock'}`}
-            </span>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
     </article>
