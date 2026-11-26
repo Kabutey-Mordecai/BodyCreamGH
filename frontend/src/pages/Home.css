@@ -1130,25 +1130,38 @@ input.hero-search-input:focus {
 @media (max-width: 768px) {
   .sticky-cart-bar {
     left: 12px;
-    right: 68px;
+    right: 72px;
     width: auto;
     transform: none;
     bottom: 12px;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .sticky-cart-summary strong {
+    font-size: 0.82rem;
+    white-space: nowrap;
+  }
+  .sticky-cart-summary span {
+    font-size: 0.72rem;
+    white-space: nowrap;
+  }
+  .sticky-cart-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .sticky-cart-actions .btn {
+    padding: 6px 10px;
+    font-size: 0.75rem;
+    white-space: nowrap;
   }
   @keyframes slideUpBar {
     from { opacity: 0; transform: translateY(16px); }
     to   { opacity: 1; transform: translateY(0); }
-  }
-}
-
-@media (max-width: 768px) {
-  .sticky-cart-bar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-    padding: 10px 12px;
-  }
-  .sticky-cart-actions {
-    justify-content: space-between;
   }
 }

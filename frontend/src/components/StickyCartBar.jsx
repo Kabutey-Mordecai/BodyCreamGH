@@ -12,6 +12,7 @@ const HIDDEN_PREFIXES = [
   '/payment',
   '/rider-manifest',
   '/rider-handoff',
+  '/product/',
 ];
 
 export default function StickyCartBar() {

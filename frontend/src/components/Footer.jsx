@@ -206,6 +206,12 @@ export default function Footer() {
       <div className="footer-bottom">
         <div className="container footer-bottom-inner">
           <p>© {YEAR} {store_name}. All rights reserved.</p>
+          <div className="footer-payment-badges" aria-label="Accepted payment methods">
+            <span className="footer-pay-pill">MTN MoMo</span>
+            <span className="footer-pay-pill">Telecel Cash</span>
+            <span className="footer-pay-pill">Visa · Mastercard</span>
+            <span className="footer-pay-pill">Pay on Delivery</span>
+          </div>
         </div>
       </div>
 

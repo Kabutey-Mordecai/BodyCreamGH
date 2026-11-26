@@ -659,7 +659,14 @@ export default function ProductPage() {
               </span>
             </div>
 
-            <h1 className="product-detail-name">{product.name}</h1>
+            <h1 className="product-detail-name">
+              {product.name}
+              {selectedVariant && selectedVariant.option_values?.length > 0 && (
+                <span className="product-detail-variant-tag" style={{ fontSize: '0.85em', fontWeight: 400, color: 'var(--color-muted)', marginLeft: 8 }}>
+                  ({selectedVariant.option_values.map(ov => ov.value).join(' / ')})
+                </span>
+              )}
+            </h1>
             <div className="gold-divider" style={{ margin: '0 0 18px 0' }} />
 
             <div className="product-detail-rating">

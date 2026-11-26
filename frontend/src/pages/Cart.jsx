@@ -91,12 +91,15 @@ export default function Cart() {
             </div>
             <div className="summary-row">
               <span>Delivery</span>
-              {/* Delivery fee is calculated at checkout after the user enters their address */}
-              <span className="muted">Calculated at checkout</span>
+              {freeThreshold > 0 && cartTotal >= freeThreshold ? (
+                <span style={{ color: 'var(--color-success, #26593f)', fontWeight: 600 }}>Free</span>
+              ) : (
+                <span className="muted">Calculated at checkout</span>
+              )}
             </div>
             <div className="summary-row summary-total">
-              <span>Total</span>
-              <span>GHS {cartTotal.toFixed(2)}+</span>
+              <span>Estimated Total</span>
+              <span>GHS {cartTotal.toFixed(2)}</span>
             </div>
 
             <button

@@ -47,8 +47,8 @@ export default function Checkout() {
     email:      '',
     // Delivery fields — shown for everyone
     delivery_address:  '',
-    city:              '',
-    region:            '',
+    city:              'Accra',
+    region:            'Greater Accra',
     ghana_post_gps:    '',
     delivery_landmark: '',
     phone:             '',
