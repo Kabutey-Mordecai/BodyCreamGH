@@ -44,7 +44,7 @@ const DEFAULTS = {
   campaign_subtext: "Ghana's premier authentic cosmetics festival. Slashed prices on CeraVe, Fenty, Lattafa & more. 100% genuine guaranteed with fast Accra & nationwide dispatch.",
   campaign_coupon_code: 'BF50',
   campaign_cta_text: 'Shop Black Friday Deals',
-  campaign_cta_link: '/shop',
+  campaign_cta_link: '/shop?on_sale=true',
   campaign_ends_at: '',
   campaign_guarantee: '✓ 100% Authentic Brands',
   campaign_perk1: 'Free delivery over GHS 200',
