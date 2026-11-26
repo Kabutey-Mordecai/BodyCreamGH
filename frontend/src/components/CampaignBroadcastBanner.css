@@ -5,9 +5,9 @@
 .cbb-broadcast-section {
   position: relative;
   overflow: hidden;
-  padding: 38px 0 34px;
-  border-bottom: 2px solid rgba(201, 165, 90, 0.35);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(201, 165, 90, 0.25);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   transition: all 0.3s ease;
 }
 
@@ -101,7 +101,7 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  margin-bottom: 6px;
+  margin-bottom: 3px;
 }
 
 .cbb-badge {
@@ -143,17 +143,17 @@
 
 .cbb-headline {
   font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
-  font-size: clamp(1.3rem, 2vw, 1.75rem);
+  font-size: clamp(1.15rem, 1.8vw, 1.55rem);
   font-weight: 700;
   line-height: 1.15;
   letter-spacing: -0.01em;
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   color: #fff;
 }
 
 .cbb-subtext {
-  font-size: 0.82rem;
-  line-height: 1.4;
+  font-size: 0.78rem;
+  line-height: 1.35;
   color: rgba(255, 255, 255, 0.78);
   margin: 0;
   white-space: normal;
