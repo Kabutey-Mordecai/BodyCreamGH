@@ -303,11 +303,15 @@ async function dispatchOrderWithOtp({
     ? driverPhone.trim()
     : (matchedRider?.phone || null);
 
+  const cleanEstimatedDelivery = (typeof estimatedDelivery === 'string' && estimatedDelivery.trim())
+    ? estimatedDelivery.trim()
+    : null;
+
   const deliveryId = await DeliveryModel.create({
     orderId:           order.id,
     deliveryPartner:   finalPartner,
     trackingNumber:    finalTracking,
-    estimatedDelivery: estimatedDelivery,
+    estimatedDelivery: cleanEstimatedDelivery,
     driverPhone:       resolvedDriverPhone,
     zoneCode,
   });
