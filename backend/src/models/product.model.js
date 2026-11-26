@@ -72,7 +72,7 @@ module.exports = {
     }
     if (category) {
       filterParams.push(category);
-      filterClauses.push(`p.category = $${filterParams.length}`);
+      filterClauses.push(`LOWER(TRIM(p.category)) = LOWER(TRIM($${filterParams.length}))`);
     }
     if (brand) {
       const brandList = String(brand)

@@ -68,7 +68,9 @@ export default function FeaturedSpotlight() {
           highlight: settings.mid_banner_highlight || DEFAULT_SLIDES[0].highlight,
           subtitle: settings.mid_banner_subtitle || DEFAULT_SLIDES[0].subtitle,
           cta_text: settings.mid_banner_cta_text || DEFAULT_SLIDES[0].cta_text,
-          cta_link: settings.mid_banner_cta_link || DEFAULT_SLIDES[0].cta_link,
+          cta_link: (settings.mid_banner_cta_text && settings.mid_banner_cta_text.toLowerCase().includes('story'))
+            ? '/#our-story'
+            : (settings.mid_banner_cta_link && settings.mid_banner_cta_link !== '/#our-story' ? settings.mid_banner_cta_link : DEFAULT_SLIDES[0].cta_link),
           image: settings.mid_banner_image || DEFAULT_SLIDES[0].image,
         },
         DEFAULT_SLIDES[1],

@@ -29,12 +29,23 @@ export default function CampaignTiles() {
   const isEnabled = settings.campaign_tiles_enabled !== false && settings.campaign_tiles_enabled !== 'false';
   if (!isEnabled) return null;
 
+  const resolveTileLink = (rawLink, fallback) => {
+    const link = rawLink || fallback;
+    if (link.includes('category=Body+Butter') || link.includes('category=Body%20Butter')) {
+      return '/shop?search=Shea';
+    }
+    if (link.includes('category=Body+Oil') || link.includes('category=Body%20Oil')) {
+      return '/shop?search=Oil';
+    }
+    return link;
+  };
+
   const tile1 = {
     badge: settings.tile1_badge || 'LIMITED BATCH',
     title: settings.tile1_title || 'Whipped Shea Butters',
     subtitle: settings.tile1_subtitle || 'Deep 48-hour moisture crafted with raw Northern Ghana shea.',
     cta: settings.tile1_cta_text || 'Shop Butters',
-    link: settings.tile1_link || '/shop?category=Body+Butter',
+    link: resolveTileLink(settings.tile1_link, '/shop?search=Shea'),
     image: settings.tile1_image || 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80',
   };
 
@@ -43,7 +54,7 @@ export default function CampaignTiles() {
     title: settings.tile2_title || 'Botanical Radiance Oils',
     subtitle: settings.tile2_subtitle || 'Fast-absorbing golden glow with hibiscus and baobab oils.',
     cta: settings.tile2_cta_text || 'Explore Oils',
-    link: settings.tile2_link || '/shop?category=Body+Oil',
+    link: resolveTileLink(settings.tile2_link, '/shop?search=Oil'),
     image: settings.tile2_image || 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
   };
 
