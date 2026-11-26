@@ -207,6 +207,56 @@ input.hero-search-input:focus {
   box-shadow: 0 4px 12px rgba(28, 20, 16, 0.2);
 }
 
+
+/* ── Home Bestsellers Desktop vs Mobile Grid ── */
+.home-desktop-shelf {
+  display: block;
+}
+
+.home-mobile-product-grid {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .home-desktop-shelf {
+    display: none;
+  }
+
+  .home-mobile-product-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .home-category-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding: 4px 16px 12px;
+    margin: 18px -16px 20px;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .home-category-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .home-cat-tab {
+    flex-shrink: 0;
+    white-space: nowrap;
+    padding: 7px 14px;
+    font-size: 0.78rem;
+  }
+}
+
+@media (max-width: 380px) {
+  .home-mobile-product-grid {
+    gap: 8px;
+  }
+}
+
 .view-all-wrap {
   text-align: center;
   margin-top: 40px;

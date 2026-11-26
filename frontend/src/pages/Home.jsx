@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductShelf from '../components/ProductShelf';
+import ProductCard from '../components/ProductCard';
 import StarRating from '../components/StarRating';
 import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
 import Reveal from '../components/Reveal';
@@ -408,16 +409,27 @@ export default function Home() {
             <div className="spinner" />
           ) : filteredFeatured.length > 0 ? (
             <>
-              <ProductShelf
-                products={filteredFeatured}
-                ariaLabel={activeCategoryTab === 'All' ? 'Bestsellers' : `${activeCategoryTab} products`}
-              />
+              {/* Desktop Horizontal Shelf */}
+              <div className="home-desktop-shelf">
+                <ProductShelf
+                  products={filteredFeatured}
+                  ariaLabel={activeCategoryTab === 'All' ? 'Bestsellers' : `${activeCategoryTab} products`}
+                />
+              </div>
+
+              {/* Mobile 2-Column Balanced Catalog Grid */}
+              <div className="home-mobile-product-grid" role="region" aria-label="Bestsellers grid">
+                {filteredFeatured.slice(0, 6).map(p => (
+                  <ProductCard key={p.id} product={p} />
+                ))}
+              </div>
+
               <div className="view-all-wrap">
                 <Link
                   to={activeCategoryTab === 'All' ? '/shop' : `/shop?category=${encodeURIComponent(activeCategoryTab)}`}
                   className="btn btn-outline"
                 >
-                  View All {activeCategoryTab === 'All' ? 'Collection' : activeCategoryTab} →
+                  View All {activeCategoryTab === 'All' ? 'Collection' : activeCategoryTab} ({filteredFeatured.length}) →
                 </Link>
               </div>
             </>
