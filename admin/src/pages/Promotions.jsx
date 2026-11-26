@@ -94,6 +94,22 @@ export default function Promotions() {
   const [deleteId, setDeleteId] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [productList, setProductList] = useState([]);
+  const [productSearch, setProductSearch] = useState('');
+
+  const filteredProducts = useMemo(() => {
+    if (!productSearch.trim()) return productList;
+    const term = productSearch.toLowerCase();
+    return productList.filter(p =>
+      (p.name && p.name.toLowerCase().includes(term)) ||
+      (p.sku && p.sku.toLowerCase().includes(term)) ||
+      (p.category && p.category.toLowerCase().includes(term)) ||
+      (p.brand && p.brand.toLowerCase().includes(term))
+    );
+  }, [productList, productSearch]);
+
+  const targetProd = useMemo(() => {
+    return productList.find(p => p.id === form.product_id) || null;
+  }, [productList, form.product_id]);
 
   useEffect(() => {
     productsAPI.getAdminAll({ limit: 300 })
@@ -136,9 +152,16 @@ export default function Promotions() {
   const upd = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const openCreate = () => {
-    setForm(EMPTY_FORM);
+    const now = new Date();
+    const oneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    setForm({
+      ...EMPTY_FORM,
+      starts_at: toDatetimeLocal(now),
+      ends_at: toDatetimeLocal(oneWeek),
+    });
     setEditId(null);
     setFormError('');
+    setProductSearch('');
     setModal('create');
   };
 
@@ -155,15 +178,26 @@ export default function Promotions() {
     });
     setEditId(row.id);
     setFormError('');
+    setProductSearch('');
     setModal('edit');
   };
 
-  const closeModal = () => { setModal(null); setEditId(null); setFormError(''); };
+  const closeModal = () => { setModal(null); setEditId(null); setFormError(''); setProductSearch(''); };
+
+  const setDurationDays = (days) => {
+    const baseTime = form.starts_at ? new Date(form.starts_at).getTime() : Date.now();
+    const end = new Date(baseTime + days * 24 * 60 * 60 * 1000);
+    setForm(f => ({ ...f, ends_at: toDatetimeLocal(end) }));
+  };
 
   const handleSave = async () => {
     setFormError('');
     if (!form.name.trim())      return setFormError('Name is required.');
     if (!form.discount_value)   return setFormError('Discount value is required.');
+    if (form.applies_to === 'product' && !form.product_id)
+      return setFormError('Please select a target product for this promotion.');
+    if (form.applies_to === 'category' && !form.category.trim())
+      return setFormError('Please specify a category for this promotion.');
     if (!form.starts_at)        return setFormError('Start date/time is required.');
     if (!form.ends_at)          return setFormError('End date/time is required.');
     if (new Date(form.ends_at) <= new Date(form.starts_at))
@@ -172,8 +206,10 @@ export default function Promotions() {
     const payload = {
       ...form,
       discount_value: Number(form.discount_value),
-      category:   form.applies_to === 'category' ? form.category : undefined,
-      product_id: form.applies_to === 'product'  ? form.product_id : undefined,
+      category:   form.applies_to === 'category' ? form.category.trim() : null,
+      product_id: form.applies_to === 'product'  ? form.product_id : null,
+      starts_at:  new Date(form.starts_at).toISOString(),
+      ends_at:    new Date(form.ends_at).toISOString(),
     };
 
     setSaving(true);
@@ -404,17 +440,39 @@ export default function Promotions() {
         {form.applies_to === 'product' && (
           <div className="field">
             <label>Target Product *</label>
+            <input
+              type="text"
+              placeholder="Search product by name, brand, SKU…"
+              value={productSearch}
+              onChange={e => setProductSearch(e.target.value)}
+              style={{ marginBottom: 6 }}
+            />
             <select
               value={form.product_id}
               onChange={e => upd('product_id', e.target.value)}
             >
-              <option value="">— Select a product —</option>
-              {productList.map(p => (
+              <option value="">— Select a product ({filteredProducts.length} matches) —</option>
+              {filteredProducts.map(p => (
                 <option key={p.id} value={p.id}>
-                  {p.name} ({p.sku || p.category || ('GHS ' + p.price)})
+                  {p.name} ({p.sku || p.category || ''} · GHS {Number(p.price).toFixed(2)})
                 </option>
               ))}
             </select>
+            {targetProd && (
+              <div style={{ marginTop: 8, padding: '8px 12px', background: 'var(--ac-surface-sunken)', borderRadius: 6, fontSize: '0.82rem' }}>
+                <strong>Selected:</strong> {targetProd.name} — Regular price: <strong>GHS {Number(targetProd.price).toFixed(2)}</strong>
+                {form.discount_value && (
+                  <span style={{ color: 'var(--ac-success)', marginLeft: 8 }}>
+                    → Promo price: <strong>
+                      GHS {Math.max(0, form.discount_type === 'percentage'
+                        ? Number(targetProd.price) * (1 - Number(form.discount_value) / 100)
+                        : Number(targetProd.price) - Number(form.discount_value)
+                      ).toFixed(2)}
+                    </strong>
+                  </span>
+                )}
+              </div>
+            )}
             {form.product_id && !productList.some(p => p.id === form.product_id) && (
               <div className="hint" style={{ marginTop: 4, fontFamily: 'monospace' }}>
                 Selected ID: {form.product_id}
@@ -422,6 +480,30 @@ export default function Promotions() {
             )}
           </div>
         )}
+
+        <div style={{ marginBottom: 10 }}>
+          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--ac-text-muted)', display: 'block', marginBottom: 6 }}>
+            Quick Duration:
+          </span>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {[
+              { label: '3 Days', days: 3 },
+              { label: '7 Days (1 Wk)', days: 7 },
+              { label: '14 Days (2 Wks)', days: 14 },
+              { label: '30 Days (1 Mo)', days: 30 },
+            ].map(d => (
+              <button
+                key={d.days}
+                type="button"
+                className="btn btn-outline btn-sm"
+                style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                onClick={() => setDurationDays(d.days)}
+              >
+                {d.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="field-row">
           <div className="field">

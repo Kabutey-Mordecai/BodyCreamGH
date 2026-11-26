@@ -102,6 +102,11 @@ export default function Products() {
   const [storefrontUrl, setStorefrontUrl] = useState(STOREFRONT_BASE);
   const debounceRef = useRef(null);
 
+  // Quick Deal & Discount modal state
+  const [discountModalProduct, setDiscountModalProduct] = useState(null);
+  const [discountForm, setDiscountForm] = useState({ price: '', compare_at_price: '' });
+  const [savingDiscount, setSavingDiscount] = useState(false);
+
   const loadSnapshot = () => {
     productsAPI.getAdminAll({ page: 1, limit: 100 })
       .then(({ data }) => {
@@ -294,6 +299,53 @@ export default function Products() {
   const handleDuplicate = (product, e) => {
     e.stopPropagation();
     navigate('/products/new', { state: { duplicateFrom: product } });
+  };
+
+  const openDiscountModal = (p, e) => {
+    if (e) e.stopPropagation();
+    setDiscountModalProduct(p);
+    const regular = Number(p.compare_at_price || 0) > Number(p.price || 0)
+      ? Number(p.compare_at_price)
+      : Number(p.price || 0);
+    const sale = Number(p.compare_at_price || 0) > Number(p.price || 0)
+      ? Number(p.price)
+      : '';
+    setDiscountForm({
+      compare_at_price: regular ? regular.toFixed(2) : '',
+      price: sale ? sale.toFixed(2) : (p.price ? Number(p.price).toFixed(2) : ''),
+    });
+  };
+
+  const handleSaveDiscount = async () => {
+    if (!discountModalProduct) return;
+    setSavingDiscount(true);
+    try {
+      const priceVal = Number(discountForm.price);
+      const compareVal = discountForm.compare_at_price ? Number(discountForm.compare_at_price) : null;
+      if (!priceVal || priceVal <= 0) {
+        toast.error('Selling price must be greater than 0');
+        setSavingDiscount(false);
+        return;
+      }
+      const payload = {
+        ...discountModalProduct,
+        price: priceVal,
+        compare_at_price: compareVal && compareVal > priceVal ? compareVal : null,
+      };
+      await productsAPI.update(discountModalProduct.id, payload);
+      toast.success(
+        payload.compare_at_price
+          ? `Deal activated! ${discountModalProduct.name} is now on sale.`
+          : `Price updated for ${discountModalProduct.name}.`
+      );
+      setDiscountModalProduct(null);
+      load();
+      loadSnapshot();
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Failed to update discount');
+    } finally {
+      setSavingDiscount(false);
+    }
   };
 
   const hasActiveFilters = Boolean(search || category || brand || sort || statusTab !== 'all');
@@ -715,6 +767,19 @@ export default function Products() {
                   <button
                     type="button"
                     className="ap-icon-action"
+                    onClick={(e) => openDiscountModal(p, e)}
+                    title={isProductOnSale(p) ? "Edit deal / discount" : "Set deal / discount"}
+                    style={isProductOnSale(p) ? { color: 'var(--ac-accent, #c9933f)', borderColor: 'var(--ac-accent, #c9933f)' } : undefined}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <line x1="19" y1="5" x2="5" y2="19" />
+                      <circle cx="6.5" cy="6.5" r="2.5" />
+                      <circle cx="17.5" cy="17.5" r="2.5" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className="ap-icon-action"
                     onClick={(e) => handleDuplicate(p, e)}
                     title="Duplicate product"
                   >
@@ -821,6 +886,15 @@ export default function Products() {
                       >
                         ↗
                       </a>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-sm"
+                        onClick={(e) => openDiscountModal(p, e)}
+                        title="Set or adjust deal discount"
+                        style={isProductOnSale(p) ? { color: 'var(--ac-accent, #c9933f)', borderColor: 'var(--ac-accent, #c9933f)' } : undefined}
+                      >
+                        {isProductOnSale(p) ? 'Sale %' : 'Deal %'}
+                      </button>
                       <Link to={`/products/${p.id}`} className="btn btn-outline btn-sm">
                         Edit
                       </Link>
@@ -883,6 +957,156 @@ export default function Products() {
           )}
         </div>
       )}
+
+      {/* ── Quick Deal & Discount Modal ─────────────────────────────── */}
+      <Modal
+        open={!!discountModalProduct}
+        onClose={() => setDiscountModalProduct(null)}
+        title={discountModalProduct ? `Set Deal / Discount: ${discountModalProduct.name}` : 'Set Deal'}
+        size="md"
+        footer={
+          <>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => setDiscountModalProduct(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-accent"
+              onClick={handleSaveDiscount}
+              disabled={savingDiscount}
+            >
+              {savingDiscount ? 'Saving…' : 'Save Deal'}
+            </button>
+          </>
+        }
+      >
+        {discountModalProduct && (() => {
+          const pPrice = Number(discountForm.price || 0);
+          const pComp  = Number(discountForm.compare_at_price || 0);
+          const onSale = pComp > pPrice && pPrice > 0;
+          const pctOff = onSale ? Math.round((1 - pPrice / pComp) * 100) : 0;
+
+          return (
+            <div>
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, padding: '10px 12px', background: 'var(--ac-surface-sunken, #f8fafc)', borderRadius: 8 }}>
+                <ProductThumb url={discountModalProduct.image_url} alt={discountModalProduct.name} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--ac-text)' }} className="truncate">
+                    {discountModalProduct.name}
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--ac-text-muted)' }}>
+                    {discountModalProduct.category || 'Uncategorized'} · {discountModalProduct.brand || 'Unbranded'} · SKU: {discountModalProduct.sku || 'None'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="field-row">
+                <div className="field">
+                  <label htmlFor="qd-compare">Original / Regular Price (Was) *</label>
+                  <div className="pe-input-prefix-wrap">
+                    <span className="pe-input-prefix">GHS</span>
+                    <input
+                      id="qd-compare"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={discountForm.compare_at_price}
+                      onChange={e => setDiscountForm(f => ({ ...f, compare_at_price: e.target.value }))}
+                      placeholder="e.g. 200.00"
+                    />
+                  </div>
+                  <div className="hint">The normal regular anchor price.</div>
+                </div>
+
+                <div className="field">
+                  <label htmlFor="qd-price">Sale Price (Customer Pays) *</label>
+                  <div className="pe-input-prefix-wrap">
+                    <span className="pe-input-prefix">GHS</span>
+                    <input
+                      id="qd-price"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={discountForm.price}
+                      onChange={e => setDiscountForm(f => ({ ...f, price: e.target.value }))}
+                      placeholder="e.g. 160.00"
+                      required
+                    />
+                  </div>
+                  <div className="hint">Discounted checkout price.</div>
+                </div>
+              </div>
+
+              {/* 1-Click Percentage Preset Buttons */}
+              <div style={{ marginTop: 10, marginBottom: 16 }}>
+                <label style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ac-text-muted)', display: 'block', marginBottom: 6 }}>
+                  1-Click Discount Presets:
+                </label>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {[10, 15, 20, 25, 30, 40, 50].map(pct => (
+                    <button
+                      key={pct}
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{
+                        padding: '4px 10px',
+                        fontSize: '0.78rem',
+                        fontWeight: pctOff === pct ? 700 : 500,
+                        borderColor: pctOff === pct ? 'var(--ac-accent, #0f172a)' : undefined,
+                        background: pctOff === pct ? 'var(--ac-accent, #0f172a)' : undefined,
+                        color: pctOff === pct ? '#fff' : undefined,
+                      }}
+                      onClick={() => {
+                        const base = pComp > 0 ? pComp : (pPrice > 0 ? pPrice : Number(discountModalProduct.price || 0));
+                        if (!base || base <= 0) return;
+                        const discounted = Math.round(base * (1 - pct / 100) * 100) / 100;
+                        setDiscountForm({
+                          compare_at_price: base.toFixed(2),
+                          price: discounted.toFixed(2),
+                        });
+                      }}
+                    >
+                      {pct}% OFF
+                    </button>
+                  ))}
+                  {onSale && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ padding: '4px 8px', fontSize: '0.78rem', color: 'var(--ac-danger, #ef4444)' }}
+                      onClick={() => {
+                        const regular = pComp > 0 ? pComp : pPrice;
+                        setDiscountForm({
+                          compare_at_price: '',
+                          price: regular > 0 ? regular.toFixed(2) : String(discountModalProduct.price),
+                        });
+                      }}
+                    >
+                      ✕ Clear Deal
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Live Preview Box */}
+              {onSale ? (
+                <div className="alert alert-success" style={{ marginBottom: 0, fontSize: '0.85rem' }}>
+                  ✓ <strong>Active Deal:</strong> Shopper pays <strong>GHS {pPrice.toFixed(2)}</strong> (was <del>GHS {pComp.toFixed(2)}</del>).
+                  {' '}Shows <strong>-{pctOff}% OFF</strong> badge and qualifies for Today&apos;s Deals shelf.
+                </div>
+              ) : (
+                <div className="alert alert-info" style={{ marginBottom: 0, fontSize: '0.85rem' }}>
+                  To activate a deal, set Original Price higher than Sale Price, or click a % preset above.
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
 
       <ConfirmDialog
         open={!!confirm}

@@ -176,16 +176,16 @@ export default function Home() {
       .catch(console.error)
       .finally(() => setLoading(false));
 
-    productsAPI.getAll({ limit: 12, sort: 'price_low' })
+    productsAPI.getAll({ on_sale: 'true', limit: 16 })
       .then(({ data }) => {
-        const list = data.products || data || [];
+        const list = data.products || (Array.isArray(data) ? data : []);
         const realDeals = list.filter(p =>
           (p.active_promotion && parseFloat(p.active_promotion.discounted_price) < parseFloat(p.price)) ||
           (p.compare_at_price && parseFloat(p.compare_at_price) > parseFloat(p.price))
         );
         // Only display products that are genuinely on promotion or discounted.
         // If all promotions have been removed in the admin panel, cleanly empty the list.
-        setSaleProducts(realDeals.slice(0, 8));
+        setSaleProducts(realDeals.slice(0, 12));
 
         const promoEnds = realDeals
           .map(p => p.active_promotion?.ends_at ? new Date(p.active_promotion.ends_at).getTime() : null)
@@ -345,19 +345,21 @@ export default function Home() {
       {/* ══════════════════════════════════════════
           FLASH SALE — countdown timer + deals shelf
           ══════════════════════════════════════════ */}
-      {settings.flash_sale_enabled !== false && settings.flash_sale_enabled !== 'false' && (saleProducts.length > 0 || featured.length > 0) && (
-        <section className="flash-sale-section">
+      {settings.flash_sale_enabled !== false && settings.flash_sale_enabled !== 'false' && saleProducts.length > 0 && (
+        <section className="flash-sale-section" aria-labelledby="flash-sale-heading">
           <Reveal className="container">
             <div className="flash-sale-header">
               <div className="flash-sale-title">
                 <span className="flash-badge">{settings.flash_sale_badge || 'Flash Sale'}</span>
-                <h2>{settings.flash_sale_title || "Today's Deals"}</h2>
+                <h2 id="flash-sale-heading">{settings.flash_sale_title || "Today's Deals"}</h2>
               </div>
               <FlashSaleTimer endTime={flashEndTime} />
             </div>
-            <ProductShelf products={saleProducts.length > 0 ? saleProducts : featured.slice(0, 8)} ariaLabel={settings.flash_sale_title || "Today's Deals"} dark />
+            <ProductShelf products={saleProducts} ariaLabel={settings.flash_sale_title || "Today's Deals"} dark />
             <div style={{ textAlign: 'center', marginTop: '28px' }}>
-              <Link to="/shop" className="btn btn-outline-gold">See All Deals →</Link>
+              <Link to="/shop?on_sale=true" className="btn btn-outline-gold">
+                See All Deals ({saleProducts.length}) →
+              </Link>
             </div>
           </Reveal>
         </section>

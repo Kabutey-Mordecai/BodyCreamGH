@@ -75,6 +75,17 @@ const createPromotion = async (req, res) => {
   if (new Date(ends_at) <= new Date(starts_at))
     return res.status(400).json({ error: 'ends_at must be after starts_at.' });
 
+  const cleanAppliesTo = ['all', 'category', 'product'].includes(applies_to) ? applies_to : 'all';
+  const cleanCategory  = cleanAppliesTo === 'category' && category?.trim() ? category.trim() : null;
+  const cleanProductId = cleanAppliesTo === 'product' && product_id?.trim() ? product_id.trim() : null;
+
+  if (cleanAppliesTo === 'product' && !cleanProductId) {
+    return res.status(400).json({ error: 'A valid product is required when applies_to is "product".' });
+  }
+  if (cleanAppliesTo === 'category' && !cleanCategory) {
+    return res.status(400).json({ error: 'A category name is required when applies_to is "category".' });
+  }
+
   try {
     const { rows } = await pool.query(
       `INSERT INTO promotions
@@ -82,8 +93,8 @@ const createPromotion = async (req, res) => {
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [
-        name.trim(), discount_type, Number(discount_value), applies_to,
-        category || null, product_id || null, starts_at, ends_at,
+        name.trim(), discount_type, Number(discount_value), cleanAppliesTo,
+        cleanCategory, cleanProductId, starts_at, ends_at,
       ]
     );
     bustCache();
@@ -113,6 +124,17 @@ const updatePromotion = async (req, res) => {
   if (new Date(ends_at) <= new Date(starts_at))
     return res.status(400).json({ error: 'ends_at must be after starts_at.' });
 
+  const cleanAppliesTo = ['all', 'category', 'product'].includes(applies_to) ? applies_to : 'all';
+  const cleanCategory  = cleanAppliesTo === 'category' && category?.trim() ? category.trim() : null;
+  const cleanProductId = cleanAppliesTo === 'product' && product_id?.trim() ? product_id.trim() : null;
+
+  if (cleanAppliesTo === 'product' && !cleanProductId) {
+    return res.status(400).json({ error: 'A valid product is required when applies_to is "product".' });
+  }
+  if (cleanAppliesTo === 'category' && !cleanCategory) {
+    return res.status(400).json({ error: 'A category name is required when applies_to is "category".' });
+  }
+
   try {
     const { rowCount, rows } = await pool.query(
       `UPDATE promotions
@@ -121,8 +143,8 @@ const updatePromotion = async (req, res) => {
        WHERE id=$9
        RETURNING *`,
       [
-        name.trim(), discount_type, Number(discount_value), applies_to,
-        category || null, product_id || null, starts_at, ends_at, id,
+        name.trim(), discount_type, Number(discount_value), cleanAppliesTo,
+        cleanCategory, cleanProductId, starts_at, ends_at, id,
       ]
     );
     if (rowCount === 0) return res.status(404).json({ error: 'Promotion not found.' });

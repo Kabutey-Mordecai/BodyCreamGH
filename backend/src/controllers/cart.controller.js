@@ -6,13 +6,50 @@ const logger       = require('../utils/logger');
 
 const MAX_VALIDATE_ITEMS = 50;
 
-// Returns caller's current cart. Uses variant price/stock when variant_id is present.
+function calculatePromoPrice(basePrice, product, activePromos = []) {
+  const numBase = parseFloat(basePrice);
+  if (isNaN(numBase) || numBase <= 0) return numBase;
+  if (!activePromos || activePromos.length === 0) return numBase;
+  const match = activePromos.find(promo =>
+    promo.applies_to === 'all' ||
+    (promo.applies_to === 'category' && promo.category && product && promo.category === product.category) ||
+    (promo.applies_to === 'product' && promo.product_id && product && promo.product_id === product.id)
+  );
+  if (!match) return numBase;
+  if (match.discount_type === 'percentage') {
+    return Math.max(0, Math.round(numBase * (1 - Number(match.discount_value) / 100) * 100) / 100);
+  }
+  return Math.max(0, Math.round((numBase - Number(match.discount_value)) * 100) / 100);
+}
+
+// Returns caller's current cart. Uses variant price/stock when variant_id is present, and reflects active promotions.
 async function fetchUserCart(userId) {
   const { rows } = await pool.query(
     `SELECT ci.id, ci.quantity, ci.variant_id, ci.variant_label,
             p.id AS product_id, p.name,
             COALESCE(pv.image_url, p.image_url) AS image_url,
-            COALESCE(pv.price,          p.price)          AS price,
+            COALESCE(
+              (
+                SELECT CASE
+                  WHEN promo.discount_type = 'percentage'
+                    THEN GREATEST(0, ROUND((COALESCE(pv.price, p.price) * (1 - promo.discount_value / 100.0))::numeric, 2))
+                  ELSE GREATEST(0, ROUND((COALESCE(pv.price, p.price) - promo.discount_value)::numeric, 2))
+                END
+                FROM promotions promo
+                WHERE promo.is_active = TRUE
+                  AND promo.starts_at <= NOW()
+                  AND promo.ends_at >= NOW()
+                  AND (
+                    promo.applies_to = 'all'
+                    OR (promo.applies_to = 'category' AND promo.category = p.category)
+                    OR (promo.applies_to = 'product' AND promo.product_id = p.id)
+                  )
+                ORDER BY promo.discount_value DESC
+                LIMIT 1
+              ),
+              COALESCE(pv.price, p.price)
+            ) AS price,
+            COALESCE(pv.price,          p.price)          AS undiscounted_price,
             COALESCE(pv.stock_quantity, p.stock_quantity)  AS stock_quantity
        FROM cart_items ci
        JOIN products p ON ci.product_id = p.id
@@ -247,10 +284,20 @@ const validateGuestCart = async (req, res) => {
 
     const productIds = [...new Set(merged.map(i => i.product_id))];
     const { rows: products } = await pool.query(
-      `SELECT id, name, price, stock_quantity FROM products WHERE id = ANY($1)`,
+      `SELECT id, name, price, category, stock_quantity FROM products WHERE id = ANY($1)`,
       [productIds]
     );
     const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+    // Fetch active promotions for guest cart price validation
+    const { rows: activePromos } = await pool.query(
+      `SELECT id, discount_type, discount_value, applies_to, category, product_id
+       FROM promotions
+       WHERE is_active = TRUE
+         AND starts_at <= NOW()
+         AND ends_at >= NOW()
+       ORDER BY discount_value DESC`
+    );
 
     // Fetch variant stock for items with variant_id
     const variantIds = merged.map(i => i.variant_id).filter(Boolean);
@@ -282,9 +329,10 @@ const validateGuestCart = async (req, res) => {
       const effectiveStock = item.variant_id && variantMap[item.variant_id]
         ? variantMap[item.variant_id].stock_quantity
         : p.stock_quantity;
-      const effectivePrice = item.variant_id && variantMap[item.variant_id]
+      const basePrice = item.variant_id && variantMap[item.variant_id]
         ? variantMap[item.variant_id].price
         : p.price;
+      const effectivePrice = calculatePromoPrice(basePrice, p, activePromos);
 
       if (item.quantity > effectiveStock) {
         valid = false;

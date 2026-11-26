@@ -435,7 +435,7 @@ export default function ProductEditor() {
                       placeholder="Optional"
                     />
                   </div>
-                  <div className="hint">Shows crossed-out on sale.</div>
+                  <div className="hint">Original price; triggers Sale & Deals.</div>
                 </div>
 
                 <div className="field" style={{ marginBottom: 0 }}>
@@ -453,6 +453,55 @@ export default function ProductEditor() {
                     />
                   </div>
                   <div className="hint">Hidden from shoppers; tracks profit.</div>
+                </div>
+              </div>
+
+              {/* Quick Discount Calculator Shortcuts */}
+              <div style={{ marginTop: 12, padding: '10px 14px', background: 'var(--ac-surface-sunken, #f8fafc)', borderRadius: 8, border: '1px solid var(--ac-border, #e2e8f0)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, flexWrap: 'wrap', gap: 6 }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--ac-text-muted, #64748b)' }}>
+                    Quick Deal &amp; Discount Presets:
+                  </span>
+                  {hasDiscount && (
+                    <button
+                      type="button"
+                      className="btn btn-ghost btn-sm"
+                      style={{ fontSize: '0.75rem', padding: '2px 8px', height: 'auto', color: 'var(--ac-danger, #ef4444)' }}
+                      onClick={() => {
+                        const original = compareNum > 0 ? compareNum : priceNum;
+                        update('price', original.toFixed(2));
+                        update('compare_at_price', '');
+                      }}
+                    >
+                      ✕ Clear Discount
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {[10, 15, 20, 25, 30, 40, 50].map(pct => (
+                    <button
+                      key={pct}
+                      type="button"
+                      className="btn btn-outline btn-sm"
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '4px 10px',
+                        fontWeight: discountPct === pct ? 700 : 500,
+                        borderColor: discountPct === pct ? 'var(--ac-accent, #0f172a)' : undefined,
+                        background: discountPct === pct ? 'var(--ac-accent, #0f172a)' : undefined,
+                        color: discountPct === pct ? '#fff' : undefined,
+                      }}
+                      onClick={() => {
+                        const base = compareNum > 0 ? compareNum : priceNum;
+                        if (!base || base <= 0) return;
+                        const discounted = Math.round(base * (1 - pct / 100) * 100) / 100;
+                        update('compare_at_price', base.toFixed(2));
+                        update('price', discounted.toFixed(2));
+                      }}
+                    >
+                      {pct}% OFF
+                    </button>
+                  ))}
                 </div>
               </div>
 

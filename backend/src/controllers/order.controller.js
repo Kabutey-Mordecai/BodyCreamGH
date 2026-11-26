@@ -33,6 +33,22 @@ function isAccraRegion(region) {
   return normalized === 'greater accra' || normalized === 'accra';
 }
 
+function calculatePromoPrice(basePrice, product, activePromos = []) {
+  const numBase = parseFloat(basePrice);
+  if (isNaN(numBase) || numBase <= 0) return numBase;
+  if (!activePromos || activePromos.length === 0) return numBase;
+  const match = activePromos.find(promo =>
+    promo.applies_to === 'all' ||
+    (promo.applies_to === 'category' && promo.category && product && promo.category === product.category) ||
+    (promo.applies_to === 'product' && promo.product_id && product && promo.product_id === product.id)
+  );
+  if (!match) return numBase;
+  if (match.discount_type === 'percentage') {
+    return Math.max(0, Math.round(numBase * (1 - Number(match.discount_value) / 100) * 100) / 100);
+  }
+  return Math.max(0, Math.round((numBase - Number(match.discount_value)) * 100) / 100);
+}
+
 async function getCheckoutSettings(client) {
   const { rows } = await client.query(
     `SELECT key, value FROM site_settings
@@ -136,12 +152,33 @@ const createOrder = async (req, res) => {
       shipping_region  = shipping_region?.trim()  || 'Greater Accra';
     }
 
-    // Lock cart rows — include variant price/stock when variant_id is present
+    // Lock cart rows — include variant price/stock when variant_id is present, and apply any active promotion
     const cartResult = await client.query(
       `SELECT ci.quantity, ci.variant_id, ci.variant_label,
               p.id AS product_id,
               p.is_active AS product_is_active,
-              COALESCE(pv.price,          p.price)          AS price,
+              COALESCE(
+                (
+                  SELECT CASE
+                    WHEN promo.discount_type = 'percentage'
+                      THEN GREATEST(0, ROUND((COALESCE(pv.price, p.price) * (1 - promo.discount_value / 100.0))::numeric, 2))
+                    ELSE GREATEST(0, ROUND((COALESCE(pv.price, p.price) - promo.discount_value)::numeric, 2))
+                  END
+                  FROM promotions promo
+                  WHERE promo.is_active = TRUE
+                    AND promo.starts_at <= NOW()
+                    AND promo.ends_at >= NOW()
+                    AND (
+                      promo.applies_to = 'all'
+                      OR (promo.applies_to = 'category' AND promo.category = p.category)
+                      OR (promo.applies_to = 'product' AND promo.product_id = p.id)
+                    )
+                  ORDER BY promo.discount_value DESC
+                  LIMIT 1
+                ),
+                COALESCE(pv.price, p.price)
+              ) AS price,
+              COALESCE(pv.price,          p.price)          AS undiscounted_price,
               COALESCE(pv.stock_quantity, p.stock_quantity)  AS stock_quantity
          FROM cart_items ci
          JOIN products p ON ci.product_id = p.id
@@ -1608,10 +1645,20 @@ const createGuestOrder = async (req, res) => {
     // Fetch and lock products
     const productIds = [...new Set(items.map(i => i.product_id))];
     const { rows: products } = await client.query(
-      `SELECT id, price, stock_quantity, is_active FROM products WHERE id = ANY($1) FOR UPDATE`,
+      `SELECT id, price, category, stock_quantity, is_active FROM products WHERE id = ANY($1) FOR UPDATE`,
       [productIds]
     );
     const productMap = Object.fromEntries(products.map(p => [p.id, p]));
+
+    // Fetch active promotions for price resolution
+    const { rows: activePromos } = await client.query(
+      `SELECT id, discount_type, discount_value, applies_to, category, product_id
+       FROM promotions
+       WHERE is_active = TRUE
+         AND starts_at <= NOW()
+         AND ends_at >= NOW()
+       ORDER BY discount_value DESC`
+    );
 
     // Fetch and lock variants when present
     const variantIds = [...new Set(items.map(i => i.variant_id).filter(Boolean))];
@@ -1678,9 +1725,11 @@ const createGuestOrder = async (req, res) => {
     let subtotal = 0;
     items.forEach(item => {
       const p = productMap[item.product_id];
-      const effectivePrice = item.variant_id && variantMap[item.variant_id]
+      const basePrice = item.variant_id && variantMap[item.variant_id]
         ? variantMap[item.variant_id].price
         : p.price;
+      const effectivePrice = calculatePromoPrice(basePrice, p, activePromos);
+      item.resolvedPrice = effectivePrice;
       subtotal += parseFloat(effectivePrice) * item.quantity;
     });
 
@@ -1754,9 +1803,10 @@ const createGuestOrder = async (req, res) => {
 
     for (const item of items) {
       const p = productMap[item.product_id];
-      const effectivePrice = item.variant_id && variantMap[item.variant_id]
+      const basePrice = item.variant_id && variantMap[item.variant_id]
         ? variantMap[item.variant_id].price
         : p.price;
+      const effectivePrice = item.resolvedPrice ?? calculatePromoPrice(basePrice, p, activePromos);
       await client.query(
         `INSERT INTO order_items
            (id, order_id, product_id, quantity, price_at_purchase, subtotal, variant_id, variant_label)

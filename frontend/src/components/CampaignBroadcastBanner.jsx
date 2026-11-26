@@ -35,7 +35,7 @@ export default function CampaignBroadcastBanner({ compact = false }) {
   const subtext = settings.campaign_subtext || 'Ghana\'s biggest authentic cosmetics event. Slashed prices on CeraVe, Fenty, Lattafa & more. 100% authentic sealed packaging.';
   const couponCode = settings.campaign_coupon_code || 'BF50';
   const ctaText = settings.campaign_cta_text || 'Shop Black Friday Deals';
-  const ctaLink = settings.campaign_cta_link || '/shop';
+  const ctaLink = settings.campaign_cta_link || '/shop?on_sale=true';
   const endsAt = settings.campaign_ends_at || '';
 
   // Dynamic trust perks & stock urgency meters (100% Admin configurable)
