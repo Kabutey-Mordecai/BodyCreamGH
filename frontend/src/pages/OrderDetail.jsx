@@ -1034,9 +1034,9 @@ export default function OrderDetail() {
         .od-os-step.current .od-os-label { color: var(--color-accent-dark); }
         .od-os-step--terminal { flex: 1; }
         .od-os-dot--terminal {
-          background: #fff0f0;
-          border-color: #f2c7c1;
-          color: #c0392b;
+          background: var(--color-sale-bg, #faeeee);
+          border-color: var(--color-sale-border, #f0cdcd);
+          color: var(--color-error, #8b2222);
         }
         .od-os-step--terminal.refunded .od-os-dot--terminal {
           background: #f7f8fa;
@@ -1231,7 +1231,7 @@ export default function OrderDetail() {
         .od-review-textarea { resize: vertical; }
         .od-review-error {
           font-size: 0.82rem;
-          color: #c0392b;
+          color: var(--color-error, #8b2222);
           margin: 0;
         }
         .od-review-thankyou {

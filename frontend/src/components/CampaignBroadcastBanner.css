@@ -13,68 +13,68 @@
 
 /* ── Theme 1: Black Friday / Cyber Mega Deals (Deep Black & Gold) ── */
 .cbb-theme-black_friday {
-  background: radial-gradient(circle at 15% 50%, #201712 0%, #0d0907 50%, #050403 100%);
+  background: #181310;
   color: #f7f3ee;
+  border-bottom: 1px solid rgba(197, 159, 82, 0.24);
 }
 .cbb-theme-black_friday .cbb-ambient-glow {
-  position: absolute;
-  top: -50%;
-  left: 30%;
-  width: 500px;
-  height: 500px;
-  background: radial-gradient(circle, rgba(201, 165, 90, 0.14) 0%, transparent 70%);
-  pointer-events: none;
+  display: none;
 }
 .cbb-theme-black_friday .cbb-badge {
-  background: #c9a55a;
-  color: #120d09;
-  font-weight: 800;
+  background: var(--color-accent, #c59f52);
+  color: #181310;
+  font-weight: 700;
+  letter-spacing: 0.12em;
 }
 .cbb-theme-black_friday .cbb-btn-primary {
-  background: #c9a55a;
-  color: #140d08;
-  font-weight: 700;
-  border: 1px solid #dfba6d;
+  background: var(--color-accent, #c59f52);
+  color: #181310;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  border: 1px solid var(--color-accent, #c59f52);
 }
 .cbb-theme-black_friday .cbb-btn-primary:hover {
-  background: #dfba6d;
-  color: #000;
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(201, 165, 90, 0.4);
+  background: #d4af62;
+  color: #181310;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(197, 159, 82, 0.25);
 }
 .cbb-theme-black_friday .cbb-timer-unit {
-  background: #1c1410;
-  border: 1px solid rgba(201, 165, 90, 0.35);
-  color: #f4d088;
+  background: #231b17;
+  border: 1px solid rgba(197, 159, 82, 0.25);
+  color: #f0dfb6;
 }
 
-/* ── Theme 2: Flash Sale / Fire Red ── */
+/* ── Theme 2: Flash Sale / Refined Deep Wine ── */
 .cbb-theme-flash_sale {
-  background: linear-gradient(135deg, #450a0a 0%, #1c0505 60%, #0a0202 100%);
-  color: #fff;
-  border-bottom-color: #ef4444;
+  background: #221010;
+  color: #fbf6f6;
+  border-bottom-color: #8b2222;
 }
 .cbb-theme-flash_sale .cbb-badge {
-  background: #ef4444;
+  background: #8b2222;
   color: #fff;
-  font-weight: 800;
+  font-weight: 700;
+  letter-spacing: 0.1em;
 }
 .cbb-theme-flash_sale .cbb-btn-primary {
-  background: #ef4444;
+  background: #8b2222;
   color: #fff;
-  border: 1px solid #f87171;
+  border: 1px solid #a32d2d;
+  font-weight: 600;
+  letter-spacing: 0.08em;
 }
 .cbb-theme-flash_sale .cbb-timer-unit {
-  background: #2b0707;
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  color: #fca5a5;
+  background: #2b1212;
+  border: 1px solid rgba(139, 34, 34, 0.35);
+  color: #f3cccc;
 }
 
 /* ── Theme 3: Holiday Glow (Rose Champagne & Gold) ── */
 .cbb-theme-holiday_glow {
-  background: linear-gradient(135deg, #2b1810 0%, #170d08 100%);
+  background: #201712;
   color: #faf7f4;
-  border-bottom-color: #d4af37;
+  border-bottom: 1px solid rgba(197, 159, 82, 0.3);
 }
 
 /* ── Clean Luxury Strip Layout ── */
@@ -117,12 +117,12 @@
 }
 
 .cbb-pulse-dot {
-  width: 7px;
-  height: 7px;
-  background: #ef4444;
+  width: 6px;
+  height: 6px;
+  background: var(--color-accent, #c59f52);
   border-radius: 50%;
   display: inline-block;
-  animation: cbbPulse 1.4s infinite ease-in-out;
+  opacity: 0.9;
 }
 
 @keyframes cbbPulse {

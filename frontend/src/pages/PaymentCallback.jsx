@@ -267,7 +267,7 @@ export default function PaymentCallback() {
     return (
       <div className="page-section">
         <div className="container" role="alert" style={{ maxWidth: '540px', margin: '0 auto', textAlign: 'center', padding: '80px 0' }}>
-          <div aria-hidden="true" style={{ fontSize: '3.5rem', marginBottom: '20px', color: '#c0392b' }}>✗</div>
+          <div aria-hidden="true" style={{ fontSize: '3.5rem', marginBottom: '20px', color: 'var(--color-error, #8b2222)' }}>✗</div>
           <span className="section-label">Payment Status</span>
           <h1 ref={headingRef} tabIndex={-1} className="page-title">Payment Not Completed</h1>
           <p style={{ color: 'var(--color-muted)', marginBottom: '24px' }}>{message}</p>

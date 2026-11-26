@@ -6,48 +6,54 @@
    ================================================================ */
 
 :root {
-  /* ── Brand colors ──────────────────────────────────────────── */
-  /* TO CUSTOMIZE: Swap these four to rebrand the entire site */
-  --color-primary:      #1c1410;   /* Warm near-black (headings, buttons) */
-  --color-accent:       #c9a55a;   /* Rich gold — the luxury signal */
-  --color-accent-dark:  #a8863d;   /* Deeper gold for text on light bg */
-  --color-accent-light: #f0e2c4;   /* Pale gold for subtle highlights */
+  /* ── Grounded Natural Cosmetics Palette (Authentic Luxury, Zero AI Neons) ── */
+  --color-primary:      #181310;   /* Deep warm espresso noir (headings, buttons, luxury anchor) */
+  --color-accent:       #c59f52;   /* Antique burnished gold leaf */
+  --color-accent-dark:  #9c7832;   /* Deep warm bronze gold for legible contrast on light bg */
+  --color-accent-light: #f3e8cf;   /* Subtle champagne ivory for delicate highlights */
 
-  /* ── Backgrounds ───────────────────────────────────────────── */
-  --color-bg:      #faf7f4;   /* Warm ivory — softer than pure white */
+  /* ── Backgrounds (Raw Linen, Shea Butter & Warm Alabaster) ── */
+  --color-bg:      #fbf9f6;   /* Warm soft cashmere ivory — organic, grounded, calm */
   --color-surface: #ffffff;
-  --color-blush:   #fdf4f0;   /* Rose-tinted section backgrounds */
-  --color-dark:    #141010;   /* Footer / dark sections */
+  --color-blush:   #f9f3ee;   /* Delicate warm linen for alternating editorial sections */
+  --color-dark:    #120e0c;   /* Rich velvety espresso noir for footer & dark luxury trims */
 
-  /* ── Text ──────────────────────────────────────────────────── */
-  --color-text:    #1c1410;
-  --color-muted:   #7a6e68;   /* Warm taupe for secondary text */
+  /* ── Text (Sophisticated Contrast) ── */
+  --color-text:    #181310;   /* Soft warm obsidian — zero harsh pure black */
+  --color-muted:   #756860;   /* Organic warm taupe for secondary and meta text */
+  --color-subtle:  #9e928a;   /* Light warm taupe for placeholders and hairline hints */
 
-  /* ── Borders ───────────────────────────────────────────────── */
-  --color-border:  #ede5db;   /* Warm beige */
+  /* ── Borders & Hairlines ── */
+  --color-border:  #eae2d7;   /* Natural warm stone/linen hairline */
+  --color-border-subtle: #f2ece3;
 
-  /* ── Feedback ──────────────────────────────────────────────── */
-  --color-error:   #c0392b;
-  --color-success: #27ae60;
+  /* ── Authentic Editorial Accents (Replacing Artificial Neon AI Alerts) ── */
+  --color-sale:        #8b2222;   /* Deep aristocratic bordeaux / wine — classic luxury sale */
+  --color-sale-bg:     #faeeee;   /* Soft vintage rose petal wash for sale pills */
+  --color-sale-border: #f0cdcd;
+  --color-error:       #8b2222;   /* Refined deep crimson */
+  --color-success:     #26593f;   /* Grounded botanical forest olive */
+  --color-success-bg:  #ecf4ef;
+  --color-warning:     #94621a;   /* Warm amber terracotta */
+  --color-warning-bg:  #fdf7ec;
 
-  /* ── Typography ────────────────────────────────────────────── */
-  /* Cormorant Garamond = headings (luxury/editorial feel)
-     Inter = body text, labels, buttons (crisp readability) */
-  --font-display: 'Cormorant Garamond', Georgia, serif;
-  --font-body:    'Inter', system-ui, -apple-system, sans-serif;
+  /* ── Typography (Editorial Beauty & Craft) ── */
+  --font-display: 'Cormorant Garamond', Garamond, 'Didot', 'Bodoni MT', Georgia, serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* ── Layout ────────────────────────────────────────────────── */
   --max-width:  1200px;
   --nav-height: 70px;
   --bar-height: 38px;
-  --radius:     6px;
-  --radius-sm:  4px;
-  --radius-lg:  12px;
+  --radius:     5px;
+  --radius-sm:  3px;
+  --radius-lg:  10px;
 
-  /* ── Shadows ───────────────────────────────────────────────── */
-  --shadow:    0 2px 8px rgba(28, 20, 16, 0.07);
-  --shadow-md: 0 6px 24px rgba(28, 20, 16, 0.12);
-  --shadow-lg: 0 16px 48px rgba(28, 20, 16, 0.15);
+  /* ── Soft Natural Ambient Shadows (Zero Dark Neon Glows) ── */
+  --shadow-sm: 0 1px 3px rgba(24, 19, 16, 0.04);
+  --shadow:    0 3px 12px rgba(24, 19, 16, 0.06);
+  --shadow-md: 0 8px 24px rgba(24, 19, 16, 0.08);
+  --shadow-lg: 0 18px 48px rgba(24, 19, 16, 0.10);
 }
 
 /* ── Reset ────────────────────────────────────────────── */
@@ -65,8 +71,9 @@ body {
 h1, h2, h3, h4, h5, h6 {
   font-family: var(--font-display);
   font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: 0.01em;
+  line-height: 1.18;
+  letter-spacing: -0.012em;
+  color: var(--color-primary);
 }
 
 img { max-width: 100%; display: block; }

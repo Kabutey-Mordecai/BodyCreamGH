@@ -492,7 +492,7 @@ input.shop-search-input:focus-visible {
   transition: color 0.15s;
 }
 .shop-filter-pill button:hover {
-  color: var(--color-danger, #d32f2f);
+  color: var(--color-error, #8b2222);
 }
 
 .shop-clear-all-pill {

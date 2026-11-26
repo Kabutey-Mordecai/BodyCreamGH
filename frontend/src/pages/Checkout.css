@@ -275,7 +275,7 @@
 .coupon-input:focus { outline: none; border-color: var(--color-accent); }
 .coupon-error {
   font-size: 0.82rem;
-  color: #c0392b;
+  color: var(--color-error, #8b2222);
   margin: 8px 0 0;
 }
 .coupon-applied {
@@ -322,7 +322,7 @@
 
 .checkout-item-error {
   font-size: 0.78rem;
-  color: #c0392b;
+  color: var(--color-error, #8b2222);
   font-weight: 500;
   margin-top: 2px;
 }
@@ -335,9 +335,9 @@
 }
 
 .checkout-form :is(input, select, textarea):user-invalid {
-  border-color: var(--color-error, #c0392b);
+  border-color: var(--color-error, #8b2222);
 }
 
 .checkout-form :is(input, select, textarea):user-valid {
-  border-color: var(--color-success, #27ae60);
+  border-color: var(--color-success, #26593f);
 }

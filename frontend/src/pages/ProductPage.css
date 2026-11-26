@@ -90,22 +90,26 @@
 }
 .pdp-price-current {
   font-family: var(--font-display);
-  font-size: 1.8rem;
+  font-size: 1.85rem;
   font-weight: 600;
-  color: #c0392b;
+  letter-spacing: -0.01em;
+  color: var(--color-sale, #8b2222);
 }
 .pdp-price-was {
-  font-size: 1.1rem;
-  color: var(--color-muted);
+  font-size: 1.05rem;
+  color: var(--color-subtle, #9e928a);
   text-decoration: line-through;
 }
 .pdp-price-off {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  color: #c0392b;
-  background: rgba(192,57,43,0.08);
-  padding: 2px 8px;
-  border-radius: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-sale, #8b2222);
+  background: var(--color-sale-bg, #faeeee);
+  border: 1px solid var(--color-sale-border, #f0cdcd);
+  padding: 3px 8px;
+  border-radius: 4px;
 }
 .pdp-countdown {
   font-size: 0.78rem;

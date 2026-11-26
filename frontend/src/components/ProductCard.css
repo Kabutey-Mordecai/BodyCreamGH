@@ -73,26 +73,28 @@
 }
 
 .badge-new {
-  background: var(--color-accent);
+  background: var(--color-primary);
   color: #fff;
 }
 .badge-low-stock {
-  background: #fffbec;
-  color: #92651e;
-  border: 1px solid rgba(232,184,75,0.6);
+  background: var(--color-warning-bg, #fdf7ec);
+  color: var(--color-warning, #94621a);
+  border: 1px solid rgba(148, 98, 26, 0.25);
 }
 .badge-oos {
-  background: rgba(28, 20, 16, 0.72);
+  background: rgba(24, 19, 16, 0.76);
   color: rgba(255,255,255,0.9);
   backdrop-filter: blur(2px);
 }
 .badge-sale {
-  background: #c0392b;
+  background: var(--color-sale, #8b2222);
   color: #fff;
+  letter-spacing: 0.06em;
 }
 .badge-promo {
-  background: var(--color-accent);
-  color: #fff;
+  background: var(--color-primary);
+  color: var(--color-accent-light);
+  border: 1px solid rgba(197, 159, 82, 0.35);
   max-width: 110px;
   white-space: nowrap;
   overflow: hidden;
@@ -247,7 +249,7 @@
   color: #fff !important;
 }
 .overlay-atc-btn--error {
-  background: #c0392b !important;
+  background: var(--color-error, #8b2222) !important;
   color: #fff !important;
 }
 
@@ -320,18 +322,18 @@
 }
 
 .product-card-category {
-  font-size: 0.6rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-accent-dark);
+  color: var(--color-muted);
 }
 
 .product-card-name {
   font-family: var(--font-body);
   font-size: 0.88rem;
-  font-weight: 600;
-  line-height: 1.32;
+  font-weight: 500;
+  line-height: 1.35;
   color: var(--color-primary);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -341,9 +343,10 @@
 
 .product-card-price {
   font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--color-accent-dark);
+  font-weight: 600;
+  color: var(--color-primary);
   margin-top: 2px;
+  letter-spacing: -0.01em;
 }
 
 /* ── Sale / promotion price block ────────────── */
@@ -351,36 +354,38 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 5px;
+  gap: 6px;
   margin-top: 2px;
 }
 .product-card-price-current {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #c0392b;
+  color: var(--color-sale, #8b2222);
+  letter-spacing: -0.01em;
 }
 .product-card-price-was {
-  font-size: 0.8rem;
-  color: var(--color-muted);
+  font-size: 0.78rem;
+  color: var(--color-subtle, #9e928a);
   text-decoration: line-through;
 }
 .product-card-price-off {
-  font-size: 0.68rem;
+  font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.06em;
-  color: #c0392b;
-  background: rgba(192,57,43,0.08);
+  color: var(--color-sale, #8b2222);
+  background: var(--color-sale-bg, #faeeee);
+  border: 1px solid var(--color-sale-border, #f0cdcd);
   padding: 1px 5px;
-  border-radius: 4px;
+  border-radius: 3px;
 }
 .product-card-countdown {
   font-size: 0.66rem;
   font-weight: 600;
-  color: #92651e;
-  background: #fffbec;
-  border: 1px solid rgba(232,184,75,0.5);
+  color: var(--color-warning, #94621a);
+  background: var(--color-warning-bg, #fdf7ec);
+  border: 1px solid rgba(148, 98, 26, 0.2);
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: 3px;
   width: 100%;
 }
 
@@ -547,14 +552,14 @@
 .scarcity-bar-wrap {
   width: 100%;
   height: 4px;
-  background: rgba(220, 38, 38, 0.15);
+  background: var(--color-border-subtle, #f2ece3);
   border-radius: 9999px;
   overflow: hidden;
 }
 
 .scarcity-bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, #f97316, #ef4444);
+  background: var(--color-warning, #94621a);
   border-radius: 9999px;
   transition: width 0.3s ease;
 }
@@ -562,6 +567,6 @@
 .scarcity-text {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #dc2626;
+  color: var(--color-warning, #94621a);
   letter-spacing: 0.01em;
 }

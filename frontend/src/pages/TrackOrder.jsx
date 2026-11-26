@@ -170,7 +170,7 @@ export default function TrackOrder() {
               </div>
 
               {error && (
-                <p style={{ color: 'var(--color-danger, #b71c1c)', fontSize: '0.88rem', marginBottom: 16 }}>
+                <p style={{ color: 'var(--color-error, #8b2222)', fontSize: '0.88rem', marginBottom: 16 }}>
                   {error}
                 </p>
               )}
