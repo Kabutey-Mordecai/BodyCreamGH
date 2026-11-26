@@ -468,11 +468,16 @@
 
   .product-card-mobile-action {
     display: block !important;
+    position: relative;
+    z-index: 2;
     margin-top: 10px;
     width: 100%;
   }
 
   .mobile-action-btn {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
     width: 100%;
     min-height: 38px;
     border-radius: 4px;
@@ -488,6 +493,7 @@
     border: 1px solid var(--color-primary, #1c1410);
     transition: background 0.15s, color 0.15s, border-color 0.15s;
     text-decoration: none;
+    cursor: pointer;
   }
 
   .mobile-action-btn:active {
@@ -509,6 +515,9 @@
   }
 
   .mobile-action-stepper {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
     display: flex;
     align-items: center;
     justify-content: space-between;
