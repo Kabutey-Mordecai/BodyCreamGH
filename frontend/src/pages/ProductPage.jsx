@@ -914,20 +914,22 @@ export default function ProductPage() {
 
             {/* ── Structured Beauty D2C Accordions (searchable native <details>) ── */}
             <section className="pdp-accordions" aria-label="Product details and care">
-              <details className="pdp-accordion-item">
+              <details open className="pdp-accordion-item">
                 <summary>Key Botanicals &amp; Ingredients</summary>
                 <div className="pdp-accordion-body">
                   <p>
-                    {product.ingredients_inci ||
+                    {product.ingredients ||
+                      product.ingredients_inci ||
                       'Formulated with quality cosmetic ingredients and sourced directly from verified brand distributors.'}
                   </p>
                 </div>
               </details>
-              <details className="pdp-accordion-item">
+              <details open className="pdp-accordion-item">
                 <summary>How to Use / Daily Ritual</summary>
                 <div className="pdp-accordion-body">
                   <p>
-                    {product.how_to_use ||
+                    {product.usage_instructions ||
+                      product.how_to_use ||
                       'Warm a small amount between palms and massage onto slightly damp skin after bathing to lock in lasting hydration.'}
                   </p>
                 </div>

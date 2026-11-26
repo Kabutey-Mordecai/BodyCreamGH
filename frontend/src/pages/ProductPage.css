@@ -1056,13 +1056,20 @@
 }
 
 .pdp-accordion-item > summary::after {
-  content: '+';
-  font-size: 1.1rem;
-  color: var(--color-muted);
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--color-accent, #c59f52);
+  border-bottom: 1.5px solid var(--color-accent, #c59f52);
+  transform: rotate(45deg);
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  margin-right: 6px;
+  flex-shrink: 0;
 }
 
 .pdp-accordion-item[open] > summary::after {
-  content: '−';
+  transform: rotate(-135deg);
 }
 
 .pdp-accordion-body {

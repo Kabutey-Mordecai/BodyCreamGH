@@ -297,6 +297,49 @@ export default function ProductCard({ product }) {
             <span className="scarcity-text">Only {product.stock_quantity} left in stock</span>
           </div>
         )}
+
+        {/* Mobile / touch dedicated action button — matches desktop ease-of-use */}
+        {!isOutOfStock && (
+          <div className="product-card-mobile-action">
+            {product.has_variants ? (
+              <Link
+                to={`/products/${product.id}`}
+                className="btn btn-outline btn-sm mobile-action-btn"
+                aria-label={`Select options for ${product.name}`}
+              >
+                Select Options
+              </Link>
+            ) : cartItem ? (
+              <div className="mobile-action-stepper">
+                <button
+                  type="button"
+                  onClick={handleDecrease}
+                  disabled={adding}
+                  aria-label="Decrease quantity"
+                  className="mobile-stepper-btn"
+                >−</button>
+                <span className="mobile-stepper-qty">{cartQty} in bag</span>
+                <button
+                  type="button"
+                  onClick={handleAddToCart}
+                  disabled={adding || cartQty >= product.stock_quantity}
+                  aria-label="Increase quantity"
+                  className="mobile-stepper-btn"
+                >+</button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={`btn btn-sm mobile-action-btn${added ? ' is-added' : ''}`}
+                onClick={handleAddToCart}
+                disabled={adding}
+                aria-label={`Add ${product.name} to bag`}
+              >
+                {added ? '✓ Added' : 'Add to Bag'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
     </article>
