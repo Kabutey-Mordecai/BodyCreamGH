@@ -1,13 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useSettings } from '../context/SettingsContext';
 import './CampaignBroadcastBanner.css';
 
-function calculateTimeLeft(endDate) {
-  const target = endDate ? new Date(endDate).getTime() : null;
-  // Default fallback: 3 days from now if not explicitly set
-  const fallback = Date.now() + 3 * 24 * 60 * 60 * 1000;
-  const diff = Math.max(0, (target && !isNaN(target) ? target : fallback) - Date.now());
+// Default fallback target: 3 days ahead at 11:59:59 PM so the countdown ticks realistically
+const DEFAULT_CAMPAIGN_END = (() => {
+  const d = new Date();
+  d.setDate(d.getDate() + 3);
+  d.setHours(23, 59, 59, 0);
+  return d.getTime();
+})();
+
+function calculateTimeLeft(targetTimestamp) {
+  const diff = Math.max(0, targetTimestamp - Date.now());
 
   return {
     days: Math.floor(diff / (1000 * 60 * 60 * 24)),
@@ -33,15 +38,23 @@ export default function CampaignBroadcastBanner({ compact = false }) {
   const ctaLink = settings.campaign_cta_link || '/shop';
   const endsAt = settings.campaign_ends_at || '';
 
-  const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(endsAt));
+  const targetTimestamp = useMemo(() => {
+    if (endsAt) {
+      const parsed = new Date(endsAt).getTime();
+      if (!isNaN(parsed) && parsed > Date.now()) return parsed;
+    }
+    return DEFAULT_CAMPAIGN_END;
+  }, [endsAt]);
+
+  const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(targetTimestamp));
 
   useEffect(() => {
-    setTimeLeft(calculateTimeLeft(endsAt));
+    setTimeLeft(calculateTimeLeft(targetTimestamp));
     const timer = setInterval(() => {
-      setTimeLeft(calculateTimeLeft(endsAt));
+      setTimeLeft(calculateTimeLeft(targetTimestamp));
     }, 1000);
     return () => clearInterval(timer);
-  }, [endsAt]);
+  }, [targetTimestamp]);
 
   if (!isEnabled) return null;
 
