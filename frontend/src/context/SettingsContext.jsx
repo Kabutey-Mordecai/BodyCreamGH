@@ -36,6 +36,17 @@ const DEFAULTS = {
   faq_heading: 'Frequently asked questions',
   faq_items: [],
 
+  // Jumia-inspired top campaign broadcast banner (Black Friday / Mega Sale)
+  campaign_banner_enabled: true,
+  campaign_theme: 'black_friday',
+  campaign_badge: '⚡ BLACK FRIDAY FESTIVAL · LIMITED EVENT DEALS',
+  campaign_headline: 'UP TO 50% OFF BESTSELLING BEAUTY',
+  campaign_subtext: "Ghana's premier authentic cosmetics festival. Slashed prices on CeraVe, Fenty, Lattafa & more. 100% genuine guaranteed with fast Accra & nationwide dispatch.",
+  campaign_coupon_code: 'BF50',
+  campaign_cta_text: 'Shop Black Friday Deals',
+  campaign_cta_link: '/shop',
+  campaign_ends_at: '',
+
   // Jumia-inspired promotional modal popup (100% admin controlled)
   promo_popup_enabled: false,
   promo_popup_badge: '● BEAUTY EDIT · TODAY ONLY',

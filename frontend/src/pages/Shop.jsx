@@ -4,6 +4,7 @@ import { productsAPI } from '../services/api';
 import { useSettings } from '../context/SettingsContext';
 import { useSeo } from '../utils/seo';
 import ProductCard from '../components/ProductCard';
+import CampaignBroadcastBanner from '../components/CampaignBroadcastBanner';
 import './Shop.css';
 
 const SORT_OPTIONS = [
@@ -310,7 +311,9 @@ export default function Shop() {
   const totalPages = Math.ceil(total / LIMIT);
 
   return (
-    <div className="page-section shop-page">
+    <>
+      <CampaignBroadcastBanner compact />
+      <div className="page-section shop-page">
       <div className="container">
 
         {/* ── Editorial header ──────────────────── */}
@@ -1096,5 +1099,6 @@ export default function Shop() {
         </div>
       )}
     </div>
+    </>
   );
 }

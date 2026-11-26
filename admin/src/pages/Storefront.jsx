@@ -103,6 +103,17 @@ const DEFAULTS = {
   promo_popup_cta_link: '/shop',
   promo_popup_delay_sec: 2,
 
+  // Campaign Broadcast Banner (Black Friday / Mega Sale / Seasonal)
+  campaign_banner_enabled: true,
+  campaign_theme: 'black_friday',
+  campaign_badge: '⚡ BLACK FRIDAY MEGA DEALS',
+  campaign_headline: 'UP TO 50% OFF EVERYTHING',
+  campaign_subtext: 'Exclusive Black Friday prices on authentic skincare, makeup & fragrances. Limited stock.',
+  campaign_coupon_code: 'BF50',
+  campaign_cta_text: 'Shop Black Friday',
+  campaign_cta_link: '/shop',
+  campaign_ends_at: '',
+
   // Jumia-inspired dual campaign split tiles
   campaign_tiles_enabled: true,
   tile1_badge: 'LIMITED BATCH',
@@ -362,6 +373,48 @@ export default function Storefront() {
     });
     setDirty(true);
     setPreviewSlideIdx(target);
+  };
+
+  const applyCampaignPreset = (preset) => {
+    if (preset === 'black_friday') {
+      setData(prev => ({
+        ...prev,
+        campaign_banner_enabled: true,
+        campaign_theme: 'black_friday',
+        campaign_badge: '⚡ BLACK FRIDAY MEGA DEALS',
+        campaign_headline: 'UP TO 50% OFF EVERYTHING',
+        campaign_subtext: 'Ghana\'s biggest beauty event — authentic luxury skincare, makeup & fragrances at slashed prices.',
+        campaign_coupon_code: 'BF50',
+        campaign_cta_text: 'Shop Black Friday',
+        campaign_cta_link: '/shop',
+      }));
+    } else if (preset === 'flash_sale') {
+      setData(prev => ({
+        ...prev,
+        campaign_banner_enabled: true,
+        campaign_theme: 'flash_sale',
+        campaign_badge: '🔥 TODAY\'S FLASH DEALS',
+        campaign_headline: 'FLASH SALE · LIMITED TIME',
+        campaign_subtext: 'Prices drop today only. Claim your glow before limited stock runs out.',
+        campaign_coupon_code: 'FLASH20',
+        campaign_cta_text: 'Claim Flash Deals',
+        campaign_cta_link: '/shop',
+      }));
+    } else if (preset === 'holiday_glow') {
+      setData(prev => ({
+        ...prev,
+        campaign_banner_enabled: true,
+        campaign_theme: 'holiday_glow',
+        campaign_badge: '✨ HOLIDAY GLOW CELEBRATION',
+        campaign_headline: 'CELEBRATE WITH GOLDEN SKIN',
+        campaign_subtext: 'Gift yourself or someone special authentic handcrafted beauty & luxury fragrances.',
+        campaign_coupon_code: 'GLOW15',
+        campaign_cta_text: 'Explore Holiday Gifts',
+        campaign_cta_link: '/shop',
+      }));
+    }
+    setDirty(true);
+    toast.success('Campaign preset applied! Click "Publish changes" to push live.');
   };
 
   const save = async () => {
@@ -706,8 +759,159 @@ export default function Storefront() {
 
           {active === 'campaigns' && (
             <div className="card">
-              <div className="card-header"><h2 className="card-title">Campaign Banners (Jumia Layout Pattern)</h2></div>
+              <div className="card-header"><h2 className="card-title">Campaign Banners & Promotional Broadcasts</h2></div>
               <div className="card-body">
+
+                {/* ══════════════════════════════════════════
+                    0. TOP CAMPAIGN BROADCAST BANNER (Black Friday / Mega Sale)
+                    ══════════════════════════════════════════ */}
+                <div style={{ marginBottom: 32, paddingBottom: 24, borderBottom: '1px solid var(--ac-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
+                    <div>
+                      <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span>⚡</span> Black Friday & Campaign Broadcast Takeover
+                      </h3>
+                      <p className="hint" style={{ marginTop: 4 }}>
+                        High-impact promotional broadcast banner with countdown timer, 1-click coupon vouchers, and urgency badges (Jumia / Francophone African e-commerce style).
+                      </p>
+                    </div>
+
+                    {/* Quick 1-Click Presets */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--ac-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        1-Click Presets:
+                      </span>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        onClick={() => applyCampaignPreset('black_friday')}
+                        title="Load Black Friday 50% Off theme with BF50 coupon"
+                      >
+                        ⚡ Black Friday (50%)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        onClick={() => applyCampaignPreset('flash_sale')}
+                        title="Load Flash Sale theme with FLASH20 coupon"
+                      >
+                        🔥 Flash Sale (20%)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        onClick={() => applyCampaignPreset('holiday_glow')}
+                        title="Load Holiday Glow theme with GLOW15 coupon"
+                      >
+                        ✨ Holiday Glow (15%)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="field">
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={data.campaign_banner_enabled !== false}
+                        onChange={e => update('campaign_banner_enabled', e.target.checked)}
+                        style={{ width: 'auto' }}
+                      />
+                      <strong>Enable Top Campaign Broadcast Banner on Storefront & Shop</strong>
+                    </label>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 14 }}>
+                    <div className="field">
+                      <label>Campaign Theme</label>
+                      <select
+                        value={data.campaign_theme || 'black_friday'}
+                        onChange={e => update('campaign_theme', e.target.value)}
+                        style={{ width: '100%', padding: '9px 12px', borderRadius: 6, border: '1px solid var(--ac-border)' }}
+                      >
+                        <option value="black_friday">Black Friday (Obsidian Black & Luxury Gold)</option>
+                        <option value="flash_sale">Flash Sale (Flame Crimson & Gold Urgency)</option>
+                        <option value="holiday_glow">Holiday Glow (Emerald Green & Festive Gold)</option>
+                      </select>
+                      <div className="hint">Changes banner background gradients and accent colors.</div>
+                    </div>
+
+                    <div className="field">
+                      <label>Urgent Badge Text</label>
+                      <input
+                        type="text"
+                        value={data.campaign_badge || ''}
+                        onChange={e => update('campaign_badge', e.target.value)}
+                        placeholder="⚡ BLACK FRIDAY MEGA DEALS"
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 12 }}>
+                    <div className="field">
+                      <label>Main Headline</label>
+                      <input
+                        type="text"
+                        value={data.campaign_headline || ''}
+                        onChange={e => update('campaign_headline', e.target.value)}
+                        placeholder="UP TO 50% OFF EVERYTHING"
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label>Coupon Voucher Code (1-Click Copyable)</label>
+                      <input
+                        type="text"
+                        value={data.campaign_coupon_code || ''}
+                        onChange={e => update('campaign_coupon_code', e.target.value.toUpperCase())}
+                        placeholder="BF50"
+                      />
+                      <div className="hint">Shoppers can tap this on the banner to copy and auto-apply at checkout.</div>
+                    </div>
+                  </div>
+
+                  <div className="field" style={{ marginTop: 12 }}>
+                    <label>Subtext / Persuasive Reason to Buy</label>
+                    <input
+                      type="text"
+                      value={data.campaign_subtext || ''}
+                      onChange={e => update('campaign_subtext', e.target.value)}
+                      placeholder="Exclusive Black Friday prices on authentic skincare, makeup & fragrances. Limited stock."
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 12 }}>
+                    <div className="field">
+                      <label>Button Text</label>
+                      <input
+                        type="text"
+                        value={data.campaign_cta_text || ''}
+                        onChange={e => update('campaign_cta_text', e.target.value)}
+                        placeholder="Shop Black Friday"
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label>Button Link</label>
+                      <input
+                        type="text"
+                        value={data.campaign_cta_link || ''}
+                        onChange={e => update('campaign_cta_link', e.target.value)}
+                        placeholder="/shop"
+                      />
+                    </div>
+
+                    <div className="field">
+                      <label>Campaign End Date / Time (Optional)</label>
+                      <input
+                        type="datetime-local"
+                        value={data.campaign_ends_at ? new Date(data.campaign_ends_at).toISOString().slice(0, 16) : ''}
+                        onChange={e => update('campaign_ends_at', e.target.value ? new Date(e.target.value).toISOString() : '')}
+                      />
+                      <div className="hint">Leave empty to use rolling midnight countdown.</div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* 1. Dual Split Campaign Tiles */}
                 <div style={{ marginBottom: 28 }}>
                   <div className="field">

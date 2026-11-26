@@ -8,6 +8,9 @@ import ProductShelf from '../components/ProductShelf';
 import StarRating from '../components/StarRating';
 import HomeFaq, { buildFaqItems } from '../components/HomeFaq';
 import Reveal from '../components/Reveal';
+import CampaignBroadcastBanner from '../components/CampaignBroadcastBanner';
+import CampaignTiles from '../components/CampaignTiles';
+import FeaturedSpotlight from '../components/FeaturedSpotlight';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import './Home.css';
 
@@ -282,6 +285,11 @@ export default function Home() {
       </Suspense>
 
       {/* ══════════════════════════════════════════
+          CAMPAIGN BROADCAST BANNER (Jumia / Mega Sale Style)
+          ══════════════════════════════════════════ */}
+      <CampaignBroadcastBanner />
+
+      {/* ══════════════════════════════════════════
           HERO — full-viewport, high-priority LCP img
           ══════════════════════════════════════════ */}
       <section className="hero">
@@ -330,9 +338,14 @@ export default function Home() {
       </section>
 
       {/* ══════════════════════════════════════════
+          CAMPAIGN TILES — 2-up category promotional cards
+          ══════════════════════════════════════════ */}
+      <CampaignTiles />
+
+      {/* ══════════════════════════════════════════
           FLASH SALE — countdown timer + deals shelf
           ══════════════════════════════════════════ */}
-      {settings.flash_sale_enabled !== false && settings.flash_sale_enabled !== 'false' && saleProducts.length > 0 && (
+      {settings.flash_sale_enabled !== false && settings.flash_sale_enabled !== 'false' && (saleProducts.length > 0 || featured.length > 0) && (
         <section className="flash-sale-section">
           <Reveal className="container">
             <div className="flash-sale-header">
@@ -342,7 +355,7 @@ export default function Home() {
               </div>
               <FlashSaleTimer endTime={flashEndTime} />
             </div>
-            <ProductShelf products={saleProducts} ariaLabel={settings.flash_sale_title || "Today's Deals"} dark />
+            <ProductShelf products={saleProducts.length > 0 ? saleProducts : featured.slice(0, 8)} ariaLabel={settings.flash_sale_title || "Today's Deals"} dark />
             <div style={{ textAlign: 'center', marginTop: '28px' }}>
               <Link to="/shop" className="btn btn-outline-gold">See All Deals →</Link>
             </div>
@@ -471,6 +484,11 @@ export default function Home() {
           </Reveal>
         </section>
       )}
+
+      {/* ══════════════════════════════════════════
+          FEATURED SPOTLIGHT LOOKBOOK CAROUSEL
+          ══════════════════════════════════════════ */}
+      <FeaturedSpotlight />
 
       {/* ══════════════════════════════════════════
           BRAND STORY — split image + text

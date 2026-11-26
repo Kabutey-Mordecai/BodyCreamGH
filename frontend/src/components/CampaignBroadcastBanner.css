@@ -1,0 +1,456 @@
+/* ═══════════════════════════════════════════════════════════════
+   CAMPAIGN BROADCAST BANNER (Jumia / Francophone E-Commerce Standard)
+   ═══════════════════════════════════════════════════════════════ */
+
+.cbb-broadcast-section {
+  position: relative;
+  overflow: hidden;
+  padding: 38px 0 34px;
+  border-bottom: 2px solid rgba(201, 165, 90, 0.35);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+  transition: all 0.3s ease;
+}
+
+/* ── Theme 1: Black Friday / Cyber Mega Deals (Deep Black & Gold) ── */
+.cbb-theme-black_friday {
+  background: radial-gradient(circle at 15% 50%, #201712 0%, #0d0907 50%, #050403 100%);
+  color: #f7f3ee;
+}
+.cbb-theme-black_friday .cbb-ambient-glow {
+  position: absolute;
+  top: -50%;
+  left: 30%;
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, rgba(201, 165, 90, 0.14) 0%, transparent 70%);
+  pointer-events: none;
+}
+.cbb-theme-black_friday .cbb-badge {
+  background: #c9a55a;
+  color: #120d09;
+  font-weight: 800;
+}
+.cbb-theme-black_friday .cbb-btn-primary {
+  background: #c9a55a;
+  color: #140d08;
+  font-weight: 700;
+  border: 1px solid #dfba6d;
+}
+.cbb-theme-black_friday .cbb-btn-primary:hover {
+  background: #dfba6d;
+  color: #000;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(201, 165, 90, 0.4);
+}
+.cbb-theme-black_friday .cbb-timer-unit {
+  background: #1c1410;
+  border: 1px solid rgba(201, 165, 90, 0.35);
+  color: #f4d088;
+}
+
+/* ── Theme 2: Flash Sale / Fire Red ── */
+.cbb-theme-flash_sale {
+  background: linear-gradient(135deg, #450a0a 0%, #1c0505 60%, #0a0202 100%);
+  color: #fff;
+  border-bottom-color: #ef4444;
+}
+.cbb-theme-flash_sale .cbb-badge {
+  background: #ef4444;
+  color: #fff;
+  font-weight: 800;
+}
+.cbb-theme-flash_sale .cbb-btn-primary {
+  background: #ef4444;
+  color: #fff;
+  border: 1px solid #f87171;
+}
+.cbb-theme-flash_sale .cbb-timer-unit {
+  background: #2b0707;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+/* ── Theme 3: Holiday Glow (Rose Champagne & Gold) ── */
+.cbb-theme-holiday_glow {
+  background: linear-gradient(135deg, #2b1810 0%, #170d08 100%);
+  color: #faf7f4;
+  border-bottom-color: #d4af37;
+}
+
+/* ── Grid Layout ── */
+.cbb-container {
+  position: relative;
+  z-index: 2;
+}
+
+.cbb-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 36px;
+  align-items: center;
+}
+
+/* ── Left Content Area ── */
+.cbb-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.cbb-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cbb-pulse-dot {
+  width: 7px;
+  height: 7px;
+  background: #ef4444;
+  border-radius: 50%;
+  display: inline-block;
+  animation: cbbPulse 1.4s infinite ease-in-out;
+}
+
+@keyframes cbbPulse {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  50% { transform: scale(1.3); opacity: 1; }
+  100% { transform: scale(0.9); opacity: 0.7; }
+}
+
+.cbb-guarantee-pill {
+  font-size: 0.7rem;
+  color: #c9a55a;
+  background: rgba(201, 165, 90, 0.12);
+  border: 1px solid rgba(201, 165, 90, 0.25);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.cbb-headline {
+  font-family: var(--font-display, 'Cormorant Garamond', Georgia, serif);
+  font-size: clamp(1.8rem, 3.4vw, 2.75rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 10px;
+  color: #fff;
+}
+
+.cbb-subtext {
+  font-size: clamp(0.86rem, 1.2vw, 0.98rem);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.82);
+  margin: 0 0 20px;
+  max-width: 580px;
+}
+
+/* ── Actions: Button & Voucher ── */
+.cbb-action-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 22px;
+}
+
+.cbb-btn-primary {
+  padding: 12px 24px;
+  font-size: 0.92rem;
+  border-radius: 8px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  transition: all 0.2s ease;
+}
+
+.cbb-voucher-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px dashed rgba(201, 165, 90, 0.6);
+  padding: 6px 12px;
+  border-radius: 8px;
+}
+
+.cbb-voucher-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 600;
+}
+
+.cbb-voucher-code {
+  background: #0d0907;
+  color: #f7d070;
+  border: 1px solid #c9a55a;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-family: monospace;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.cbb-voucher-code:hover {
+  background: #c9a55a;
+  color: #0d0907;
+}
+
+.cbb-copy-badge {
+  font-size: 0.64rem;
+  background: rgba(201, 165, 90, 0.25);
+  padding: 2px 5px;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ── Trust Perks Row ── */
+.cbb-perks-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 14px;
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.cbb-perk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cbb-perk-icon {
+  font-size: 0.95rem;
+}
+
+/* ── Right: Urgency & Countdown Box ── */
+.cbb-urgency-card {
+  background: rgba(18, 12, 9, 0.75);
+  border: 1px solid rgba(201, 165, 90, 0.35);
+  border-radius: 12px;
+  padding: 24px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.4);
+  text-align: center;
+}
+
+.cbb-urgency-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.cbb-fire-icon {
+  font-size: 1.1rem;
+}
+
+.cbb-urgency-title {
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  color: #c9a55a;
+  text-transform: uppercase;
+}
+
+.cbb-countdown-grid {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.cbb-timer-unit {
+  min-width: 58px;
+  padding: 10px 4px 6px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.cbb-timer-num {
+  font-size: 1.55rem;
+  font-weight: 800;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, monospace;
+  line-height: 1;
+}
+
+.cbb-timer-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 4px;
+}
+
+.cbb-timer-colon {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: rgba(201, 165, 90, 0.6);
+  margin-top: -8px;
+}
+
+.cbb-stock-urgency {
+  margin-bottom: 18px;
+}
+
+.cbb-stock-bar-wrap {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.cbb-stock-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #c9a55a, #f59e0b, #ef4444);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.cbb-stock-text {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cbb-urgency-cta {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  background: rgba(201, 165, 90, 0.15);
+  border: 1px solid rgba(201, 165, 90, 0.5);
+  color: #f7d070;
+  border-radius: 6px;
+  text-decoration: none;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: all 0.2s ease;
+}
+
+.cbb-urgency-cta:hover {
+  background: #c9a55a;
+  color: #120d09;
+}
+
+/* ── Compact Banner Variant (For Shop Catalog Header) ── */
+.cbb-compact {
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(201, 165, 90, 0.3);
+  font-size: 0.82rem;
+}
+
+.cbb-compact-inner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.cbb-compact-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.cbb-compact-badge {
+  font-size: 0.68rem;
+  font-weight: 800;
+  background: #c9a55a;
+  color: #140d08;
+  padding: 2px 8px;
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+
+.cbb-compact-text {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.cbb-compact-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cbb-code-pill {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px dashed rgba(201, 165, 90, 0.6);
+  color: #f7d070;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.cbb-compact-cta {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #c9a55a;
+  text-decoration: none;
+}
+.cbb-compact-cta:hover {
+  text-decoration: underline;
+}
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .cbb-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .cbb-urgency-card {
+    max-width: 480px;
+    margin: 0 auto;
+    width: 100%;
+  }
+}
+
+@media (max-width: 600px) {
+  .cbb-broadcast-section {
+    padding: 26px 0 22px;
+  }
+  .cbb-action-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .cbb-btn-primary {
+    justify-content: center;
+  }
+  .cbb-voucher-box {
+    justify-content: space-between;
+  }
+  .cbb-perks-row {
+    gap: 10px;
+    font-size: 0.7rem;
+  }
+}
