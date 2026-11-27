@@ -1282,6 +1282,52 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
                         ),
                       ] else if (order.status == 'shipped') ...[
                         const SizedBox(height: 10),
+                        if (_delivery != null &&
+                            (_delivery!['pod_otp'] != null ||
+                                _delivery!['otp'] != null)) ...[
+                          Container(
+                            width: double.infinity,
+                            margin: const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14, horizontal: 12),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFBEB),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                  color: const Color(0xFFFDE68A), width: 1.5),
+                            ),
+                            child: Column(
+                              children: [
+                                const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.verified_user_outlined,
+                                        size: 16, color: Color(0xFFB45309)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Doorstep Delivery Code',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: Color(0xFF92400E),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${_delivery!['pod_otp'] ?? _delivery!['otp']}',
+                                  style: const TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 6,
+                                    color: Color(0xFF78350F),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         Container(
                           width: double.infinity,
                           padding: const EdgeInsets.all(12),
@@ -1337,8 +1383,8 @@ class _OrderDetailScreenState extends State<OrderDetailScreen> {
             ] else if (!order.isPickup &&
                 !order.isTerminal &&
                 (order.status == 'processing' || order.status == 'shipped')) ...[
-              Card(
-                child: const ListTile(
+              const Card(
+                child: ListTile(
                   leading: Icon(Icons.local_shipping_outlined,
                       color: AppColors.accentDark),
                   title: Text('Shipment Status'),

@@ -149,11 +149,12 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted && (sub || ordered)) {
         setState(() => _hideNewsletterBar = true);
       }
-      final userEmail = context.mounted ? context.read<AuthProvider>().user?.email : null;
+      if (!mounted) return;
+      final userEmail = mounted ? context.read<AuthProvider>().user?.email : null;
       final emailToCheck = (userEmail != null && userEmail.isNotEmpty)
           ? userEmail
           : savedEmail;
-      if (emailToCheck != null || (context.mounted && context.read<AuthProvider>().isLoggedIn)) {
+      if (emailToCheck != null || (mounted && context.read<AuthProvider>().isLoggedIn)) {
         final status = await ApiService.instance.getNewsletterStatus(email: emailToCheck);
         if (!mounted) return;
         if (status['shouldHideBar'] == true) {
@@ -464,10 +465,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return _products.where((p) => p.inStock).take(4).toList();
   }
 
-  void _goToShop({String? category, String? search}) {
+  void _goToShop({String? category, String? search, bool? onSale, String? brand}) {
     final params = <String, String>{
       if (category != null && category.isNotEmpty) 'category': category,
       if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+      if (onSale == true) 'on_sale': 'true',
+      if (brand != null && brand.trim().isNotEmpty) 'brand': brand.trim(),
     };
     final uri = Uri(
       path: '/shop',
@@ -478,7 +481,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Resolves any storefront CTA link (from Admin Storefront Editor):
   /// - `/products/:id` or `/product/:id` -> pushes directly to ProductDetailScreen
-  /// - `/shop?category=...&search=...` -> navigates to ShopScreen with filters
+  /// - `/shop?category=...&search=...&on_sale=...&brand=...` -> navigates to ShopScreen with filters
   /// - external `http(s)://`, `wa.me`, `tel:`, `mailto:` -> opens externally
   void _navigateStorefrontLink(String? rawLink, {String? fallbackCategory}) {
     final link = (rawLink ?? '').trim();
@@ -503,6 +506,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _goToShop(
           category: uri.queryParameters['category'] ?? fallbackCategory,
           search: uri.queryParameters['search'],
+          onSale: uri.queryParameters['on_sale'] == 'true' ||
+              uri.queryParameters['deals'] == 'true',
+          brand: uri.queryParameters['brand'],
         );
         return;
       }
@@ -576,6 +582,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final flashTitle = _str('flash_sale_title', "Today's Deals");
     final flashBadge = _str('flash_sale_badge', 'FLASH SALE');
     final campaignTilesEnabled = _settings['campaign_tiles_enabled'] != false;
+    final campaignBannerEnabled = _settings['campaign_banner_enabled'] != false &&
+        _settings['campaign_banner_enabled'] != 'false';
 
     final reviewsToShow =
         _reviews.isNotEmpty ? _reviews : _defaultTestimonials;
@@ -756,6 +764,16 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                     ],
+                  ),
+                ),
+
+              // 1b. Promotional Campaign Broadcast Banner (matches web CampaignBroadcastBanner.jsx)
+              if (campaignBannerEnabled)
+                _CampaignBroadcastBanner(
+                  settings: _settings,
+                  onCta: (link) => _navigateStorefrontLink(
+                    link,
+                    fallbackCategory: null,
                   ),
                 ),
 
@@ -1151,6 +1169,272 @@ class _HomeScreenState extends State<HomeScreen> {
           : null,
     );
   }
+}
+
+class _CampaignBroadcastBanner extends StatefulWidget {
+  final Map<String, dynamic> settings;
+  final ValueChanged<String> onCta;
+
+  const _CampaignBroadcastBanner({
+    required this.settings,
+    required this.onCta,
+  });
+
+  @override
+  State<_CampaignBroadcastBanner> createState() =>
+      _CampaignBroadcastBannerState();
+}
+
+class _CampaignBroadcastBannerState extends State<_CampaignBroadcastBanner> {
+  Timer? _timer;
+  late DateTime _targetEnd;
+  Duration _timeLeft = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _initTargetTime();
+    _tick();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _tick());
+  }
+
+  @override
+  void didUpdateWidget(covariant _CampaignBroadcastBanner oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.settings['campaign_ends_at'] !=
+        widget.settings['campaign_ends_at']) {
+      _initTargetTime();
+      _tick();
+    }
+  }
+
+  void _initTargetTime() {
+    final endsAtRaw = widget.settings['campaign_ends_at']?.toString();
+    if (endsAtRaw != null && endsAtRaw.isNotEmpty) {
+      final parsed = DateTime.tryParse(endsAtRaw);
+      if (parsed != null && parsed.isAfter(DateTime.now())) {
+        _targetEnd = parsed;
+        return;
+      }
+    }
+    // Default fallback: 3 days ahead at 23:59:59
+    final now = DateTime.now();
+    _targetEnd = DateTime(now.year, now.month, now.day + 3, 23, 59, 59);
+  }
+
+  void _tick() {
+    final now = DateTime.now();
+    if (_targetEnd.isBefore(now)) {
+      if (mounted) setState(() => _timeLeft = Duration.zero);
+      return;
+    }
+    if (mounted) {
+      setState(() => _timeLeft = _targetEnd.difference(now));
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme =
+        (widget.settings['campaign_theme'] ?? 'black_friday').toString();
+    final badge = (widget.settings['campaign_badge'] ??
+            'BLACK FRIDAY EVENT · LIMITED TIME DEALS')
+        .toString();
+    final headline = (widget.settings['campaign_headline'] ??
+            'Up to 50% Off Bestselling Beauty')
+        .toString();
+    final subtext = (widget.settings['campaign_subtext'] ??
+            'Slashed prices on authentic, direct-sourced skincare, fragrances, and haircare. Sealed guarantee with fast nationwide delivery.')
+        .toString();
+    final ctaText =
+        (widget.settings['campaign_cta_text'] ?? 'Shop Deals').toString();
+    final rawLink =
+        (widget.settings['campaign_cta_link'] ?? '/shop?on_sale=true')
+            .toString();
+    final ctaLink = rawLink == '/shop' ? '/shop?on_sale=true' : rawLink;
+
+    Color bgStart, bgEnd, accentColor;
+    if (theme == 'flash_sale') {
+      bgStart = const Color(0xFF7F1D1D);
+      bgEnd = const Color(0xFF991B1B);
+      accentColor = const Color(0xFFFDE047);
+    } else if (theme == 'holiday_glow') {
+      bgStart = const Color(0xFF064E3B);
+      bgEnd = const Color(0xFF047857);
+      accentColor = const Color(0xFFD4AF37);
+    } else {
+      // black_friday
+      bgStart = const Color(0xFF0F172A);
+      bgEnd = const Color(0xFF1E293B);
+      accentColor = const Color(0xFFD4AF37);
+    }
+
+    final days = _timeLeft.inDays;
+    final hours = _timeLeft.inHours % 24;
+    final mins = _timeLeft.inMinutes % 60;
+    final secs = _timeLeft.inSeconds % 60;
+
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [bgStart, bgEnd],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        border: Border(
+          bottom:
+              BorderSide(color: accentColor.withValues(alpha: 0.3), width: 1.5),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF22C55E),
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  badge.toUpperCase(),
+                  style: TextStyle(
+                    color: accentColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            headline,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+              height: 1.2,
+            ),
+          ),
+          if (subtext.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              subtext,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.82),
+                fontSize: 12,
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Countdown digits
+              Row(
+                children: [
+                  _timerBox(
+                      days.toString().padLeft(2, '0'), 'D', accentColor),
+                  _timerColon(),
+                  _timerBox(
+                      hours.toString().padLeft(2, '0'), 'H', accentColor),
+                  _timerColon(),
+                  _timerBox(
+                      mins.toString().padLeft(2, '0'), 'M', accentColor),
+                  _timerColon(),
+                  _timerBox(
+                      secs.toString().padLeft(2, '0'), 'S', accentColor),
+                ],
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: accentColor,
+                  foregroundColor: const Color(0xFF1E1B18),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                onPressed: () => widget.onCta(ctaLink),
+                child: Text(
+                  '$ctaText →',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _timerColon() => const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 3),
+        child: Text(
+          ':',
+          style: TextStyle(
+            color: Colors.white54,
+            fontWeight: FontWeight.w700,
+            fontSize: 12,
+          ),
+        ),
+      );
+
+  Widget _timerBox(String val, String unit, Color accent) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              val,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                fontFeatures: [FontFeature.tabularFigures()],
+              ),
+            ),
+            const SizedBox(width: 1),
+            Text(
+              unit,
+              style: TextStyle(
+                color: accent,
+                fontSize: 8.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 class _EditorialHero extends StatelessWidget {

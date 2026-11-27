@@ -168,6 +168,9 @@ GoRouter _buildRouter(BuildContext ctx) {
               builder: (_, state) => ShopScreen(
                 initialCategory: state.uri.queryParameters['category'],
                 initialSearch: state.uri.queryParameters['search'],
+                initialOnSale: state.uri.queryParameters['on_sale'] == 'true' ||
+                    state.uri.queryParameters['deals'] == 'true',
+                initialBrand: state.uri.queryParameters['brand'],
               ),
             ),
           ]),

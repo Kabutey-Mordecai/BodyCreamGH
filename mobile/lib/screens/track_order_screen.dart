@@ -380,6 +380,58 @@ class _TrackOrderScreenState extends State<TrackOrderScreen> {
                           ),
                         ),
                       ] else if (_order!.delivery != null) ...[
+                        if (_order!.delivery!['pod_otp'] != null ||
+                            _order!.delivery!['otp'] != null) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFFBEB),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: const Color(0xFFFDE68A), width: 1.5),
+                            ),
+                            child: Column(
+                              children: [
+                                const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.verified_user_outlined, size: 18, color: Color(0xFFB45309)),
+                                    SizedBox(width: 6),
+                                    Text(
+                                      'Doorstep Delivery Code',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 13,
+                                        color: Color(0xFF92400E),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  '${_order!.delivery!['pod_otp'] ?? _order!.delivery!['otp']}',
+                                  style: const TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w900,
+                                    letterSpacing: 6,
+                                    color: Color(0xFF78350F),
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                const Text(
+                                  'Share this 6-digit code ONLY with your dispatch rider after you receive and inspect your parcel.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: Color(0xFF92400E),
+                                    height: 1.3,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 16),
                         Container(
                           width: double.infinity,

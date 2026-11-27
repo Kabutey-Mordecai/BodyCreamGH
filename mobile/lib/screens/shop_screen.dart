@@ -12,11 +12,15 @@ import '../widgets/search_autocomplete_field.dart';
 class ShopScreen extends StatefulWidget {
   final String? initialCategory;
   final String? initialSearch;
+  final bool? initialOnSale;
+  final String? initialBrand;
 
   const ShopScreen({
     super.key,
     this.initialCategory,
     this.initialSearch,
+    this.initialOnSale,
+    this.initialBrand,
   });
 
   @override
@@ -130,6 +134,15 @@ class _ShopScreenState extends State<ShopScreen> {
     if (widget.initialSearch != null && widget.initialSearch!.isNotEmpty) {
       _searchCtrl.text = widget.initialSearch!;
     }
+    if (widget.initialOnSale == true) {
+      _onSaleOnly = true;
+    }
+    if (widget.initialBrand != null && widget.initialBrand!.trim().isNotEmpty) {
+      final b = widget.initialBrand!.trim();
+      if (!_selectedBrands.contains(b)) {
+        _selectedBrands.add(b);
+      }
+    }
     _fetchFacets();
     _fetchSettings();
     _fetch();
@@ -149,6 +162,20 @@ class _ShopScreenState extends State<ShopScreen> {
     }
     if (widget.initialSearch != oldWidget.initialSearch) {
       _searchCtrl.text = widget.initialSearch ?? '';
+      _page = 1;
+      changed = true;
+    }
+    if (widget.initialOnSale != oldWidget.initialOnSale && widget.initialOnSale != null) {
+      _onSaleOnly = widget.initialOnSale == true;
+      _page = 1;
+      changed = true;
+    }
+    if (widget.initialBrand != oldWidget.initialBrand && widget.initialBrand != null) {
+      final b = widget.initialBrand!.trim();
+      _selectedBrands.clear();
+      if (b.isNotEmpty) {
+        _selectedBrands.add(b);
+      }
       _page = 1;
       changed = true;
     }
@@ -904,12 +931,14 @@ class _ShopScreenState extends State<ShopScreen> {
                   const SizedBox(width: 6),
                   FilterChip(
                     showCheckmark: false,
+                    avatar: const Text('🔥', style: TextStyle(fontSize: 12)),
+                    selectedColor: AppColors.error,
                     label: Text(
-                      'On Sale',
+                      'Deals / On Sale',
                       style: TextStyle(
                         color: _onSaleOnly ? Colors.white : AppColors.text,
                         fontWeight:
-                            _onSaleOnly ? FontWeight.w700 : FontWeight.w500,
+                            _onSaleOnly ? FontWeight.w700 : FontWeight.w600,
                         fontSize: 12,
                       ),
                     ),

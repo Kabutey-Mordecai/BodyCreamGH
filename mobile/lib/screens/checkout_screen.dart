@@ -10,13 +10,7 @@ import '../providers/cart_provider.dart';
 import '../services/api_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/payment_url.dart';
-
-const List<String> _ghanaRegions = [
-  'Greater Accra', 'Ashanti', 'Western', 'Western North',
-  'Central', 'Eastern', 'Volta', 'Oti',
-  'Northern', 'Savannah', 'North East', 'Upper East',
-  'Upper West', 'Bono', 'Bono East', 'Ahafo',
-];
+import '../data/ghana_locations.dart';
 
 double? _parseNum(dynamic v) {
   if (v == null) return null;
@@ -53,8 +47,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   final _phoneCtrl = TextEditingController();
   final _notesCtrl = TextEditingController();
   final _couponCtrl = TextEditingController();
+  final _customTownCtrl = TextEditingController();
 
   String _selectedRegion = 'Greater Accra';
+  String _selectedArea = 'Accra Central';
+  String _selectedTown = 'Adabraka';
   String _fulfillmentMethod = 'delivery'; // 'delivery' | 'pickup'
   String _paymentMethod = 'paystack'; // 'paystack' | 'pay_on_delivery'
 
@@ -294,6 +291,7 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     _phoneCtrl.dispose();
     _notesCtrl.dispose();
     _couponCtrl.dispose();
+    _customTownCtrl.dispose();
     super.dispose();
   }
 
@@ -400,7 +398,11 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final isPickup = _fulfillmentMethod == 'pickup';
     final shippingAddress =
         isPickup ? 'Pickup: $_pickupLocation' : _addressCtrl.text.trim();
-    final shippingCity = isPickup ? 'Accra' : _cityCtrl.text.trim();
+    final effectiveTown =
+        _selectedTown == 'other' ? _customTownCtrl.text.trim() : _selectedTown;
+    final shippingCity = isPickup
+        ? 'Accra'
+        : (effectiveTown.isNotEmpty ? '$effectiveTown, $_selectedArea' : _selectedArea);
     final shippingRegion = isPickup ? 'Greater Accra' : _selectedRegion;
     final ghanaPostGps = isPickup || _gpsCtrl.text.trim().isEmpty
         ? null
@@ -918,11 +920,106 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 ),
               )
             else ...[
+              // 1. Region Dropdown
+              DropdownButtonFormField<String>(
+                value: _selectedRegion,
+                decoration: const InputDecoration(
+                  labelText: '1. Region *',
+                  prefixIcon: Icon(Icons.map_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                items: getGhanaRegions()
+                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _selectedRegion = v;
+                    final areas = getAreasForRegion(v);
+                    _selectedArea = areas.isNotEmpty ? areas.first : '';
+                    final towns = getTownsForArea(v, _selectedArea);
+                    _selectedTown = towns.isNotEmpty ? towns.first : '';
+                    _customTownCtrl.clear();
+                    if (!_isPodEligible &&
+                        _paymentMethod == 'pay_on_delivery') {
+                      _paymentMethod = 'paystack';
+                    }
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // 2. Area / District Dropdown
+              DropdownButtonFormField<String>(
+                value: _selectedArea,
+                decoration: const InputDecoration(
+                  labelText: '2. Area / District *',
+                  prefixIcon: Icon(Icons.location_city_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                items: getAreasForRegion(_selectedRegion)
+                    .map((a) => DropdownMenuItem(value: a, child: Text(a)))
+                    .toList(),
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _selectedArea = v;
+                    final towns = getTownsForArea(_selectedRegion, v);
+                    _selectedTown = towns.isNotEmpty ? towns.first : '';
+                    _customTownCtrl.clear();
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // 3. Town / Neighborhood Dropdown
+              DropdownButtonFormField<String>(
+                value: _selectedTown,
+                decoration: const InputDecoration(
+                  labelText: '3. Town / Neighborhood *',
+                  prefixIcon: Icon(Icons.near_me_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  ...getTownsForArea(_selectedRegion, _selectedArea).map(
+                    (t) => DropdownMenuItem(value: t, child: Text(t)),
+                  ),
+                  const DropdownMenuItem(
+                    value: 'other',
+                    child: Text('Other / Not in list…'),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() {
+                    _selectedTown = v;
+                  });
+                },
+              ),
+
+              if (_selectedTown == 'other') ...[
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: _customTownCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Enter Your Specific Town / Area *',
+                    hintText: 'e.g. Dawhenya, New Bortianor, Prampram',
+                    prefixIcon: Icon(Icons.edit_location_alt_outlined),
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (v) => v == null || v.trim().isEmpty
+                      ? 'Please enter your specific town or neighborhood'
+                      : null,
+                ),
+              ],
+              const SizedBox(height: 12),
+
+              // 4. Street Address / Landmark
               TextFormField(
                 controller: _addressCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Street Address *',
-                  hintText: 'e.g. 12 Oxford Street',
+                  labelText: '4. Street Address / House / Landmark *',
+                  hintText: 'e.g. House No. 24, Near Shell Petrol Station',
                   prefixIcon: Icon(Icons.location_on_outlined),
                   border: OutlineInputBorder(),
                 ),
@@ -931,41 +1028,6 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                 validator: (v) => v == null || v.trim().length < 3
                     ? 'Please enter your delivery address'
                     : null,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: _cityCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'City *',
-                  hintText: 'e.g. Accra',
-                  prefixIcon: Icon(Icons.location_city_outlined),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (v) => v == null || v.trim().isEmpty
-                    ? 'Please enter your city'
-                    : null,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _selectedRegion,
-                decoration: const InputDecoration(
-                  labelText: 'Region *',
-                  prefixIcon: Icon(Icons.map_outlined),
-                  border: OutlineInputBorder(),
-                ),
-                items: _ghanaRegions
-                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                    .toList(),
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() {
-                    _selectedRegion = v;
-                    if (!_isPodEligible &&
-                        _paymentMethod == 'pay_on_delivery') {
-                      _paymentMethod = 'paystack';
-                    }
-                  });
-                },
               ),
               const SizedBox(height: 12),
               TextFormField(
@@ -1098,6 +1160,54 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
                             : 'Available for Greater Accra deliveries or Store Pickup only',
                       ),
                     ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+
+            // Ghanaian Payment Badges (MTN MoMo, Telecel Cash, AT Money, Cards)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppColors.blush,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.verified_outlined,
+                          size: 14, color: Color(0xFF15803D)),
+                      SizedBox(width: 5),
+                      Text(
+                        'Ghanaian Instant Payment Networks Supported',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _paymentPill('MTN MoMo', const Color(0xFFFEF08A),
+                          const Color(0xFF854D0E)),
+                      _paymentPill('Telecel Cash', const Color(0xFFFEE2E2),
+                          const Color(0xFF991B1B)),
+                      _paymentPill('AT Money', const Color(0xFFDBEAFE),
+                          const Color(0xFF1E40AF)),
+                      _paymentPill('Visa / Mastercard', const Color(0xFFF1F5F9),
+                          const Color(0xFF1E293B)),
+                      _paymentPill('Paystack Secured', const Color(0xFFDCFCE7),
+                          const Color(0xFF166534)),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -1327,6 +1437,25 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
             ),
             const SizedBox(height: 24),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _paymentPill(String label, Color bg, Color fg) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: fg.withValues(alpha: 0.2)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          color: fg,
         ),
       ),
     );

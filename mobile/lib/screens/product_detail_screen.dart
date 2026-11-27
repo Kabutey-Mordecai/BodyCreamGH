@@ -828,36 +828,106 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Category + Rating row
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            // Brand + Category + Authentic badge row
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
                               children: [
+                                if (_product!.brand != null &&
+                                    _product!.brand!.trim().isNotEmpty)
+                                  InkWell(
+                                    onTap: () => context.push(
+                                      '/shop?brand=${Uri.encodeComponent(_product!.brand!.trim())}',
+                                    ),
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.accentLight,
+                                        borderRadius: BorderRadius.circular(4),
+                                        border: Border.all(
+                                            color: AppColors.accent
+                                                .withValues(alpha: 0.35)),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            _product!.brand!.toUpperCase(),
+                                            style: const TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.w700,
+                                              letterSpacing: 1.0,
+                                              color: AppColors.accentDark,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 3),
+                                          const Icon(
+                                            Icons.arrow_forward_ios,
+                                            size: 9,
+                                            color: AppColors.accentDark,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 if (_product!.category != null)
                                   Text(
                                     _product!.category!.toUpperCase(),
                                     style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
-                                      letterSpacing: 1.5,
-                                      color: AppColors.accentDark,
+                                      letterSpacing: 1.4,
+                                      color: AppColors.muted,
                                     ),
                                   ),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.star_rounded,
-                                        size: 16, color: AppColors.accent),
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      (_product!.averageRating != null &&
-                                              _product!.averageRating! > 0)
-                                          ? '${_product!.averageRating!.toStringAsFixed(1)} (${_product!.reviewCount} review${_product!.reviewCount == 1 ? '' : 's'})'
-                                          : 'No reviews yet',
-                                      style: const TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w600,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFF0FDF4),
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                        color: const Color(0xFF86EFAC)),
+                                  ),
+                                  child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.check_circle_outline,
+                                          size: 11,
+                                          color: Color(0xFF16A34A)),
+                                      SizedBox(width: 3),
+                                      Text(
+                                        '100% AUTHENTIC',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w800,
+                                          color: Color(0xFF15803D),
+                                          letterSpacing: 0.5,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Row(
+                              children: [
+                                const Icon(Icons.star_rounded,
+                                    size: 16, color: AppColors.accent),
+                                const SizedBox(width: 4),
+                                Text(
+                                  (_product!.averageRating != null &&
+                                          _product!.averageRating! > 0)
+                                      ? '${_product!.averageRating!.toStringAsFixed(1)} (${_product!.reviewCount} review${_product!.reviewCount == 1 ? '' : 's'})'
+                                      : 'No reviews yet',
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ],
                             ),

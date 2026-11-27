@@ -117,4 +117,12 @@ class AuthProvider extends ChangeNotifier {
     _status = AuthStatus.unauthenticated;
     notifyListeners();
   }
+
+  @visibleForTesting
+  void setMockUser(User? user) {
+    _user = user;
+    _status =
+        user != null ? AuthStatus.authenticated : AuthStatus.unauthenticated;
+    notifyListeners();
+  }
 }
