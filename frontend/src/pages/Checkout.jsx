@@ -36,7 +36,7 @@ export default function Checkout() {
   const [form, setForm] = useState(() => {
     const defaultRegion = 'Greater Accra';
     const areas = getAreasForRegion(defaultRegion);
-    const defaultArea = areas[0] || 'Accra Metropolitan (AMA)';
+    const defaultArea = areas[0] || 'Accra Central';
     const towns = getTownsForArea(defaultRegion, defaultArea);
     const defaultTown = towns[0] || '';
     return {
