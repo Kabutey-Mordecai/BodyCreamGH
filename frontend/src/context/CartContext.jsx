@@ -35,7 +35,12 @@ export function CartProvider({ children }) {
       const { data } = await cartAPI.getCart();
       setServerCart(data);
     } catch (err) {
-      console.error('[CartContext] fetchCart failed:', err?.message);
+      if (err?.response?.status === 401) {
+        // Token expired; gracefully clear server cart so guest cart takes over
+        setServerCart([]);
+      } else {
+        console.error('[CartContext] fetchCart failed:', err?.message);
+      }
     } finally {
       setLoading(false);
     }

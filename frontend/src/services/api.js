@@ -58,6 +58,7 @@ function clearSession() {
   localStorage.removeItem('token');
   localStorage.removeItem('refresh_token');
   localStorage.removeItem('user');
+  window.dispatchEvent(new CustomEvent('auth:session_expired'));
   const { pathname } = window.location;
   const isPublic = PUBLIC_ROUTES.some(p =>
     p === '/' ? pathname === '/' : pathname.startsWith(p)

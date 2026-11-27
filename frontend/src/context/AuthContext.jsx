@@ -28,6 +28,12 @@ export function AuthProvider({ children }) {
       }
     }
     setLoading(false);
+
+    const handleSessionExpired = () => {
+      setUser(null);
+    };
+    window.addEventListener('auth:session_expired', handleSessionExpired);
+    return () => window.removeEventListener('auth:session_expired', handleSessionExpired);
   }, []);
 
   const login = async (email, password, extra = {}) => {
