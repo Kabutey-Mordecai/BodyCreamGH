@@ -108,11 +108,15 @@ export default function InstallAppBanner() {
 
   if (isStandalone) return null;
 
+  // When customer has items in cart, completely hide the floating install banner
+  // so the checkout bar is 100% visible with zero visual clutter or collision.
+  const shouldRenderBanner = showBanner && !hasCartBar;
+
   return (
     <>
-      {showBanner && (
+      {shouldRenderBanner && (
         <aside
-          className={`pwa-banner-wrap ${hasCartBar ? 'pwa-has-cart-bar' : ''}`}
+          className="pwa-banner-wrap"
           aria-label="Install BodyCream GH App"
         >
           <div className="pwa-banner">

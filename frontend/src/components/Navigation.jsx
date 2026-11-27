@@ -177,6 +177,19 @@ export default function Navigation() {
                 </li>
               </>
             )}
+
+            <li className="nav-install-item">
+              <button
+                type="button"
+                className="nav-install-link"
+                onClick={() => {
+                  closeMenu();
+                  window.dispatchEvent(new CustomEvent('bc-trigger-pwa-install'));
+                }}
+              >
+                📲 Install App
+              </button>
+            </li>
           </ul>
         </div>
       </nav>
