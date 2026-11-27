@@ -37,23 +37,7 @@ export default function InstallAppModal() {
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // 4. Auto-trigger modal after 8 seconds of browsing if not on sensitive routes & not on cooldown
-    const isCheckoutOrPayment = ['/checkout', '/payment'].some((p) =>
-      pathname.startsWith(p)
-    );
-
-    const dismissedAt = localStorage.getItem(DISMISS_KEY);
-    const isDismissCooldown =
-      dismissedAt && Date.now() - parseInt(dismissedAt, 10) < SEVEN_DAYS_MS;
-
-    let timer;
-    if (!isDismissCooldown && !isCheckoutOrPayment) {
-      timer = setTimeout(() => {
-        setIsOpen(true);
-      }, 8000);
-    }
-
-    // 5. Global listener so buttons in the Account Dropdown / Footer trigger this exact modal!
+    // 4. Global listener so the floating button on the left, Account Dropdown, or Footer triggers this modal!
     const handleManualTrigger = () => {
       setIsOpen(true);
       if (isIosDevice) {
@@ -64,7 +48,6 @@ export default function InstallAppModal() {
     window.addEventListener('bc-trigger-pwa-install', handleManualTrigger);
 
     return () => {
-      if (timer) clearTimeout(timer);
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
       window.removeEventListener('bc-trigger-pwa-install', handleManualTrigger);
     };

@@ -4,6 +4,7 @@ import { useSettings } from './context/SettingsContext';
 import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import WhatsAppFloat from './components/WhatsAppFloat';
+import InstallAppFloat from './components/InstallAppFloat';
 import StickyCartBar from './components/StickyCartBar';
 import InstallAppModal from './components/InstallAppModal';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -227,6 +228,7 @@ export default function App() {
         {!isRiderRoute && <Footer />}
         {!isRiderRoute && <StickyCartBar />}
         {!isRiderRoute && <WhatsAppFloat />}
+        {!isRiderRoute && <InstallAppFloat />}
         {!isRiderRoute && <InstallAppModal />}
         {!isRiderRoute && (
           <Suspense fallback={null}>
