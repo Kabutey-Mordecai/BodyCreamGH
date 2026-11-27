@@ -548,6 +548,7 @@
   padding: 24px;
   max-width: 1400px;
   width: 100%;
+  box-sizing: border-box;
 }
 
 @keyframes menuDrop {

@@ -70,7 +70,7 @@
   --ac-input-border:        var(--ac-border-strong);
   --ac-input-placeholder:   #9ca3af;
 
-  --ac-sidebar-w:      240px;
+  --ac-sidebar-w:      256px;
   --ac-sidebar-rail-w: 68px;
   --ac-topbar-h:       62px;
 }
