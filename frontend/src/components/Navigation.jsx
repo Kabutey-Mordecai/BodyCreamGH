@@ -18,41 +18,11 @@ export default function Navigation() {
   const [menuOpen, setMenuOpen]   = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [badgePop, setBadgePop]   = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
   const prevCartCount             = useRef(cartCount);
   const accountDropdownRef        = useRef(null);
   const [barVisible, setBarVisible] = useState(
     () => !sessionStorage.getItem('bar_dismissed')
   );
-
-  useEffect(() => {
-    const standalone =
-      window.matchMedia('(display-mode: standalone)').matches ||
-      window.navigator.standalone === true ||
-      document.referrer.includes('android-app://');
-    setIsStandalone(standalone);
-  }, []);
-
-  const handleQuickInstall = async (e) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (window.__bcPwaPrompt) {
-      try {
-        await window.__bcPwaPrompt.prompt();
-        const choice = await window.__bcPwaPrompt.userChoice;
-        if (choice && choice.outcome === 'accepted') {
-          window.__bcPwaPrompt = null;
-          setIsStandalone(true);
-        }
-      } catch (err) {
-        console.error('Install prompt error:', err);
-      }
-    } else {
-      alert('To install BodyCream GH, look for the install icon in your browser address bar at the top, or tap your browser menu.');
-    }
-  };
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -131,45 +101,11 @@ export default function Navigation() {
             )}
           </Link>
 
-          {/* Search bar & 1-Click Install Button — desktop */}
-          <div className="nav-search-and-install">
-            <SearchBar variant="nav" placeholder="Search products…" onNavigate={closeMenu} />
-            {!isStandalone && (
-              <button
-                type="button"
-                className="nav-top-install-btn"
-                onClick={handleQuickInstall}
-                title="1-Click Install BodyCream GH App"
-                aria-label="Install App"
-              >
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                <span>Install</span>
-              </button>
-            )}
-          </div>
+          {/* Search bar — desktop only */}
+          <SearchBar variant="nav" placeholder="Search products…" onNavigate={closeMenu} />
 
           {/* Mobile quick actions — always visible in top bar on phones/tablets */}
           <div className="nav-mobile-quick">
-            {!isStandalone && (
-              <button
-                type="button"
-                className="nav-mobile-install-pill"
-                onClick={handleQuickInstall}
-                title="Install App"
-                aria-label="Install App"
-              >
-                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2.4">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
-                </svg>
-                <span>App</span>
-              </button>
-            )}
             <Link to="/shop" className="nav-mobile-shop-pill" onClick={closeMenu}>
               Shop
             </Link>
@@ -329,7 +265,7 @@ export default function Navigation() {
                               await window.__bcPwaPrompt.prompt();
                             } catch (_) {}
                           } else {
-                            alert('To install BodyCream GH, tap your browser menu and select "Install app" or "Add to Home screen".');
+                            alert('To install BodyCream GH, look for the install icon in your browser address bar or tap your browser menu.');
                           }
                         }}
                         role="menuitem"
