@@ -123,7 +123,7 @@ async function findRegisteredRiderById(id) {
  */
 function resolveGhanaZone(region, city) {
   const hay = `${region || ''} ${city || ''}`.toLowerCase();
-  if (hay.includes('accra') || hay.includes('tema') || hay.includes('legon') || hay.includes('madina')) return 'ACC';
+  if (hay.includes('accra') || hay.includes('tema') || hay.includes('ashaiman') || hay.includes('legon') || hay.includes('madina')) return 'ACC';
   if (hay.includes('ashanti') || hay.includes('kumasi')) return 'KSI';
   if (hay.includes('western') || hay.includes('takoradi') || hay.includes('sekondi')) return 'TAK';
   if (hay.includes('central') || hay.includes('cape coast') || hay.includes('kasoa')) return 'CAP';
