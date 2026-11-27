@@ -791,3 +791,175 @@
   padding: 18px;
   margin-bottom: 14px;
 }
+
+/* ── Rider Handoff Step Cards & Readiness Checklist ──────────── */
+.rp-step-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.rp-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #181310;
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.rp-step-num.is-done {
+  background: #2b6138;
+  color: #ffffff;
+}
+
+.rp-step-title {
+  font-size: 0.96rem;
+  font-weight: 800;
+  color: #181310;
+}
+
+.rp-otp-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.rp-otp-digit {
+  width: 100%;
+  height: 52px;
+  border-radius: 8px;
+  border: 1.5px solid #dcd7ce;
+  background: #ffffff;
+  color: #181310;
+  font-size: 1.4rem;
+  font-weight: 800;
+  text-align: center;
+  font-family: 'SF Mono', Menlo, Consolas, monospace;
+  padding: 0 !important;
+  box-sizing: border-box;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease;
+}
+.rp-otp-digit:focus {
+  outline: none;
+  border-color: #c59f52;
+  box-shadow: 0 0 0 3px rgba(197, 159, 82, 0.2);
+}
+.rp-otp-digit.is-filled {
+  border-color: #2b6138;
+  background: #fafcf8;
+}
+
+/* Camera Viewfinder */
+.rp-camera-stage {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid #181310;
+  background: #000000;
+}
+.rp-camera-stage video {
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  display: block;
+}
+.rp-camera-bar {
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: #181310;
+}
+
+.rp-photo-preview {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1.5px solid #2b6138;
+}
+.rp-photo-preview img {
+  width: 100%;
+  max-height: 220px;
+  object-fit: cover;
+  display: block;
+}
+.rp-photo-ok-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(43, 97, 56, 0.92);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+/* COD Method Pills */
+.rp-method-pills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 8px;
+}
+.rp-method-pill {
+  min-height: 40px;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid #dcd7ce;
+  background: #ffffff;
+  color: #181310;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.rp-method-pill.is-active {
+  border-color: #c59f52;
+  background: #c59f52;
+  color: #140f0c;
+}
+
+/* GPS Pill */
+.rp-gps-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #faf8f5;
+  border: 1px solid #e8e3d9;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+/* Readiness Checklist before Submit */
+.rp-readiness-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.rp-ready-chip {
+  padding: 7px 8px;
+  border-radius: 6px;
+  font-size: 0.73rem;
+  font-weight: 700;
+  text-align: center;
+  background: #ede9e1;
+  border: 1px solid #dcd7ce;
+  color: #78716c;
+}
+.rp-ready-chip.is-ready {
+  background: #eaf3ed;
+  border-color: #a3d4b2;
+  color: #1e522b;
+}
