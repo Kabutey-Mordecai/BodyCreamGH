@@ -224,7 +224,7 @@ input.hero-search-input:focus {
 
   .home-mobile-product-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%;
     gap: 12px;
     margin-bottom: 24px;
   }
