@@ -891,10 +891,10 @@ export default function Orders() {
           <div className="rm-modal-shell" onClick={e => e.stopPropagation()}>
             <div className="rm-modal-head">
               <div>
-                <div className="rm-modal-eyebrow">Dispatch Operations</div>
-                <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Rider Route Manifest</h3>
+                <div className="rm-modal-eyebrow">Dispatch</div>
+                <h3 style={{ fontSize: '1.1rem', margin: 0 }}>Rider Route Link</h3>
                 <p className="muted text-xs" style={{ marginTop: 3 }}>
-                  Generate a signed mobile route link per rider with addresses, Google Maps pins, COD cash tally, and 6-digit OTP verification.
+                  Share delivery stops and map directions with your rider.
                 </p>
               </div>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setManifestOpen(false)} aria-label="Close modal">
@@ -906,13 +906,13 @@ export default function Orders() {
               {/* Step 1: Select Rider */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-                  <div className="rm-step-label" style={{ marginBottom: 0 }}>1. Select Dispatch Rider or Fleet</div>
+                  <div className="rm-step-label" style={{ marginBottom: 0 }}>1. Select Rider</div>
                   <Link
                     to="/riders"
                     onClick={() => setManifestOpen(false)}
                     style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--ac-accent)', textDecoration: 'none' }}
                   >
-                    Manage Riders &amp; Fleet →
+                    Manage Riders →
                   </Link>
                 </div>
                 <div className="rm-rider-grid">
@@ -931,7 +931,7 @@ export default function Orders() {
                       >
                         <div style={{ minWidth: 0 }}>
                           <div className="rm-rider-name">{p.delivery_partner}</div>
-                          <div className="rm-rider-sub">{p.driver_phone || 'General pool / courier'}</div>
+                          <div className="rm-rider-sub">{p.driver_phone || 'General courier'}</div>
                         </div>
                         <span className="rm-rider-stop-pill">{p.active_count}</span>
                       </button>
@@ -953,7 +953,7 @@ export default function Orders() {
                       >
                         <div style={{ minWidth: 0 }}>
                           <div className="rm-rider-name">All Active Stops</div>
-                          <div className="rm-rider-sub">Supervisor view only</div>
+                          <div className="rm-rider-sub">All assigned riders</div>
                         </div>
                         <span className="rm-rider-stop-pill">{totalActive}</span>
                       </button>
@@ -964,7 +964,7 @@ export default function Orders() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 10, marginTop: 10 }}>
                   <input
                     type="text"
-                    placeholder="Or filter by custom rider / courier name…"
+                    placeholder="Rider name…"
                     value={manifestPartner}
                     onChange={e => {
                       setManifestSupervisorAll(false);
@@ -973,7 +973,7 @@ export default function Orders() {
                   />
                   <input
                     type="text"
-                    placeholder="Rider WhatsApp phone (e.g. 0241234567)"
+                    placeholder="WhatsApp phone (e.g. 0241234567)"
                     value={manifestPhone}
                     onChange={e => {
                       setManifestSupervisorAll(false);
@@ -985,13 +985,13 @@ export default function Orders() {
 
               {/* Step 2: Link Validity */}
               <div>
-                <div className="rm-step-label">2. Signed Token Expiry Window</div>
+                <div className="rm-step-label">2. Link Valid For</div>
                 <div className="rm-validity-grid">
                   {[
-                    { key: '24h', label: '24 Hours', sub: 'Same-Day Accra' },
-                    { key: '3d',  label: '3 Days',   sub: 'Regional' },
-                    { key: '7d',  label: '7 Days',   sub: 'Nationwide' },
-                    { key: '14d', label: '14 Days',  sub: 'Extended' },
+                    { key: '24h', label: '24 Hours' },
+                    { key: '3d',  label: '3 Days' },
+                    { key: '7d',  label: '7 Days' },
+                    { key: '14d', label: '14 Days' },
                   ].map(opt => (
                     <button
                       key={opt.key}
@@ -1000,7 +1000,6 @@ export default function Orders() {
                       onClick={() => setManifestExpiry(opt.key)}
                     >
                       <div style={{ fontSize: '0.82rem', fontWeight: 700 }}>{opt.label}</div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--ac-text-muted)' }}>{opt.sub}</div>
                     </button>
                   ))}
                 </div>
@@ -1009,15 +1008,10 @@ export default function Orders() {
               {/* Step 3: Live Route Link & Share Controls */}
               <div className="rm-share-card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-                  <div>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>
-                      {manifestBusy
-                        ? 'Updating signed route link…'
-                        : `${manifestResult?.delivery_partner || 'All Active Riders'} · ${manifestResult?.active_count ?? 0} Pending Stop${manifestResult?.active_count === 1 ? '' : 's'}`}
-                    </div>
-                    <div className="muted text-xs">
-                      Rider opens on any smartphone browser — zero admin credentials exposed.
-                    </div>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700 }}>
+                    {manifestBusy
+                      ? 'Generating route link…'
+                      : `${manifestResult?.delivery_partner || 'All Riders'} · ${manifestResult?.active_count ?? 0} Pending Stop${manifestResult?.active_count === 1 ? '' : 's'}`}
                   </div>
                   <span className="badge badge-success">Valid {manifestExpiry.toUpperCase()}</span>
                 </div>
@@ -1026,7 +1020,7 @@ export default function Orders() {
                   <input
                     type="text"
                     readOnly
-                    value={manifestResult?.manifest_url || 'Generating signed manifest URL…'}
+                    value={manifestResult?.manifest_url || 'Generating manifest link…'}
                     onFocus={e => e.target.select()}
                     style={{ opacity: manifestBusy ? 0.6 : 1 }}
                   />
@@ -1039,10 +1033,10 @@ export default function Orders() {
                     disabled={!manifestResult?.manifest_url}
                     onClick={() => {
                       navigator.clipboard?.writeText(manifestResult.manifest_url);
-                      toast.success('Manifest link copied to clipboard');
+                      toast.success('Link copied');
                     }}
                   >
-                    Copy route link
+                    Copy Link
                   </button>
                   <a
                     href={manifestResult?.manifest_url || '#'}
@@ -1051,14 +1045,14 @@ export default function Orders() {
                     className="btn btn-outline btn-sm"
                     style={{ textDecoration: 'none', pointerEvents: manifestResult?.manifest_url ? 'auto' : 'none' }}
                   >
-                    Open console ↗
+                    Open Route ↗
                   </a>
                   <a
                     href={`https://wa.me/${(() => {
                       const d = (manifestResult?.driver_phone || manifestPhone || '').replace(/\D/g, '');
                       return d.length === 10 && d.startsWith('0') ? `233${d.slice(1)}` : d;
                     })()}?text=${encodeURIComponent(
-                      `BodyCream GH Dispatch Manifest\nRider: ${manifestResult?.delivery_partner || 'All Active Stops'}\nActive Stops: ${manifestResult?.active_count || 0}\n\nOpen live route console:\n${manifestResult?.manifest_url || ''}`
+                      `BodyCream GH Dispatch Route\nRider: ${manifestResult?.delivery_partner || 'All Stops'}\nStops: ${manifestResult?.active_count || 0}\n\nOpen route link:\n${manifestResult?.manifest_url || ''}`
                     )}`}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -1094,7 +1088,7 @@ export default function Orders() {
 
             <div className="rm-modal-body">
               <p className="muted text-xs" style={{ margin: 0 }}>
-                Marks all selected orders as <strong>Shipped</strong>, sends each customer their tracking number &amp; 6-digit Delivery Verification Code, and generates <strong>one combined route link</strong> for your rider.
+                Mark selected orders as <strong>Shipped</strong> and generate a delivery route for your rider.
               </p>
 
               {!bulkResult ? (
