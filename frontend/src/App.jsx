@@ -5,7 +5,7 @@ import Navigation from './components/Navigation';
 import Footer from './components/Footer';
 import WhatsAppFloat from './components/WhatsAppFloat';
 import StickyCartBar from './components/StickyCartBar';
-import InstallAppBanner from './components/InstallAppBanner';
+import InstallAppModal from './components/InstallAppModal';
 import ProtectedRoute from './components/ProtectedRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import { lazyWithRetry } from './utils/lazyWithRetry';
@@ -227,7 +227,7 @@ export default function App() {
         {!isRiderRoute && <Footer />}
         {!isRiderRoute && <StickyCartBar />}
         {!isRiderRoute && <WhatsAppFloat />}
-        {!isRiderRoute && <InstallAppBanner />}
+        {!isRiderRoute && <InstallAppModal />}
         {!isRiderRoute && (
           <Suspense fallback={null}>
             <PrivacyNotice />

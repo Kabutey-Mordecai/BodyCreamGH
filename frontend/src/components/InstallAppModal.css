@@ -1,0 +1,259 @@
+/* ══ INSTALL APP POPUP MODAL ═════════════════════════════════ */
+.install-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 8, 6, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: installFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes installFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.install-modal-card {
+  position: relative;
+  background: #1c1410;
+  border: 1.5px solid rgba(201, 165, 90, 0.5);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 440px;
+  padding: 32px 26px 28px;
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 1px rgba(255, 255, 255, 0.25);
+  animation: installPopIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes installPopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.install-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: none;
+  color: #c4b5a5;
+  font-size: 1.25rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.install-modal-close:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  transform: rotate(90deg);
+}
+
+.install-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(201, 165, 90, 0.15);
+  border: 1px solid rgba(201, 165, 90, 0.4);
+  color: #f0e2c4;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  margin-bottom: 16px;
+}
+
+.install-icon-wrap {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 16px;
+}
+
+.install-app-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(201, 165, 90, 0.5);
+  display: block;
+}
+
+.install-icon-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  background: #c9a55a;
+  color: #1c1410;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #1c1410;
+  font-weight: 900;
+}
+
+.install-modal-title {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: #f7ede2;
+  margin: 0 0 8px;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.install-modal-subtext {
+  font-size: 0.85rem;
+  color: #c4b5a5;
+  margin: 0 0 20px;
+  line-height: 1.45;
+}
+
+/* Feature Perks list */
+.install-perks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 22px;
+}
+
+.install-perk-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: #e5ded7;
+}
+
+.install-perk-item svg {
+  color: #c9a55a;
+  flex-shrink: 0;
+}
+
+/* Action Buttons */
+.install-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.install-primary-btn {
+  width: 100%;
+  padding: 13px 20px;
+  background: linear-gradient(135deg, #c9a55a 0%, #b89146 100%);
+  color: #1c1410;
+  border: none;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 14px rgba(201, 165, 90, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.install-primary-btn:hover {
+  background: #deb86d;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(201, 165, 90, 0.45);
+}
+
+.install-secondary-btn {
+  background: transparent;
+  border: none;
+  color: #9c8e82;
+  font-size: 0.82rem;
+  padding: 6px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.install-secondary-btn:hover {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* iOS Specific Guide inside the Modal */
+.install-ios-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  text-align: left;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.install-ios-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.86rem;
+  color: #ded6ce;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.install-ios-step-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(201, 165, 90, 0.2);
+  color: #c9a55a;
+  border: 1px solid #c9a55a;
+  font-weight: 700;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.install-ios-pill {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  padding: 2px 7px;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 600;
+}
