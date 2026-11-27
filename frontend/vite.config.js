@@ -41,6 +41,7 @@ function versionServiceWorkerPlugin() {
 export default defineConfig({
   plugins: [react(), versionServiceWorkerPlugin()],
   build: {
+    sourcemap: false,
     rollupOptions: {
       output: {
         manualChunks(id) {

@@ -106,11 +106,11 @@ const DEFAULTS = {
   // Campaign Broadcast Banner (Black Friday / Mega Sale / Seasonal)
   campaign_banner_enabled: true,
   campaign_theme: 'black_friday',
-  campaign_badge: '⚡ BLACK FRIDAY MEGA DEALS',
-  campaign_headline: 'UP TO 50% OFF EVERYTHING',
-  campaign_subtext: 'Exclusive Black Friday prices on authentic skincare, makeup & fragrances. Limited stock.',
-  campaign_coupon_code: 'BF50',
-  campaign_cta_text: 'Shop Black Friday',
+  campaign_badge: 'BLACK FRIDAY EVENT · LIMITED TIME DEALS',
+  campaign_headline: 'Up to 50% Off Bestselling Beauty',
+  campaign_subtext: 'Slashed prices on authentic, direct-sourced skincare, fragrances, and haircare. Sealed guarantee with fast nationwide delivery.',
+  campaign_coupon_code: '',
+  campaign_cta_text: 'Shop Black Friday Deals',
   campaign_cta_link: '/shop?on_sale=true',
   campaign_ends_at: '',
   campaign_guarantee: '✓ 100% Authentic Brands',
@@ -661,8 +661,18 @@ export default function Storefront() {
                       type="text"
                       value={data.promo_popup_cta_link || ''}
                       onChange={e => update('promo_popup_cta_link', e.target.value)}
-                      placeholder="/shop"
+                      placeholder="/shop?on_sale=true"
                     />
+                    <div className="hint" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                      <button
+                        type="button"
+                        className="btn btn-outline btn-xs"
+                        style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                        onClick={() => update('promo_popup_cta_link', '/shop?on_sale=true')}
+                      >
+                        Only On-Sale Deals (/shop?on_sale=true)
+                      </button>
+                    </div>
                   </div>
                   <div className="field" style={{ maxWidth: 120 }}>
                     <label>Delay (sec)</label>
@@ -878,26 +888,15 @@ export default function Storefront() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16, marginTop: 12 }}>
                     <div className="field">
                       <label>Main Headline</label>
                       <input
                         type="text"
                         value={data.campaign_headline || ''}
                         onChange={e => update('campaign_headline', e.target.value)}
-                        placeholder="UP TO 50% OFF EVERYTHING"
+                        placeholder="Up to 50% Off Bestselling Beauty"
                       />
-                    </div>
-
-                    <div className="field">
-                      <label>Coupon Voucher Code (1-Click Copyable)</label>
-                      <input
-                        type="text"
-                        value={data.campaign_coupon_code || ''}
-                        onChange={e => update('campaign_coupon_code', e.target.value.toUpperCase())}
-                        placeholder="BF50"
-                      />
-                      <div className="hint">Shoppers can tap this on the banner to copy and auto-apply at checkout.</div>
                     </div>
                   </div>
 
@@ -928,8 +927,18 @@ export default function Storefront() {
                         type="text"
                         value={data.campaign_cta_link || ''}
                         onChange={e => update('campaign_cta_link', e.target.value)}
-                        placeholder="/shop"
+                        placeholder="/shop?on_sale=true"
                       />
+                      <div className="hint" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline btn-xs"
+                          style={{ fontSize: '0.68rem', padding: '1px 6px' }}
+                          onClick={() => update('campaign_cta_link', '/shop?on_sale=true')}
+                        >
+                          Only On-Sale Deals (/shop?on_sale=true)
+                        </button>
+                      </div>
                     </div>
 
                     <div className="field">

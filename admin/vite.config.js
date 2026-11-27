@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react';
 // In production deploy this to a subdomain like admin.yourstore.com and set VITE_API_URL.
 export default defineConfig({
   plugins: [react()],
+  build: {
+    sourcemap: false,
+  },
   server: {
     host: '0.0.0.0',
     port: 5174,
