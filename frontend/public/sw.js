@@ -1,6 +1,12 @@
 // Versioned cache name — bump to evict any previously poisoned caches
-const CACHE_NAME = 'bodycreamgh-shell-v2';
-const SHELL_URLS = ['/manifest.webmanifest', '/favicon.svg'];
+const CACHE_NAME = 'bodycreamgh-shell-v3';
+const SHELL_URLS = [
+  '/manifest.webmanifest',
+  '/favicon.svg',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/apple-touch-icon.png'
+];
 const NO_CACHE_PREFIXES = ['/api/', '/assets/', '/checkout', '/login', '/register', '/account', '/orders', '/order', '/payment', '/rider-handoff', '/rider-manifest'];
 
 self.addEventListener('install', (event) => {

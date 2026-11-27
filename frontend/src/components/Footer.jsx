@@ -196,6 +196,25 @@ export default function Footer() {
                   <a href={`mailto:${cleanEmail}`}>{cleanEmail}</a>
                 </li>
               )}
+              <li>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('bc-trigger-pwa-install'))}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: 0,
+                    color: 'inherit',
+                    font: 'inherit',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 6,
+                  }}
+                >
+                  <span>📲 Install Mobile App</span>
+                </button>
+              </li>
             </ul>
           </div>
 

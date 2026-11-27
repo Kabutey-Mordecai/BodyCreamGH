@@ -1,18 +1,55 @@
 {
-  "name": "GlowHaus Beauty",
-  "short_name": "GlowHaus",
-  "description": "100% authentic cosmetics, skincare, makeup, haircare, and fragrances.",
+  "id": "/",
+  "name": "BodyCream GH — Authentic Cosmetics & Skincare",
+  "short_name": "BodyCream GH",
+  "description": "Shop 100% authentic cosmetics, skincare, haircare, and fragrances with fast nationwide delivery in Ghana.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#faf7f4",
   "theme_color": "#1c1410",
+  "categories": ["shopping", "beauty", "lifestyle"],
   "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Deals & Offers",
+      "short_name": "Deals",
+      "description": "Browse today's sale items and special offers",
+      "url": "/shop?on_sale=true",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Track Your Order",
+      "short_name": "Track",
+      "description": "Check the delivery status of your order",
+      "url": "/track-order",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }]
     }
   ]
 }
