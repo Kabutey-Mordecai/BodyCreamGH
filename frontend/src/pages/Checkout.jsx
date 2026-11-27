@@ -33,22 +33,29 @@ export default function Checkout() {
   const [paymentMethod, setPaymentMethod]         = useState('paystack');
   const [podConfirmation, setPodConfirmation]     = useState(null);
 
-  const [form, setForm] = useState({
-    // Guest-only fields
-    first_name: '',
-    last_name:  '',
-    email:      '',
-    // Delivery fields — shown for everyone
-    delivery_address:  '',
-    region:            'Greater Accra',
-    area:              'Accra Central & Ridge',
-    town:              'Osu',
-    custom_town:       '',
-    city:              'Osu, Accra Central & Ridge',
-    ghana_post_gps:    '',
-    delivery_landmark: '',
-    phone:             '',
-    notes:             '',
+  const [form, setForm] = useState(() => {
+    const defaultRegion = 'Greater Accra';
+    const areas = getAreasForRegion(defaultRegion);
+    const defaultArea = areas[0] || 'Ashaiman Municipality & Surroundings';
+    const towns = getTownsForArea(defaultRegion, defaultArea);
+    const defaultTown = towns[0] || '';
+    return {
+      // Guest-only fields
+      first_name: '',
+      last_name:  '',
+      email:      '',
+      // Delivery fields — shown for everyone
+      delivery_address:  '',
+      region:            defaultRegion,
+      area:              defaultArea,
+      town:              defaultTown,
+      custom_town:       '',
+      city:              defaultTown ? `${defaultTown}, ${defaultArea}` : defaultArea,
+      ghana_post_gps:    '',
+      delivery_landmark: '',
+      phone:             '',
+      notes:             '',
+    };
   });
   const [error, setError]     = useState('');
   const [loading, setLoading] = useState(false);
