@@ -1162,7 +1162,7 @@ export default function Storefront() {
                   </div>
                 </div>
 
-                {/* 2. Mid-Page Graphic Trust Banner & Story Carousel */}
+                {/* 2. Mid-Page Graphic Trust Banner & Story Showcase */}
                 <div style={{ borderTop: '1px solid var(--ac-border)', paddingTop: 20 }}>
                   <div className="field">
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1172,12 +1172,12 @@ export default function Storefront() {
                         onChange={e => update('mid_banner_enabled', e.target.checked)}
                         style={{ width: 'auto' }}
                       />
-                      <strong>Show Mid-Page Story Carousel &amp; Graphic Campaign Banner</strong>
+                      <strong>Show Mid-Page Story Showcase &amp; Graphic Campaign Banner</strong>
                     </label>
-                    <div className="hint">Full-width high-contrast banner &amp; auto-flipping product story carousel showcasing quality guarantees, botanical stories, and product collections.</div>
+                    <div className="hint">Full-width luxury editorial showcase highlighting brand stories, botanical ingredients, and curated collections.</div>
                   </div>
 
-                  {/* Autoplay, Interval, Flip Speed & Height Controls */}
+                  {/* Autoplay, Interval & Display Controls */}
                   <div style={{ marginTop: 14, padding: 16, background: 'var(--ac-surface-2)', borderRadius: 8 }}>
                     <div className="field">
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -1187,14 +1187,14 @@ export default function Storefront() {
                           onChange={e => update('mid_banner_autoplay', e.target.checked)}
                           style={{ width: 'auto' }}
                         />
-                        <strong>Enable Automatic Page Flipping (Auto-Play)</strong>
+                        <strong>Enable Automatic Story Transition (Auto-Play)</strong>
                       </label>
-                      <div className="hint">Slides transition automatically like a digital lookbook; pauses gracefully when shoppers hover or touch.</div>
+                      <div className="hint">Stories advance automatically like a luxury lookbook; pauses gracefully when shoppers hover or touch.</div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 14, marginTop: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 12 }}>
                       <div className="field" style={{ marginBottom: 0 }}>
-                        <label>Reading Time (seconds)</label>
+                        <label>Display Duration (seconds)</label>
                         <input
                           type="number"
                           min="3"
@@ -1206,54 +1206,23 @@ export default function Storefront() {
                       </div>
 
                       <div className="field" style={{ marginBottom: 0 }}>
-                        <label>Flip Animation Speed (seconds)</label>
-                        <input
-                          type="number"
-                          step="0.1"
-                          min="0.4"
-                          max="3.0"
-                          value={data.mid_banner_flip_speed_sec ?? 1.4}
-                          onChange={e => update('mid_banner_flip_speed_sec', Math.max(0.4, parseFloat(e.target.value) || 1.4))}
-                        />
-                        <div className="hint" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <span>Gentle &amp; realistic turn (default 1.4s).</span>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-xs"
-                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
-                            onClick={() => update('mid_banner_flip_speed_sec', 1.4)}
-                          >
-                            Set 1.4s (Realistic)
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="field" style={{ marginBottom: 0 }}>
-                        <label>Banner Height (px)</label>
+                        <label>Showcase Height (px)</label>
                         <input
                           type="number"
                           step="10"
                           min="260"
                           max="900"
-                          value={data.mid_banner_height_px ?? 620}
-                          onChange={e => update('mid_banner_height_px', Math.max(260, parseInt(e.target.value) || 620))}
+                          value={data.mid_banner_height_px ?? 520}
+                          onChange={e => update('mid_banner_height_px', Math.max(260, parseInt(e.target.value) || 520))}
                         />
                         <div className="hint" style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, flexWrap: 'wrap' }}>
                           <button
                             type="button"
                             className="btn btn-outline btn-xs"
                             style={{ fontSize: '0.68rem', padding: '1px 6px' }}
-                            onClick={() => update('mid_banner_height_px', 620)}
-                          >
-                            620px (Default - Recommended)
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-xs"
-                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
                             onClick={() => update('mid_banner_height_px', 520)}
                           >
-                            520px (Tall)
+                            520px (Recommended)
                           </button>
                           <button
                             type="button"
@@ -1261,15 +1230,7 @@ export default function Storefront() {
                             style={{ fontSize: '0.68rem', padding: '1px 6px' }}
                             onClick={() => update('mid_banner_height_px', 420)}
                           >
-                            420px (Medium)
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-outline btn-xs"
-                            style={{ fontSize: '0.68rem', padding: '1px 6px' }}
-                            onClick={() => update('mid_banner_height_px', 340)}
-                          >
-                            340px (Slim)
+                            420px (Compact)
                           </button>
                         </div>
                       </div>
