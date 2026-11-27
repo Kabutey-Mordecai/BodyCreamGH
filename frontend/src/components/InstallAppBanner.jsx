@@ -1,15 +1,25 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
+import { useCart } from '../context/CartContext';
 import './InstallAppBanner.css';
 
 const DISMISS_KEY = 'bc_pwa_dismissed';
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export default function InstallAppBanner() {
+  const { cartCount } = useCart();
+  const { pathname } = useLocation();
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [showBanner, setShowBanner] = useState(false);
   const [showIosSheet, setShowIosSheet] = useState(false);
   const [isIos, setIsIos] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+
+  const hasCartBar =
+    cartCount > 0 &&
+    !['/cart', '/checkout', '/rider-manifest', '/rider-handoff'].some((p) =>
+      pathname.startsWith(p)
+    );
 
   useEffect(() => {
     // 1. Check if already installed & running in standalone mode
@@ -101,7 +111,10 @@ export default function InstallAppBanner() {
   return (
     <>
       {showBanner && (
-        <aside className="pwa-banner-wrap" aria-label="Install BodyCream GH App">
+        <aside
+          className={`pwa-banner-wrap ${hasCartBar ? 'pwa-has-cart-bar' : ''}`}
+          aria-label="Install BodyCream GH App"
+        >
           <div className="pwa-banner">
             <div className="pwa-banner-left">
               <img

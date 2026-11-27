@@ -1,22 +1,23 @@
+/* ══ PWA INSTALL BANNER ══════════════════════════════════════ */
+/* Desktop: dock cleanly at bottom-left so center cart bar and right WhatsApp float never collide */
 .pwa-banner-wrap {
   position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: calc(100% - 32px);
-  max-width: 520px;
+  bottom: 24px;
+  left: 24px;
+  width: auto;
+  max-width: 400px;
   z-index: 990;
-  animation: pwaSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: pwaSlideUpDesktop 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@keyframes pwaSlideUp {
+@keyframes pwaSlideUpDesktop {
   from {
     opacity: 0;
-    transform: translate(-50%, 20px);
+    transform: translateY(20px);
   }
   to {
     opacity: 1;
-    transform: translate(-50%, 0);
+    transform: translateY(0);
   }
 }
 
@@ -29,7 +30,7 @@
   background: #1c1410;
   border: 1px solid rgba(201, 165, 90, 0.45);
   border-radius: 14px;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 0 1px rgba(255, 255, 255, 0.2);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255, 255, 255, 0.2);
   color: #fff;
 }
 
@@ -221,12 +222,35 @@
   cursor: pointer;
 }
 
-@media (max-width: 600px) {
+/* Mobile responsive rules */
+@media (max-width: 768px) {
   .pwa-banner-wrap {
-    bottom: 74px; /* clears sticky bottom nav / cart */
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
     width: calc(100% - 24px);
+    max-width: 420px;
+    bottom: 16px;
+    animation: pwaSlideUpMobile 0.35s cubic-bezier(0.16, 1, 0.3, 1);
   }
+
+  /* When customer has items in cart, float safely above the sticky checkout bar */
+  .pwa-banner-wrap.pwa-has-cart-bar {
+    bottom: 78px;
+  }
+
+  @keyframes pwaSlideUpMobile {
+    from {
+      opacity: 0;
+      transform: translate(-50%, 20px);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+  }
+
   .pwa-app-desc {
-    max-width: 160px;
+    max-width: 140px;
   }
 }
