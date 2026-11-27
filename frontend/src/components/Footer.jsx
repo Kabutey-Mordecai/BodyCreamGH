@@ -199,7 +199,15 @@ export default function Footer() {
               <li>
                 <button
                   type="button"
-                  onClick={() => window.dispatchEvent(new CustomEvent('bc-trigger-pwa-install'))}
+                  onClick={async () => {
+                    if (window.__bcPwaPrompt) {
+                      try {
+                        await window.__bcPwaPrompt.prompt();
+                      } catch (_) {}
+                    } else {
+                      alert('To install BodyCream GH, tap your browser menu and select "Install app" or "Add to Home screen".');
+                    }
+                  }}
                   style={{
                     background: 'none',
                     border: 'none',

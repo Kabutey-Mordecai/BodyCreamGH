@@ -17,6 +17,13 @@ window.addEventListener('vite:preloadError', (event) => {
   triggerSingleChunkReload();
 });
 
+// Capture native PWA install prompt globally for instant 1-click install
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  window.__bcPwaPrompt = e;
+  window.dispatchEvent(new CustomEvent('bc-pwa-ready'));
+});
+
 if ('serviceWorker' in navigator) {
   if (import.meta.env.PROD) {
     window.addEventListener('load', () => {

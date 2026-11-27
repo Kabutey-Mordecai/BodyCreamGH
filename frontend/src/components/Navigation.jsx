@@ -258,9 +258,15 @@ export default function Navigation() {
                       <button
                         type="button"
                         className="nav-account-item"
-                        onClick={() => {
+                        onClick={async () => {
                           closeMenu();
-                          window.dispatchEvent(new CustomEvent('bc-trigger-pwa-install'));
+                          if (window.__bcPwaPrompt) {
+                            try {
+                              await window.__bcPwaPrompt.prompt();
+                            } catch (_) {}
+                          } else {
+                            alert('To install BodyCream GH, tap your browser menu and select "Install app" or "Add to Home screen".');
+                          }
                         }}
                         role="menuitem"
                       >

@@ -5,6 +5,7 @@ import './InstallAppFloat.css';
 export default function InstallAppFloat() {
   const { pathname } = useLocation();
   const [isStandalone, setIsStandalone] = useState(false);
+  const [canInstall, setCanInstall] = useState(Boolean(typeof window !== 'undefined' && window.__bcPwaPrompt));
   const [bubbleDismissed, setBubbleDismissed] = useState(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       return true;
@@ -24,10 +25,22 @@ export default function InstallAppFloat() {
 
     setIsStandalone(standalone);
 
+    const onPromptReady = () => setCanInstall(true);
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      window.__bcPwaPrompt = e;
+      setCanInstall(true);
+    });
+    window.addEventListener('bc-pwa-ready', onPromptReady);
+
     if (!bubbleDismissed) {
       const timer = setTimeout(() => setBubbleDismissed(true), 9000);
       return () => clearTimeout(timer);
     }
+
+    return () => {
+      window.removeEventListener('bc-pwa-ready', onPromptReady);
+    };
   }, [bubbleDismissed]);
 
   // Hide in standalone mode (already installed)
@@ -45,8 +58,27 @@ export default function InstallAppFloat() {
     return null;
   }
 
-  const handleTrigger = () => {
-    window.dispatchEvent(new CustomEvent('bc-trigger-pwa-install'));
+  // 1-Click native installation
+  const handleInstallClick = async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const prompt = window.__bcPwaPrompt;
+    if (prompt) {
+      try {
+        await prompt.prompt();
+        const choice = await prompt.userChoice;
+        if (choice && choice.outcome === 'accepted') {
+          window.__bcPwaPrompt = null;
+          setIsStandalone(true);
+        }
+      } catch (err) {
+        console.error('Install prompt failed:', err);
+      }
+    } else {
+      // In Chromium browsers when already prompted, inform user directly
+      alert('To install BodyCream GH, tap your browser menu (⋮ or Share) and select "Install app" or "Add to Home screen".');
+    }
   };
 
   const dismissBubble = (e) => {
@@ -65,9 +97,9 @@ export default function InstallAppFloat() {
       <button
         type="button"
         className="install-float-btn"
-        onClick={handleTrigger}
+        onClick={handleInstallClick}
         aria-label="Install BodyCream GH App"
-        title="Install BodyCream GH App"
+        title="1-Click Install BodyCream GH App"
       >
         <div className="install-float-icon-inner">
           <img
@@ -82,7 +114,7 @@ export default function InstallAppFloat() {
       </button>
 
       {!bubbleDismissed && (
-        <div className="install-float-bubble" onClick={handleTrigger}>
+        <div className="install-float-bubble" onClick={handleInstallClick}>
           <button
             type="button"
             className="install-float-bubble-close"
