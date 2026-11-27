@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
@@ -7,16 +7,9 @@ import { ordersAPI, paymentsAPI, couponsAPI, cartAPI, newsletterAPI } from '../s
 import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { isSafePaystackCheckoutUrl } from '../utils/safePaystackUrl';
 import { toFiniteNumber } from '../utils/number';
+import { GHANA_REGIONS, getAreasForRegion, getTownsForArea } from '../data/ghanaLocations';
 import TurnstileWidget from '../components/TurnstileWidget';
 import './Checkout.css';
-
-// Ghana's 16 administrative regions — shown in a select rather than a free text input
-const GHANA_REGIONS = [
-  'Greater Accra', 'Ashanti', 'Western', 'Western North',
-  'Central', 'Eastern', 'Volta', 'Oti',
-  'Northern', 'Savannah', 'North East', 'Upper East',
-  'Upper West', 'Bono', 'Bono East', 'Ahafo',
-];
 
 export default function Checkout() {
   const { cart, cartTotal, clearLocalCart, isGuest, loading: cartLoading } = useCart();
@@ -47,8 +40,11 @@ export default function Checkout() {
     email:      '',
     // Delivery fields — shown for everyone
     delivery_address:  '',
-    city:              'Accra',
     region:            'Greater Accra',
+    area:              'Accra Central & Ridge',
+    town:              'Osu',
+    custom_town:       '',
+    city:              'Osu, Accra Central & Ridge',
     ghana_post_gps:    '',
     delivery_landmark: '',
     phone:             '',
@@ -205,6 +201,58 @@ export default function Checkout() {
       setPaymentMethod('paystack');
     }
   }, [podEligible, paymentMethod]);
+
+  const availableAreas = useMemo(() => getAreasForRegion(form.region), [form.region]);
+  const availableTowns = useMemo(() => getTownsForArea(form.region, form.area), [form.region, form.area]);
+
+  const handleRegionChange = (e) => {
+    const newRegion = e.target.value;
+    const areas = getAreasForRegion(newRegion);
+    const defaultArea = areas[0] || '';
+    const towns = getTownsForArea(newRegion, defaultArea);
+    const defaultTown = towns[0] || '';
+    setForm(prev => ({
+      ...prev,
+      region: newRegion,
+      area: defaultArea,
+      town: defaultTown,
+      custom_town: '',
+      city: defaultTown ? `${defaultTown}, ${defaultArea}` : (defaultArea || newRegion),
+    }));
+  };
+
+  const handleAreaChange = (e) => {
+    const newArea = e.target.value;
+    const towns = getTownsForArea(form.region, newArea);
+    const defaultTown = towns[0] || '';
+    setForm(prev => ({
+      ...prev,
+      area: newArea,
+      town: defaultTown,
+      custom_town: '',
+      city: defaultTown ? `${defaultTown}, ${newArea}` : newArea,
+    }));
+  };
+
+  const handleTownChange = (e) => {
+    const newTown = e.target.value;
+    setForm(prev => ({
+      ...prev,
+      town: newTown,
+      city: newTown === 'other'
+        ? (prev.custom_town ? `${prev.custom_town}, ${prev.area}` : prev.area)
+        : `${newTown}, ${prev.area}`,
+    }));
+  };
+
+  const handleCustomTownChange = (e) => {
+    const val = e.target.value;
+    setForm(prev => ({
+      ...prev,
+      custom_town: val,
+      city: val ? `${val}, ${prev.area}` : prev.area,
+    }));
+  };
 
   const handleChange = e =>
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
@@ -591,8 +639,76 @@ export default function Checkout() {
                 </div>
               ) : (
                 <>
+                  {/* Cascading Location Hierarchy (Region ➔ Area ➔ Town) */}
+                  <div className="checkout-row">
+                    <div className="form-group">
+                      <label htmlFor="region">1. Region</label>
+                      <select
+                        id="region"
+                        name="region"
+                        value={form.region}
+                        onChange={handleRegionChange}
+                        required
+                        autoComplete="address-level1"
+                      >
+                        <option value="" disabled>Select region</option>
+                        {GHANA_REGIONS.map(r => (
+                          <option key={r} value={r}>{r}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="area">2. Area / District</label>
+                      <select
+                        id="area"
+                        name="area"
+                        value={form.area}
+                        onChange={handleAreaChange}
+                        required
+                      >
+                        <option value="" disabled>Select area</option>
+                        {availableAreas.map(a => (
+                          <option key={a} value={a}>{a}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
                   <div className="form-group">
-                    <label htmlFor="delivery_address">Street address</label>
+                    <label htmlFor="town">3. Town / Neighborhood</label>
+                    <select
+                      id="town"
+                      name="town"
+                      value={form.town}
+                      onChange={handleTownChange}
+                      required
+                    >
+                      <option value="" disabled>Select town</option>
+                      {availableTowns.map(t => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                      <option value="other">Other / Not in list…</option>
+                    </select>
+                  </div>
+
+                  {form.town === 'other' && (
+                    <div className="form-group" style={{ marginTop: 8 }}>
+                      <label htmlFor="custom_town">Enter Your Specific Town / Area</label>
+                      <input
+                        id="custom_town"
+                        name="custom_town"
+                        type="text"
+                        value={form.custom_town}
+                        onChange={handleCustomTownChange}
+                        required
+                        placeholder="e.g. Dawhenya, New Bortianor, Prampram"
+                      />
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label htmlFor="delivery_address">4. Street Address / House / Landmark</label>
                     <input
                       id="delivery_address"
                       name="delivery_address"
@@ -601,40 +717,8 @@ export default function Checkout() {
                       onChange={handleChange}
                       required
                       autoComplete="street-address"
-                      placeholder="e.g. 12 Oxford Street"
+                      placeholder="e.g. House No. 24, Near Shell Petrol Station / Oxford Street"
                     />
-                  </div>
-
-                  <div className="checkout-row">
-                    <div className="form-group">
-                      <label htmlFor="city">City</label>
-                      <input
-                        id="city"
-                        name="city"
-                        type="text"
-                        value={form.city}
-                        onChange={handleChange}
-                        required
-                        autoComplete="address-level2"
-                        placeholder="e.g. Accra"
-                      />
-                    </div>
-                    <div className="form-group">
-                      <label htmlFor="region">Region</label>
-                      <select
-                        id="region"
-                        name="region"
-                        value={form.region}
-                        onChange={handleChange}
-                        required
-                        autoComplete="address-level1"
-                      >
-                        <option value="" disabled>Select a region</option>
-                        {GHANA_REGIONS.map(r => (
-                          <option key={r} value={r}>{r}</option>
-                        ))}
-                      </select>
-                    </div>
                   </div>
 
                   <div className="checkout-row">
