@@ -36,6 +36,7 @@ const reviewRoutes       = require('./routes/reviews');
 const notificationRoutes = require('./routes/notifications');
 
 const app = express();
+app.disable('x-powered-by');
 
 // ── Reverse-proxy hop count ──────────────────────────────────────────────────
 // Production runs behind 1 Nginx reverse proxy hop (deploy/nginx.*.conf).
@@ -123,6 +124,18 @@ app.post('/api/payments/webhook', handleWebhook);
 // are mounted inside routes/auth.js; payment endpoint limiters inside routes/payments.js.
 const GLOBAL_IP_MAX = Math.max(1, parseInt(process.env.GLOBAL_IP_MAX, 10) || 600);
 app.use('/api',          makeRateLimiter(60 * 1000, GLOBAL_IP_MAX, 'Rate limit exceeded'));
+
+// ── OWASP WSTG Anti-Caching for Sensitive API Responses ──────────────────────
+// Ensures intermediate proxies, shared network caches, and browser disk caches
+// do not retain private customer, cart, or order PII.
+app.use('/api', (_req, res, next) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  });
+  next();
+});
 
 // ── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api/auth',       authRoutes);

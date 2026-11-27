@@ -101,6 +101,14 @@ async function put({ key, folder, filename, buffer, contentType }) {
   }
 
   const targetPath = path.join(UPLOADS_ROOT, resolvedKey);
+  const normalizedTarget = path.resolve(targetPath);
+  const normalizedRoot   = path.resolve(UPLOADS_ROOT);
+  if (!normalizedTarget.startsWith(normalizedRoot + path.sep) && normalizedTarget !== normalizedRoot) {
+    const err = new Error('Invalid upload destination path');
+    err.status = 400;
+    throw err;
+  }
+
   await fs.promises.mkdir(path.dirname(targetPath), { recursive: true });
   await fs.promises.writeFile(targetPath, buffer);
   return { url: getPublicUrl(resolvedKey), key: resolvedKey, storage: 'local' };
