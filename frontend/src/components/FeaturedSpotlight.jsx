@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSettings } from '../context/SettingsContext';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { renderCleanNumerals } from '../utils/cleanNumerals';
 import Reveal from './Reveal';
 import './FeaturedSpotlight.css';
 
@@ -111,9 +112,9 @@ export default function FeaturedSpotlight() {
                   )}
 
                   <h2 className="editorial-title">
-                    {activeSlide.title}{' '}
+                    {renderCleanNumerals(activeSlide.title)}{' '}
                     {activeSlide.highlight && (
-                      <span className="editorial-highlight">{activeSlide.highlight}</span>
+                      <span className="editorial-highlight">{renderCleanNumerals(activeSlide.highlight)}</span>
                     )}
                   </h2>
 

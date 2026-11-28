@@ -13,6 +13,7 @@ import CampaignBroadcastBanner from '../components/CampaignBroadcastBanner';
 import CampaignTiles from '../components/CampaignTiles';
 import FeaturedSpotlight from '../components/FeaturedSpotlight';
 import { resolveImageUrl } from '../utils/resolveImageUrl';
+import { renderCleanNumerals } from '../utils/cleanNumerals';
 import './Home.css';
 
 // Protected lazy-load to prevent adblockers from halting storefront render
@@ -544,7 +545,7 @@ export default function Home() {
                 <span className="section-label">{settings.brand_story_label}</span>
               )}
               {settings.brand_story_heading && (
-                <h2>{settings.brand_story_heading}</h2>
+                <h2>{renderCleanNumerals(settings.brand_story_heading)}</h2>
               )}
               <div className="gold-divider" style={{ margin: '12px 0 20px' }} />
               {String(settings.brand_story_body || '')
