@@ -190,16 +190,21 @@ export default function ProductEditor() {
         if (stagedFiles.length > 0) {
           try {
             await productsAPI.uploadProductImages(newId, stagedFiles);
+            setStagedFiles([]);
+            setInitialForm(form);
             toast.success('Product created with gallery photos');
-            navigate(`/products/${newId}`);
+            navigate(`/products/${newId}`, { replace: true });
           } catch (uploadErr) {
+            setStagedFiles([]);
+            setInitialForm(form);
             const reason = uploadErr.response?.data?.error || uploadErr.message || 'Server error';
             toast.warning(`Product created, but image upload failed: ${reason}. Re-upload in the gallery.`);
-            navigate(`/products/${newId}`);
+            navigate(`/products/${newId}`, { replace: true });
           }
         } else {
+          setInitialForm(form);
           toast.success('Product created');
-          navigate(`/products/${newId}`);
+          navigate(`/products/${newId}`, { replace: true });
         }
       } else {
         await productsAPI.update(id, payload);
