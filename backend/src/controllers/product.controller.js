@@ -391,12 +391,15 @@ const bulkImportProducts = async (req, res) => {
       }
 
       const id = require('crypto').randomUUID();
+      const rawHighlights = row.highlights
+        ? String(row.highlights).split('|').map(s => s.trim()).filter(Boolean).join('\n')
+        : null;
       await client.query(
         `INSERT INTO products
            (id, name, price, compare_at_price, cost, category, brand,
-            description, image_url, stock_quantity, sku,
+            description, highlights, image_url, stock_quantity, sku,
             ingredients, usage_instructions, is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [
           id,
           name,
@@ -406,6 +409,7 @@ const bulkImportProducts = async (req, res) => {
           row.category ? String(row.category).trim() : 'Skincare',
           row.brand ? String(row.brand).trim() : null,
           row.description ? String(row.description).trim() : '',
+          rawHighlights,
           row.image_url ? String(row.image_url).trim() : null,
           Math.max(0, parseInt(row.stock_quantity, 10) || 0),
           sku,

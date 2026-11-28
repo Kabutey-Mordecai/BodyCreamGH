@@ -1142,7 +1142,7 @@ export default function Products() {
         <p className="muted text-sm" style={{ marginBottom: 12 }}>
           Paste CSV rows or upload a <code>.csv</code> file with header columns:
           <br />
-          <code>name,brand,category,price,cost,stock_quantity,sku,image_url,description</code>
+          <code>name,brand,category,price,cost,stock_quantity,sku,image_url,description,highlights</code>
         </p>
         <div style={{ marginBottom: 12 }}>
           <input

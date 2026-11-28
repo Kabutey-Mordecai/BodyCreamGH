@@ -394,7 +394,7 @@ export default function Home() {
             <h2 className="page-title">Loved by thousands</h2>
             <div className="gold-divider" style={{ margin: '0 0 16px' }} />
             <p className="page-subtitle">
-              Our most-reordered creams — made for melanin-rich skin and Ghana's climate.
+              {settings.bestsellers_subtitle || 'Customer favourites across our collection.'}
             </p>
 
             {/* Category Filter Tabs */}
@@ -593,7 +593,7 @@ export default function Home() {
                   <div className="testimonial-author" style={{ marginTop: 14 }}>
                     <div>
                       <strong>{r.first_name ? `${r.first_name} ${r.last_initial || ''}.` : 'Verified Buyer'}</strong>
-                      <span>{r.location || 'Accra, Ghana'}</span>
+                      {r.location && <span>{r.location}</span>}
                     </div>
                   </div>
                 </Reveal>

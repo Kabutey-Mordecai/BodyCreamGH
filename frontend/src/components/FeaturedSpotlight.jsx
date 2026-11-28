@@ -23,19 +23,14 @@ export default function FeaturedSpotlight() {
     if (settings.mid_banner_title || settings.mid_banner_highlight) {
       slides = [
         {
-          badge: settings.mid_banner_badge || DEFAULT_SLIDES[0].badge,
-          title: settings.mid_banner_title || DEFAULT_SLIDES[0].title,
-          highlight: settings.mid_banner_highlight || DEFAULT_SLIDES[0].highlight,
-          subtitle: settings.mid_banner_subtitle || DEFAULT_SLIDES[0].subtitle,
-          cta_text: settings.mid_banner_cta_text || DEFAULT_SLIDES[0].cta_text,
-          cta_link: (settings.mid_banner_cta_text && settings.mid_banner_cta_text.toLowerCase().includes('story'))
-            ? '/#our-story'
-            : (settings.mid_banner_cta_link && settings.mid_banner_cta_link !== '/#our-story' ? settings.mid_banner_cta_link : DEFAULT_SLIDES[0].cta_link),
-          image: settings.mid_banner_image || DEFAULT_SLIDES[0].image,
+          badge: settings.mid_banner_badge || '',
+          title: settings.mid_banner_title || '',
+          highlight: settings.mid_banner_highlight || '',
+          subtitle: settings.mid_banner_subtitle || '',
+          cta_text: settings.mid_banner_cta_text || 'Explore',
+          cta_link: settings.mid_banner_cta_link || '/shop',
+          image: settings.mid_banner_image || '',
         },
-        DEFAULT_SLIDES[1],
-        DEFAULT_SLIDES[2],
-        DEFAULT_SLIDES[3],
       ];
     } else {
       slides = DEFAULT_SLIDES;
@@ -88,7 +83,7 @@ export default function FeaturedSpotlight() {
     touchStartXRef.current = null;
   };
 
-  if (!isEnabled) return null;
+  if (!isEnabled || total === 0) return null;
 
   const activeSlide = slides[currentSlide] || slides[0];
 

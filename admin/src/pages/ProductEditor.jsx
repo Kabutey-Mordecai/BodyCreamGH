@@ -36,7 +36,7 @@ const suggestSku = (name) => {
 };
 
 const EMPTY = {
-  name: '', description: '', price: '', cost: '', compare_at_price: '',
+  name: '', description: '', highlights: '', price: '', cost: '', compare_at_price: '',
   category: '', brand: '', image_url: '',
   stock_quantity: 0, sku: '',
   ingredients: '', usage_instructions: '',
@@ -60,6 +60,7 @@ export default function ProductEditor() {
         ...EMPTY,
         name: copyName,
         description: duplicateSeed.description || '',
+        highlights: duplicateSeed.highlights || '',
         price: duplicateSeed.price ?? '',
         cost: duplicateSeed.cost ?? '',
         compare_at_price: duplicateSeed.compare_at_price ?? '',
@@ -145,6 +146,7 @@ export default function ProductEditor() {
           ...data,
           cost: data.cost ?? '',
           compare_at_price: data.compare_at_price ?? '',
+          highlights: data.highlights ?? '',
           ingredients: data.ingredients ?? '',
           usage_instructions: data.usage_instructions ?? '',
         };
@@ -564,7 +566,19 @@ export default function ProductEditor() {
             </div>
             <div className="card-body">
               <div className="field">
-                <label htmlFor="pe-ingredients">Key Botanicals &amp; INCI Ingredients</label>
+                <label htmlFor="pe-highlights">Key Highlights (Bullet Box)</label>
+                <textarea
+                  id="pe-highlights"
+                  value={form.highlights}
+                  onChange={e => update('highlights', e.target.value)}
+                  rows={4}
+                  placeholder={'One highlight per line, e.g.:\n12 warm neutral matte & metallic shades\nRichly pigmented for deep skin tones\nLong-wearing crease-resistant formula'}
+                />
+                <div className="hint">Shown in the bullet box on the product page. Leave blank to hide the box.</div>
+              </div>
+
+              <div className="field">
+                <label htmlFor="pe-ingredients">Ingredients</label>
                 <textarea
                   id="pe-ingredients"
                   value={form.ingredients}

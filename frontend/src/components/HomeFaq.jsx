@@ -69,7 +69,7 @@ export default function HomeFaq() {
           <h2 className="page-title">{settings.faq_heading || 'Frequently asked questions'}</h2>
           <div className="gold-divider" style={{ margin: '0 auto 16px' }} />
           <p className="page-subtitle" style={{ marginBottom: '32px' }}>
-            Everything you need to know about ordering, delivery across Ghana, and our ingredients.
+            {settings.faq_subtitle || 'Everything you need to know about ordering, delivery, and returns.'}
           </p>
         </div>
 

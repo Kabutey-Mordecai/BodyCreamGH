@@ -29,16 +29,7 @@ export default function CampaignTiles() {
   const isEnabled = settings.campaign_tiles_enabled !== false && settings.campaign_tiles_enabled !== 'false';
   if (!isEnabled) return null;
 
-  const resolveTileLink = (rawLink, fallback) => {
-    const link = rawLink || fallback;
-    if (link.includes('category=Body+Butter') || link.includes('category=Body%20Butter')) {
-      return '/shop?search=Shea';
-    }
-    if (link.includes('category=Body+Oil') || link.includes('category=Body%20Oil')) {
-      return '/shop?search=Oil';
-    }
-    return link;
-  };
+  const resolveTileLink = (rawLink, fallback) => rawLink || fallback;
 
   if (!settings.tile1_title && !settings.tile2_title) return null;
 

@@ -13,16 +13,18 @@ import { resolveImageUrl } from '../utils/resolveImageUrl';
 import { toFiniteNumber } from '../utils/number';
 import './ProductPage.css';
 
-// TO CUSTOMIZE: Placeholder shown when the product has no image
+// Placeholder shown when the product has no image
 const PLACEHOLDER_IMG = 'https://placehold.co/700x700?text=No+Image';
 
-// TO CUSTOMIZE: Static sell points shown on every product page
-const HIGHLIGHTS = [
-  'Sourced from verified beauty distributors',
-  'Formulated for melanin-rich skin',
-  'Free from parabens, sulfates & artificial dyes',
-  'Cruelty-free & dermatologist tested',
-];
+function parseProductHighlights(raw) {
+  if (Array.isArray(raw)) {
+    return raw.map(s => String(s || '').trim()).filter(Boolean);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw.split(/\r?\n|\|/).map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+}
 
 const RECENTLY_VIEWED_KEY = 'bodycream_recently_viewed';
 const RECENTLY_VIEWED_MAX = 8;
@@ -307,7 +309,7 @@ export default function ProductPage() {
     if (!product) {
       return {
         title: `${settings.store_name || 'BodyCream GH'}`,
-        description: settings.hero_subtitle || 'Handcrafted luxury skincare from Ghana.',
+        description: settings.hero_subtitle || '',
       };
     }
     const storeName = settings.store_name || 'BodyCream GH';
@@ -320,7 +322,7 @@ export default function ProductPage() {
       : resolvedImg
         ? `${window.location.origin}${resolvedImg.startsWith('/') ? '' : '/'}${resolvedImg}`
         : undefined;
-    const desc = (product.description || `${product.name} — handcrafted in Ghana by ${storeName}.`).slice(0, 160);
+    const desc = (product.description || `${product.name} — ${storeName}`).slice(0, 160);
     const reviewCount = parseInt(product.review_count || reviewMeta.summary?.review_count || 0, 10);
     const avgRating = parseFloat(product.avg_rating || reviewMeta.summary?.avg_rating || 0);
 
@@ -799,12 +801,17 @@ export default function ProductPage() {
               <p className="product-detail-desc">{product.description}</p>
             )}
 
-            {/* Sell points — always shown, even if description is short */}
-            <ul className="product-highlights">
-              {HIGHLIGHTS.map(h => (
-                <li key={h}>{h}</li>
-              ))}
-            </ul>
+            {/* Dynamic per-product highlights bullet box (managed in Admin Product Editor) */}
+            {(() => {
+              const items = parseProductHighlights(product.highlights);
+              return items.length > 0 ? (
+                <ul className="product-highlights">
+                  {items.map((h, idx) => (
+                    <li key={`${idx}-${h}`}>{h}</li>
+                  ))}
+                </ul>
+              ) : null;
+            })()}
 
             {/* Quantity selector — only shown when variant is resolved (or product has no variants) */}
             {!isOutOfStock && (!product.has_variants || selectedVariant) && (
@@ -864,86 +871,100 @@ export default function ProductPage() {
             </button>
 
             {/* WhatsApp-to-Order CTA — shown when store whatsapp_number is configured */}
-            {/* ── Unified Clean Assurance & Delivery Card ── */}
+            {/* ── Unified Clean Assurance & Delivery Card (driven by Store Settings) ── */}
             <div className="pdp-assurance-card">
               <div className="pdp-assurance-grid">
                 <div className="pdp-assurance-item">
                   <span className="pdp-assurance-icon">⚡</span>
                   <div>
-                    <strong>Accra Express Dispatch</strong>
-                    <span>Same-day Accra &amp; nationwide delivery (2–4 days)</span>
+                    <strong>Fast Delivery</strong>
+                    <span>
+                      {settings.delivery_estimate_accra || settings.delivery_estimate_nationwide
+                        ? [
+                            settings.delivery_estimate_accra && `Accra: ${settings.delivery_estimate_accra}`,
+                            settings.delivery_estimate_nationwide && `Nationwide: ${settings.delivery_estimate_nationwide}`,
+                          ].filter(Boolean).join(' · ')
+                        : 'Calculated at checkout'}
+                    </span>
                   </div>
                 </div>
                 <div className="pdp-assurance-item">
                   <span className="pdp-assurance-icon">🛡️</span>
                   <div>
-                    <strong>100% Authentic Brands</strong>
-                    <span>Directly sourced &amp; tamper-evident sealed</span>
+                    <strong>100% Authentic</strong>
+                    <span>Verified stock from {settings.store_name || 'our store'}</span>
                   </div>
                 </div>
                 <div className="pdp-assurance-item">
                   <span className="pdp-assurance-icon">💵</span>
                   <div>
-                    <strong>Pay on Delivery &amp; MoMo</strong>
-                    <span>MTN MoMo, Telecel Cash &amp; Doorstep COD</span>
+                    <strong>
+                      {settings.pay_on_delivery_enabled !== false && settings.pay_on_delivery_enabled !== 'false'
+                        ? 'Pay Online or on Delivery'
+                        : 'Secure Online Payment'}
+                    </strong>
+                    <span>
+                      {settings.pay_on_delivery_enabled !== false && settings.pay_on_delivery_enabled !== 'false'
+                        ? 'Paystack (MoMo, Cards) & Cash on Delivery'
+                        : 'Paystack (Mobile Money & Cards)'}
+                    </span>
                   </div>
                 </div>
-                <div className="pdp-assurance-item">
-                  <span className="pdp-assurance-icon">↩</span>
-                  <div>
-                    <strong>{Number(settings.return_window_days) || 3}-Day Returns</strong>
-                    <span>Easy hassle-free exchange window</span>
+                {Number(settings.return_window_days) > 0 && (
+                  <div className="pdp-assurance-item">
+                    <span className="pdp-assurance-icon">↩</span>
+                    <div>
+                      <strong>{Number(settings.return_window_days)}-Day Returns</strong>
+                      <span>Return window from delivery</span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {settings.whatsapp_number && (
                 <div className="pdp-assurance-concierge">
-                  <span>Need assistance or skincare advice?</span>
+                  <span>Questions about this product?</span>
                   <a
-                    href={`https://wa.me/${settings.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(`Hello, I would like to inquire about ${product.name} on BodyCream GH.`)}`}
+                    href={`https://wa.me/${settings.whatsapp_number.replace(/\D/g, '')}?text=${encodeURIComponent(`Hello, I would like to inquire about ${product.name} on ${settings.store_name || 'BodyCream GH'}.`)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="pdp-concierge-link"
                   >
-                    Chat with Beauty Specialist →
+                    Chat on WhatsApp →
                   </a>
                 </div>
               )}
             </div>
 
-            {/* ── Structured Beauty D2C Accordions (searchable native <details>) ── */}
-            <section className="pdp-accordions" aria-label="Product details and care">
-              <details open className="pdp-accordion-item">
-                <summary>Key Botanicals &amp; Ingredients</summary>
-                <div className="pdp-accordion-body">
-                  <p>
-                    {product.ingredients ||
-                      product.ingredients_inci ||
-                      'Formulated with quality cosmetic ingredients and sourced directly from verified brand distributors.'}
-                  </p>
-                </div>
-              </details>
-              <details open className="pdp-accordion-item">
-                <summary>How to Use / Daily Ritual</summary>
-                <div className="pdp-accordion-body">
-                  <p>
-                    {product.usage_instructions ||
-                      product.how_to_use ||
-                      'Warm a small amount between palms and massage onto slightly damp skin after bathing to lock in lasting hydration.'}
-                  </p>
-                </div>
-              </details>
-              <details className="pdp-accordion-item">
-                <summary>Safety &amp; Skin Compatibility</summary>
-                <div className="pdp-accordion-body">
-                  <p>
-                    {product.safety_notes ||
-                      'For external cosmetic use only. Patch-test on a small area before full application. Store in a cool, dry place away from direct sunlight.'}
-                  </p>
-                </div>
-              </details>
-            </section>
+            {/* ── Structured Product Accordions — only rendered when populated in Admin ── */}
+            {(product.ingredients || product.ingredients_inci || product.usage_instructions || product.how_to_use || product.safety_notes) && (
+              <section className="pdp-accordions" aria-label="Product details and care">
+                {(product.ingredients || product.ingredients_inci) && (
+                  <details open className="pdp-accordion-item">
+                    <summary>Ingredients</summary>
+                    <div className="pdp-accordion-body">
+                      <p>{product.ingredients || product.ingredients_inci}</p>
+                    </div>
+                  </details>
+                )}
+                {(product.usage_instructions || product.how_to_use) && (
+                  <details open className="pdp-accordion-item">
+                    <summary>How to Use</summary>
+                    <div className="pdp-accordion-body">
+                      <p>{product.usage_instructions || product.how_to_use}</p>
+                    </div>
+                  </details>
+                )}
+                {product.safety_notes && (
+                  <details className="pdp-accordion-item">
+                    <summary>Safety &amp; Storage</summary>
+                    <div className="pdp-accordion-body">
+                      <p>{product.safety_notes}</p>
+                    </div>
+                  </details>
+                )}
+              </section>
+            )}
           </div>
         </div>
       </div>

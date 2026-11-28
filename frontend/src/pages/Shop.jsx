@@ -190,16 +190,16 @@ export default function Shop() {
   const shopSeo = useMemo(() => {
     const storeName = settings.store_name || 'BodyCream GH';
     let title = `Shop All Products — ${storeName}`;
-    let description = `Browse handcrafted body creams, body butters, oils, and scrubs made in Ghana by ${storeName}.`;
+    let description = settings.hero_subtitle || `Browse authentic cosmetics and beauty products at ${storeName}.`;
     if (search) {
       title = `Search "${search}" — ${storeName}`;
       description = `Search results for ${search} at ${storeName}.`;
     } else if (category) {
       title = `${category} — ${storeName}`;
-      description = `Shop handcrafted ${category.toLowerCase()} products made in Ghana by ${storeName}.`;
+      description = `Shop ${category.toLowerCase()} products at ${storeName}.`;
     }
     return { title, description };
-  }, [category, search, settings.store_name]);
+  }, [category, search, settings.store_name, settings.hero_subtitle]);
 
   useSeo(shopSeo);
 
@@ -321,9 +321,11 @@ export default function Shop() {
           <span className="section-label">The Collection</span>
           <h1 className="page-title">Shop all products</h1>
           <div className="gold-divider" style={{ margin: '0 auto 16px' }} />
-          <p className="page-subtitle">
-            Curated authentic skincare, makeup, haircare, body care, and fragrances — delivered across Ghana.
-          </p>
+          {(settings.shop_subtitle || settings.hero_subtitle) && (
+            <p className="page-subtitle">
+              {settings.shop_subtitle || settings.hero_subtitle}
+            </p>
+          )}
         </div>
 
         {/* ── Mobile filter toggle bar (hidden on desktop) ── */}
