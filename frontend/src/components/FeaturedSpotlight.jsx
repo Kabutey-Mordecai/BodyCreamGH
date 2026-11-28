@@ -4,44 +4,7 @@ import { resolveImageUrl } from '../utils/resolveImageUrl';
 import Reveal from './Reveal';
 import './FeaturedSpotlight.css';
 
-const DEFAULT_SLIDES = [
-  {
-    badge: '100% AUTHENTIC BRANDS',
-    title: 'All Your Beauty Essentials.',
-    highlight: 'One Trusted Destination.',
-    subtitle: 'Curated skincare, makeup, haircare, and fine fragrances sourced directly from verified brands and distributors.',
-    cta_text: 'Explore Catalog',
-    cta_link: '/shop',
-    image: 'https://images.unsplash.com/photo-1556228720-195a672e8a03?auto=format&fit=crop&w=700&q=80',
-  },
-  {
-    badge: 'DERMATOLOGIST-LOVED SKINCARE',
-    title: 'Barrier Repair & Glow.',
-    highlight: 'Daily Routines Made Easy.',
-    subtitle: 'Shop gentle cleansers, niacinamide serums, rich moisturizers, and no-white-cast sunscreens for every skin tone.',
-    cta_text: 'Shop Skincare',
-    cta_link: '/shop?category=Skincare',
-    image: 'https://images.unsplash.com/photo-1576426863848-c21f53c60b19?auto=format&fit=crop&w=700&q=80',
-  },
-  {
-    badge: 'FRAGRANCE & BODY CARE',
-    title: 'Signature Scents & Oils.',
-    highlight: 'Lasting Impressions.',
-    subtitle: 'Discover eau de parfums, nourishing body oils, and whipped body butters for effortless everyday luxury.',
-    cta_text: 'Shop Fragrances',
-    cta_link: '/shop?category=Fragrances',
-    image: 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
-  },
-  {
-    badge: 'HAIRCARE & TOOLS',
-    title: 'Nourish Every Strand.',
-    highlight: 'Salon Results at Home.',
-    subtitle: 'Hydrating hair masks, curl-defining creams, and professional beauty tools delivered nationwide.',
-    cta_text: 'Shop Haircare',
-    cta_link: '/shop?category=Haircare',
-    image: 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=700&q=80',
-  },
-];
+const DEFAULT_SLIDES = [];
 
 export default function FeaturedSpotlight() {
   const settings = useSettings();

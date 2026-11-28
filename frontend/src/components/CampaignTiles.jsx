@@ -40,22 +40,24 @@ export default function CampaignTiles() {
     return link;
   };
 
+  if (!settings.tile1_title && !settings.tile2_title) return null;
+
   const tile1 = {
-    badge: settings.tile1_badge || 'LIMITED BATCH',
-    title: settings.tile1_title || 'Whipped Shea Butters',
-    subtitle: settings.tile1_subtitle || 'Deep 48-hour moisture crafted with raw Northern Ghana shea.',
-    cta: settings.tile1_cta_text || 'Shop Butters',
-    link: resolveTileLink(settings.tile1_link, '/shop?search=Shea'),
-    image: settings.tile1_image || 'https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80',
+    badge: settings.tile1_badge || '',
+    title: settings.tile1_title || '',
+    subtitle: settings.tile1_subtitle || '',
+    cta: settings.tile1_cta_text || 'Shop Now',
+    link: resolveTileLink(settings.tile1_link, '/shop'),
+    image: settings.tile1_image || '',
   };
 
   const tile2 = {
-    badge: settings.tile2_badge || 'HOT SELLER',
-    title: settings.tile2_title || 'Botanical Radiance Oils',
-    subtitle: settings.tile2_subtitle || 'Fast-absorbing golden glow with hibiscus and baobab oils.',
-    cta: settings.tile2_cta_text || 'Explore Oils',
-    link: resolveTileLink(settings.tile2_link, '/shop?search=Oil'),
-    image: settings.tile2_image || 'https://images.unsplash.com/photo-1599305090598-fe179d501227?auto=format&fit=crop&w=700&q=80',
+    badge: settings.tile2_badge || '',
+    title: settings.tile2_title || '',
+    subtitle: settings.tile2_subtitle || '',
+    cta: settings.tile2_cta_text || 'Explore',
+    link: resolveTileLink(settings.tile2_link, '/shop'),
+    image: settings.tile2_image || '',
   };
 
   return (

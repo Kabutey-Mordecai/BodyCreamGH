@@ -15,7 +15,7 @@ export function buildFaqItems(settings = {}) {
   const nationEst = settings.delivery_estimate_nationwide || '3–5 business days';
   const freeOver = Number(settings.free_delivery_over);
   const pickupEnabled = settings.pickup_enabled !== false && settings.pickup_enabled !== 'false';
-  const pickupLoc = settings.pickup_location || 'East Legon, Accra (Call upon arrival)';
+  const pickupLoc = settings.pickup_location || 'our Store Pickup Station';
   const pickupHours = settings.pickup_hours || 'Mon–Sat, 9:00 AM – 6:00 PM';
   const podEnabled = settings.pay_on_delivery_enabled === true || settings.pay_on_delivery_enabled === 'true';
   const podAccraOnly = settings.pay_on_delivery_accra_only !== false && settings.pay_on_delivery_accra_only !== 'false';

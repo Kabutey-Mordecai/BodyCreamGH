@@ -56,7 +56,7 @@ export const WA_TEMPLATES = {
   readyForPickup: (order, store = {}) => {
     const num = order.order_number || String(order.id || '').slice(0, 8);
     const name = order.first_name || order.customer_name || 'valued customer';
-    const loc = store.pickup_location || 'East Legon Station (Accra)';
+    const loc = store.pickup_location || 'our Store Pickup Station';
     const hours = store.pickup_hours || 'Mon–Sat, 9:00 AM – 6:00 PM';
     return `Hello ${name}! ✨ Your BodyCream GH order #${num} is packed and ready for pickup!\n\n📍 Location: ${loc}\n⏰ Hours: ${hours}\n\nPlease present this message or order #${num} when collecting your package.`;
   },

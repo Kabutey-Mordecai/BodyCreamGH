@@ -7,12 +7,12 @@ import './PolicyPage.css';
 export default function PolicyPage({ type = 'privacy' }) {
   const settings = useSettings() || {};
   const storeName = settings.store_name || 'BodyCream GH';
-  const email = settings.store_email || settings.contact_email || 'hello@bodycreamgh.com';
-  const phone = settings.store_phone || settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
+  const email = settings.store_email || settings.contact_email || '';
+  const phone = settings.store_phone || settings.contact_phone || settings.whatsapp_number || '';
   const rawWa = String(settings.whatsapp_number || phone || '').replace(/\D/g, '');
   const waDigits = rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa;
   const waDisplay = settings.whatsapp_number || phone;
-  const address = settings.pickup_location || settings.store_address || 'East Legon, Accra, Ghana';
+  const address = settings.pickup_location || settings.store_address || 'Accra, Ghana';
   const pickupHours = settings.pickup_hours || 'Mon–Sat, 9:00 AM – 6:00 PM';
   const returnDays = toFiniteNumber(settings.return_window_days, 3);
   const freeThreshold = toFiniteNumber(settings.free_delivery_threshold ?? settings.free_delivery_over, 200);

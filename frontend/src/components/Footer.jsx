@@ -83,14 +83,14 @@ export default function Footer() {
     categories,
   } = settings;
 
-  const cleanPhone = store_phone || settings.contact_phone || settings.whatsapp_number || '+233 24 585 2804';
-  const cleanEmail = store_email || settings.contact_email || 'hello@bodycreamgh.com';
+  const cleanPhone = store_phone || settings.contact_phone || settings.whatsapp_number || '';
+  const cleanEmail = store_email || settings.contact_email || '';
 
   const rawWa = String(whatsapp_number || cleanPhone || '').replace(/\D/g, '');
   const waDigits = rawWa.length === 10 && rawWa.startsWith('0') ? `233${rawWa.slice(1)}` : rawWa;
   const waHref = waDigits
     ? `https://wa.me/${waDigits}?text=Hello%20${encodeURIComponent(store_name || 'BodyCream GH')},%20I%20have%20an%20inquiry.`
-    : (footer_whatsapp || 'https://wa.me/233245852804');
+    : (footer_whatsapp || '');
 
   const pickupEnabled = pickup_enabled !== false && pickup_enabled !== 'false';
   const podEnabled = pay_on_delivery_enabled === true || pay_on_delivery_enabled === 'true';

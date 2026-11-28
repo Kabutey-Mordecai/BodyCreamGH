@@ -80,7 +80,7 @@ function FlashSaleTimer({ endTime = DEFAULT_SALE_END_TIME }) {
   );
 }
 
-const DEFAULT_HERO_IMG = 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=1600&q=85';
+const DEFAULT_HERO_IMG = '';
 
 export default function Home() {
   const { user } = useAuth();
@@ -528,15 +528,17 @@ export default function Home() {
           ══════════════════════════════════════════ */}
       <section id="our-story" className="brand-story">
         <div className="container brand-story-inner">
-          <Reveal direction="left" className="brand-story-img">
-            <img
-              src="https://images.unsplash.com/photo-1608248597279-f99d160bfcbc?auto=format&fit=crop&w=700&q=80"
-              alt="Our story — handcrafting body creams"
-              width="700"
-              height="500"
-              loading="lazy"
-            />
-          </Reveal>
+          {(settings.brand_story_image || hero_image) && (
+            <Reveal direction="left" className="brand-story-img">
+              <img
+                src={resolveImageUrl(settings.brand_story_image || hero_image)}
+                alt={store_name || 'Our story'}
+                width="700"
+                height="500"
+                loading="lazy"
+              />
+            </Reveal>
+          )}
           <Reveal direction="right" delay={100} className="brand-story-text">
             <span className="section-label">Why Shop With Us</span>
             <h2>Curated beauty,<br />100% authentic.</h2>

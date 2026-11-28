@@ -59,7 +59,7 @@ export default function SpecialOfferModal() {
   const highlight = settings.promo_popup_highlight || '';
   const discount = settings.promo_popup_discount || 'UP TO 40% OFF';
   const subtext = settings.promo_popup_subtext || 'Limited quantity · T&Cs apply';
-  const image = settings.promo_popup_image || 'https://images.unsplash.com/photo-1596462502278-27bfdc403348?auto=format&fit=crop&w=600&q=80';
+  const image = settings.promo_popup_image || '';
   const rawCtaLink = settings.promo_popup_cta_link;
   const ctaLink = (!rawCtaLink || rawCtaLink === '/shop') ? '/shop?on_sale=true' : rawCtaLink;
 

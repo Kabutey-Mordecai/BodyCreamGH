@@ -72,7 +72,7 @@ async function getCheckoutSettings(client) {
     pickupEnabled:  parseSettingBool(map.pickup_enabled, true),
     pickupLocation: typeof map.pickup_location === 'string' && map.pickup_location.trim()
       ? map.pickup_location.trim()
-      : 'East Legon, Accra (Call upon arrival)',
+      : 'Store Pickup Station',
     podEnabled:           parseSettingBool(map.pay_on_delivery_enabled, false),
     podAccraOnly:         parseSettingBool(map.pay_on_delivery_accra_only, true),
     guestCheckoutEnabled: parseSettingBool(map.guest_checkout_enabled, false),

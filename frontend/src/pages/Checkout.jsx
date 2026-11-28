@@ -288,7 +288,7 @@ export default function Checkout() {
     try {
       const isPickup = fulfillmentMethod === 'pickup';
       const shippingAddress = isPickup
-        ? `Pickup: ${pickup_location || 'East Legon, Accra'}`
+        ? `Pickup: ${pickup_location || 'Store Pickup Station'}`
         : form.delivery_address;
       const shippingCity   = isPickup ? 'Accra' : form.city;
       const shippingRegion = isPickup ? 'Greater Accra' : form.region;
@@ -460,7 +460,7 @@ export default function Checkout() {
             {podConfirmation.fulfillment_method === 'pickup' && (
               <div className="checkout-pickup-box" style={{ width: '100%', textAlign: 'left' }}>
                 <strong>Pickup Station</strong>
-                <p>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</p>
+                <p>{pickup_location || 'Store Pickup Station (Call upon arrival)'}</p>
                 {pickup_hours && <p className="checkout-pickup-hours">Hours: {pickup_hours}</p>}
               </div>
             )}
@@ -630,7 +630,7 @@ export default function Checkout() {
                     />
                     <div>
                       <strong>Pickup Station — Free</strong>
-                      <span>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</span>
+                      <span>{pickup_location || 'Store Pickup Station (Call upon arrival)'}</span>
                     </div>
                   </label>
                 </div>
@@ -639,7 +639,7 @@ export default function Checkout() {
               {fulfillmentMethod === 'pickup' ? (
                 <div className="checkout-pickup-box">
                   <strong>Pickup Location</strong>
-                  <p>{pickup_location || 'East Legon, Accra (Call upon arrival)'}</p>
+                  <p>{pickup_location || 'Store Pickup Station (Call upon arrival)'}</p>
                   {pickup_hours && (
                     <p className="checkout-pickup-hours">Pickup hours: {pickup_hours}</p>
                   )}

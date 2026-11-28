@@ -321,7 +321,7 @@ export function buildInvoiceSheetHtml(rawOrder, store = {}) {
         <div class="party-label">${order.fulfillment_method === 'pickup' ? 'Pickup Station' : 'Deliver To'}</div>
         <p>
           ${order.fulfillment_method === 'pickup'
-            ? `<strong>East Legon Station</strong><br/>Accra, Ghana<br/><span class="muted">Call upon arrival · Station Pickup</span>`
+            ? `<strong>${esc(store.pickup_location || 'Store Pickup Station')}</strong><br/>${esc(store.store_address || 'Accra, Ghana')}<br/><span class="muted">Call upon arrival · Station Pickup</span>`
             : `
               ${esc(order.shipping_address || '')}
               ${(order.shipping_city || order.shipping_region)

@@ -764,7 +764,7 @@ export default function OrderDetail() {
                 <div className="od-delivery-summary-grid">
                   <div>
                     <div className="od-kv-label">Station</div>
-                    <div className="od-kv-val">{store.pickup_location || 'East Legon Station (Accra)'}</div>
+                    <div className="od-kv-val">{store.pickup_location || 'Store Pickup Station'}</div>
                   </div>
                   <div>
                     <div className="od-kv-label">Stage</div>
@@ -1352,7 +1352,7 @@ export default function OrderDetail() {
             <div className="card-body">
               {order.fulfillment_method === 'pickup' ? (
                 <div style={{ fontSize: '0.86rem', lineHeight: 1.6 }}>
-                  <div style={{ fontWeight: 600 }}>{store.pickup_location || 'East Legon Station (Accra)'}</div>
+                  <div style={{ fontWeight: 600 }}>{store.pickup_location || 'Store Pickup Station'}</div>
                   <div className="muted text-xs" style={{ marginTop: 4 }}>
                     Customer collects parcel in person — verify recipient ID or order number.
                   </div>
