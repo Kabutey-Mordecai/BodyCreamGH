@@ -33,6 +33,17 @@
   ],
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "https://backend-production-46b88d27.up.railway.app/api/sitemap.xml" },
+    {
+      "source": "/products/:id",
+      "has": [
+        {
+          "type": "header",
+          "key": "user-agent",
+          "value": ".*(WhatsApp|facebookexternalhit|Facebot|Twitterbot|TelegramBot|LinkedInBot|Discordbot|Slackbot|Pinterest).*"
+        }
+      ],
+      "destination": "https://backend-production-46b88d27.up.railway.app/api/og/product/:id"
+    },
     { "source": "/((?!assets/).*)", "destination": "/index.html" }
   ]
 }

@@ -131,21 +131,39 @@ export default function Home() {
   const homeJsonLd = useMemo(() => {
     const faqEnabled = settings.faq_enabled !== false && settings.faq_enabled !== 'false';
     const faqItems = faqEnabled ? buildFaqItems(settings) : [];
+    const origin = window.location.origin;
+    const sameAs = [settings.instagram_url, settings.facebook_url, settings.tiktok_url, settings.twitter_url].filter(Boolean);
     return {
       '@context': 'https://schema.org',
       '@graph': [
         {
-          '@type': 'Organization',
+          '@type': ['Organization', 'Store'],
           name: store_name || 'BodyCream GH',
-          url: window.location.origin,
+          url: origin,
+          logo: `${origin}/icon-512.png`,
+          image: hero_image || DEFAULT_HERO_IMG,
+          description: hero_subtitle || 'Authentic cosmetics, skincare, makeup, haircare, and fragrances in Ghana with fast nationwide delivery.',
+          priceRange: 'GHS',
+          currenciesAccepted: 'GHS',
+          paymentAccepted: 'Mobile Money, Visa, Mastercard, Cash on Delivery',
+          areaServed: { '@type': 'Country', name: 'Ghana' },
+          address: {
+            '@type': 'PostalAddress',
+            addressLocality: 'Accra',
+            addressRegion: 'Greater Accra',
+            addressCountry: 'GH',
+          },
+          ...(settings.store_phone || settings.whatsapp_number ? { telephone: settings.store_phone || settings.whatsapp_number } : {}),
+          ...(settings.store_email ? { email: settings.store_email } : {}),
+          ...(sameAs.length > 0 ? { sameAs } : {}),
         },
         {
           '@type': 'WebSite',
           name: store_name || 'BodyCream GH',
-          url: window.location.origin,
+          url: origin,
           potentialAction: {
             '@type': 'SearchAction',
-            target: `${window.location.origin}/shop?search={search_term_string}`,
+            target: `${origin}/shop?search={search_term_string}`,
             'query-input': 'required name=search_term_string',
           },
         },
@@ -162,7 +180,7 @@ export default function Home() {
         }] : []),
       ],
     };
-  }, [settings, store_name]);
+  }, [settings, store_name, hero_subtitle, hero_image]);
 
   useSeo({
     title: `${store_name || 'BodyCream GH'} — Authentic Cosmetics, Skincare & Makeup`,

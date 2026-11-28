@@ -29,7 +29,12 @@ function getCleanCanonical(customCanonical) {
   if (pathname === '/shop') {
     const params = new URLSearchParams(search);
     const category = params.get('category');
-    return category ? `${origin}/shop?category=${encodeURIComponent(category)}` : `${origin}/shop`;
+    const brand = params.get('brand');
+    const kept = new URLSearchParams();
+    if (category) kept.set('category', category);
+    if (brand) kept.set('brand', brand);
+    const qs = kept.toString();
+    return qs ? `${origin}/shop?${qs}` : `${origin}/shop`;
   }
   return `${origin}${pathname}`;
 }
@@ -47,13 +52,14 @@ export function useSeo({ title, description, image, type = 'website', canonical 
       upsertMeta('name', 'twitter:description', description);
     }
     if (type) upsertMeta('property', 'og:type', type);
+    upsertMeta('property', 'og:locale', 'en_GH');
     if (image) {
       upsertMeta('property', 'og:image', image);
       upsertMeta('name', 'twitter:image', image);
     }
-    if (robots) {
-      upsertMeta('name', 'robots', robots);
-    }
+    // Always reset robots so navigating away from a noindex page never leaves
+    // public product/category pages stuck as noindex in SPA navigation.
+    upsertMeta('name', 'robots', robots || 'index, follow');
 
     const cleanCanonical = getCleanCanonical(canonical);
     upsertCanonical(cleanCanonical);

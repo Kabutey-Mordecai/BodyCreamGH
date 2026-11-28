@@ -180,13 +180,33 @@ function escapeXml(str) {
   });
 }
 
-// ── Dynamic XML Sitemap (SEO) ────────────────────────────────────────────────
+// ── Dynamic XML Sitemap with Google Images & Brands (SEO) ──────────────────
 app.get(['/api/sitemap.xml', '/sitemap.xml'], async (_req, res) => {
   try {
     const siteUrl = (process.env.FRONTEND_URL || 'https://bodycreamgh-shop.vercel.app').replace(/\/$/, '');
-    const [productsRes, categoriesRes] = await Promise.all([
-      pool.query(`SELECT id, updated_at FROM products WHERE is_active = TRUE ORDER BY updated_at DESC LIMIT 5000`),
-      pool.query(`SELECT DISTINCT category FROM products WHERE is_active = TRUE AND category IS NOT NULL`),
+    const apiBase = (process.env.BASE_URL || 'https://backend-production-46b88d27.up.railway.app').replace(/\/$/, '');
+    const resolveAbsImg = (u) => {
+      if (!u) return '';
+      if (/^https?:\/\//i.test(u)) return u;
+      return `${apiBase}${u.startsWith('/') ? '' : '/'}${u}`;
+    };
+
+    const [productsRes, categoriesRes, brandsRes] = await Promise.all([
+      pool.query(`
+        SELECT p.id, p.name, p.updated_at,
+               COALESCE(pi_primary.url, p.image_url) AS image_url
+          FROM products p
+          LEFT JOIN LATERAL (
+            SELECT url FROM product_images
+             WHERE product_id = p.id AND is_primary = true
+             LIMIT 1
+          ) pi_primary ON true
+         WHERE p.is_active = TRUE
+         ORDER BY p.updated_at DESC
+         LIMIT 5000
+      `),
+      pool.query(`SELECT DISTINCT category FROM products WHERE is_active = TRUE AND category IS NOT NULL AND TRIM(category) <> ''`),
+      pool.query(`SELECT DISTINCT brand FROM products WHERE is_active = TRUE AND brand IS NOT NULL AND TRIM(brand) <> ''`),
     ]);
 
     const urls = [
@@ -200,18 +220,103 @@ app.get(['/api/sitemap.xml', '/sitemap.xml'], async (_req, res) => {
       ...categoriesRes.rows.map(c =>
         `  <url><loc>${escapeXml(siteUrl)}/shop?category=${escapeXml(encodeURIComponent(c.category))}</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>`
       ),
+      ...brandsRes.rows.map(b =>
+        `  <url><loc>${escapeXml(siteUrl)}/shop?brand=${escapeXml(encodeURIComponent(b.brand))}</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>`
+      ),
       ...productsRes.rows.map(r => {
         const lastmod = r.updated_at ? new Date(r.updated_at).toISOString().slice(0, 10) : '';
-        return `  <url><loc>${escapeXml(siteUrl)}/products/${escapeXml(r.id)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.8</priority></url>`;
+        const absImg = resolveAbsImg(r.image_url);
+        const imgTag = absImg
+          ? `<image:image><image:loc>${escapeXml(absImg)}</image:loc><image:title>${escapeXml(r.name || 'Product')}</image:title></image:image>`
+          : '';
+        return `  <url><loc>${escapeXml(siteUrl)}/products/${escapeXml(r.id)}</loc>${lastmod ? `<lastmod>${lastmod}</lastmod>` : ''}<changefreq>weekly</changefreq><priority>0.8</priority>${imgTag}</url>`;
       }),
     ];
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.join('\n')}\n</urlset>\n`;
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">\n${urls.join('\n')}\n</urlset>\n`;
+    res.removeHeader('Pragma');
+    res.removeHeader('Expires');
     res.set('Content-Type', 'application/xml; charset=utf-8');
     res.set('Cache-Control', 'public, max-age=3600');
     res.send(xml);
   } catch (err) {
     logger.error('Sitemap generation failed', { err: err.message });
     res.status(500).send('Failed to generate sitemap');
+  }
+});
+
+// ── Dynamic Open Graph & Rich Social Preview for Product Links (WhatsApp/FB/X) ──
+app.get('/api/og/product/:id', async (req, res) => {
+  try {
+    const productId = String(req.params.id || '').trim();
+    const siteUrl = (process.env.FRONTEND_URL || 'https://bodycreamgh-shop.vercel.app').replace(/\/$/, '');
+    const apiBase = (process.env.BASE_URL || 'https://backend-production-46b88d27.up.railway.app').replace(/\/$/, '');
+
+    // Validate UUID format before querying
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(productId)) {
+      return res.redirect(302, `${siteUrl}/shop`);
+    }
+
+    const { rows } = await pool.query(`
+      SELECT p.id, p.name, p.description, p.price, p.brand, p.stock_quantity,
+             COALESCE(pi_primary.url, p.image_url) AS image_url
+        FROM products p
+        LEFT JOIN LATERAL (
+          SELECT url FROM product_images
+           WHERE product_id = p.id AND is_primary = true
+           LIMIT 1
+        ) pi_primary ON true
+       WHERE p.id = $1 AND p.is_active = TRUE
+       LIMIT 1
+    `, [productId]);
+
+    if (!rows.length) {
+      return res.redirect(302, `${siteUrl}/shop`);
+    }
+
+    const p = rows[0];
+    const priceStr = Number.isFinite(parseFloat(p.price)) ? parseFloat(p.price).toFixed(2) : '0.00';
+    const title = `${p.name} — GHS ${priceStr} | BodyCream GH`;
+    const desc = (p.description || `Buy authentic ${p.name} in Ghana from BodyCream GH. Fast delivery nationwide & secure Paystack checkout.`).slice(0, 160);
+    const rawImg = p.image_url || '';
+    const absImg = rawImg
+      ? (/^https?:\/\//i.test(rawImg) ? rawImg : `${apiBase}${rawImg.startsWith('/') ? '' : '/'}${rawImg}`)
+      : `${siteUrl}/icon-512.png`;
+    const canonicalUrl = `${siteUrl}/products/${p.id}`;
+
+    res.removeHeader('Pragma');
+    res.removeHeader('Expires');
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.set('Cache-Control', 'public, max-age=300');
+    res.set('Content-Security-Policy', "default-src 'none'; img-src https:;");
+    return res.send(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeXml(title)}</title>
+  <meta name="description" content="${escapeXml(desc)}" />
+  <link rel="canonical" href="${escapeXml(canonicalUrl)}" />
+  <meta property="og:site_name" content="BodyCream GH" />
+  <meta property="og:type" content="product" />
+  <meta property="og:locale" content="en_GH" />
+  <meta property="og:title" content="${escapeXml(title)}" />
+  <meta property="og:description" content="${escapeXml(desc)}" />
+  <meta property="og:image" content="${escapeXml(absImg)}" />
+  <meta property="og:url" content="${escapeXml(canonicalUrl)}" />
+  <meta property="product:price:amount" content="${escapeXml(priceStr)}" />
+  <meta property="product:price:currency" content="GHS" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${escapeXml(title)}" />
+  <meta name="twitter:description" content="${escapeXml(desc)}" />
+  <meta name="twitter:image" content="${escapeXml(absImg)}" />
+  <meta http-equiv="refresh" content="0;url=${escapeXml(canonicalUrl)}" />
+</head>
+<body>
+  <p>Redirecting to <a href="${escapeXml(canonicalUrl)}">${escapeXml(p.name)}</a>...</p>
+</body>
+</html>`);
+  } catch (err) {
+    logger.error('OG product preview error', { err: err.message });
+    return res.status(500).send('Failed to load preview');
   }
 });
 
