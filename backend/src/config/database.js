@@ -31,4 +31,30 @@ pool.on('error', (err) => {
   logger.error('Unexpected error on idle DB client — pool will automatically discard and reconnect', { err: err.message });
 });
 
+let readPool = null;
+
+function getReadPool() {
+  const readUrl = process.env.DATABASE_READ_URL || process.env.DATABASE_REPLICA_URL;
+  if (!readUrl) {
+    return pool;
+  }
+  if (!readPool) {
+    readPool = new Pool({
+      connectionString:        readUrl,
+      max:                     maxPoolSize,
+      idleTimeoutMillis:       30000,
+      connectionTimeoutMillis: 2000,
+    });
+    readPool.on('connect', () => {
+      logger.info('Connected to PostgreSQL Read Replica');
+    });
+    readPool.on('error', (err) => {
+      logger.error('Unexpected error on idle read-replica DB client', { err: err.message });
+    });
+  }
+  return readPool;
+}
+
 module.exports = pool;
+module.exports.pool = pool;
+module.exports.getReadPool = getReadPool;

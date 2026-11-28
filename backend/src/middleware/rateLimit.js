@@ -48,10 +48,42 @@ function normalizeIp(rawIp) {
   return ip || 'unknown';
 }
 
+let redisClient = null;
+let redisReady = false;
+
+if (process.env.REDIS_URL) {
+  try {
+    const Redis = require('ioredis');
+    redisClient = new Redis(process.env.REDIS_URL, {
+      maxRetriesPerRequest: 1,
+      connectTimeout: 2000,
+      enableOfflineQueue: false,
+      retryStrategy: (times) => Math.min(times * 100, 3000),
+    });
+
+    redisClient.on('ready', () => {
+      redisReady = true;
+    });
+
+    redisClient.on('error', () => {
+      redisReady = false;
+    });
+
+    redisClient.on('close', () => {
+      redisReady = false;
+    });
+  } catch (_) {
+    redisClient = null;
+    redisReady = false;
+  }
+}
+
 /**
- * Per-key fixed-window rate limiter with LRU eviction (no external dependencies).
+ * Per-key fixed-window rate limiter with distributed Redis support and
+ * automatic fail-open fallback to a memory-safe LRU store.
  *
  * Security & availability properties:
+ * - Distributed across instances when REDIS_URL is configured.
  * - IPv6 clients are keyed by their /64 prefix via normalizeIp().
  * - Store size is bounded (`maxKeys`, default 10,000). When full after sweeping
  *   expired keys, least-recently-used entries are evicted so legitimate clients
@@ -83,11 +115,52 @@ function makeRateLimiter(windowMs, max, message, options = {}) {
   const timer = setInterval(() => sweepExpired(Date.now()), sweepInterval);
   if (timer.unref) timer.unref();
 
-  return (req, res, next) => {
+  return async (req, res, next) => {
     const ip = normalizeIp(req.ip || req.socket?.remoteAddress || 'unknown');
     const key = String(keyGenerator(req, ip) || ip);
     const now = Date.now();
 
+    // ── Distributed Redis Path (when available) ──────────────────────────────
+    if (redisReady && redisClient) {
+      try {
+        const redisKey = `rl:${key}`;
+        const pipeline = redisClient.pipeline();
+        pipeline.incr(redisKey);
+        pipeline.pttl(redisKey);
+        const results = await pipeline.exec();
+
+        const count = results[0] && results[0][1] ? Number(results[0][1]) : 1;
+        let pttl = results[1] && results[1][1] ? Number(results[1][1]) : -1;
+
+        if (pttl === -1 || pttl === -2) {
+          await redisClient.pexpire(redisKey, windowMs);
+          pttl = windowMs;
+        }
+
+        const remaining  = Math.max(0, max - count);
+        const resetSecs  = Math.ceil(pttl / 1000);
+        const resetAt    = Math.ceil((now + pttl) / 1000);
+        const retryAfter = Math.max(1, resetSecs);
+
+        res.set('X-RateLimit-Limit',     String(max));
+        res.set('X-RateLimit-Remaining', String(remaining));
+        res.set('X-RateLimit-Reset',     String(resetAt));
+
+        if (count > max) {
+          res.set('Retry-After', String(retryAfter));
+          return res.status(429).json({
+            error: message || 'Too many requests. Please try again later.',
+            retryAfter,
+          });
+        }
+
+        return next();
+      } catch {
+        // Redis connection error or timeout: seamlessly fall through to local in-memory LRU
+      }
+    }
+
+    // ── Resilient In-Memory LRU Path (local / fallback) ───────────────────────
     let entry = store.get(key);
     if (entry && now >= entry.resetAt) {
       store.delete(key);

@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const getReadPool = pool.getReadPool || (() => pool);
 
 let pgTrgmAvailable = null;
 async function hasPgTrgm() {
@@ -183,18 +184,18 @@ module.exports = {
       const countSql     = `SELECT COUNT(*) FROM products p ${where}`;
 
       const [dataResult, countResult] = await Promise.all([
-        pool.query(paginatedSql, [...filterParams, lim, off]),
-        pool.query(countSql, filterParams),
+        getReadPool().query(paginatedSql, [...filterParams, lim, off]),
+        getReadPool().query(countSql, filterParams),
       ]);
       return { products: dataResult.rows, total: parseInt(countResult.rows[0].count) };
     }
 
-    const { rows } = await pool.query(selectSql, filterParams);
+    const { rows } = await getReadPool().query(selectSql, filterParams);
     return rows;
   },
 
   findById: async (id) => {
-    const { rows } = await pool.query(
+    const { rows } = await getReadPool().query(
       `SELECT p.*,
               ROUND(AVG(r.rating)::numeric, 1) AS avg_rating,
               COUNT(r.id)::int                 AS review_count,
@@ -236,7 +237,7 @@ module.exports = {
   },
 
   findRelated: async (productId) => {
-    const { rows } = await pool.query(
+    const { rows } = await getReadPool().query(
       `SELECT p.*,
               ROUND(AVG(r.rating)::numeric, 1) AS avg_rating,
               COUNT(r.id)::int                 AS review_count,

@@ -109,8 +109,18 @@ app.use(bodyParser.json({
 }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Static files — Nginx should handle /uploads in production.
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
+// Static files — with aggressive browser & CDN edge caching (7 days, immutable)
+app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads'), {
+  maxAge: '7d',
+  immutable: true,
+  setHeaders: (res) => {
+    res.set({
+      'Access-Control-Allow-Origin': '*',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      'Cache-Control': 'public, max-age=604800, immutable',
+    });
+  },
+}));
 
 // ── Paystack webhook — mounted BEFORE rate limiters ──────────────────────────
 // The HMAC signature check inside handleWebhook is the security gate.
