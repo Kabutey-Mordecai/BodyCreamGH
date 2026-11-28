@@ -777,7 +777,13 @@ export default function OrderDetail() {
                 </div>
               )}
               <div className="summary-row summary-total">
-                <span>Total paid</span>
+                <span>
+                  {order.payment_status === 'paid'
+                    ? 'Total paid'
+                    : order.payment_method === 'pay_on_delivery'
+                      ? 'Total due on delivery'
+                      : 'Order total'}
+                </span>
                 <span>GHS {parseFloat(order.total_amount).toFixed(2)}</span>
               </div>
             </div>

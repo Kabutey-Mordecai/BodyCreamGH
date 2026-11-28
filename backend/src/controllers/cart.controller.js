@@ -27,7 +27,12 @@ async function fetchUserCart(userId) {
   const { rows } = await pool.query(
     `SELECT ci.id, ci.quantity, ci.variant_id, ci.variant_label,
             p.id AS product_id, p.name,
-            COALESCE(pv.image_url, p.image_url) AS image_url,
+            COALESCE(
+              NULLIF(pv.image_url, ''),
+              (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id AND pi.is_primary = true LIMIT 1),
+              (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.sort_order ASC LIMIT 1),
+              p.image_url
+            ) AS image_url,
             COALESCE(
               (
                 SELECT CASE

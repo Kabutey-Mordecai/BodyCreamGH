@@ -47,7 +47,15 @@ module.exports = {
 
   getItems: async (orderId) => {
     const { rows } = await pool.query(
-      'SELECT oi.*, p.name, p.image_url FROM order_items oi JOIN products p ON oi.product_id = p.id WHERE oi.order_id = $1',
+      `SELECT oi.*, p.name,
+              COALESCE(
+                (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id AND pi.is_primary = true LIMIT 1),
+                (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.sort_order ASC LIMIT 1),
+                p.image_url
+              ) AS image_url
+         FROM order_items oi
+         JOIN products p ON oi.product_id = p.id
+        WHERE oi.order_id = $1`,
       [orderId]
     );
     return rows;

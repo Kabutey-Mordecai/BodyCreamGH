@@ -489,7 +489,7 @@ export default function Checkout() {
     );
   }
 
-  if (cartLoading) {
+  if (cartLoading || loading || submittingRef.current) {
     return <div className="spinner" style={{ marginTop: '80px' }} />;
   }
 
