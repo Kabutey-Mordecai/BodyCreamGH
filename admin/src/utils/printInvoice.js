@@ -4,6 +4,14 @@
  * or saved as a PDF to slip into the package.
  */
 
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+}[c]));
+
 const BASE_INVOICE_CSS = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -267,12 +275,12 @@ export function buildInvoiceSheetHtml(rawOrder, store = {}) {
   const itemRows = items.map(it => `
     <tr>
       <td>
-        <div style="font-weight: 600;">${it.product_name || it.name || '—'}</div>
-        ${it.variant_label ? `<div style="font-size: 11px; color: #7a6e68; margin-top: 2px;">${it.variant_label}</div>` : ''}
+        <div style="font-weight: 600;">${esc(it.product_name || it.name || '—')}</div>
+        ${it.variant_label ? `<div style="font-size: 11px; color: #7a6e68; margin-top: 2px;">${esc(it.variant_label)}</div>` : ''}
       </td>
-      <td class="center">${it.quantity}</td>
-      <td class="right">${fmt(it.price_at_purchase || it.price)}</td>
-      <td class="right">${fmt(it.subtotal || (it.price_at_purchase * it.quantity))}</td>
+      <td class="center">${esc(it.quantity)}</td>
+      <td class="right">${esc(fmt(it.price_at_purchase || it.price))}</td>
+      <td class="right">${esc(fmt(it.subtotal || (it.price_at_purchase * it.quantity)))}</td>
     </tr>
   `).join('');
 
@@ -281,20 +289,20 @@ export function buildInvoiceSheetHtml(rawOrder, store = {}) {
     <!-- Header: store brand + invoice meta -->
     <div class="header">
       <div>
-        <div class="brand-name">${storeName}</div>
+        <div class="brand-name">${esc(storeName)}</div>
         <div class="brand-meta">
-          ${storeAddress ? storeAddress + '<br/>' : ''}
-          ${storeEmail   ? storeEmail   + '<br/>' : ''}
-          ${storePhone   ? storePhone   + '<br/>' : ''}
-          ${whatsapp     ? 'WhatsApp: ' + whatsapp : ''}
+          ${storeAddress ? esc(storeAddress) + '<br/>' : ''}
+          ${storeEmail   ? esc(storeEmail)   + '<br/>' : ''}
+          ${storePhone   ? esc(storePhone)   + '<br/>' : ''}
+          ${whatsapp     ? 'WhatsApp: ' + esc(whatsapp) : ''}
         </div>
       </div>
       <div class="invoice-meta">
         <div class="invoice-label">Invoice</div>
         <table>
-          <tr><td>Invoice No.</td><td><strong>${orderNum}</strong></td></tr>
-          <tr><td>Date</td><td>${orderDate}</td></tr>
-          <tr><td>Payment</td><td>${order.payment_status || 'unpaid'}</td></tr>
+          <tr><td>Invoice No.</td><td><strong>${esc(orderNum)}</strong></td></tr>
+          <tr><td>Date</td><td>${esc(orderDate)}</td></tr>
+          <tr><td>Payment</td><td>${esc(order.payment_status || 'unpaid')}</td></tr>
         </table>
       </div>
     </div>
@@ -304,9 +312,9 @@ export function buildInvoiceSheetHtml(rawOrder, store = {}) {
       <div class="party">
         <div class="party-label">Bill To</div>
         <p>
-          <strong>${customerName}</strong><br/>
-          ${email ? `<span class="muted">${email}</span><br/>` : ''}
-          ${(order.customer_phone || order.phone) ? `<span class="muted">${order.customer_phone || order.phone}</span>` : ''}
+          <strong>${esc(customerName)}</strong><br/>
+          ${email ? `<span class="muted">${esc(email)}</span><br/>` : ''}
+          ${(order.customer_phone || order.phone) ? `<span class="muted">${esc(order.customer_phone || order.phone)}</span>` : ''}
         </p>
       </div>
       <div class="party">
@@ -315,9 +323,9 @@ export function buildInvoiceSheetHtml(rawOrder, store = {}) {
           ${order.fulfillment_method === 'pickup'
             ? `<strong>East Legon Station</strong><br/>Accra, Ghana<br/><span class="muted">Call upon arrival · Station Pickup</span>`
             : `
-              ${order.shipping_address || ''}
+              ${esc(order.shipping_address || '')}
               ${(order.shipping_city || order.shipping_region)
-                ? `<br/>${[order.shipping_city, order.shipping_region].filter(Boolean).join(', ')}`
+                ? `<br/>${esc([order.shipping_city, order.shipping_region].filter(Boolean).join(', '))}`
                 : ''}
               ${!order.shipping_address && !order.shipping_city ? '—' : ''}
             `
@@ -346,20 +354,20 @@ export function buildInvoiceSheetHtml(rawOrder, store = {}) {
       <div class="totals">
         <div class="totals-row">
           <span class="label">Subtotal</span>
-          <span>${fmt(subtotal)}</span>
+          <span>${esc(fmt(subtotal))}</span>
         </div>
         ${discountAmount > 0 ? `
         <div class="totals-row" style="color: #10b981;">
-          <span class="label" style="color: #10b981;">Discount${order.coupon_code ? ` (${order.coupon_code})` : ''}</span>
-          <span>-${fmt(discountAmount)}</span>
+          <span class="label" style="color: #10b981;">Discount${order.coupon_code ? ` (${esc(order.coupon_code)})` : ''}</span>
+          <span>-${esc(fmt(discountAmount))}</span>
         </div>` : ''}
         <div class="totals-row">
           <span class="label">Delivery fee</span>
-          <span>${deliveryFee === 0 ? 'Free' : fmt(deliveryFee)}</span>
+          <span>${deliveryFee === 0 ? 'Free' : esc(fmt(deliveryFee))}</span>
         </div>
         <div class="totals-row total">
           <span>Total</span>
-          <span>${fmt(total)}</span>
+          <span>${esc(fmt(total))}</span>
         </div>
         <div>
           <span class="payment-status ${isPaid ? 'paid' : 'unpaid'}">
@@ -372,13 +380,13 @@ export function buildInvoiceSheetHtml(rawOrder, store = {}) {
     ${order.notes ? `
     <div class="notes-section">
       <div class="notes-label">Notes</div>
-      ${order.notes}
+      ${esc(order.notes)}
     </div>` : ''}
 
     <!-- Footer -->
     <div class="footer">
       Thank you for your order!<br/>
-      ${storeName} · ${storeEmail || ''}${storeEmail && storePhone ? ' · ' : ''}${storePhone || ''}
+      ${esc(storeName)} · ${esc(storeEmail || '')}${storeEmail && storePhone ? ' · ' : ''}${esc(storePhone || '')}
     </div>
   </div>`;
 }
@@ -393,12 +401,12 @@ export function printInvoice(rawOrder, store = {}) {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Invoice ${orderNum}</title>
+  <title>Invoice ${esc(orderNum)}</title>
   <style>${BASE_INVOICE_CSS}</style>
 </head>
 <body>
   <div class="print-bar">
-    <span>Invoice #${orderNum}</span>
+    <span>Invoice #${esc(orderNum)}</span>
     <button class="print-btn" onclick="window.print()">🖨️ Print Invoice</button>
   </div>
   ${sheetHtml}

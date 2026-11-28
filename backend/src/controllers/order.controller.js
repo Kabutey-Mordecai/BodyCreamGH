@@ -726,6 +726,13 @@ const exportOrders = async (req, res) => {
        ORDER BY o.created_at DESC
     `, params);
 
+    const sanitizeCsvCell = (v) => {
+      let s = String(v ?? '');
+      // OWASP WSTG-INJT-20: neutralize Excel/Calc formula injection prefixes
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+
     const headers = ['Order Number', 'Customer Name', 'Customer Email', 'Total (GHS)', 'Status', 'Payment Status', 'Fulfillment Method', 'Created At'];
     const csvRows = rows.map(r => [
       r.order_number,
@@ -736,7 +743,7 @@ const exportOrders = async (req, res) => {
       r.payment_status,
       r.fulfillment_method || 'delivery',
       new Date(r.created_at).toISOString(),
-    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(','));
+    ].map(sanitizeCsvCell).join(','));
 
     const csv = [headers.join(','), ...csvRows].join('\n');
     res.setHeader('Content-Type', 'text/csv');

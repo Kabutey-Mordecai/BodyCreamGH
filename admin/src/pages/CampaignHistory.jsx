@@ -374,20 +374,17 @@ export default function CampaignHistory() {
             {/* Email Body Preview */}
             <div>
               <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 8 }}>Email body preview</div>
-              <div
+              <iframe
+                title="Campaign email body preview"
+                sandbox=""
+                srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;padding:16px;font-family:sans-serif;font-size:14px;line-height:1.6;color:#111827;background:#ffffff;word-break:break-word;}img{max-width:100%;height:auto;}</style></head><body>${detail.body_html || ''}</body></html>`}
                 style={{
+                  width: '100%',
+                  height: 260,
                   border: '1px solid var(--ac-border)',
                   borderRadius: 'var(--ac-radius)',
-                  padding: 18,
                   background: '#ffffff',
-                  color: '#111827',
-                  fontFamily: 'sans-serif',
-                  fontSize: '0.9rem',
-                  lineHeight: 1.6,
-                  maxHeight: 260,
-                  overflowY: 'auto',
                 }}
-                dangerouslySetInnerHTML={{ __html: detail.body_html }}
               />
             </div>
 

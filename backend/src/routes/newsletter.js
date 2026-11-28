@@ -14,7 +14,13 @@ router.post('/subscribe', makeRateLimiter(10 * 60 * 1000, 5, 'Too many subscript
     return email ? `nl:email:${email}` : `nl:ip:${ip}`;
   },
 }), subscribe);
-router.get('/status', optionalToken, getSubscriptionStatus);
+const statusLimiter = makeRateLimiter(
+  15 * 60 * 1000,
+  15,
+  'Too many status lookup requests. Please wait a few minutes and try again.'
+);
+
+router.get('/status', statusLimiter, optionalToken, getSubscriptionStatus);
 router.get('/unsubscribe', unsubscribe);
 
 module.exports = router;

@@ -363,20 +363,17 @@ export default function Compose() {
           <strong>Subject:</strong>{' '}
           {subject || <em style={{ color: 'var(--ac-text-muted)' }}>No subject</em>}
         </div>
-        <div
+        <iframe
+          title="Compose email preview"
+          sandbox=""
+          srcDoc={`<!doctype html><html><head><meta charset="utf-8"><style>body{margin:0;padding:18px;font-family:sans-serif;font-size:15px;line-height:1.6;color:#111827;background:#ffffff;word-break:break-word;}img{max-width:100%;height:auto;}</style></head><body>${editor?.getHTML() || '<p><em>Empty</em></p>'}</body></html>`}
           style={{
-            background: '#ffffff',
-            color: '#111827',
-            fontFamily: 'sans-serif',
-            fontSize: '0.95rem',
-            lineHeight: 1.6,
+            width: '100%',
+            height: 320,
             border: '1px solid var(--ac-border)',
             borderRadius: 'var(--ac-radius)',
-            padding: 20,
-            maxHeight: 340,
-            overflowY: 'auto',
+            background: '#ffffff',
           }}
-          dangerouslySetInnerHTML={{ __html: editor?.getHTML() || '<p><em>Empty</em></p>' }}
         />
         <div style={{ marginTop: 14, fontSize: '0.75rem', color: 'var(--ac-text-muted)', textAlign: 'center' }}>
           You're receiving this because you subscribed to BodyCreamGH updates.{' '}

@@ -162,10 +162,10 @@ const getSubscriptionStatus = async (req, res) => {
       subscribed = subRows[0]?.status === 'active';
     }
 
-    const hasPlacedOrder = await CouponModel.hasCustomerPlacedOrder(
-      { customerId, email: resolvedEmail },
-      pool
-    );
+    // OWASP WSTG-IDNT-04: Never disclose order history for unauthenticated arbitrary email queries.
+    const hasPlacedOrder = customerId
+      ? await CouponModel.hasCustomerPlacedOrder({ customerId, email: resolvedEmail }, pool)
+      : false;
 
     const eligibleForWelcomeDiscount = subscribed && !hasPlacedOrder;
 
