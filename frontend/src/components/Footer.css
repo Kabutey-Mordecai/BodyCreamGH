@@ -369,7 +369,7 @@
   }
 }
 
-/* ══ 3-COLUMN UNIFORM FONT FOOTER ═══════════════════════════ */
+/* ══ 4-COLUMN UNIFORM FONT FOOTER ═══════════════════════════ */
 .footer,
 .footer-col-head,
 .footer-col a,
@@ -377,8 +377,8 @@
   font-family: var(--font-body);
 }
 .footer-grid {
-  grid-template-columns: 1.6fr 1fr 1fr;
-  gap: 20px;
+  grid-template-columns: 1.4fr 1fr 1fr 1.1fr;
+  gap: 24px;
 }
 .footer-brand {
   display: block;
@@ -386,7 +386,7 @@
 .footer-tagline {
   font-size: 0.8rem;
   margin-bottom: 12px;
-  max-width: 300px;
+  max-width: 280px;
 }
 .footer-col-head {
   font-size: 0.72rem;
@@ -399,9 +399,15 @@
   font-size: 0.8rem;
   font-weight: 400;
 }
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .footer-grid {
     grid-template-columns: 1fr 1fr;
-    gap: 16px;
+    gap: 20px 24px;
+  }
+}
+@media (max-width: 500px) {
+  .footer-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
   }
 }

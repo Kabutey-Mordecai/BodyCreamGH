@@ -4,22 +4,17 @@ import './Footer.css';
 
 const YEAR = new Date().getFullYear();
 
-const ACCOUNT_LINKS = [
-  { label: 'My Account',  to: '/account' },
-  { label: 'My Orders',   to: '/orders' },
-  { label: 'Cart',        to: '/cart' },
-  { label: 'Login',       to: '/login' },
-  { label: 'Register',    to: '/register' },
+const CUSTOMER_CARE_LINKS = [
+  { label: 'Track your order', to: '/track' },
+  { label: 'Contact Us',       to: '/contact' },
+  { label: 'Shipping Policy',  to: '/shipping-policy' },
+  { label: 'Refund & Returns', to: '/refund-policy' },
 ];
 
-const INFO_LINKS = [
+const LEGAL_LINKS = [
   { label: 'About Us',           to: '/#our-story' },
-  { label: 'Shipping Policy',    to: '/shipping-policy' },
-  { label: 'Refund & Returns',   to: '/refund-policy' },
   { label: 'Privacy Policy',     to: '/privacy-policy' },
   { label: 'Terms & Conditions', to: '/terms' },
-  { label: 'Contact Us',         to: '/contact' },
-  { label: 'Track your order',   to: '/track' },
 ];
 
 const SOCIALS_META = [
@@ -165,11 +160,11 @@ export default function Footer() {
             </div>
           </div>
 
-          {/* Account links */}
+          {/* Group 1: Customer Care */}
           <div className="footer-col">
-            <h4 className="footer-col-head">Account</h4>
+            <h4 className="footer-col-head">Customer Care</h4>
             <ul>
-              {ACCOUNT_LINKS.map(l => (
+              {CUSTOMER_CARE_LINKS.map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>
@@ -177,15 +172,22 @@ export default function Footer() {
             </ul>
           </div>
 
-          {/* Help & Support links */}
-          <div id="contact-footer" className="footer-col">
-            <h4 className="footer-col-head">Help &amp; Support</h4>
+          {/* Group 2: Policies & About */}
+          <div className="footer-col">
+            <h4 className="footer-col-head">Policies &amp; About</h4>
             <ul>
-              {INFO_LINKS.map(l => (
+              {LEGAL_LINKS.map(l => (
                 <li key={l.label}>
                   <Link to={l.to}>{l.label}</Link>
                 </li>
               ))}
+            </ul>
+          </div>
+
+          {/* Group 3: Contact & App */}
+          <div id="contact-footer" className="footer-col">
+            <h4 className="footer-col-head">Get in Touch</h4>
+            <ul>
               {cleanPhone && (
                 <li>
                   <a href={`tel:${cleanPhone.replace(/\s+/g, '')}`}>{cleanPhone}</a>
