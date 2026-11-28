@@ -212,7 +212,7 @@ export default function Footer() {
                     background: 'none',
                     border: 'none',
                     padding: 0,
-                    color: 'inherit',
+                    color: '#e5d8c8',
                     font: 'inherit',
                     cursor: 'pointer',
                     display: 'inline-flex',

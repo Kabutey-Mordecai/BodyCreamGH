@@ -324,7 +324,7 @@ export default function Home() {
             className="hero-bg-video"
             onError={() => setVideoFailed(true)}
           />
-        ) : (
+        ) : (hero_image || DEFAULT_HERO_IMG) ? (
           <img
             src={resolveImageUrl(hero_image || DEFAULT_HERO_IMG)}
             srcSet={heroSrcSet}
@@ -335,7 +335,7 @@ export default function Home() {
             fetchpriority="high"
             decoding="sync"
           />
-        )}
+        ) : null}
         <div className="hero-overlay" />
         <div className="hero-orb hero-orb--one" aria-hidden="true" />
         <div className="hero-orb hero-orb--two" aria-hidden="true" />
