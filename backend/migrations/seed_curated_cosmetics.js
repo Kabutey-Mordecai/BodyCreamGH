@@ -11,6 +11,10 @@
  * Run: node migrations/seed_curated_cosmetics.js
  */
 require('dotenv').config();
+if (process.env.ALLOW_DEMO_SEED !== 'true') {
+  console.log('[seed] Skipping curated demo seed in production (set ALLOW_DEMO_SEED=true to run explicitly).');
+  process.exit(0);
+}
 const { Pool } = require('pg');
 
 const pool = new Pool({

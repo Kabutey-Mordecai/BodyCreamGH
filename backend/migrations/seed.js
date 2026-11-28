@@ -4,6 +4,10 @@
  * Safe to re-run — skips products that already exist by SKU.
  */
 require('dotenv').config();
+if (process.env.ALLOW_DEMO_SEED !== 'true') {
+  console.log('[seed] Skipping demo seed in production (set ALLOW_DEMO_SEED=true to run explicitly).');
+  process.exit(0);
+}
 const { Pool } = require('pg');
 
 const pool = new Pool({

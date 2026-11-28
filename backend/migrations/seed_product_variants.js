@@ -4,6 +4,10 @@
  * Safe to re-run — skips products that already have variants.
  */
 require('dotenv').config();
+if (process.env.ALLOW_DEMO_SEED !== 'true') {
+  console.log('[seed] Skipping demo variant seed in production (set ALLOW_DEMO_SEED=true to run explicitly).');
+  process.exit(0);
+}
 const { Pool } = require('pg');
 
 const pool = new Pool({
