@@ -908,10 +908,22 @@ export default function Shop() {
             )}
 
             {/* Grid & states */}
-            {error && <div className="alert alert-error">{error}</div>}
-
             {loading ? (
               <div className="spinner" />
+            ) : error ? (
+              <div className="shop-empty">
+                <span className="shop-empty-icon">✦</span>
+                <h3>Having trouble loading the catalog</h3>
+                <p>Please check your connection and try again.</p>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={fetchProducts}
+                  style={{ marginTop: '20px' }}
+                >
+                  Try Again
+                </button>
+              </div>
             ) : products.length === 0 ? (
               <div className="shop-empty">
                 <span className="shop-empty-icon">✦</span>
@@ -927,7 +939,9 @@ export default function Shop() {
                           ? `No products found in "${category}" matching these filters.`
                           : hasPriceFilter
                             ? 'No products found in that price range.'
-                            : 'No products match your current filter selection.'}
+                            : hasActiveFilters
+                              ? 'No products match your current filter selection.'
+                              : 'New arrivals are being curated. Check back shortly!'}
                 </p>
                 {hasActiveFilters && (
                   <button
