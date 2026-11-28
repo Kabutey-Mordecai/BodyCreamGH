@@ -59,7 +59,12 @@ module.exports = async function register(boss) {
       logger.warn('[NOTIFICATION SKIP] Missing customer email', { orderId, event: 'payment-success' });
     } else {
       const { rows: items } = await pool.query(
-        `SELECT p.name, oi.quantity, oi.price_at_purchase
+        `SELECT p.name, oi.quantity, oi.price_at_purchase, oi.variant_label,
+                COALESCE(
+                  (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id AND pi.is_primary = true LIMIT 1),
+                  (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.sort_order ASC LIMIT 1),
+                  p.image_url
+                ) AS image_url
            FROM order_items oi JOIN products p ON oi.product_id = p.id
           WHERE oi.order_id = $1`, [orderId]
       );
@@ -146,7 +151,12 @@ module.exports = async function register(boss) {
     }
 
     const { rows: items } = await pool.query(
-      `SELECT p.id AS product_id, p.name
+      `SELECT p.id AS product_id, p.name,
+              COALESCE(
+                (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id AND pi.is_primary = true LIMIT 1),
+                (SELECT pi.url FROM product_images pi WHERE pi.product_id = p.id ORDER BY pi.sort_order ASC LIMIT 1),
+                p.image_url
+              ) AS image_url
          FROM order_items oi JOIN products p ON oi.product_id = p.id
         WHERE oi.order_id = $1`, [orderId]
     );

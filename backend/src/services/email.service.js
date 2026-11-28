@@ -196,26 +196,62 @@ const escapeHtml = (s) =>
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[ch]));
 
-const sendOrderConfirmation = async (to, { orderNumber, total, items = [] }) => {
+function resolveEmailImageUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  const trimmed = rawUrl.trim();
+  if (!trimmed) return '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const base = (process.env.BASE_URL || 'https://backend-production-46b88d27.up.railway.app').replace(/\/$/, '');
+  return `${base}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`;
+}
+
+const sendOrderConfirmation = async (to, { customerName, orderNumber, total, items = [] }) => {
   if (!isConfigured() || !to) return;
 
   const itemRows = items
-    .map(i => `<tr><td>${escapeHtml(i.name)}</td><td>${escapeHtml(i.quantity)}</td><td>GHS ${parseFloat(i.price_at_purchase).toFixed(2)}</td></tr>`)
+    .map(i => {
+      const imgUrl = resolveEmailImageUrl(i.image_url);
+      const imgCell = imgUrl
+        ? `<img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(i.name || 'Product')}" width="60" height="60" style="width:60px;height:60px;object-fit:cover;border-radius:8px;border:1px solid #ede5db;display:block;" />`
+        : `<div style="width:60px;height:60px;border-radius:8px;background:#f3efe9;border:1px solid #ede5db;text-align:center;line-height:60px;color:#a89b93;font-size:11px;">Item</div>`;
+      const variantLine = i.variant_label
+        ? `<div style="font-size:12px;color:#7a6e68;margin-top:2px;">${escapeHtml(i.variant_label)}</div>`
+        : '';
+      return `
+        <tr>
+          <td style="padding:12px 10px 12px 0;border-bottom:1px solid #f0e8df;width:70px;vertical-align:middle;">${imgCell}</td>
+          <td style="padding:12px 8px;border-bottom:1px solid #f0e8df;vertical-align:middle;">
+            <strong style="color:#1c1410;font-size:14px;display:block;">${escapeHtml(i.name)}</strong>
+            ${variantLine}
+          </td>
+          <td style="padding:12px 8px;border-bottom:1px solid #f0e8df;text-align:center;color:#524740;font-size:14px;vertical-align:middle;">×${escapeHtml(i.quantity)}</td>
+          <td style="padding:12px 0 12px 8px;border-bottom:1px solid #f0e8df;text-align:right;font-weight:600;color:#1c1410;font-size:14px;white-space:nowrap;vertical-align:middle;">GHS ${parseFloat(i.price_at_purchase).toFixed(2)}</td>
+        </tr>`;
+    })
     .join('');
 
   await getTransporter().sendMail({
     from: getFromAddress(),
     to,
-    subject: `Order Confirmed – ${orderNumber}`,
+    subject: `Order Confirmed – #${orderNumber}`,
     html: `
-      <h2>Thank you for your order!</h2>
-      <p>Order number: <strong>${escapeHtml(orderNumber)}</strong></p>
-      <table border="1" cellpadding="8" style="border-collapse:collapse">
-        <thead><tr><th>Product</th><th>Qty</th><th>Price</th></tr></thead>
-        <tbody>${itemRows}</tbody>
-      </table>
-      <p style="margin-top:12px"><strong>Total: GHS ${parseFloat(total).toFixed(2)}</strong></p>
-      <p>We will notify you once your order ships.</p>
+      <div style="font-family:'Inter',system-ui,-apple-system,sans-serif;max-width:600px;margin:0 auto;color:#1c1410;padding:24px 16px;">
+        <h2 style="font-family:Georgia,serif;font-size:24px;color:#1c1410;margin:0 0 8px;">Thank you for your order!</h2>
+        ${customerName ? `<p style="font-size:15px;color:#524740;margin:0 0 12px;">Hi ${escapeHtml(customerName)},</p>` : ''}
+        <p style="font-size:15px;color:#524740;margin:0 0 20px;">Order number: <strong>#${escapeHtml(orderNumber)}</strong> has been confirmed. Here is a summary of your items:</p>
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th colspan="2" style="text-align:left;padding:8px 0;border-bottom:2px solid #c9a55a;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:#7a6e68;">Product</th>
+              <th style="text-align:center;padding:8px;border-bottom:2px solid #c9a55a;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:#7a6e68;">Qty</th>
+              <th style="text-align:right;padding:8px 0;border-bottom:2px solid #c9a55a;font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:#7a6e68;">Price</th>
+            </tr>
+          </thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+        <p style="margin-top:18px;font-size:16px;text-align:right;"><strong>Total: GHS ${parseFloat(total).toFixed(2)}</strong></p>
+        <p style="font-size:14px;color:#7a6e68;margin-top:20px;">We will notify you once your order ships.</p>
+      </div>
     `,
   });
 };
@@ -288,17 +324,26 @@ const sendReviewRequest = async (to, { customerName, orderNumber, orderId, items
   const url = (frontendUrl || process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
   const targetUrl = orderId ? `${url}/orders/${orderId}?review=1` : `${url}/orders`;
   const itemList = items
-    .map(i => `
+    .map(i => {
+      const imgUrl = resolveEmailImageUrl(i.image_url);
+      const thumb = imgUrl
+        ? `<img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(i.name || i.product_name || 'Product')}" width="48" height="48" style="width:48px;height:48px;object-fit:cover;border-radius:6px;border:1px solid #ede5db;margin-right:12px;flex-shrink:0;" />`
+        : '';
+      return `
       <li style="margin-bottom:12px;list-style:none;padding:12px 16px;background:#faf7f4;border-radius:6px;border:1px solid #ede5db;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-          <strong style="color:#1c1410;font-size:15px;display:block;">${escapeHtml(i.name || i.product_name)}</strong>
-          <span style="color:#7a6e68;font-size:12px;">Verified Purchase</span>
+        <div style="display:flex;align-items:center;">
+          ${thumb}
+          <div>
+            <strong style="color:#1c1410;font-size:15px;display:block;">${escapeHtml(i.name || i.product_name)}</strong>
+            <span style="color:#7a6e68;font-size:12px;">Verified Purchase</span>
+          </div>
         </div>
         <a href="${url}/orders/${orderId || ''}?product=${i.product_id || i.id}&review=1" style="color:#a8863d;font-weight:600;font-size:13px;text-decoration:none;padding:6px 12px;background:#fff;border:1px solid #c9a55a;border-radius:4px;white-space:nowrap;">
           Review Item →
         </a>
       </li>
-    `)
+    `;
+    })
     .join('');
 
   await getTransporter().sendMail({
