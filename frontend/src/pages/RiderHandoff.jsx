@@ -630,7 +630,8 @@ export default function RiderHandoff() {
     const recName = done?.recipient_name || recipientName || info.recipient_first_name || 'Customer';
     const recLat = done?.lat ?? gps.lat;
     const recLng = done?.lng ?? gps.lng;
-    const mapsUrl = recLat != null && recLng != null
+    const hasValidGps = recLat != null && recLng != null && (Number(recLat) !== 0 || Number(recLng) !== 0);
+    const mapsUrl = hasValidGps
       ? `https://www.google.com/maps?q=${recLat},${recLng}`
       : null;
     const codSummary = done?.cod_paid

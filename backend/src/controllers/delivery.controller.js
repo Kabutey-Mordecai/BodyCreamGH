@@ -40,7 +40,9 @@ async function ensureRidersTable() {
         ALTER TABLE dispatch_riders
           ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 1;
         ALTER TABLE deliveries
-          ADD COLUMN IF NOT EXISTS pod_otp_sent_at TIMESTAMPTZ;
+          ADD COLUMN IF NOT EXISTS pod_otp_sent_at TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS cod_settled_at TIMESTAMPTZ,
+          ADD COLUMN IF NOT EXISTS cod_settlement_id VARCHAR(64);
         CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_riders_name_lower
           ON dispatch_riders (LOWER(TRIM(name)));
         CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_riders_phone_norm
@@ -1279,6 +1281,7 @@ const listRiders = async (_req, res) => {
               ), 0)::numeric(12,2) AS cod_pending_ghs,
               COALESCE(SUM(o.total_amount) FILTER (
                 WHERE (d.pod_verified_at IS NOT NULL OR d.status = 'delivered')
+                  AND d.cod_settled_at IS NULL
                   AND COALESCE(d.pod_verified_at, d.updated_at) >= CURRENT_DATE
                   AND o.payment_method = 'pay_on_delivery'
                   AND o.payment_status IN ('paid', 'partially_refunded', 'refunded')
@@ -2179,6 +2182,7 @@ const riderResendPodOtp = async (req, res) => {
 // ── Admin: get end-of-day rider cash settlement reconciliation ────────────
 const getRiderSettlement = async (req, res) => {
   try {
+    await ensureRidersTable();
     const { riderId } = req.params;
     const { rows: riderRows } = await pool.query(
       `SELECT id, name, phone, vehicle_type, vehicle_plate FROM dispatch_riders WHERE id = $1`,
@@ -2202,6 +2206,7 @@ const getRiderSettlement = async (req, res) => {
          LEFT JOIN users u ON o.customer_id = u.id
         WHERE LOWER(TRIM(d.delivery_partner)) = LOWER(TRIM($1))
           AND (d.pod_verified_at IS NOT NULL OR d.status = 'delivered')
+          AND d.cod_settled_at IS NULL
           AND COALESCE(d.pod_verified_at, d.updated_at) >= CURRENT_DATE
         ORDER BY COALESCE(d.pod_verified_at, d.updated_at) DESC`,
       [rider.name]
@@ -2244,6 +2249,7 @@ const getRiderSettlement = async (req, res) => {
 // ── Admin: record end-of-day rider cash handover & settlement ─────────────
 const settleRiderCash = async (req, res) => {
   try {
+    await ensureRidersTable();
     const { riderId } = req.params;
     const { cash_received, notes, expected_amount, orders_settled } = req.body;
 
@@ -2261,6 +2267,19 @@ const settleRiderCash = async (req, res) => {
     const received = Number(cash_received || 0);
     const expected = Number(expected_amount || 0);
     const variance = Number((received - expected).toFixed(2));
+
+    // Mark today's unsettled completed deliveries for this rider as settled so
+    // the same COD cash cannot be double-settled.
+    const { rowCount: settledCount } = await pool.query(
+      `UPDATE deliveries
+          SET cod_settled_at = NOW(),
+              cod_settlement_id = $1
+        WHERE LOWER(TRIM(delivery_partner)) = LOWER(TRIM($2))
+          AND (pod_verified_at IS NOT NULL OR status = 'delivered')
+          AND cod_settled_at IS NULL
+          AND COALESCE(pod_verified_at, updated_at) >= CURRENT_DATE`,
+      [settlementId, rider.name]
+    );
 
     logAdminAction({
       actorId: req.user?.id,
