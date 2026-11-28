@@ -523,45 +523,52 @@ export default function Home() {
       <FeaturedSpotlight />
 
       {/* ══════════════════════════════════════════
-          BRAND STORY — split image + text
-          TO CUSTOMIZE: Swap the image URL and edit the story text
+          BRAND STORY — split image + text (100% Admin Storefront controlled)
           ══════════════════════════════════════════ */}
-      <section id="our-story" className="brand-story">
-        <div className="container brand-story-inner">
-          {(settings.brand_story_image || hero_image) && (
-            <Reveal direction="left" className="brand-story-img">
-              <img
-                src={resolveImageUrl(settings.brand_story_image || hero_image)}
-                alt={store_name || 'Our story'}
-                width="700"
-                height="500"
-                loading="lazy"
-              />
+      {settings.brand_story_enabled !== false && settings.brand_story_enabled !== 'false' && (
+        <section id="our-story" className="brand-story">
+          <div className="container brand-story-inner">
+            {(settings.brand_story_image || hero_image) && (
+              <Reveal direction="left" className="brand-story-img">
+                <img
+                  src={resolveImageUrl(settings.brand_story_image || hero_image)}
+                  alt={settings.brand_story_heading || store_name || 'Our story'}
+                  width="700"
+                  height="500"
+                  loading="lazy"
+                />
+              </Reveal>
+            )}
+            <Reveal direction="right" delay={100} className="brand-story-text">
+              {settings.brand_story_label && (
+                <span className="section-label">{settings.brand_story_label}</span>
+              )}
+              {settings.brand_story_heading && (
+                <h2>{settings.brand_story_heading}</h2>
+              )}
+              <div className="gold-divider" style={{ margin: '12px 0 20px' }} />
+              {String(settings.brand_story_body || '')
+                .split(/\n\s*\n/)
+                .map(p => p.trim())
+                .filter(Boolean)
+                .map((para, idx) => (
+                  <p key={idx} style={idx > 0 ? { marginTop: '14px' } : undefined}>
+                    {para}
+                  </p>
+                ))}
+              {settings.brand_story_cta_text && (
+                <Link
+                  to={settings.brand_story_cta_link || '/shop'}
+                  className="btn btn-outline"
+                  style={{ marginTop: '28px', width: 'fit-content' }}
+                >
+                  {settings.brand_story_cta_text}
+                </Link>
+              )}
             </Reveal>
-          )}
-          <Reveal direction="right" delay={100} className="brand-story-text">
-            <span className="section-label">Why Shop With Us</span>
-            <h2>Curated beauty,<br />100% authentic.</h2>
-            <div className="gold-divider" style={{ margin: '12px 0 20px' }} />
-            <p>
-              Every product in our store is carefully selected from trusted global
-              and local beauty brands — from daily skincare and serums to makeup,
-              haircare, and signature fragrances.
-            </p>
-            <p style={{ marginTop: '14px' }}>
-              We source directly from verified distributors, store every item in
-              climate-controlled conditions, and deliver fast to your doorstep.
-            </p>
-            <Link
-              to="/shop"
-              className="btn btn-outline"
-              style={{ marginTop: '28px', width: 'fit-content' }}
-            >
-              Browse All Brands
-            </Link>
-          </Reveal>
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
 
       {/* ══════════════════════════════════════════
           VERIFIED CUSTOMER REVIEWS

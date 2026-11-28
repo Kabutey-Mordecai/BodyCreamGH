@@ -27,6 +27,7 @@ const SECTIONS = [
   { id: 'newsletter',   label: 'Newsletter section' },
   { id: 'layout',       label: 'Layout & features' },
   { id: 'categories',   label: 'Category cards' },
+  { id: 'brand_story',  label: 'Brand story' },
   { id: 'testimonials', label: 'Testimonials' },
   { id: 'trust',        label: 'Trust promises' },
   { id: 'faq',          label: 'FAQs' },
@@ -188,6 +189,15 @@ const DEFAULTS = {
       image: 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?auto=format&fit=crop&w=700&q=80',
     },
   ],
+
+  // Brand story split section (image + text)
+  brand_story_enabled: true,
+  brand_story_image: '',
+  brand_story_label: 'Why Shop With Us',
+  brand_story_heading: 'Curated beauty, 100% authentic.',
+  brand_story_body: 'Every product in our store is carefully selected from trusted global and local beauty brands — from daily skincare and serums to makeup, haircare, and signature fragrances.\n\nWe source directly from verified distributors, store every item in climate-controlled conditions, and deliver fast to your doorstep.',
+  brand_story_cta_text: 'Browse All Brands',
+  brand_story_cta_link: '/shop',
 
   // Jumia-inspired bottom SEO & regional editorial guide
   seo_editorial_enabled: true,
@@ -2107,6 +2117,89 @@ export default function Storefront() {
                   </div>
                 </div>
 
+              </div>
+            </div>
+          )}
+
+          {active === 'brand_story' && (
+            <div className="card">
+              <div className="card-header">
+                <h2 className="card-title">Brand Story (Image + Text)</h2>
+              </div>
+              <div className="card-body">
+                <div className="field">
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontWeight: 600 }}>
+                    <input
+                      type="checkbox"
+                      checked={data.brand_story_enabled !== false && data.brand_story_enabled !== 'false'}
+                      onChange={e => update('brand_story_enabled', e.target.checked)}
+                    />
+                    Show Brand Story section on Homepage
+                  </label>
+                </div>
+
+                <div className="field">
+                  <ImageInput
+                    label="Brand Story Image"
+                    value={data.brand_story_image || ''}
+                    onChange={val => update('brand_story_image', val)}
+                    placeholder="Upload a photo or paste an image URL"
+                  />
+                  <div className="hint">Shown beside your story text. If left blank, falls back to your Hero banner image.</div>
+                </div>
+
+                <div className="field-row">
+                  <div className="field">
+                    <label>Eyebrow Label</label>
+                    <input
+                      type="text"
+                      value={data.brand_story_label || ''}
+                      onChange={e => update('brand_story_label', e.target.value)}
+                      placeholder="Why Shop With Us"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Heading</label>
+                    <input
+                      type="text"
+                      value={data.brand_story_heading || ''}
+                      onChange={e => update('brand_story_heading', e.target.value)}
+                      placeholder="Curated beauty, 100% authentic."
+                    />
+                  </div>
+                </div>
+
+                <div className="field">
+                  <label>Story Paragraphs</label>
+                  <textarea
+                    rows={5}
+                    value={data.brand_story_body || ''}
+                    onChange={e => update('brand_story_body', e.target.value)}
+                    placeholder="Write your brand story here. Leave a blank line to start a new paragraph."
+                  />
+                  <div className="hint">Leave a blank line between paragraphs to format multiple paragraphs.</div>
+                </div>
+
+                <div className="field-row">
+                  <div className="field">
+                    <label>Button Text</label>
+                    <input
+                      type="text"
+                      value={data.brand_story_cta_text || ''}
+                      onChange={e => update('brand_story_cta_text', e.target.value)}
+                      placeholder="Browse All Brands"
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Button Link</label>
+                    <input
+                      type="text"
+                      value={data.brand_story_cta_link || ''}
+                      onChange={e => update('brand_story_cta_link', e.target.value)}
+                      placeholder="/shop"
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           )}

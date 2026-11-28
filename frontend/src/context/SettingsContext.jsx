@@ -97,6 +97,15 @@ const DEFAULTS = {
   mid_banner_image: '',
   mid_banner_slides: [],
 
+  // Brand story split section (image + text)
+  brand_story_enabled: true,
+  brand_story_image: '',
+  brand_story_label: 'Why Shop With Us',
+  brand_story_heading: 'Curated beauty, 100% authentic.',
+  brand_story_body: 'Every product in our store is carefully selected from trusted global and local beauty brands — from daily skincare and serums to makeup, haircare, and signature fragrances.\n\nWe source directly from verified distributors, store every item in climate-controlled conditions, and deliver fast to your doorstep.',
+  brand_story_cta_text: 'Browse All Brands',
+  brand_story_cta_link: '/shop',
+
   // Jumia-inspired bottom SEO & regional editorial guide
   seo_editorial_enabled: true,
   seo_editorial_title: 'Authentic Cosmetics, Skincare, Makeup & Fragrances Online',
